@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <array name="health_permissions">
+        <item>android.permission.health.READ_STEPS</item>
+        <item>android.permission.health.READ_HEART_RATE</item>
+        <item>android.permission.health.READ_SLEEP</item>
+        <item>android.permission.health.READ_ACTIVE_CALORIES_BURNED</item>
+        <item>android.permission.health.READ_TOTAL_CALORIES_BURNED</item>
+        <item>android.permission.health.READ_BASAL_METABOLIC_RATE</item>
+        <item>android.permission.health.READ_WEIGHT</item>
+        <item>android.permission.health.READ_HEIGHT</item>
+    </array>
+</resources>

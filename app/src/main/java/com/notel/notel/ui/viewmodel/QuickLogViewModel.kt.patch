@@ -1,0 +1,20 @@
+--- app/src/main/java/com/notel/notel/ui/viewmodel/QuickLogViewModel.kt
++++ app/src/main/java/com/notel/notel/ui/viewmodel/QuickLogViewModel.kt
+@@ -14,6 +15,7 @@
+ import kotlinx.serialization.json.Json
+ import javax.inject.Inject
++import java.time.LocalDate
++import java.time.format.DateTimeFormatter
+ 
+ data class QuickLogUiState(
+     val categories: List<Category> = emptyList(),
+@@ -34,7 +39,12 @@
+     val adviceError: String? = null,
+     val showAdviceDialog: Boolean = false,
+-    val showOnboardingDialog: Boolean = false
++    val showOnboardingDialog: Boolean = false,
++    
++    // Productivity Layer
++    val loggedDays: Set<String> = emptySet(), // Set of YYYY-MM-DD strings
++    val startDate: String? = null // YYYY-MM-DD
+ )

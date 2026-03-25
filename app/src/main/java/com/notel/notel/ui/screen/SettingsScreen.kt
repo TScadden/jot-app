@@ -1,0 +1,1420 @@
+package com.notel.notel.ui.screen
+
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.CurrencyExchange
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.notel.notel.ui.theme.*
+import com.notel.notel.ui.viewmodel.SettingsViewModel
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.activity.compose.BackHandler
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+
+enum class SettingsMenu {
+    MAIN, USER_PROFILE, CONNECTED_APPS, AI_AND_KNOWLEDGE, EVENT_COUNTERS, WALLET
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsScreen(
+    viewModel: SettingsViewModel = hiltViewModel(),
+    onBack: () -> Unit,
+    onRestartOnboarding: () -> Unit,
+    onLogout: () -> Unit
+) {
+    val userContext by viewModel.userContext.collectAsState()
+    val knowledgeBase by viewModel.knowledgeBase.collectAsState()
+    val professionalUpdates by viewModel.professionalUpdates.collectAsState()
+    val processedFiles by viewModel.processedFiles.collectAsState()
+    val userBalance by viewModel.userBalance.collectAsState()
+    val isUnlimited by viewModel.isUnlimited.collectAsState()
+    val isProcessing by viewModel.isProcessingFile.collectAsState()
+    val processError by viewModel.processError.collectAsState()
+    val aiInsights by viewModel.aiInsights.collectAsState()
+    
+    val isGeneratingWeeklyRecap by viewModel.isGeneratingWeeklyRecap.collectAsState()
+    val isGeneratingDeepResearch by viewModel.isGeneratingDeepResearch.collectAsState()
+    
+    val healthConnectConnected by viewModel.healthConnectConnected.collectAsState()
+    
+    val userAge by viewModel.userAge.collectAsState()
+    val userHeight by viewModel.userHeight.collectAsState()
+    val userWeight by viewModel.userWeight.collectAsState()
+    val userGender by viewModel.userGender.collectAsState()
+    val autoAiSuggestions by viewModel.autoAiSuggestions.collectAsState()
+    val tutorialSeen by viewModel.settingsTutorialSeen.collectAsState()  // null = loading, false = not seen, true = seen
+
+    // Screen dimensions for smart tooltip placement
+    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
+    val screenHeightDp = configuration.screenHeightDp
+
+    // Scroll state exposed so the tutorial can auto-scroll to each target
+    val scrollState = rememberScrollState()
+
+    // Tutorial state
+    var tutorialStep by remember { mutableStateOf(-1) }  // -1 = not started yet
+    // Coords for each of the 6 tutorial targets
+    var coordPersonalCtx   by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var coordWallet        by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var coordUserProfile   by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var coordConnectedApps by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var coordAiKnowledge   by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var coordEventCounters by remember { mutableStateOf<LayoutCoordinates?>(null) }
+
+    // Auto-start tutorial on first-ever visit (only when DataStore confirms never-seen)
+    LaunchedEffect(tutorialSeen) {
+        if (tutorialSeen == false && tutorialStep == -1) {
+            tutorialStep = 0
+        }
+    }
+
+    // Helper: coords for the current step
+    val currentTutorialCoords: LayoutCoordinates? = when (tutorialStep) {
+        0 -> coordPersonalCtx
+        1 -> coordWallet
+        2 -> coordUserProfile
+        3 -> coordConnectedApps
+        4 -> coordAiKnowledge
+        5 -> coordEventCounters
+        else -> null
+    }
+
+    // Auto-scroll so the highlighted element is comfortably visible
+    LaunchedEffect(tutorialStep, currentTutorialCoords) {
+        val coords = currentTutorialCoords ?: return@LaunchedEffect
+        if (tutorialStep < 0) return@LaunchedEffect
+        // coordWallet is in the top bar — no scrolling needed for it
+        if (tutorialStep == 1) return@LaunchedEffect
+        kotlinx.coroutines.delay(80) // let layout settle after step change
+        try {
+            val bounds = coords.boundsInWindow()
+            val screenHeightPx = with(density) { screenHeightDp.dp.toPx() }
+            // Aim to place the element at 35% from the top of the screen
+            val targetElementY = screenHeightPx * 0.35f
+            val deltaY = bounds.top - targetElementY
+            val newScroll = (scrollState.value + deltaY).toInt().coerceAtLeast(0)
+            scrollState.animateScrollTo(newScroll)
+        } catch (_: Exception) { /* ignore layout not yet attached */ }
+    }
+    
+    val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    val activity = context as? android.app.Activity
+    
+    LaunchedEffect(Unit) {
+        viewModel.billingEvents.collect { message ->
+            snackbarHostState.showSnackbar(message)
+        }
+    }
+    
+    var currentMenu by remember { mutableStateOf(SettingsMenu.MAIN) }
+    
+    BackHandler(enabled = currentMenu != SettingsMenu.MAIN) {
+        currentMenu = SettingsMenu.MAIN
+    }
+
+    var showProfileDialog by remember { mutableStateOf(false) }
+    
+    var contextInput by remember(userContext) { mutableStateOf(userContext) }
+    var customAmountInput by remember { mutableStateOf("") }
+    
+    var showInsightsHistory by remember { mutableStateOf(false) }
+    var showRestartDialog by remember { mutableStateOf(false) }
+    var showLogoutDialog by remember { mutableStateOf(false) }
+    var showTextNoteDialog by remember { mutableStateOf(false) }
+
+    val filePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let { viewModel.ingestFile(it, context.contentResolver) }
+    }
+
+    val healthConnectLauncher = rememberLauncherForActivityResult(
+        contract = viewModel.healthConnectManager.requestPermissionsActivityContract()
+    ) { granted ->
+        if (granted.containsAll(viewModel.healthConnectManager.permissions)) {
+            viewModel.checkHealthConnectStatus()
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+    Scaffold(
+        containerColor = NotelBackground,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        topBar = {
+            TopAppBar(
+                title = { 
+                    val titleText = when (currentMenu) {
+                        SettingsMenu.MAIN -> "Settings"
+                        SettingsMenu.USER_PROFILE -> "User Profile"
+                        SettingsMenu.CONNECTED_APPS -> "Connected Apps"
+                        SettingsMenu.AI_AND_KNOWLEDGE -> "AI & Knowledge Base"
+                        SettingsMenu.EVENT_COUNTERS -> "Event Counters"
+                        SettingsMenu.WALLET -> "Wallet & Usage"
+                    }
+                    Text(titleText, fontWeight = FontWeight.Bold, color = NotelTextPrimary) 
+                },
+                navigationIcon = {
+                    IconButton(onClick = {
+                        if (currentMenu == SettingsMenu.MAIN) onBack() else currentMenu = SettingsMenu.MAIN
+                    }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = NotelTextSecondary)
+                    }
+                },
+                actions = {
+                    if (currentMenu == SettingsMenu.MAIN) {
+                        IconButton(
+                            onClick = { currentMenu = SettingsMenu.WALLET },
+                            modifier = Modifier.onGloballyPositioned { coordWallet = it }
+                        ) {
+                            Icon(Icons.Default.AccountBalanceWallet, "Wallet", tint = NotelPrimary)
+                        }
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = NotelBackground)
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 16.dp)
+                .verticalScroll(scrollState)
+        ) {
+            Spacer(Modifier.height(16.dp))
+            
+            if (currentMenu == SettingsMenu.MAIN) {
+                // The Wallet is placed at the top of the settings directly
+                // (It will be inserted dynamically by changing its if-condition below)
+            }
+
+            if (currentMenu == SettingsMenu.WALLET) {
+            Text("WALLET & USAGE", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(8.dp))
+
+            GlassyCard(
+                shape = RoundedCornerShape(16.dp),
+                color = NotelSurface
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(if (isUnlimited) "Infinite AI Access" else "Available Credits", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                        Spacer(Modifier.height(4.dp))
+                        if (isUnlimited) {
+                            Text(
+                                "∞",
+                                color = NotelPrimary,
+                                fontSize = 42.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                        } else {
+                            Text(
+                                "$${String.format("%.2f", userBalance)}",
+                                color = NotelPrimary,
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
+                    }
+                    Icon(
+                        if (isUnlimited) Icons.Default.AutoAwesome else Icons.Default.AccountBalanceWallet,
+                        contentDescription = null,
+                        tint = NotelPrimary,
+                        modifier = Modifier.size(40.dp)
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
+                
+                Text(
+                    if (isUnlimited) "You have exclusive unlimited access. No billing applies." 
+                    else "You are billed $0.01 per AI action. Your balance covers server and API costs with a small markup for development.",
+                    color = NotelTextSecondary,
+                    fontSize = 12.sp
+                )
+
+                if (!isUnlimited) {
+                    Spacer(Modifier.height(20.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        GlassyButton(
+                            onClick = { activity?.let { viewModel.purchaseCredits(it, "jot_credits_5") } },
+                            modifier = Modifier.weight(1f),
+                            containerColor = NotelPrimary
+                        ) {
+                            Text("Add $5", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                        GlassyButton(
+                            onClick = { activity?.let { viewModel.purchaseCredits(it, "jot_credits_10") } },
+                            modifier = Modifier.weight(1f),
+                            containerColor = NotelSurfaceHigh
+                        ) {
+                            Text("Add $10", color = NotelTextPrimary)
+                        }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+                    
+                    GlassyButton(
+                        onClick = { 
+                            activity?.let { viewModel.purchaseCredits(it, "jot_credit_unit") }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        containerColor = NotelSurfaceHigh
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp), tint = NotelPrimary)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Add Custom Amount ($1/unit)", color = NotelTextPrimary)
+                        }
+                    }
+                    
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "Note: For custom amounts, select the quantity you'd like to purchase in the Google Play window (each unit is $1.00).",
+                        color = NotelTextSecondary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        lineHeight = 16.sp
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            }
+
+            
+            if (currentMenu == SettingsMenu.MAIN) {
+                Text(
+                    "BACKGROUND CONTEXT",
+                    fontSize = 12.sp,
+                    color = NotelTextSecondary,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.height(8.dp))
+                GlassyCard(
+                    shape = RoundedCornerShape(16.dp),
+                    color = NotelSurface,
+                    modifier = Modifier.onGloballyPositioned { coordPersonalCtx = it }
+                ) {
+                    Text("Personal Context", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Help the AI understand you better (e.g. 'I have chronic fatigue' or 'I am training for a marathon').",
+                        color = NotelTextSecondary,
+                        fontSize = 12.sp
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = contextInput,
+                        onValueChange = {
+                            contextInput = it
+                            viewModel.saveUserContext(it.trim())
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 3,
+                        maxLines = 5,
+                        placeholder = { Text("Add background info here…", color = NotelTextSecondary) },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = NotelPrimary,
+                            unfocusedBorderColor = NotelSurfaceHigh,
+                            focusedTextColor = NotelTextPrimary,
+                            unfocusedTextColor = NotelTextPrimary,
+                            cursorColor = NotelPrimary,
+                            unfocusedContainerColor = NotelSurfaceHigh,
+                            focusedContainerColor = NotelSurfaceHigh
+                        )
+                    )
+                }
+
+                Spacer(Modifier.height(24.dp))
+
+                Text(
+                    "SETTINGS",
+                    fontSize = 12.sp,
+                    color = NotelPrimary,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clickable {
+                            viewModel.resetSettingsTutorial()
+                            tutorialStep = 0
+                        }
+                        .padding(vertical = 4.dp)
+                )
+                Spacer(Modifier.height(8.dp))
+
+                SettingsMenuCard("User Profile", Icons.Default.Person, modifier = Modifier.onGloballyPositioned { coordUserProfile = it }) { currentMenu = SettingsMenu.USER_PROFILE }
+                SettingsMenuCard("Connected Apps", Icons.Default.Favorite, modifier = Modifier.onGloballyPositioned { coordConnectedApps = it }) { currentMenu = SettingsMenu.CONNECTED_APPS }
+                SettingsMenuCard("AI & Knowledge Base", Icons.Default.AutoAwesome, modifier = Modifier.onGloballyPositioned { coordAiKnowledge = it }) { currentMenu = SettingsMenu.AI_AND_KNOWLEDGE }
+                SettingsMenuCard("Event Counters", Icons.Default.Timer, modifier = Modifier.onGloballyPositioned { coordEventCounters = it }) { currentMenu = SettingsMenu.EVENT_COUNTERS }
+            }
+
+
+            if (currentMenu == SettingsMenu.EVENT_COUNTERS) {
+            Text("EVENT COUNTER", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(8.dp))
+
+            val eventCounters by viewModel.eventCounters.collectAsState()
+            val cHistory by viewModel.counterHistory.collectAsState()
+
+            var showCounterDialog by remember { mutableStateOf(false) }
+            var editCounter by remember { mutableStateOf<com.notel.notel.ui.viewmodel.EventCounterDto?>(null) }
+
+            GlassyCard(
+                shape = RoundedCornerShape(16.dp),
+                color = NotelSurface
+            ) {
+                if (eventCounters.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        eventCounters.forEach { counter ->
+                            val daysRemaining = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(Math.abs(System.currentTimeMillis() - counter.targetDate))
+                            val direction = if (counter.isUp) "since" else "until"
+                            
+                            GlassyCard(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (counter.isFavorite) NotelPrimary.copy(alpha = 0.1f) else NotelSurfaceHigh.copy(alpha = 0.5f)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(counter.name, color = NotelTextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                        Text("$daysRemaining days $direction", color = NotelPrimary, fontSize = 11.sp)
+                                    }
+                                    IconButton(
+                                        onClick = { viewModel.toggleFavoriteCounter(counter.id) },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(if (counter.isFavorite) Icons.Default.Star else Icons.Default.StarOutline, "Favorite", tint = if (counter.isFavorite) Color.Yellow else NotelTextSecondary, modifier = Modifier.size(16.dp))
+                                    }
+                                    IconButton(
+                                        onClick = { 
+                                            editCounter = counter
+                                            showCounterDialog = true
+                                        },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(Icons.Default.Edit, "Edit", tint = NotelTextSecondary, modifier = Modifier.size(16.dp))
+                                    }
+                                    IconButton(
+                                        onClick = { viewModel.endCounterAndSave(counter.id) },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(Icons.Default.Delete, "End", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    GlassyButton(
+                        onClick = { 
+                            editCounter = null
+                            showCounterDialog = true 
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        containerColor = NotelSurfaceHigh
+                    ) {
+                        Icon(Icons.Default.Add, "Add Counter", tint = NotelPrimary)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Add New Counter", color = NotelTextPrimary)
+                    }
+                } else {
+                    Text("Track important upcoming or past events. The favorite one shows on the main screen and syncs with the AI.", color = NotelTextSecondary, fontSize = 12.sp)
+                    Spacer(Modifier.height(16.dp))
+                    GlassyButton(
+                        onClick = { 
+                            editCounter = null
+                            showCounterDialog = true 
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        containerColor = NotelSurfaceHigh
+                    ) {
+                        Icon(Icons.Default.Timer, "Add Counter", tint = NotelPrimary)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Add New Counter", color = NotelTextPrimary)
+                    }
+                }
+
+                if (cHistory.isNotEmpty()) {
+                    Spacer(Modifier.height(16.dp))
+                    Text("Past Counters:", color = NotelTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(4.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        cHistory.forEach { ch ->
+                            Text("${ch.name} (Ended: ${java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault()).format(java.util.Date(ch.endedAt))})", color = NotelTextSecondary, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+
+            if (showCounterDialog) {
+                var editName by remember { mutableStateOf(editCounter?.name ?: "") }
+                var selectedDateMillis by remember { mutableStateOf(editCounter?.targetDate ?: System.currentTimeMillis()) }
+                var editIsUp by remember { mutableStateOf(editCounter?.isUp ?: false) }
+                var editAuto by remember { mutableStateOf(editCounter?.autoUp ?: false) }
+
+                val context = LocalContext.current
+                val calendar = java.util.Calendar.getInstance()
+                calendar.timeInMillis = selectedDateMillis
+                val datePickerDialog = android.app.DatePickerDialog(
+                    context,
+                    { _, year, month, dayOfMonth ->
+                        val newCal = java.util.Calendar.getInstance()
+                        newCal.set(year, month, dayOfMonth, 0, 0, 0)
+                        selectedDateMillis = newCal.timeInMillis
+                        // Auto-toggle Count Up if date is in the past
+                        if (newCal.timeInMillis < System.currentTimeMillis()) {
+                            editIsUp = true
+                        } else {
+                            editIsUp = false
+                        }
+                    },
+                    calendar.get(java.util.Calendar.YEAR),
+                    calendar.get(java.util.Calendar.MONTH),
+                    calendar.get(java.util.Calendar.DAY_OF_MONTH)
+                )
+
+                val displayDate = java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault()).format(java.util.Date(selectedDateMillis))
+
+                AlertDialog(
+                    onDismissRequest = { showCounterDialog = false },
+                    title = { Text(if (editCounter != null) "Edit Counter" else "New Counter", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = editName, onValueChange = { editName = it },
+                                label = { Text("Event Name (e.g. Next Doctor Appt)") },
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, unfocusedTextColor = NotelTextPrimary, focusedTextColor = NotelTextPrimary)
+                            )
+                            
+                            OutlinedTextField(
+                                value = displayDate,
+                                onValueChange = { },
+                                readOnly = true,
+                                label = { Text("Event Date") },
+                                trailingIcon = {
+                                    IconButton(onClick = { datePickerDialog.show() }) {
+                                        Icon(Icons.Default.DateRange, "Select Date")
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().clickable { datePickerDialog.show() },
+                                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, unfocusedTextColor = NotelTextPrimary, focusedTextColor = NotelTextPrimary)
+                            )
+                            
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Count Up (Past Event)?", color = NotelTextPrimary, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                                Switch(checked = editIsUp, onCheckedChange = { editIsUp = it })
+                            }
+                            if (!editIsUp) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Auto switch to Count Up when day arrives?", color = NotelTextPrimary, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                                    Switch(checked = editAuto, onCheckedChange = { editAuto = it })
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            val id = editCounter?.id ?: java.util.UUID.randomUUID().toString()
+                            viewModel.saveCounter(id, editName, selectedDateMillis, editIsUp, editAuto)
+                            showCounterDialog = false
+                        }) {
+                            Text("Save", color = NotelPrimary)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showCounterDialog = false }) {
+                            Text("Cancel", color = NotelTextSecondary)
+                        }
+                    },
+                    containerColor = NotelSurface
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+            }
+
+            if (currentMenu == SettingsMenu.AI_AND_KNOWLEDGE) {
+                val lowerCtx = userContext.lowercase()
+                val lowerKB = knowledgeBase.lowercase()
+
+                val professionalType = when {
+                    lowerCtx.contains("doctor") || lowerCtx.contains("dr.") || lowerKB.contains("doctor") || lowerKB.contains("dr.") -> "Doctor"
+                    lowerCtx.contains("coach") || lowerKB.contains("coach") -> "Coach"
+                    lowerCtx.contains("therapist") || lowerKB.contains("therapist") -> "Therapist"
+                    else -> null
+                }
+
+                if (professionalType != null) {
+                    Text("PROFESSIONAL UPDATES", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(8.dp))
+
+                    var showProfessionalDialog by remember { mutableStateOf(false) }
+
+                    GlassyCard(
+                        shape = RoundedCornerShape(16.dp),
+                        color = NotelSurface
+                    ) {
+                        Text("$professionalType Check-in", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Did your $professionalType suggest any new protocols, dose changes, or routines? Add them here so the AI can track your compliance.",
+                            color = NotelTextSecondary,
+                            fontSize = 12.sp
+                        )
+                        
+                        Spacer(Modifier.height(16.dp))
+
+                        GlassyButton(
+                            onClick = { showProfessionalDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            containerColor = NotelPrimary.copy(alpha = 0.8f)
+                        ) {
+                            Text("Add $professionalType Update", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+
+                        if (showProfessionalDialog) {
+                            var updateNote by remember { mutableStateOf("") }
+                            Dialog(onDismissRequest = { showProfessionalDialog = false }) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp)
+                                        .liquidGlass(shape = RoundedCornerShape(24.dp), color = NotelBackground, alpha = 1f)
+                                        .padding(24.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column {
+                                        Text("New $professionalType Update", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = NotelTextPrimary)
+                                        Spacer(Modifier.height(16.dp))
+                                        OutlinedTextField(
+                                            value = updateNote,
+                                            onValueChange = { updateNote = it },
+                                            label = { Text("What did they say?") },
+                                            modifier = Modifier.fillMaxWidth().height(150.dp),
+                                            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = NotelPrimary, unfocusedBorderColor = NotelPrimary.copy(alpha=0.5f),
+                                                focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary
+                                            )
+                                        )
+                                        Spacer(Modifier.height(16.dp))
+                                        Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                                            TextButton(onClick = { showProfessionalDialog = false }) { Text("Cancel", color = NotelTextSecondary) }
+                                            Spacer(Modifier.width(8.dp))
+                                            TextButton(
+                                                onClick = {
+                                                    if (updateNote.isNotBlank()) {
+                                                        viewModel.addProfessionalUpdate(professionalType, updateNote)
+                                                    }
+                                                    showProfessionalDialog = false
+                                                },
+                                                enabled = updateNote.isNotBlank()
+                                            ) { Text("Save Update", color = NotelPrimary) }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (professionalUpdates.isNotBlank()) {
+                            Spacer(Modifier.height(16.dp))
+                            var isProUpdatesExpanded by remember { mutableStateOf(false) }
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { isProUpdatesExpanded = !isProUpdatesExpanded }
+                                    .padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Past $professionalType Updates", color = NotelPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Icon(
+                                    if (isProUpdatesExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                    contentDescription = "Toggle Updates",
+                                    tint = NotelPrimary
+                                )
+                            }
+
+                            if (isProUpdatesExpanded) {
+                                Spacer(Modifier.height(8.dp))
+                                
+                                val updatesList = professionalUpdates.split("\n\n").filter { it.isNotBlank() }
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    updatesList.forEach { update ->
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = NotelSurfaceHigh.copy(alpha = 0.5f),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(
+                                                text = update.trim(),
+                                                color = NotelTextPrimary,
+                                                fontSize = 13.sp,
+                                                lineHeight = 18.sp,
+                                                modifier = Modifier.padding(12.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                                
+                                TextButton(
+                                    onClick = { viewModel.clearProfessionalUpdates() },
+                                    modifier = Modifier.align(Alignment.End)
+                                ) {
+                                    Text("Clear Updates", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(24.dp))
+                }
+
+                // ── FILE KNOWLEDGE BASE (top of AI tab) ──────────────────────────
+                Text("FILE KNOWLEDGE BASE", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+
+                GlassyCard(
+                    shape = RoundedCornerShape(16.dp),
+                    color = NotelSurface
+                ) {
+                    Text("Digital Knowledge Extraction", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Upload notes or PDFs to extract permanent knowledge (patterns, triggers, facts) that Gemini will remember.",
+                        color = NotelTextSecondary,
+                        fontSize = 12.sp
+                    )
+
+                    Spacer(Modifier.height(16.dp))
+
+                    if (isProcessing) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            GlassySpinner(size = 32.dp)
+                            Spacer(Modifier.width(12.dp))
+                            Text("Gemini is reading your files...", color = NotelTextPrimary, fontSize = 14.sp)
+                        }
+                    } else {
+                        GlassyButton(
+                            onClick = { filePicker.launch("*/*") },
+                            modifier = Modifier.fillMaxWidth(),
+                            containerColor = NotelSurfaceHigh
+                        ) {
+                            Icon(Icons.Default.UploadFile, null, tint = NotelPrimary)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Select Document / PDF", color = NotelTextPrimary)
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+
+                        GlassyButton(
+                            onClick = { showTextNoteDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            containerColor = NotelSurfaceHigh
+                        ) {
+                            Icon(Icons.Default.PostAdd, null, tint = NotelPrimary)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Add Text Note", color = NotelTextPrimary)
+                        }
+                    }
+
+                    if (showTextNoteDialog) {
+                        var noteTitle by remember { mutableStateOf("") }
+                        var noteBody by remember { mutableStateOf("") }
+                        
+                        Dialog(onDismissRequest = { showTextNoteDialog = false }) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp)
+                                    .liquidGlass(shape = RoundedCornerShape(24.dp), color = NotelBackground, alpha = 1f)
+                                    .padding(24.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column {
+                                    Text("Add Text Note", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = NotelTextPrimary)
+                                    Spacer(Modifier.height(16.dp))
+                                    OutlinedTextField(
+                                        value = noteTitle,
+                                        onValueChange = { noteTitle = it },
+                                        label = { Text("Title (Optional)") },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = NotelPrimary, unfocusedBorderColor = NotelPrimary.copy(alpha=0.5f),
+                                            focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary
+                                        )
+                                    )
+                                    Spacer(Modifier.height(8.dp))
+                                    OutlinedTextField(
+                                        value = noteBody,
+                                        onValueChange = { noteBody = it },
+                                        label = { Text("Note content / Text message") },
+                                        modifier = Modifier.fillMaxWidth().height(150.dp),
+                                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = NotelPrimary, unfocusedBorderColor = NotelPrimary.copy(alpha=0.5f),
+                                            focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary
+                                        )
+                                    )
+                                    Spacer(Modifier.height(16.dp))
+                                    Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                                        TextButton(onClick = { showTextNoteDialog = false }) { Text("Cancel", color = NotelTextSecondary) }
+                                        Spacer(Modifier.width(8.dp))
+                                        TextButton(
+                                            onClick = {
+                                                if (noteBody.isNotBlank()) {
+                                                    val title = if (noteTitle.isNotBlank()) noteTitle else "Text Note"
+                                                    viewModel.processManualTextNote(title, noteBody)
+                                                }
+                                                showTextNoteDialog = false
+                                            },
+                                            enabled = noteBody.isNotBlank()
+                                        ) { Text("Process", color = NotelPrimary) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    processError?.let {
+                        Spacer(Modifier.height(8.dp))
+                        Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    }
+
+                    if (processedFiles.isNotBlank()) {
+                        Spacer(Modifier.height(16.dp))
+                        Text("Processed Files:", color = NotelTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(processedFiles, color = NotelTextSecondary, fontSize = 12.sp)
+                    }
+
+                    if (knowledgeBase.isNotBlank()) {
+                        Spacer(Modifier.height(16.dp))
+                        var isFactsExpanded by remember { mutableStateOf(false) }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { isFactsExpanded = !isFactsExpanded }
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Extracted Facts", color = NotelPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Icon(
+                                if (isFactsExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                contentDescription = "Toggle Facts",
+                                tint = NotelPrimary
+                            )
+                        }
+                        
+                        if (isFactsExpanded) {
+                            Spacer(Modifier.height(8.dp))
+                            
+                            val facts = knowledgeBase.split("\n\n").filter { it.isNotBlank() }
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                facts.forEachIndexed { index, fact ->
+                                    var expanded by remember { mutableStateOf(false) }
+                                    Surface(
+                                        onClick = { expanded = !expanded },
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = NotelSurfaceHigh.copy(alpha = 0.5f),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(modifier = Modifier.padding(12.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                val filesList = processedFiles.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                                                val titleText = if (index in filesList.indices) {
+                                                    "Extraction from: ${filesList[index]}"
+                                                } else {
+                                                    "Extraction ${index + 1}"
+                                                }
+                                                
+                                                Text(
+                                                    text = titleText,
+                                                    color = NotelPrimary,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                                IconButton(
+                                                    onClick = { viewModel.deleteKnowledgeItem(index) },
+                                                    modifier = Modifier.size(24.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Delete, "Delete extraction", tint = NotelTextSecondary, modifier = Modifier.size(16.dp))
+                                                }
+                                            }
+                                            Spacer(Modifier.height(6.dp))
+                                            Text(
+                                                text = fact.trim(),
+                                                color = NotelTextPrimary,
+                                                fontSize = 13.sp,
+                                                lineHeight = 18.sp,
+                                                maxLines = if (expanded) Int.MAX_VALUE else 3,
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                            )
+                                            if (!expanded) {
+                                                Spacer(Modifier.height(4.dp))
+                                                Text("Tap to expand", color = NotelTextSecondary, fontSize = 11.sp)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            TextButton(
+                                onClick = { viewModel.clearKnowledge() },
+                                modifier = Modifier.align(Alignment.End)
+                            ) {
+                                    Text("Clear Knowledge Base", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+
+                Spacer(Modifier.height(24.dp))
+                Text("AI CONFIGURATION", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                GlassyCard(
+                    shape = RoundedCornerShape(16.dp),
+                    color = NotelSurface
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Auto AI Pings", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                            Text(
+                                "Automatically load smart tiles when opening the app. Turn off to save credits ($0.01/ping).",
+                                color = NotelTextSecondary,
+                                fontSize = 11.sp
+                            )
+                        }
+                        Switch(
+                            checked = autoAiSuggestions,
+                            onCheckedChange = { viewModel.setAutoAiSuggestions(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = NotelPrimary,
+                                checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
+                                uncheckedThumbColor = NotelTextSecondary,
+                                uncheckedTrackColor = NotelSurfaceHigh
+                            )
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(24.dp))
+
+                Text("PROFESSIONAL DIAGNOSTICS", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+
+                GlassyCard(
+                    shape = RoundedCornerShape(16.dp),
+                    color = NotelSurface
+                ) {
+                    Text("Professional report (PDF)", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Generate a professional PDF summary of your trends and logs for personal review or sharing.",
+                        color = NotelTextSecondary,
+                        fontSize = 12.sp
+                    )
+                    
+                    val isGenerating by viewModel.isGeneratingReport.collectAsState()
+                    val generatedFile by viewModel.generatedReport.collectAsState()
+                    
+                    LaunchedEffect(generatedFile) {
+                        generatedFile?.let { file ->
+                            val uri = androidx.core.content.FileProvider.getUriForFile(
+                                context,
+                                "${context.packageName}.provider",
+                                file
+                            )
+                            val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                type = "application/pdf"
+                                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(android.content.Intent.createChooser(intent, "Share Professional Report"))
+                            viewModel.resetGeneratedReport()
+                        }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    GlassyButton(
+                        onClick = { viewModel.generateProfessionalReport() },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isGenerating,
+                        containerColor = NotelSurfaceHigh
+                    ) {
+                        if (isGenerating) {
+                            GlassySpinner(size = 20.dp)
+                        } else {
+                            Icon(Icons.Default.PictureAsPdf, null, tint = NotelPrimary)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Export Professional Report", color = NotelTextPrimary)
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(24.dp))
+
+                Text("AI INSIGHTS HISTORY", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+
+                if (aiInsights.isEmpty()) {
+                    Text("No AI insights generated yet. Click 'Learn More' on the Jot screen to start.", color = NotelTextSecondary, fontSize = 14.sp)
+                } else {
+                    if (!showInsightsHistory) {
+                        GlassyButton(
+                            onClick = { showInsightsHistory = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            containerColor = NotelSurfaceHigh
+                        ) {
+                            Text("Show Past AI Insights", color = NotelTextPrimary)
+                        }
+                    } else {
+                        GlassyButton(
+                            onClick = { showInsightsHistory = false },
+                            modifier = Modifier.fillMaxWidth(),
+                            containerColor = NotelSurfaceHigh
+                        ) {
+                            Text("Hide AI Insights", color = NotelTextPrimary)
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            aiInsights.forEach { insight ->
+                                InsightTile(insight = insight)
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(24.dp))
+            }
+
+
+            if (currentMenu == SettingsMenu.CONNECTED_APPS) {
+            Text("LOCAL CONNECTIONS", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(8.dp))
+
+            GlassyCard(
+                shape = RoundedCornerShape(16.dp),
+                color = NotelSurface
+            ) {
+                if (healthConnectConnected) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Favorite, null, tint = NotelPrimary, modifier = Modifier.size(28.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Health Connect Active", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                            Text("Live synchronization active", color = NotelTextSecondary, fontSize = 12.sp)
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    Text("• Connected to local device sensors", color = NotelTextSecondary, fontSize = 13.sp)
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.FavoriteBorder, null, tint = NotelPrimary, modifier = Modifier.size(28.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Google Health Connect", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                            Text("Connect to grab data from Garmin, Oura, Fitbit and more.", color = NotelTextSecondary, fontSize = 12.sp)
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    GlassyButton(
+                        onClick = { 
+                            healthConnectLauncher.launch(viewModel.healthConnectManager.permissions)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        containerColor = NotelPrimary.copy(alpha = 0.8f)
+                    ) {
+                        Text("Connect Health Data", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
+            val fitbitViewModel: com.notel.notel.ui.viewmodel.FitbitViewModel = hiltViewModel()
+            val fitbitState by fitbitViewModel.state.collectAsState()
+
+            Text("ADVANCED DATA SOURCES", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(8.dp))
+
+            GlassyCard(
+                shape = RoundedCornerShape(16.dp),
+                color = NotelSurface
+            ) {
+                if (fitbitState.isFitbitConnected) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.CloudQueue, null, tint = NotelPrimary, modifier = Modifier.size(28.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Fitbit Cloud Active", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                            Text("Pulling 6-month history directly", color = NotelTextSecondary, fontSize = 12.sp)
+                        }
+                    }
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.CloudOff, null, tint = NotelPrimary, modifier = Modifier.size(28.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Fitbit Direct API", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                            Text("Bypass Health Connect limits to pull your full 6-month history instantly.", color = NotelTextSecondary, fontSize = 12.sp)
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    GlassyButton(
+                        onClick = { fitbitViewModel.connectFitbit(context) },
+                        modifier = Modifier.fillMaxWidth(),
+                        containerColor = NotelSurfaceHigh
+                    ) {
+                        Text("Connect Fitbit Directly", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            }
+
+            if (currentMenu == SettingsMenu.USER_PROFILE) {
+            Text("USER PROFILE", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(8.dp))
+            
+            GlassyCard(
+                shape = RoundedCornerShape(16.dp),
+                color = NotelSurface
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Person, null, tint = NotelPrimary, modifier = Modifier.size(28.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Personal Health Profile", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                        Text("Fetched from Fitbit or manually updated", color = NotelTextSecondary, fontSize = 12.sp)
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+                if (userAge > 0) Text("Age: $userAge", color = NotelTextSecondary, fontSize = 13.sp)
+                if (userHeight > 0f) {
+                    val ft = (userHeight / 12).toInt()
+                    val inch = (userHeight % 12).toInt()
+                    Text("Height: $ft'$inch\" (${userHeight.toInt()} in)", color = NotelTextSecondary, fontSize = 13.sp)
+                }
+                if (userWeight > 0f) Text("Weight: ${userWeight} lbs", color = NotelTextSecondary, fontSize = 13.sp)
+                if (userGender.isNotBlank()) Text("Gender: $userGender", color = NotelTextSecondary, fontSize = 13.sp)
+                
+                Spacer(Modifier.height(16.dp))
+                GlassyButton(
+                    onClick = { showProfileDialog = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    containerColor = NotelSurfaceHigh
+                ) {
+                    Text("Edit Profile", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
+                }
+
+                val isSyncingProfile by viewModel.isSyncingProfile.collectAsState()
+
+                Spacer(Modifier.height(8.dp))
+                GlassyButton(
+                    onClick = { viewModel.syncHealthProfile() },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isSyncingProfile,
+                    containerColor = NotelSurfaceHigh
+                ) {
+                    if (isSyncingProfile) {
+                        GlassySpinner(size = 20.dp)
+                    } else {
+                        Icon(Icons.Default.Sync, null, tint = NotelPrimary)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Auto-Fill from Connected Apps", color = NotelTextPrimary)
+                    }
+                }
+                
+                
+                if (healthConnectConnected) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("Powered by Health Connect", color = NotelTextSecondary, fontSize = 12.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
+                }
+            }
+            
+            if (showProfileDialog) {
+                var editAge by remember { mutableStateOf(if (userAge > 0) userAge.toString() else "") }
+                var editHeight by remember { mutableStateOf(if (userHeight > 0f) userHeight.toString() else "") }
+                var editWeight by remember { mutableStateOf(if (userWeight > 0f) userWeight.toString() else "") }
+                var editGender by remember { mutableStateOf(userGender) }
+                
+                AlertDialog(
+                    onDismissRequest = { showProfileDialog = false },
+                    title = { Text("Edit Profile", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = editAge, onValueChange = { editAge = it },
+                                label = { Text("Age") },
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, cursorColor = NotelPrimary, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
+                            )
+                            OutlinedTextField(
+                                value = editGender, onValueChange = { editGender = it },
+                                label = { Text("Gender") },
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, cursorColor = NotelPrimary, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
+                            )
+                            OutlinedTextField(
+                                value = editHeight, onValueChange = { editHeight = it },
+                                label = { Text("Height") },
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, cursorColor = NotelPrimary, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
+                            )
+                            OutlinedTextField(
+                                value = editWeight, onValueChange = { editWeight = it },
+                                label = { Text("Weight") },
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, cursorColor = NotelPrimary, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            viewModel.saveUserProfile(
+                                age = editAge.toIntOrNull() ?: 0,
+                                height = editHeight.toFloatOrNull() ?: 0f,
+                                weight = editWeight.toFloatOrNull() ?: 0f,
+                                gender = editGender
+                            )
+                            showProfileDialog = false
+                        }) {
+                            Text("Save", color = NotelPrimary)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showProfileDialog = false }) {
+                            Text("Cancel", color = NotelTextSecondary)
+                        }
+                    },
+                    containerColor = NotelSurface
+                )
+            }
+            
+            Spacer(Modifier.height(24.dp))
+            }
+
+            if (currentMenu == SettingsMenu.MAIN) {
+            Text("About", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(8.dp))
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = NotelSurface)
+            ) {
+                ListItem(
+                    headlineContent = { Text("Jot", color = NotelTextPrimary) },
+                    supportingContent = { Text("Version 1.0", color = NotelTextSecondary) },
+                    leadingContent = { Icon(Icons.Default.Info, null, tint = NotelPrimary) },
+                    colors = ListItemDefaults.colors(containerColor = NotelSurface)
+                )
+            }
+
+            Spacer(Modifier.height(32.dp))
+
+
+            GlassyButton(
+                onClick = { showRestartDialog = true },
+                modifier = Modifier.fillMaxWidth(),
+                containerColor = NotelSurfaceHigh
+            ) {
+                Icon(Icons.Default.RestartAlt, "Reset Account", tint = Color.Red)
+                Spacer(Modifier.width(8.dp))
+                Text("Reset Account", color = Color.Red, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.height(16.dp))
+
+            GlassyButton(
+                onClick = { showLogoutDialog = true },
+                modifier = Modifier.fillMaxWidth(),
+                containerColor = NotelSurfaceHigh
+            ) {
+                Icon(Icons.Default.Logout, "Logout", tint = NotelPrimary)
+                Spacer(Modifier.width(8.dp))
+                Text("Logout / Switch Account", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
+            }
+
+            if (showLogoutDialog) {
+                AlertDialog(
+                    onDismissRequest = { showLogoutDialog = false },
+                    title = { Text("Logout?", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
+                    text = { Text("Are you sure you want to log out?", color = NotelTextSecondary) },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            viewModel.logout {
+                                onLogout()
+                            }
+                            showLogoutDialog = false
+                        }) {
+                            Text("Logout", color = NotelPrimary)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showLogoutDialog = false }) {
+                            Text("Cancel", color = NotelTextSecondary)
+                        }
+                    },
+                    containerColor = NotelSurface
+                )
+            }
+
+            if (showRestartDialog) {
+                AlertDialog(
+                    onDismissRequest = { showRestartDialog = false },
+                    title = { Text("Reset Account?", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
+                    text = { 
+                        Text("Are you sure? This will wipe your checkmark from the server and let you start the introduction tour over again.", color = NotelTextSecondary) 
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            viewModel.restartOnboarding(onRestartOnboarding)
+                            showRestartDialog = false
+                        }) {
+                            Text("Reset", color = Color.Red)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showRestartDialog = false }) {
+                            Text("Cancel", color = NotelTextSecondary)
+                        }
+                    },
+                    containerColor = NotelSurface
+                )
+            }
+
+            }
+            Spacer(Modifier.height(48.dp))
+        }
+    }
+
+    // ── Tutorial overlay — sits above the Scaffold so it can cover the top bar ──
+    if (tutorialStep in 0..<settingsTutorialSteps.size) {
+        SettingsTutorialOverlay(
+            targetCoords = currentTutorialCoords,
+            currentStep = tutorialStep,
+            totalSteps = settingsTutorialSteps.size,
+            screenHeightDp = screenHeightDp,
+            onNext = {
+                if (tutorialStep < settingsTutorialSteps.size - 1) {
+                    tutorialStep++
+                } else {
+                    tutorialStep = -1
+                    viewModel.markSettingsTutorialSeen()
+                }
+            },
+            onSkip = {
+                tutorialStep = -1
+                viewModel.markSettingsTutorialSeen()
+            }
+        )
+    }
+    } // end outer Box
+}
+@Composable
+fun InsightTile(insight: com.notel.notel.data.local.entity.AiInsight) {
+    var expanded by remember { mutableStateOf(false) }
+    val format = remember { java.text.SimpleDateFormat("MMM dd, yyyy h:mm a", java.util.Locale.getDefault()) }
+    
+    Surface(
+        onClick = { expanded = !expanded },
+        color = Color.Transparent,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth().liquidGlass(shape = RoundedCornerShape(12.dp), color = NotelSurface, alpha = 0.5f)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "${format.format(java.util.Date(insight.timestamp))} • ${insight.type}",
+                color = NotelPrimary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = insight.text,
+                color = NotelTextPrimary,
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                maxLines = if (expanded) Int.MAX_VALUE else 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+            if (!expanded) {
+                Spacer(Modifier.height(4.dp))
+                Text("Tap to expand", color = NotelTextSecondary, fontSize = 11.sp)
+            }
+        }
+    }
+}
+
+@Composable
+fun SettingsMenuCard(
+    title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    GlassyCard(
+        shape = RoundedCornerShape(16.dp),
+        color = NotelSurface,
+        modifier = modifier
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(vertical = 12.dp, horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(icon, null, tint = NotelPrimary, modifier = Modifier.size(28.dp))
+            Spacer(Modifier.width(16.dp))
+            Text(title, color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 16.sp, modifier = Modifier.weight(1f))
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = NotelTextSecondary)
+        }
+    }
+    Spacer(Modifier.height(16.dp))
+}

@@ -1,0 +1,68 @@
+package com.notel.notel.di
+
+import android.content.Context
+import com.notel.notel.data.local.NotelDatabase
+import com.notel.notel.data.local.dao.CategoryDao
+import com.notel.notel.data.local.dao.LogEntryDao
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
+import dagger.hilt.components.SingletonComponent
+import okhttp3.OkHttpClient
+import okhttp3.logging.HttpLoggingInterceptor
+import retrofit2.Retrofit
+import retrofit2.converter.kotlinx.serialization.asConverterFactory
+import kotlinx.serialization.json.Json
+import okhttp3.MediaType.Companion.toMediaType
+import java.util.concurrent.TimeUnit
+import javax.inject.Singleton
+import com.notel.notel.data.healthconnect.HealthConnectManager
+import com.notel.notel.data.remote.AuthInterceptor
+import com.notel.notel.data.remote.JotApi
+
+@Module
+@InstallIn(SingletonComponent::class)
+object AppModule {
+
+    @Provides
+    @Singleton
+    fun provideDatabase(@ApplicationContext context: Context): NotelDatabase =
+        NotelDatabase.getInstance(context)
+
+    @Provides
+    @Singleton
+    fun provideLogEntryDao(db: NotelDatabase): LogEntryDao = db.logEntryDao()
+
+    @Provides
+    @Singleton
+    fun provideCategoryDao(db: NotelDatabase): CategoryDao = db.categoryDao()
+
+    @Provides
+    @Singleton
+    fun provideOkHttpClient(authInterceptor: AuthInterceptor): OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .addInterceptor(authInterceptor)
+        .addInterceptor(HttpLoggingInterceptor().apply {
+            level = HttpLoggingInterceptor.Level.BASIC
+        })
+        .build()
+
+    @Provides
+    @Singleton
+    fun provideJotApi(okHttpClient: OkHttpClient): JotApi {
+        val json = Json { ignoreUnknownKeys = true }
+        return Retrofit.Builder()
+            .baseUrl("http://jot-server-env.eba-s3u88e3n.us-east-1.elasticbeanstalk.com/")
+            .client(okHttpClient)
+            .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+            .build()
+            .create(JotApi::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideHealthConnectManager(@ApplicationContext context: Context): HealthConnectManager =
+        HealthConnectManager(context)
+}
