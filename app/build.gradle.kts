@@ -9,9 +9,7 @@ plugins {
 
 android {
     namespace = "com.notel.notel"
-    compileSdk {
-        version = release(36)
-    }
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.notel.notel"
