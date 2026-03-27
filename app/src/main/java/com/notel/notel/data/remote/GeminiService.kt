@@ -88,7 +88,8 @@ class GeminiService @Inject constructor(
         userContext: String = "",
         knowledgeBase: String = "",
         pastInsights: String = "",
-        fitbitData: String = ""
+        fitbitData: String = "",
+        habitData: String = ""
     ): Result<String> {
         return try {
             val response = jotApi.getAdvice(
@@ -98,7 +99,8 @@ class GeminiService @Inject constructor(
                     userContext = userContext,
                     knowledgeBase = knowledgeBase,
                     pastInsights = pastInsights,
-                    fitbitData = fitbitData
+                    fitbitData = fitbitData,
+                    habitData = habitData
                 )
             )
             val result = response.body()?.result
@@ -118,7 +120,8 @@ class GeminiService @Inject constructor(
         userContext: String = "",
         knowledgeBase: String = "",
         pastInsights: String = "",
-        fitbitData: String = ""
+        fitbitData: String = "",
+        habitData: String = ""
     ): Result<String> {
         return try {
             val response = jotApi.getReport(
@@ -128,7 +131,8 @@ class GeminiService @Inject constructor(
                     userContext = userContext,
                     knowledgeBase = knowledgeBase,
                     pastInsights = pastInsights,
-                    fitbitData = fitbitData
+                    fitbitData = fitbitData,
+                    habitData = habitData
                 )
             )
             val result = response.body()?.result
@@ -147,7 +151,8 @@ class GeminiService @Inject constructor(
         categories: Map<Int, String>,
         userContext: String = "",
         knowledgeBase: String = "",
-        fitbitData: String = ""
+        fitbitData: String = "",
+        habitData: String = ""
     ): Result<String> {
         return try {
             val response = jotApi.getWeeklyRecap(
@@ -156,7 +161,8 @@ class GeminiService @Inject constructor(
                     categories = categories,
                     userContext = userContext,
                     knowledgeBase = knowledgeBase,
-                    fitbitData = fitbitData
+                    fitbitData = fitbitData,
+                    habitData = habitData
                 )
             )
             val result = response.body()?.result
@@ -176,7 +182,8 @@ class GeminiService @Inject constructor(
         userContext: String = "",
         knowledgeBase: String = "",
         pastInsights: String = "",
-        fitbitData: String = ""
+        fitbitData: String = "",
+        habitData: String = ""
     ): Result<String> {
         return try {
             val response = jotApi.getDeepResearch(
@@ -186,7 +193,8 @@ class GeminiService @Inject constructor(
                     userContext = userContext,
                     knowledgeBase = knowledgeBase,
                     pastInsights = pastInsights,
-                    fitbitData = fitbitData
+                    fitbitData = fitbitData,
+                    habitData = habitData
                 )
             )
             val result = response.body()?.result
@@ -206,7 +214,8 @@ class GeminiService @Inject constructor(
         userContext: String = "",
         knowledgeBase: String = "",
         pastInsights: String = "",
-        fitbitData: String = ""
+        fitbitData: String = "",
+        habitData: String = ""
     ): Result<String> {
         return try {
             val response = jotApi.getDocumentComparison(
@@ -216,7 +225,8 @@ class GeminiService @Inject constructor(
                     userContext = userContext,
                     knowledgeBase = knowledgeBase,
                     pastInsights = pastInsights,
-                    fitbitData = fitbitData
+                    fitbitData = fitbitData,
+                    habitData = habitData
                 )
             )
             val result = response.body()?.result
@@ -236,6 +246,35 @@ class GeminiService @Inject constructor(
     ): Result<String> {
         return try {
             val response = jotApi.processDocument(ProcessDocumentRequest(mimeType, base64Data))
+            val result = response.body()?.result
+            if (response.isSuccessful && result != null) {
+                Result.success(result)
+            } else {
+                Result.failure(IOException(response.body()?.error ?: "Unknown API Error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    suspend fun getBodyLoad(
+        recentEntries: List<LogEntry>,
+        categories: Map<Int, String>,
+        userContext: String = "",
+        knowledgeBase: String = "",
+        fitbitData: String = "",
+        habitData: String = ""
+    ): Result<BodyLoadResponse> {
+        return try {
+            val response = jotApi.getBodyLoad(
+                AiRequest(
+                    entries = recentEntries.toDto(),
+                    categories = categories,
+                    userContext = userContext,
+                    knowledgeBase = knowledgeBase,
+                    fitbitData = fitbitData,
+                    habitData = habitData
+                )
+            )
             val result = response.body()?.result
             if (response.isSuccessful && result != null) {
                 Result.success(result)

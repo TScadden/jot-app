@@ -634,6 +634,56 @@ fun FitbitScreen(
                                     val diffCal = currentCal - pastCal
                                     val diffCalStr = if (diffCal >= 0) "+$diffCal" else "$diffCal"
                                     
+                                    var pastSpikeDelta = 0
+                                    var pastSpikeCount = 0
+                                    if (compareMode == "Days") {
+                                        val pastSpike = spikeHistory.find { it.date == dateString }
+                                        pastSpikeDelta = pastSpike?.maxDelta ?: 0
+                                        pastSpikeCount = pastSpike?.spikeCount ?: 0
+                                    } else {
+                                        val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
+                                        val format = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+                                        val endDate = format.parse(dateString)
+                                        if (endDate != null) {
+                                            cal.time = endDate
+                                            var sumD = 0
+                                            var sumC = 0.0
+                                            var count = 0
+                                            for (i in 0 until 7) {
+                                                val dStr = format.format(cal.time)
+                                                val sp = spikeHistory.find { it.date == dStr }
+                                                if (sp != null) {
+                                                    sumD += sp.maxDelta
+                                                    sumC += sp.spikeCount
+                                                    count++
+                                                }
+                                                cal.add(java.util.Calendar.DAY_OF_YEAR, -1)
+                                            }
+                                            if (count > 0) {
+                                                pastSpikeDelta = sumD / count
+                                                pastSpikeCount = Math.round(sumC / count).toInt()
+                                            }
+                                        } else {
+                                            val pastSpike = spikeHistory.find { it.date == dateString }
+                                            pastSpikeDelta = pastSpike?.maxDelta ?: 0
+                                            pastSpikeCount = pastSpike?.spikeCount ?: 0
+                                        }
+                                    }
+                                    val currentSpikeDelta = if (compareMode == "Days") maxDelta else {
+                                        val w = spikeHistory.take(7)
+                                        if (w.isNotEmpty()) w.map { it.maxDelta }.average().toInt() else maxDelta
+                                    }
+                                    val currentSpikeCount = if (compareMode == "Days") spikeCount else {
+                                        val w = spikeHistory.take(7)
+                                        if (w.isNotEmpty()) Math.round(w.map { it.spikeCount }.average()).toInt() else spikeCount
+                                    }
+                                    
+                                    val diffSpikeC = currentSpikeCount - pastSpikeCount
+                                    val diffSpikeCStr = if (diffSpikeC >= 0) "+$diffSpikeC" else "$diffSpikeC"
+                                    
+                                    val diffSpikeD = currentSpikeDelta - pastSpikeDelta
+                                    val diffSpikeDStr = if (diffSpikeD >= 0) "+$diffSpikeD" else "$diffSpikeD"
+                                    
                                     val displayFormatter = java.text.SimpleDateFormat("MMMM d", java.util.Locale.getDefault())
                                     val parseFormatter = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
                                     val displayDate = try {
@@ -647,11 +697,28 @@ fun FitbitScreen(
                                     Text(if (compareMode == "Days") "Daily Comparison" else "Weekly Comparison", color = NotelPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                                     Spacer(Modifier.height(12.dp))
                                     
-                                    Text("$displayDate: $pastHr bpm | ${if (pastCal > 0) pastCal else "--"} kcal", color = NotelTextPrimary, fontSize = 16.sp)
-                                    Text(if (compareMode == "Days") "Today: $currentHr bpm | ${if (currentCal > 0) currentCal else "--"} kcal" else "This Week: $currentHr bpm | ${if (currentCal > 0) currentCal else "--"} kcal", color = NotelTextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                                    Spacer(Modifier.height(8.dp))
-                                    Text("HR Diff: $diffStr bpm", color = if (diff > 0) MaterialTheme.colorScheme.error else NotelPrimary, fontSize = 16.sp, fontWeight = FontWeight.Black)
-                                    Text("Cal Diff: $diffCalStr kcal", color = if (diffCal > 0) NotelPrimary else MaterialTheme.colorScheme.error, fontSize = 16.sp, fontWeight = FontWeight.Black)
+                                    Text(if (compareMode == "Days") "$displayDate: $pastHr bpm | ${if (pastCal > 0) pastCal else "--"} kcal | $pastSpikeCount spikes, +$pastSpikeDelta jump" else "$displayDate: $pastHr bpm avg | ${if (pastCal > 0) pastCal else "--"} kcal | ~$pastSpikeCount/d spikes, +$pastSpikeDelta avg jump", color = NotelTextPrimary, fontSize = 14.sp)
+                                    Text(if (compareMode == "Days") "Today: $currentHr bpm | ${if (currentCal > 0) currentCal else "--"} kcal | $currentSpikeCount spikes, +$currentSpikeDelta jump" else "This Week: $currentHr bpm avg | ${if (currentCal > 0) currentCal else "--"} kcal | ~$currentSpikeCount/d spikes, +$currentSpikeDelta avg jump", color = NotelTextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                    Spacer(Modifier.height(12.dp))
+                                    
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("Avg HR", color = NotelTextSecondary, fontSize = 11.sp)
+                                            Text("$diffStr bpm", color = if (diff > 0) MaterialTheme.colorScheme.error else NotelPrimary, fontSize = 14.sp, fontWeight = FontWeight.Black)
+                                        }
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("Calories", color = NotelTextSecondary, fontSize = 11.sp)
+                                            Text("$diffCalStr kcal", color = if (diffCal > 0) NotelPrimary else MaterialTheme.colorScheme.error, fontSize = 14.sp, fontWeight = FontWeight.Black)
+                                        }
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("Events", color = NotelTextSecondary, fontSize = 11.sp)
+                                            Text("$diffSpikeCStr", color = if (diffSpikeC > 0) MaterialTheme.colorScheme.error else NotelPrimary, fontSize = 14.sp, fontWeight = FontWeight.Black)
+                                        }
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("Jump Mag", color = NotelTextSecondary, fontSize = 11.sp)
+                                            Text("$diffSpikeDStr bpm", color = if (diffSpikeD > 0) MaterialTheme.colorScheme.error else NotelPrimary, fontSize = 14.sp, fontWeight = FontWeight.Black)
+                                        }
+                                    }
                                 }
                             }
                         }

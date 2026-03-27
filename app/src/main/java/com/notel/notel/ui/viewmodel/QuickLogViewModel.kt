@@ -16,6 +16,8 @@ import kotlinx.serialization.json.Json
 import javax.inject.Inject
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import com.notel.notel.data.remote.HabitDtoModel
+import com.notel.notel.data.repository.HabitRepository
 
 data class SmartAction(
     val title: String,
@@ -55,14 +57,16 @@ data class QuickLogUiState(
     val smartCategories: List<Category> = emptyList(),
     val smartAction: SmartAction? = null,
     val autoAiSuggestions: Boolean = false,
-    val eventCounters: List<com.notel.notel.ui.viewmodel.EventCounterDto> = emptyList()
+    val eventCounters: List<com.notel.notel.ui.viewmodel.EventCounterDto> = emptyList(),
+    val habits: List<HabitDtoModel> = emptyList()
 )
 
 @HiltViewModel
 class QuickLogViewModel @Inject constructor(
     private val logRepository: LogRepository,
     private val categoryRepository: CategoryRepository,
-    private val preferences: NotelPreferences
+    private val preferences: NotelPreferences,
+    private val habitRepository: HabitRepository
 ) : ViewModel() {
     
     private val dismissedActions = mutableSetOf<String>()
@@ -144,6 +148,15 @@ class QuickLogViewModel @Inject constructor(
                 _uiState.update { it.copy(eventCounters = list) }
             }
         }
+        viewModelScope.launch {
+            habitRepository.habits.collect { list ->
+                _uiState.update { it.copy(habits = list) }
+                calculateSmartRanking()
+            }
+        }
+        viewModelScope.launch {
+            habitRepository.fetchHabits()
+        }
     }
 
     fun selectCategory(category: Category) {
@@ -154,12 +167,13 @@ class QuickLogViewModel @Inject constructor(
                 selectedChips = emptyList(),
                 composedText = "",
                 // Immediately show cached chips if available — no spinner needed
-                chips = cached ?: emptyList(),
-                isLoadingChips = cached == null && it.autoAiSuggestions,
+                chips = if (category.id == -1) emptyList() else cached ?: emptyList(),
+                isLoadingChips = category.id != -1 && cached == null && it.autoAiSuggestions,
                 chipsError = null,
                 retryAfterSeconds = 0
             )
         }
+        if (category.id == -1) return
         if (cached != null) return  // Already have chips — skip the API call
         if (!_uiState.value.autoAiSuggestions) return // Skip fetch if auto is off
 
@@ -324,7 +338,22 @@ class QuickLogViewModel @Inject constructor(
                 .sortedByDescending { scores[it.id] ?: 0 }
                 .take(4) // Only top 4
 
-            _uiState.update { it.copy(smartCategories = smart) }
+            val finalSmart = mutableListOf<Category>()
+            if (_uiState.value.habits.isNotEmpty()) {
+                finalSmart.add(
+                    Category(
+                        id = -1,
+                        name = "Habits",
+                        icon = "FactCheck",
+                        colorHex = "#9C27B0", // Purple
+                        isDefault = true,
+                        sortOrder = -100
+                    )
+                )
+            }
+            finalSmart.addAll(smart)
+
+            _uiState.update { it.copy(smartCategories = finalSmart.take(5)) }
             checkForSmartActions(recentEntries)
         }
     }
@@ -462,6 +491,14 @@ class QuickLogViewModel @Inject constructor(
     fun dismissBonusPopup() {
         viewModelScope.launch {
             preferences.setShowFreeCreditPopup(false)
+        }
+    }
+
+    fun toggleHabit(habitId: String, isCompleted: Boolean) {
+        viewModelScope.launch {
+            val today = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
+            habitRepository.toggleHabitLog(habitId, today, isCompleted)
+            habitRepository.fetchHabits() // Refresh
         }
     }
 }

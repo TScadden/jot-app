@@ -108,7 +108,8 @@ fun NotelNavGraph() {
                 onNavigateToSettings = { navController.navigate("settings") },
                 onNavigateToTrends = { navController.navigate("trends") },
                 onNavigateToFitbit = { navController.navigate("fitbit") },
-                onNavigateToSleep = { navController.navigate("sleep") }
+                onNavigateToSleep = { navController.navigate("sleep") },
+                onNavigateToBodyLoad = { navController.navigate("body_load") }
             )
         }
         composable("sleep") {
@@ -155,6 +156,9 @@ fun NotelNavGraph() {
         composable("fitbit") {
             val fitbitViewModel: FitbitViewModel = hiltViewModel()
             FitbitScreen(viewModel = fitbitViewModel, onBack = { navController.popBackStack() })
+        }
+        composable("body_load") {
+            BodyLoadScreen(onBack = { navController.popBackStack() })
         }
     }
 }

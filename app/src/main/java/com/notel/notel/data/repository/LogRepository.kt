@@ -7,9 +7,11 @@ import com.notel.notel.data.local.entity.LogEntry
 import com.notel.notel.data.local.entity.Category
 import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.remote.GeminiService
+import com.notel.notel.data.remote.BodyLoadResponse
 import com.notel.notel.data.healthconnect.HealthConnectManager
 import com.notel.notel.data.healthconnect.DailyHeartRateSummary
 import com.notel.notel.data.sync.SyncManager
+import com.notel.notel.data.repository.HabitRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,7 +34,8 @@ class LogRepository @Inject constructor(
     private val geminiService: GeminiService,
     private val preferences: NotelPreferences,
     private val healthConnectManager: HealthConnectManager,
-    private val syncManager: SyncManager
+    private val syncManager: SyncManager,
+    private val habitRepository: HabitRepository
 ) {
     private val _isGeneratingReport = MutableStateFlow(false)
     val isGeneratingReport = _isGeneratingReport.asStateFlow()
@@ -246,6 +249,29 @@ class LogRepository @Inject constructor(
         return if (kb.isBlank()) "PROFESSIONAL INSTRUCTIONS:\n$proUpdates" else "$kb\n\nPROFESSIONAL INSTRUCTIONS:\n$proUpdates"
     }
 
+    private suspend fun getHabitDataSummary(): String {
+        val habits = habitRepository.habits.first()
+        if (habits.isEmpty()) return ""
+        val today = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
+        val sb = StringBuilder()
+        sb.append("Habit Tracker (last 30 days):\n")
+        habits.forEach { habit ->
+            val recentLogs = habit.logs.filter { it >= today.substring(0, 7) } // current month
+            val streak = run {
+                var s = 0
+                var d = java.time.LocalDate.now()
+                while (habit.logs.contains(d.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE))) {
+                    s++
+                    d = d.minusDays(1)
+                }
+                s
+            }
+            val checkedToday = habit.logs.contains(today)
+            sb.append("- ${habit.title}: streak=$streak days, completed_today=$checkedToday, recent_dates=[${recentLogs.takeLast(10).joinToString(",")}]\n")
+        }
+        return sb.toString()
+    }
+
     /**
      * Asks Gemini to analyse the last 10 entries across ALL categories
      * and return actionable health observations.
@@ -260,12 +286,13 @@ class LogRepository @Inject constructor(
         val fitbitToken = preferences.fitbitToken.first()
         
         val fitbitData = getFitbitDataSummary()
+        val habitData = getHabitDataSummary()
         
         val isUnlimited = preferences.isUnlimited.first()
         val balance = preferences.userBalance.first()
         if (!isUnlimited && balance < 0.01f) return Result.failure(IllegalStateException("Insufficient credits. Please top up in Settings."))
 
-        val result = geminiService.getAdvice(recent, catMap, userContext = context, knowledgeBase = kb, pastInsights = pastInsights, fitbitData = fitbitData)
+        val result = geminiService.getAdvice(recent, catMap, userContext = context, knowledgeBase = kb, pastInsights = pastInsights, fitbitData = fitbitData, habitData = habitData)
         result.onSuccess { text ->
             preferences.deductBalance(0.01f)
             saveAiInsight(text, "Advice")
@@ -283,12 +310,13 @@ class LogRepository @Inject constructor(
         val fitbitToken = preferences.fitbitToken.first()
         
         val fitbitData = getFitbitDataSummary()
+        val habitData = getHabitDataSummary()
         
         val isUnlimited = preferences.isUnlimited.first()
         val balance = preferences.userBalance.first()
         if (!isUnlimited && balance < 0.05f) return Result.failure(IllegalStateException("Insufficient credits ($0.05 required). Please top up in Settings."))
 
-        val result = geminiService.getMedicalReportSummary(recent, catMap, userContext = context, knowledgeBase = kb, pastInsights = pastInsights, fitbitData = fitbitData)
+        val result = geminiService.getMedicalReportSummary(recent, catMap, userContext = context, knowledgeBase = kb, pastInsights = pastInsights, fitbitData = fitbitData, habitData = habitData)
         result.onSuccess { text ->
             preferences.deductBalance(0.05f)
             saveAiInsight(text, "Report")
@@ -306,12 +334,13 @@ class LogRepository @Inject constructor(
         val fitbitToken = preferences.fitbitToken.first()
         
         val fitbitData = getFitbitDataSummary()
+        val habitData = getHabitDataSummary()
 
         val isUnlimited = preferences.isUnlimited.first()
         val balance = preferences.userBalance.first()
         if (!isUnlimited && balance < 0.05f) return Result.failure(IllegalStateException("Insufficient credits ($0.05 required). Please top up in Settings."))
 
-        val result = geminiService.getWeeklyRecap(recent, catMap, userContext = context, knowledgeBase = kb, fitbitData = fitbitData)
+        val result = geminiService.getWeeklyRecap(recent, catMap, userContext = context, knowledgeBase = kb, fitbitData = fitbitData, habitData = habitData)
         result.onSuccess { text ->
             preferences.deductBalance(0.05f)
             saveAiInsight(text, "Weekly Recap")
@@ -330,12 +359,13 @@ class LogRepository @Inject constructor(
         val fitbitToken = preferences.fitbitToken.first()
 
         val fitbitData = getFitbitDataSummary()
+        val habitData = getHabitDataSummary()
 
         val isUnlimited = preferences.isUnlimited.first()
         val balance = preferences.userBalance.first()
         if (!isUnlimited && balance < 0.10f) return Result.failure(IllegalStateException("Insufficient credits ($0.10 required). Please top up in Settings."))
 
-        val result = geminiService.getDeepResearch(recent, catMap, userContext = context, knowledgeBase = kb, pastInsights = pastInsights, fitbitData = fitbitData)
+        val result = geminiService.getDeepResearch(recent, catMap, userContext = context, knowledgeBase = kb, pastInsights = pastInsights, fitbitData = fitbitData, habitData = habitData)
         result.onSuccess { text ->
             preferences.deductBalance(0.10f)
             saveAiInsight(text, "Deep Advice")
@@ -355,12 +385,13 @@ class LogRepository @Inject constructor(
         val hasHealthConnect = healthConnectManager.hasAllPermissions()
 
         val fitbitData = getFitbitDataSummary()
+        val habitData = getHabitDataSummary()
 
         val isUnlimited = preferences.isUnlimited.first()
         val balance = preferences.userBalance.first()
         if (!isUnlimited && balance < 0.05f) return Result.failure(IllegalStateException("Insufficient credits ($0.05 required). Please top up in Settings."))
 
-        val result = geminiService.getDocumentComparison(recent, catMap, userContext = context, knowledgeBase = kb, pastInsights = pastInsights, fitbitData = fitbitData)
+        val result = geminiService.getDocumentComparison(recent, catMap, userContext = context, knowledgeBase = kb, pastInsights = pastInsights, fitbitData = fitbitData, habitData = habitData)
         result.onSuccess { text ->
             preferences.deductBalance(0.05f)
             saveAiInsight(text, "Document Comparison")
@@ -550,5 +581,33 @@ class LogRepository @Inject constructor(
         }
 
         return summary.toString().trim()
+    }
+
+    /**
+     * Calculates the "Body Load Index" based on the last 7 days (approx 50 entries)
+     * plus Fitbit/Habit data.
+     */
+    suspend fun getBodyLoad(allCategories: List<Category>): Result<BodyLoadResponse> {
+        val isUnlimited = preferences.isUnlimited.first()
+        val balance = preferences.userBalance.first()
+        if (!isUnlimited && balance < 0.05f) return Result.failure(IllegalStateException("Insufficient credits (0.05 Required)"))
+
+        val recent = logEntryDao.getRecentEntriesAll(limit = 50)
+        val catMap = allCategories.associate { it.id to it.name }
+        val context = getEnrichedUserContext()
+        val kb = getEnrichedKnowledgeBase()
+        val fitbitData = getFitbitDataSummary()
+        val habitData = getHabitDataSummary()
+
+        return geminiService.getBodyLoad(
+            recentEntries = recent,
+            categories = catMap,
+            userContext = context,
+            knowledgeBase = kb,
+            fitbitData = fitbitData,
+            habitData = habitData
+        ).onSuccess {
+            preferences.deductBalance(0.05f)
+        }
     }
 }

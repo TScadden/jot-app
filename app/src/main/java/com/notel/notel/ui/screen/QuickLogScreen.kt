@@ -27,6 +27,7 @@ import com.notel.notel.data.local.entity.Category
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.QuickLogViewModel
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.*
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -38,7 +39,8 @@ fun QuickLogScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToTrends: () -> Unit,
     onNavigateToFitbit: () -> Unit,
-    onNavigateToSleep: () -> Unit
+    onNavigateToSleep: () -> Unit,
+    onNavigateToBodyLoad: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsState()
     val isGeneratingWeeklyRecap by viewModel.isGeneratingWeeklyRecap.collectAsState()
@@ -79,6 +81,9 @@ fun QuickLogScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = NotelBackground),
                 actions = {
+                    IconButton(onClick = onNavigateToBodyLoad) {
+                        Icon(Icons.Default.Person, contentDescription = "Body Load", tint = NotelPrimary)
+                    }
                     IconButton(onClick = onNavigateToFitbit) {
                         Icon(Icons.Default.FavoriteBorder, contentDescription = "Heart Rate", tint = NotelPrimary)
                     }
@@ -170,6 +175,49 @@ fun QuickLogScreen(
             ) {
                 when {
                     !state.isUnlimited && state.userBalance < 0.01f -> NoBalancePrompt(onGoToSettings = onNavigateToSettings)
+                    state.selectedCategory?.id == -1 -> {
+                        val today = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
+                        Box(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                            FlowRow(
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                state.habits.forEach { habit ->
+                                    val isChecked = habit.logs.contains(today)
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(20.dp))
+                                            .background(if (isChecked) NotelSurfaceHigh else NotelSurface)
+                                            .clickable {
+                                                viewModel.toggleHabit(habit.id, !isChecked)
+                                            }
+                                            .border(
+                                                width = 1.dp,
+                                                color = if (isChecked) Color.Transparent else NotelPrimary.copy(alpha = 0.5f),
+                                                shape = RoundedCornerShape(20.dp)
+                                            )
+                                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            if (isChecked) {
+                                                Icon(Icons.Default.CheckCircle, null, tint = NotelPrimary, modifier = Modifier.size(16.dp))
+                                                Spacer(Modifier.width(6.dp))
+                                            }
+                                            Text(
+                                                habit.title,
+                                                color = if (isChecked) NotelTextSecondary else NotelTextPrimary,
+                                                fontWeight = if (isChecked) FontWeight.Normal else FontWeight.SemiBold,
+                                                fontSize = 14.sp,
+                                                textDecoration = if (isChecked) androidx.compose.ui.text.style.TextDecoration.LineThrough else null
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     !state.autoAiSuggestions && state.chips.isEmpty() && !state.isLoadingChips -> {
                         Column(
                             modifier = Modifier.fillMaxSize(),

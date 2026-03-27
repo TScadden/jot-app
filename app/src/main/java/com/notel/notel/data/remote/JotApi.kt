@@ -48,6 +48,12 @@ data class SmartCategorySuggestion(
 )
 
 @Serializable
+data class BodyLoadResponse(
+    val score: Int,
+    val factors: List<String> = emptyList()
+)
+
+@Serializable
 data class AiResponse<T>(
     val result: T,
     val error: String? = null
@@ -261,6 +267,9 @@ interface JotApi {
 
     @POST("api/ai/process-document")
     suspend fun processDocument(@Body request: ProcessDocumentRequest): Response<AiResponse<String>>
+
+    @POST("api/ai/body-load")
+    suspend fun getBodyLoad(@Body request: AiRequest): Response<AiResponse<BodyLoadResponse>>
 
     // ── SYNC ─────────────────────────────────────────────
     @retrofit2.http.GET("api/sync/pull")

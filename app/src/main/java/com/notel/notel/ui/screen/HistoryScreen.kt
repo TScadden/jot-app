@@ -130,27 +130,42 @@ fun HistoryScreen(
                                 val isCheckedToday = habitViewModel.isCheckedToday(habit)
                                 val streak = habitViewModel.getStreak(habit)
                                 GlassyCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = NotelSurface) {
-                                    Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Checkbox(
-                                                checked = isCheckedToday,
-                                                onCheckedChange = { checked ->
-                                                    habitViewModel.toggleHabit(habit.id, checked)
-                                                },
-                                                colors = CheckboxDefaults.colors(checkedColor = NotelPrimary, uncheckedColor = NotelTextSecondary)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // 🔥 Streak — left of checkbox
+                                        Text(
+                                            "🔥 $streak",
+                                            color = if (streak > 0) Color(0xFFE2A123) else NotelTextSecondary,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Spacer(Modifier.width(4.dp))
+                                        Checkbox(
+                                            checked = isCheckedToday,
+                                            onCheckedChange = { checked ->
+                                                habitViewModel.toggleHabit(habit.id, checked)
+                                            },
+                                            colors = CheckboxDefaults.colors(checkedColor = NotelPrimary, uncheckedColor = NotelTextSecondary)
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        // Title + time — fills remaining space, wraps naturally
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                habit.title,
+                                                color = NotelTextPrimary,
+                                                fontWeight = FontWeight.Bold,
+                                                softWrap = true,
+                                                fontSize = 15.sp,
+                                                lineHeight = 19.sp
                                             )
-                                            Spacer(Modifier.width(8.dp))
-                                            Column {
-                                                Text(habit.title, color = NotelTextPrimary, fontWeight = FontWeight.Bold)
-                                                Text(habit.target_time ?: "Anytime", color = NotelTextSecondary, fontSize = 12.sp)
-                                            }
+                                            Text(habit.target_time ?: "Anytime", color = NotelTextSecondary, fontSize = 12.sp)
                                         }
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("🔥 $streak", color = if (streak > 0) Color(0xFFE2A123) else NotelTextSecondary)
-                                            Spacer(Modifier.width(8.dp))
-                                            IconButton(onClick = { habitViewModel.deleteHabit(habit.id) }, modifier = Modifier.size(24.dp)) {
-                                                Icon(Icons.Default.Delete, "Delete", tint = NotelTextSecondary, modifier = Modifier.size(18.dp))
-                                            }
+                                        Spacer(Modifier.width(8.dp))
+                                        // Trash — pinned to far right
+                                        IconButton(onClick = { habitViewModel.deleteHabit(habit.id) }, modifier = Modifier.size(24.dp)) {
+                                            Icon(Icons.Default.Delete, "Delete", tint = NotelTextSecondary, modifier = Modifier.size(18.dp))
                                         }
                                     }
                                 }
