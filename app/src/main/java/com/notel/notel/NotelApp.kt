@@ -1,7 +1,122 @@
 package com.notel.notel
 
 import android.app.Application
+import androidx.hilt.work.HiltWorkerFactory
+import androidx.work.*
 import dagger.hilt.android.HiltAndroidApp
+import com.notel.notel.worker.BodyLoadReminderWorker
+import com.notel.notel.worker.CupReminderWorker
+import com.notel.notel.worker.HabitReminderWorker
+import com.notel.notel.service.HrSpikeMonitorService
+import com.notel.notel.data.preferences.NotelPreferences
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
+import java.util.Calendar
+import javax.inject.Inject
 
 @HiltAndroidApp
-class NotelApp : Application()
+class NotelApp : Application(), Configuration.Provider {
+
+    @Inject
+    lateinit var workerFactory: HiltWorkerFactory
+
+    @Inject
+    lateinit var preferences: NotelPreferences
+
+    override val workManagerConfiguration: androidx.work.Configuration
+        get() = androidx.work.Configuration.Builder()
+            .setWorkerFactory(workerFactory)
+            .build()
+
+    override fun onCreate() {
+        super.onCreate()
+        scheduleDailyBodyLoadReminder()
+        scheduleHabitReminder()
+        scheduleCupReminder()
+        
+        // Start HR Monitor Service if enabled
+        CoroutineScope(Dispatchers.IO).launch {
+            if (preferences.hrSpikeAlertsEnabled.first()) {
+                HrSpikeMonitorService.startService(this@NotelApp)
+            }
+        }
+    }
+
+    private fun scheduleDailyBodyLoadReminder() {
+        val calendar = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 21) // 9:00 PM
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+        }
+        
+        if (calendar.timeInMillis <= System.currentTimeMillis()) {
+            calendar.add(Calendar.DAY_OF_YEAR, 1)
+        }
+
+        val delay = calendar.timeInMillis - System.currentTimeMillis()
+
+        val dailyWorkRequest = PeriodicWorkRequestBuilder<BodyLoadReminderWorker>(24, TimeUnit.HOURS)
+            .setInitialDelay(delay, TimeUnit.MILLISECONDS)
+            .addTag("body_load_reminder")
+            .build()
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "body_load_reminder",
+            ExistingPeriodicWorkPolicy.UPDATE,
+            dailyWorkRequest
+        )
+    }
+
+    private fun scheduleHabitReminder() {
+        val calendar = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 19)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+        }
+        
+        if (calendar.timeInMillis <= System.currentTimeMillis()) {
+            calendar.add(Calendar.DAY_OF_YEAR, 1)
+        }
+
+        val delay = calendar.timeInMillis - System.currentTimeMillis()
+
+        val dailyWorkRequest = PeriodicWorkRequestBuilder<HabitReminderWorker>(24, TimeUnit.HOURS)
+            .setInitialDelay(delay, TimeUnit.MILLISECONDS)
+            .addTag("habit_reminder")
+            .build()
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "habit_reminder",
+            ExistingPeriodicWorkPolicy.UPDATE,
+            dailyWorkRequest
+        )
+    }
+
+    private fun scheduleCupReminder() {
+        val calendar = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 16) // 4:00 PM
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+        }
+        
+        if (calendar.timeInMillis <= System.currentTimeMillis()) {
+            calendar.add(Calendar.DAY_OF_YEAR, 1)
+        }
+
+        val delay = calendar.timeInMillis - System.currentTimeMillis()
+
+        val dailyWorkRequest = PeriodicWorkRequestBuilder<CupReminderWorker>(24, TimeUnit.HOURS)
+            .setInitialDelay(delay, TimeUnit.MILLISECONDS)
+            .addTag("cup_reminder")
+            .build()
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "cup_reminder",
+            ExistingPeriodicWorkPolicy.UPDATE,
+            dailyWorkRequest
+        )
+    }
+}

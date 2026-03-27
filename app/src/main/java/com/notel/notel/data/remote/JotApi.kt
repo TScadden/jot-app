@@ -13,7 +13,8 @@ data class AiRequest(
     val knowledgeBase: String? = null,
     val pastInsights: String? = null,
     val fitbitData: String? = null,
-    val habitData: String? = null
+    val habitData: String? = null,
+    val bodyLoadHistory: String? = null
 )
 
 @Serializable
@@ -50,7 +51,8 @@ data class SmartCategorySuggestion(
 @Serializable
 data class BodyLoadResponse(
     val score: Int,
-    val factors: List<String> = emptyList()
+    val factors: List<String> = emptyList(),
+    val advice: String? = null
 )
 
 @Serializable
@@ -124,6 +126,7 @@ data class SyncCategoriesRequest(
 data class SyncProfileRequest(
     val userContext: String? = null,
     val knowledgeBase: String? = null,
+    val professionalUpdates: String? = null,
     val processedFiles: String? = null,
     val loggedDays: String? = null,
     val age: Int? = null,
@@ -160,6 +163,7 @@ data class SyncResponse(
 data class ProfileDtoModel(
     val userContext: String? = null,
     val knowledgeBase: String? = null,
+    val professionalUpdates: String? = null,
     val processedFiles: String? = null,
     val loggedDays: String? = null,
     val age: Int? = null,

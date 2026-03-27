@@ -13,6 +13,8 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.*
 import com.notel.notel.data.local.entity.AiInsight
 import com.notel.notel.data.healthconnect.HealthConnectManager
+import com.notel.notel.service.HrSpikeMonitorService
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlinx.coroutines.flow.first
 import com.notel.notel.data.sync.SyncManager
@@ -26,7 +28,9 @@ class SettingsViewModel @Inject constructor(
     val healthConnectManager: HealthConnectManager,
     val billingManager: com.notel.notel.data.billing.BillingManager,
     private val syncManager: SyncManager,
-    private val database: com.notel.notel.data.local.NotelDatabase
+    private val database: com.notel.notel.data.local.NotelDatabase,
+    private val habitRepository: com.notel.notel.data.repository.HabitRepository,
+    @ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
 
 
@@ -84,6 +88,21 @@ class SettingsViewModel @Inject constructor(
     val settingsTutorialSeen: StateFlow<Boolean?> = preferences.settingsTutorialSeen
         .map { it as Boolean? }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val bodyLoadRemindersEnabled = preferences.bodyLoadRemindersEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    val dailyCupUpdatesEnabled = preferences.dailyCupUpdatesEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    val hrSpikeAlertsEnabled = preferences.hrSpikeAlertsEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    val spikeThreshold = preferences.spikeThreshold
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 120)
+
+    val habitReminderEnabled = preferences.habitReminderEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
     fun markSettingsTutorialSeen() {
         viewModelScope.launch { preferences.setSettingsTutorialSeen(true) }
@@ -251,11 +270,29 @@ class SettingsViewModel @Inject constructor(
             val current = preferences.professionalUpdates.first()
             val combined = if (current.isBlank()) newEntry else "$newEntry\n\n$current"
             preferences.setProfessionalUpdates(combined)
+            syncManager.syncAllData()
+        }
+    }
+
+    fun deleteProfessionalUpdate(index: Int) {
+        viewModelScope.launch {
+            val current = preferences.professionalUpdates.first()
+            if (current.isNotBlank()) {
+                val updatesList = current.split("\n\n").toMutableList()
+                if (index in updatesList.indices) {
+                    updatesList.removeAt(index)
+                    preferences.setProfessionalUpdates(updatesList.joinToString("\n\n"))
+                    syncManager.syncAllData()
+                }
+            }
         }
     }
 
     fun clearProfessionalUpdates() {
-        viewModelScope.launch { preferences.setProfessionalUpdates("") }
+        viewModelScope.launch { 
+            preferences.setProfessionalUpdates("")
+            syncManager.syncAllData()
+        }
     }
 
     fun generateProfessionalReport() {
@@ -277,6 +314,49 @@ class SettingsViewModel @Inject constructor(
     fun setAutoAiSuggestions(enabled: Boolean) {
         viewModelScope.launch {
             preferences.setAutoAiSuggestions(enabled)
+            syncManager.syncAllData()
+        }
+    }
+
+    fun setBodyLoadRemindersEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferences.setBodyLoadRemindersEnabled(enabled)
+            syncManager.syncAllData()
+        }
+    }
+
+    fun setDailyCupUpdatesEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferences.setDailyCupUpdatesEnabled(enabled)
+            syncManager.syncAllData()
+        }
+    }
+
+    fun setHrSpikeAlertsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferences.setHrSpikeAlertsEnabled(enabled)
+            syncManager.syncAllData()
+            
+            if (enabled) {
+                HrSpikeMonitorService.startService(context)
+            } else {
+                HrSpikeMonitorService.stopService(context)
+                // Also cancel any old recursive WorkManager jobs
+                androidx.work.WorkManager.getInstance(context).cancelUniqueWork("hr_spike_alert_loop")
+            }
+        }
+    }
+
+    fun setSpikeThreshold(threshold: Int) {
+        viewModelScope.launch {
+            preferences.setSpikeThreshold(threshold)
+            syncManager.syncAllData()
+        }
+    }
+
+    fun setHabitReminderEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferences.setHabitReminderEnabled(enabled)
             syncManager.syncAllData()
         }
     }
@@ -375,6 +455,65 @@ class SettingsViewModel @Inject constructor(
                 history.add(0, CounterHistoryItem(counter.name, counter.targetDate, System.currentTimeMillis()))
                 preferences.setCounterHistory(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(CounterHistoryItem.serializer()), history.take(20)))
             }
+        }
+    }
+
+    fun testDailyReminder(context: android.content.Context) {
+        viewModelScope.launch {
+            com.notel.notel.util.NotificationHelper(context).showBodyLoadReminder()
+        }
+    }
+
+    fun testBodyLoadNotification(context: android.content.Context) {
+        viewModelScope.launch {
+            logRepository.getBodyLoad(categories.value).fold(
+                onSuccess = { res ->
+                    com.notel.notel.util.NotificationHelper(context).showBodyLoadUpdate(res.score)
+                },
+                onFailure = {
+                    com.notel.notel.util.NotificationHelper(context).showBodyLoadReminder()
+                }
+            )
+        }
+    }
+
+    fun testHabitNotification(context: android.content.Context) {
+        viewModelScope.launch {
+            habitRepository.fetchHabits()
+            val habits = habitRepository.habits.value
+            val today = habitRepository.todayDateString()
+            val anyUnchecked = habits.any { today !in it.logs }
+            
+            val helper = com.notel.notel.util.NotificationHelper(context)
+            if (anyUnchecked) {
+                helper.showHabitReminder()
+            } else {
+                // For testing, we'll show the reminder even if all are checked, 
+                // so the user can verify the notification style.
+                helper.showHabitReminder()
+            }
+        }
+    }
+
+    fun testSpikeNotification(context: android.content.Context) {
+        viewModelScope.launch {
+            val intraday = healthConnectManager.readHeartRateIntraday("today")
+            val latest = intraday.lastOrNull()?.second ?: 72 // Fallback to 72 if no readings
+            val helper = com.notel.notel.util.NotificationHelper(context)
+            helper.showSpikeAlert(latest)
+        }
+    }
+
+    fun deleteAiInsight(id: String) {
+        viewModelScope.launch {
+            val currentStr = preferences.aiInsights.first()
+            val current = try { 
+                if (currentStr.isNotBlank()) Json.decodeFromString<MutableList<AiInsight>>(currentStr) 
+                else mutableListOf() 
+            } catch(e: Exception) { mutableListOf() }
+            
+            val updated = current.filter { it.id != id }
+            preferences.setAiInsights(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(AiInsight.serializer()), updated))
         }
     }
 }

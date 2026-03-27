@@ -11,7 +11,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.notel.notel.ui.theme.GlassyCard
@@ -30,6 +33,7 @@ import kotlin.math.sin
 fun BodyLoadCard(
     score: Int = 65,
     factors: List<Pair<String, Int>> = emptyList(),
+    advice: String? = null,
     isLoading: Boolean = false,
     onAnalyzeClick: () -> Unit = {}
 ) {
@@ -82,7 +86,7 @@ fun BodyLoadCard(
         ) {
             // Header
             Text(
-                "Body Load Index",
+                "Body Load",
                 color = NotelTextPrimary,
                 fontWeight = FontWeight.ExtraBold,
                 fontSize = 17.sp,
@@ -124,11 +128,8 @@ fun BodyLoadCard(
                         )
                         // Up to top right edge
                         lineTo(w * 0.85f, h * 0.05f)
-                        // Top edge is an ellipse arc for perspective
-                        quadraticTo(
-                            w * 0.50f, h * 0.00f,
-                            w * 0.15f, h * 0.05f
-                        )
+                        // Top edge is now flat
+                        lineTo(w * 0.15f, h * 0.05f)
                         close()
                     }
 
@@ -220,10 +221,17 @@ fun BodyLoadCard(
                         )
                         Spacer(Modifier.height(2.dp))
                         factors.take(4).forEach { (label, _) ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                                 Text("▲", color = fillColor, fontSize = 9.sp)
                                 Spacer(Modifier.width(4.dp))
-                                Text(label, color = NotelTextSecondary, fontSize = 11.sp)
+                                Text(
+                                    label, 
+                                    color = NotelTextSecondary, 
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
                             }
                         }
                     } else {
@@ -238,6 +246,31 @@ fun BodyLoadCard(
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
+                    }
+                }
+            }
+
+            if (!isLoading && advice != null && advice.isNotBlank()) {
+                Spacer(Modifier.height(20.dp))
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = NotelSurfaceHigh.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Info, null, tint = NotelPrimary, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("What Helps:", color = NotelPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = advice,
+                            color = NotelTextPrimary,
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                 }
             }

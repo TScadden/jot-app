@@ -121,7 +121,8 @@ class GeminiService @Inject constructor(
         knowledgeBase: String = "",
         pastInsights: String = "",
         fitbitData: String = "",
-        habitData: String = ""
+        habitData: String = "",
+        bodyLoadHistory: String = ""
     ): Result<String> {
         return try {
             val response = jotApi.getReport(
@@ -132,7 +133,8 @@ class GeminiService @Inject constructor(
                     knowledgeBase = knowledgeBase,
                     pastInsights = pastInsights,
                     fitbitData = fitbitData,
-                    habitData = habitData
+                    habitData = habitData,
+                    bodyLoadHistory = bodyLoadHistory
                 )
             )
             val result = response.body()?.result
@@ -262,7 +264,8 @@ class GeminiService @Inject constructor(
         userContext: String = "",
         knowledgeBase: String = "",
         fitbitData: String = "",
-        habitData: String = ""
+        habitData: String = "",
+        pastInsights: String = ""
     ): Result<BodyLoadResponse> {
         return try {
             val response = jotApi.getBodyLoad(
@@ -272,7 +275,8 @@ class GeminiService @Inject constructor(
                     userContext = userContext,
                     knowledgeBase = knowledgeBase,
                     fitbitData = fitbitData,
-                    habitData = habitData
+                    habitData = habitData,
+                    pastInsights = pastInsights
                 )
             )
             val result = response.body()?.result

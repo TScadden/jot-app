@@ -39,6 +39,7 @@ class BodyLoadViewModel @Inject constructor(
                     _uiState.value = _uiState.value.copy(
                         score = res.score,
                         factors = res.factors,
+                        advice = res.advice,
                         isLoading = false
                     )
                 }
@@ -55,6 +56,7 @@ class BodyLoadViewModel @Inject constructor(
 data class BodyLoadState(
     val score: Int = 0,
     val factors: List<String> = emptyList(),
+    val advice: String? = null,
     val isLoading: Boolean = false,
     val error: String? = null
 )

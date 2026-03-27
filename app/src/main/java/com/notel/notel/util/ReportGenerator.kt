@@ -52,6 +52,11 @@ class ReportGenerator @Inject constructor(
             textSize = 12f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
+        val italicBodyPaint = Paint().apply {
+            color = Color.BLACK
+            textSize = 12f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.ITALIC)
+        }
         val linePaint = Paint().apply {
             color = Color.LTGRAY
             strokeWidth = 1f
@@ -87,20 +92,26 @@ class ReportGenerator @Inject constructor(
                 line.contains("[SECTION]") -> {
                     y += 15f
                     val cleanSection = line.replace("[SECTION]", "").replace("[BOLD]", "").replace("*", "").replace("#", "").trim()
-                    canvas.drawText(cleanSection, margin, y, sectionPaint)
-                    y += 8f
+                    
+                    val wrappedSections = wrapText(cleanSection, contentWidth, sectionPaint)
+                    wrappedSections.forEach { sectionPart ->
+                        canvas.drawText(sectionPart, margin, y, sectionPaint)
+                        y += 22f
+                    }
+                    
+                    y -= 14f // Back up a bit for the underline
                     canvas.drawLine(margin, y, margin + 80f, y, sectionPaint.apply { strokeWidth = 2f })
                     y += 25f
                 }
                 line.contains("[BULLET]") -> {
                     val cleanBullet = line.replace("[BULLET]", "").replace("-", "").replace("*", "").trim()
-                    drawFormattedLine("• $cleanBullet", margin + 15f, y, contentWidth - 15f, canvas, bodyPaint, boldBodyPaint).let { 
+                    drawFormattedLine("• $cleanBullet", margin + 15f, y, contentWidth - 15f, canvas, bodyPaint, boldBodyPaint, italicBodyPaint).let { 
                         y = it 
                     }
                     y += 8f
                 }
                 else -> {
-                    drawFormattedLine(line, margin, y, contentWidth, canvas, bodyPaint, boldBodyPaint).let { 
+                    drawFormattedLine(line, margin, y, contentWidth, canvas, bodyPaint, boldBodyPaint, italicBodyPaint).let { 
                         y = it 
                     }
                     y += 8f
@@ -139,29 +150,53 @@ class ReportGenerator @Inject constructor(
         width: Float, 
         canvas: Canvas, 
         paint: Paint, 
-        boldPaint: Paint
+        boldPaint: Paint,
+        italicPaint: Paint
     ): Float {
         var y = currentY
         val lines = wrapText(text, width, paint)
-        var isCurrentlyBold = false // Track bold state across wrapped lines of the same logical entry
+        
+        var isBold = false
+        var isItalic = false
 
         lines.forEach { line ->
             var currentX = x
-            // Split by markers but keep them for state tracking
-            val parts = line.split("[BOLD]")
+            // Regex to match markers or text
+            val regex = "\\[BOLD\\]|\\[ITALIC\\]".toRegex()
+            var lastMatchEnd = 0
             
-            parts.forEachIndexed { index, part ->
-                // If it's the first part and we were bold from previous line, start bold
-                // Subsequent parts toggle based on 'isCurrentlyBold'
-                val p = if (isCurrentlyBold) boldPaint else paint
-                canvas.drawText(part, currentX, y, p)
-                currentX += p.measureText(part)
-                
-                // Toggle bold state for the NEXT part (unless it's the last part of this line)
-                if (index < parts.size - 1) {
-                    isCurrentlyBold = !isCurrentlyBold
+            // We need to process the line and update states
+            regex.findAll(line).forEach { match ->
+                // Draw text before marker
+                val segment = line.substring(lastMatchEnd, match.range.first)
+                if (segment.isNotEmpty()) {
+                    val p = when {
+                        isBold -> boldPaint
+                        isItalic -> italicPaint
+                        else -> paint
+                    }
+                    canvas.drawText(segment, currentX, y, p)
+                    currentX += p.measureText(segment)
                 }
+                
+                // Toggle state
+                if (match.value == "[BOLD]") isBold = !isBold
+                if (match.value == "[ITALIC]") isItalic = !isItalic
+                
+                lastMatchEnd = match.range.last + 1
             }
+            
+            // Draw remaining text
+            val remaining = line.substring(lastMatchEnd)
+            if (remaining.isNotEmpty()) {
+                val p = when {
+                    isBold -> boldPaint
+                    isItalic -> italicPaint
+                    else -> paint
+                }
+                canvas.drawText(remaining, currentX, y, p)
+            }
+            
             y += 18f
         }
         return y
@@ -195,11 +230,29 @@ class ReportGenerator @Inject constructor(
 
         for (word in words) {
             val testLine = if (currentLine.isEmpty()) word else "${currentLine} $word"
-            if (paint.measureText(testLine) <= width) {
+            val widthWithWord = paint.measureText(testLine)
+            
+            if (widthWithWord <= width) {
                 currentLine.append(if (currentLine.isEmpty()) word else " $word")
             } else {
-                lines.add(currentLine.toString())
-                currentLine = StringBuilder(word)
+                // If the word itself is too long for the page, we must break it
+                if (paint.measureText(word) > width) {
+                    if (currentLine.isNotEmpty()) {
+                        lines.add(currentLine.toString())
+                        currentLine = StringBuilder()
+                    }
+                    
+                    var remainingWord = word
+                    while (paint.measureText(remainingWord) > width) {
+                        var subCount = paint.breakText(remainingWord, true, width, null)
+                        lines.add(remainingWord.substring(0, subCount))
+                        remainingWord = remainingWord.substring(subCount)
+                    }
+                    currentLine = StringBuilder(remainingWord)
+                } else {
+                    lines.add(currentLine.toString())
+                    currentLine = StringBuilder(word)
+                }
             }
         }
         if (currentLine.isNotEmpty()) lines.add(currentLine.toString())

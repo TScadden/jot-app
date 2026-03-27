@@ -37,9 +37,12 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 
 enum class SettingsMenu {
-    MAIN, USER_PROFILE, CONNECTED_APPS, AI_AND_KNOWLEDGE, EVENT_COUNTERS, WALLET
+    MAIN, USER_PROFILE, CONNECTED_APPS, AI_AND_KNOWLEDGE, EVENT_COUNTERS, WALLET, NOTIFICATIONS
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -70,6 +73,11 @@ fun SettingsScreen(
     val userWeight by viewModel.userWeight.collectAsState()
     val userGender by viewModel.userGender.collectAsState()
     val autoAiSuggestions by viewModel.autoAiSuggestions.collectAsState()
+    val bodyLoadRemindersEnabled by viewModel.bodyLoadRemindersEnabled.collectAsState()
+    val dailyCupUpdatesEnabled by viewModel.dailyCupUpdatesEnabled.collectAsState()
+    val hrSpikeAlertsEnabled by viewModel.hrSpikeAlertsEnabled.collectAsState()
+    val spikeThreshold by viewModel.spikeThreshold.collectAsState()
+    val habitReminderEnabled by viewModel.habitReminderEnabled.collectAsState()
     val tutorialSeen by viewModel.settingsTutorialSeen.collectAsState()  // null = loading, false = not seen, true = seen
 
     // Screen dimensions for smart tooltip placement
@@ -166,6 +174,18 @@ fun SettingsScreen(
         }
     }
 
+    val requestNotificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (isGranted) {
+            // Permission granted, can proceed with testing notifications
+        } else {
+            // Permission denied, show a message or handle accordingly
+            // For example, show a snackbar
+            // snackbarHostState.showSnackbar("Notification permission denied.")
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
     Scaffold(
         containerColor = NotelBackground,
@@ -180,6 +200,7 @@ fun SettingsScreen(
                         SettingsMenu.AI_AND_KNOWLEDGE -> "AI & Knowledge Base"
                         SettingsMenu.EVENT_COUNTERS -> "Event Counters"
                         SettingsMenu.WALLET -> "Wallet & Usage"
+                        SettingsMenu.NOTIFICATIONS -> "Notifications"
                     }
                     Text(titleText, fontWeight = FontWeight.Bold, color = NotelTextPrimary) 
                 },
@@ -382,6 +403,7 @@ fun SettingsScreen(
                 SettingsMenuCard("Connected Apps", Icons.Default.Favorite, modifier = Modifier.onGloballyPositioned { coordConnectedApps = it }) { currentMenu = SettingsMenu.CONNECTED_APPS }
                 SettingsMenuCard("AI & Knowledge Base", Icons.Default.AutoAwesome, modifier = Modifier.onGloballyPositioned { coordAiKnowledge = it }) { currentMenu = SettingsMenu.AI_AND_KNOWLEDGE }
                 SettingsMenuCard("Event Counters", Icons.Default.Timer, modifier = Modifier.onGloballyPositioned { coordEventCounters = it }) { currentMenu = SettingsMenu.EVENT_COUNTERS }
+                SettingsMenuCard("Notifications", Icons.Default.Notifications) { currentMenu = SettingsMenu.NOTIFICATIONS }
             }
 
 
@@ -685,19 +707,35 @@ fun SettingsScreen(
                                 
                                 val updatesList = professionalUpdates.split("\n\n").filter { it.isNotBlank() }
                                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    updatesList.forEach { update ->
+                                    updatesList.forEachIndexed { index, update ->
                                         Surface(
                                             shape = RoundedCornerShape(12.dp),
                                             color = NotelSurfaceHigh.copy(alpha = 0.5f),
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
-                                            Text(
-                                                text = update.trim(),
-                                                color = NotelTextPrimary,
-                                                fontSize = 13.sp,
-                                                lineHeight = 18.sp,
-                                                modifier = Modifier.padding(12.dp)
-                                            )
+                                            Row(
+                                                modifier = Modifier.padding(12.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = update.trim(),
+                                                    color = NotelTextPrimary,
+                                                    fontSize = 13.sp,
+                                                    lineHeight = 18.sp,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                IconButton(
+                                                    onClick = { viewModel.deleteProfessionalUpdate(index) },
+                                                    modifier = Modifier.size(24.dp)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.Delete, 
+                                                        "Delete update", 
+                                                        tint = NotelTextSecondary, 
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -1028,7 +1066,7 @@ fun SettingsScreen(
                         Spacer(Modifier.height(12.dp))
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             aiInsights.forEach { insight ->
-                                InsightTile(insight = insight)
+                                InsightTile(insight = insight, onDelete = { viewModel.deleteAiInsight(insight.id) })
                             }
                         }
                     }
@@ -1247,6 +1285,212 @@ fun SettingsScreen(
             Spacer(Modifier.height(24.dp))
             }
 
+            if (currentMenu == SettingsMenu.NOTIFICATIONS) {
+                Text("NOTIFICATIONS", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+
+                GlassyCard(
+                    shape = RoundedCornerShape(16.dp),
+                    color = NotelSurface
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Cup Reminder", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                                Text(
+                                    "A ping if you haven't checked your Cup level by the afternoon.",
+                                    color = NotelTextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
+                            Switch(
+                                checked = bodyLoadRemindersEnabled,
+                                onCheckedChange = { viewModel.setBodyLoadRemindersEnabled(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = NotelPrimary,
+                                    checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
+                                    uncheckedThumbColor = NotelTextSecondary,
+                                    uncheckedTrackColor = NotelSurfaceHigh
+                                )
+                            )
+                        }
+                        
+                        TextButton(
+                            onClick = { 
+                                if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                                    viewModel.testDailyReminder(context)
+                                } else {
+                                    requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                }
+                            },
+                            modifier = Modifier.align(Alignment.Start)
+                        ) {
+                            Text("Test Cup Reminder Notification", color = NotelPrimary, fontSize = 12.sp)
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Body Load Summary", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                                Text(
+                                    "A summary of your final physiological load at 9:00 PM. Tap to learn more.",
+                                    color = NotelTextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
+                            Switch(
+                                checked = dailyCupUpdatesEnabled,
+                                onCheckedChange = { viewModel.setDailyCupUpdatesEnabled(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = NotelPrimary,
+                                    checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
+                                    uncheckedThumbColor = NotelTextSecondary,
+                                    uncheckedTrackColor = NotelSurfaceHigh
+                                )
+                            )
+                        }
+
+                        TextButton(
+                            onClick = { 
+                                if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                                    viewModel.testBodyLoadNotification(context)
+                                } else {
+                                    requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                }
+                            },
+                            modifier = Modifier.align(Alignment.Start)
+                        ) {
+                            Text("Test Cup Summary Notification", color = NotelPrimary, fontSize = 12.sp)
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Habit Reminders", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                                Text(
+                                    "Daily ping at 7:00 PM if you have unchecked habits remaining.",
+                                    color = NotelTextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
+                            Switch(
+                                checked = habitReminderEnabled,
+                                onCheckedChange = { viewModel.setHabitReminderEnabled(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = NotelPrimary,
+                                    checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
+                                    uncheckedThumbColor = NotelTextSecondary,
+                                    uncheckedTrackColor = NotelSurfaceHigh
+                                )
+                            )
+                        }
+                        
+                        TextButton(
+                            onClick = { 
+                                if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                                    viewModel.testHabitNotification(context)
+                                } else {
+                                    requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                }
+                            },
+                            modifier = Modifier.align(Alignment.Start)
+                        ) {
+                            Text("Test Habit Reminder Notification", color = NotelPrimary, fontSize = 12.sp)
+                        }
+
+                        Column {
+                            val initialThreshold = remember { spikeThreshold }
+                            var tempSpikeThreshold by remember { mutableStateOf(initialThreshold.toString()) }
+                            
+                            DisposableEffect(Unit) {
+                                onDispose {
+                                    val finalVal = tempSpikeThreshold.toIntOrNull()
+                                    if (finalVal == null || finalVal < 40) {
+                                        viewModel.setSpikeThreshold(110)
+                                    }
+                                }
+                            }
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("HR Spike Alerts", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        "Real-time alert when your heart rate exceeds ${if (tempSpikeThreshold.isNotBlank()) tempSpikeThreshold else "110"} BPM.",
+                                        color = NotelTextSecondary,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                                Switch(
+                                    checked = hrSpikeAlertsEnabled,
+                                    onCheckedChange = { 
+                                        viewModel.setHrSpikeAlertsEnabled(it)
+                                        if (it && (tempSpikeThreshold.isBlank() || (tempSpikeThreshold.toIntOrNull() ?: 0) < 40)) {
+                                            tempSpikeThreshold = "110"
+                                            viewModel.setSpikeThreshold(110)
+                                        }
+                                    },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = NotelPrimary,
+                                        checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
+                                        uncheckedThumbColor = NotelTextSecondary,
+                                        uncheckedTrackColor = NotelSurfaceHigh
+                                    )
+                                )
+                            }
+                            
+                            if (hrSpikeAlertsEnabled) {
+                                Spacer(Modifier.height(16.dp))
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Alert Threshold", color = NotelTextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                    OutlinedTextField(
+                                        value = tempSpikeThreshold,
+                                        onValueChange = { newVal ->
+                                            val filtered = newVal.filter { it.isDigit() }
+                                            if (filtered.length <= 3) {
+                                                tempSpikeThreshold = filtered
+                                                val intVal = filtered.toIntOrNull()
+                                                if (intVal != null && intVal in 40..250) {
+                                                    viewModel.setSpikeThreshold(intVal)
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier.width(130.dp),
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        suffix = { Text("BPM", color = NotelTextSecondary, fontSize = 12.sp) },
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = NotelPrimary,
+                                            unfocusedBorderColor = NotelSurfaceHigh,
+                                            focusedTextColor = NotelTextPrimary,
+                                            unfocusedTextColor = NotelTextPrimary,
+                                            focusedContainerColor = NotelSurfaceHigh.copy(alpha = 0.5f),
+                                            unfocusedContainerColor = NotelSurfaceHigh.copy(alpha = 0.3f)
+                                        ),
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                                }
+                            }
+
+                            TextButton(
+                                onClick = { 
+                                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                                        viewModel.testSpikeNotification(context)
+                                    } else {
+                                        requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    }
+                                },
+                                modifier = Modifier.align(Alignment.Start)
+                            ) {
+                                Text("Test Spike Alert Notification", color = NotelPrimary, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(24.dp))
+            }
+
             if (currentMenu == SettingsMenu.MAIN) {
             Text("About", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(8.dp))
@@ -1363,7 +1607,7 @@ fun SettingsScreen(
     } // end outer Box
 }
 @Composable
-fun InsightTile(insight: com.notel.notel.data.local.entity.AiInsight) {
+fun InsightTile(insight: com.notel.notel.data.local.entity.AiInsight, onDelete: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     val format = remember { java.text.SimpleDateFormat("MMM dd, yyyy h:mm a", java.util.Locale.getDefault()) }
     
@@ -1374,12 +1618,18 @@ fun InsightTile(insight: com.notel.notel.data.local.entity.AiInsight) {
         modifier = Modifier.fillMaxWidth().liquidGlass(shape = RoundedCornerShape(12.dp), color = NotelSurface, alpha = 0.5f)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = "${format.format(java.util.Date(insight.timestamp))} • ${insight.type}",
-                color = NotelPrimary,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold
-            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "${format.format(java.util.Date(insight.timestamp))} • ${insight.type}",
+                    color = NotelPrimary,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = onDelete, modifier = Modifier.size(24.dp)) {
+                    Icon(Icons.Default.Delete, "Delete", tint = NotelTextSecondary, modifier = Modifier.size(16.dp))
+                }
+            }
             Spacer(Modifier.height(6.dp))
             Text(
                 text = insight.text,

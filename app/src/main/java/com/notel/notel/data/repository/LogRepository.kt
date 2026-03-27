@@ -316,7 +316,18 @@ class LogRepository @Inject constructor(
         val balance = preferences.userBalance.first()
         if (!isUnlimited && balance < 0.05f) return Result.failure(IllegalStateException("Insufficient credits ($0.05 required). Please top up in Settings."))
 
-        val result = geminiService.getMedicalReportSummary(recent, catMap, userContext = context, knowledgeBase = kb, pastInsights = pastInsights, fitbitData = fitbitData, habitData = habitData)
+        val bodyLoadHistory = getBodyLoadHistorySummary()
+
+        val result = geminiService.getMedicalReportSummary(
+            recent, 
+            catMap, 
+            userContext = context, 
+            knowledgeBase = kb, 
+            pastInsights = pastInsights, 
+            fitbitData = fitbitData, 
+            habitData = habitData,
+            bodyLoadHistory = bodyLoadHistory
+        )
         result.onSuccess { text ->
             preferences.deductBalance(0.05f)
             saveAiInsight(text, "Report")
@@ -405,7 +416,50 @@ class LogRepository @Inject constructor(
             if (insightsStr.isNotBlank()) Json.decodeFromString<List<AiInsight>>(insightsStr) else emptyList()
         } catch(e: Exception) { emptyList() }
         if (insights.isEmpty()) return ""
-        return insights.take(5).joinToString("\n") { "[${it.type}] ${it.text}" }
+        // Exclude full "Reports" from the context to prevent the AI from just repeating the previous PDF output.
+        // We want advice and recaps, but not a loop of previous reports.
+        return insights.filter { it.type != "Report" && it.type != "Professional Report" }
+            .take(5)
+            .joinToString("\n") { "[${it.type}] ${it.text}" }
+    }
+    
+    private suspend fun getBodyLoadHistorySummary(): String {
+        val insightsStr = preferences.aiInsights.first()
+        val insights: List<AiInsight> = try {
+            if (insightsStr.isNotBlank()) Json.decodeFromString<List<AiInsight>>(insightsStr) else emptyList()
+        } catch(e: Exception) { return "" }
+        
+        val bodyLoads = insights.filter { it.type == "BodyLoad" }
+            .filter { (System.currentTimeMillis() - it.timestamp) < (7L * 24 * 60 * 60 * 1000) }
+        
+        val scores = bodyLoads.mapNotNull { insight ->
+            if (insight.text.contains("Cup %: ")) {
+                insight.text.substringAfter("Cup %: ").substringBefore(" |").trim().toIntOrNull()
+            } else {
+                insight.text.substringAfter("Body Load: ").substringBefore(" |").trim().toIntOrNull()
+            }
+        }
+
+        val factors = bodyLoads.flatMap { insight ->
+            insight.text.substringAfter("Factors: ").split(", ").filter { it.isNotBlank() }
+        }
+        
+        val topFactors = factors.groupingBy { it }.eachCount().toList()
+            .sortedByDescending { it.second }.take(3).joinToString(", ") { it.first }
+
+        if (scores.isEmpty()) return "Trend data pending (requires daily analysis)."
+        
+        val min = scores.minOrNull() ?: 0
+        val max = scores.maxOrNull() ?: 0
+        val avg = scores.average().toInt()
+        
+        val commonStr = if (topFactors.isNotEmpty()) " Recurring Hindrances: $topFactors." else ""
+        
+        return if (scores.size == 1) {
+            "Recent Body Load Trend: Baseline set at $min/100.$commonStr"
+        } else {
+            "Recent Body Load Trend: Range $min/100 to $max/100 (Average: $avg/100).$commonStr"
+        }
     }
     
     suspend fun saveAiInsight(text: String, type: String) {
@@ -413,8 +467,8 @@ class LogRepository @Inject constructor(
         val insights: MutableList<AiInsight> = try {
             if (insightsStr.isNotBlank()) Json.decodeFromString<MutableList<AiInsight>>(insightsStr) else mutableListOf()
         } catch(e: Exception) { mutableListOf() }
-        insights.add(0, AiInsight(UUID.randomUUID().toString(), text, System.currentTimeMillis(), type))
-        preferences.setAiInsights(Json.encodeToString<List<AiInsight>>(insights.take(20))) // Keep last 20
+        insights.add(0, AiInsight(java.util.UUID.randomUUID().toString(), text, System.currentTimeMillis(), type))
+        preferences.setAiInsights(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(AiInsight.serializer()), insights.take(20))) // Keep last 20
     }
 
     suspend fun ingestDocumentFile(fileName: String, mimeType: String, base64Data: String): Result<Unit> {
@@ -425,13 +479,15 @@ class LogRepository @Inject constructor(
         return geminiService.processDocumentFile(mimeType, base64Data).fold(
             onSuccess = { newKnowledge ->
                 preferences.deductBalance(0.05f)
+                val timestamp = java.text.SimpleDateFormat("MMMM d, yyyy", java.util.Locale.US).format(java.util.Date())
+                val entry = "[ADDED $timestamp]\n$newKnowledge"
                 val currentKb = preferences.knowledgeBase.first()
-                val updatedKb = if (currentKb.isBlank()) newKnowledge else "$currentKb\n\n$newKnowledge"
+                val updatedKb = if (currentKb.isBlank()) entry else "$entry\n\n$currentKb"
                 preferences.setKnowledgeBase(updatedKb)
                 
                 // Track that we processed this file
                 val currentFiles = preferences.processedFiles.first()
-                val updatedFiles = if (currentFiles.isBlank()) fileName else "$currentFiles, $fileName"
+                val updatedFiles = if (currentFiles.isBlank()) fileName else "$fileName, $currentFiles"
                 preferences.setProcessedFiles(updatedFiles)
                 
                 Result.success(Unit)
@@ -519,7 +575,7 @@ class LogRepository @Inject constructor(
             summary.append("NOTE: Heart rate spikes ≥30 bpm above resting baseline are flagged as orthostatic events.\n")
             summary.append("Format: Date | Avg | Max | Resting Baseline (p10) | Events >100bpm | Largest Spike | Details\n")
             spikeHistory.take(30).forEach { d ->
-                summary.append("- ${d.date}: avg ${d.avg} bpm | max ${d.max} bpm | baseline ~${d.baseline} bpm")
+                summary.append("- ${formatReportDate(d.date)}: avg ${d.avg} bpm | max ${d.max} bpm | baseline ~${d.baseline} bpm")
                 summary.append(" | events: ${d.spikeCount} | largest spike: ${d.baseline} ➝ ${d.max} bpm (+${d.maxDelta})")
                 if (d.eventsList.isNotEmpty()) {
                     val details = d.eventsList.joinToString(", ") { "${it.durationMins}m peak @${it.peakBpm}" }
@@ -576,11 +632,27 @@ class LogRepository @Inject constructor(
             summary.append("- Avg events per day: ${"%,.1f".format(avgSpikes)} events >100 bpm\n")
             summary.append("- Avg max orthostatic jump: +${avgDelta} bpm\n")
             if (worstDay != null) {
-                summary.append("- Worst day: ${worstDay.date} — largest spike ${worstDay.baseline} ➝ ${worstDay.max} bpm (+${worstDay.maxDelta}), ${worstDay.spikeCount} events\n")
+                summary.append("- Worst day: ${formatReportDate(worstDay.date)} — largest spike ${worstDay.baseline} ➝ ${worstDay.max} bpm (+${worstDay.maxDelta}), ${worstDay.spikeCount} events\n")
             }
         }
 
         return summary.toString().trim()
+    }
+
+    private fun formatReportDate(dateStr: String): String {
+        return try {
+            val sdf1 = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+            val sdf2 = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US)
+            val sdfOut = java.text.SimpleDateFormat("MMMM d, yyyy", java.util.Locale.US)
+            val date = try {
+                sdf1.parse(dateStr)
+            } catch (e: Exception) {
+                sdf2.parse(dateStr)
+            }
+            sdfOut.format(date ?: return dateStr)
+        } catch (e: Exception) {
+            dateStr
+        }
     }
 
     /**
@@ -598,6 +670,7 @@ class LogRepository @Inject constructor(
         val kb = getEnrichedKnowledgeBase()
         val fitbitData = getFitbitDataSummary()
         val habitData = getHabitDataSummary()
+        val pastInsights = getPastInsightsText()
 
         return geminiService.getBodyLoad(
             recentEntries = recent,
@@ -605,9 +678,11 @@ class LogRepository @Inject constructor(
             userContext = context,
             knowledgeBase = kb,
             fitbitData = fitbitData,
-            habitData = habitData
-        ).onSuccess {
+            habitData = habitData,
+            pastInsights = pastInsights
+        ).onSuccess { res ->
             preferences.deductBalance(0.05f)
+            saveAiInsight("Body Load: ${res.score} | Factors: ${res.factors.joinToString(", ")}", "BodyLoad")
         }
     }
 }

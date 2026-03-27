@@ -21,7 +21,8 @@ import javax.inject.Singleton
 @Singleton
 class HabitRepository @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val api: JotApi
+    private val api: JotApi,
+    private val preferences: com.notel.notel.data.preferences.NotelPreferences
 ) {
     private val _habits = MutableStateFlow<List<HabitDtoModel>>(emptyList())
     val habits = _habits.asStateFlow()
@@ -63,6 +64,10 @@ class HabitRepository @Inject constructor(
             if (response.isSuccessful) {
                 val habit = response.body()?.habit ?: return Result.failure(Exception("No habit returned"))
                 _habits.value = _habits.value + habit
+                
+                // Auto-enable habit reminders for the first habit
+                preferences.autoEnableHabitReminders()
+                
                 Result.success(habit)
             } else {
                 val msg = "Failed to create habit (${response.code()}). Is the server deployed?"

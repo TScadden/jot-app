@@ -55,6 +55,7 @@ class SyncManager @Inject constructor(
                 SyncProfileRequest(
                     userContext = preferences.userContext.first(),
                     knowledgeBase = preferences.knowledgeBase.first(),
+                    professionalUpdates = preferences.professionalUpdates.first(),
                     processedFiles = preferences.processedFiles.first(),
                     loggedDays = preferences.loggedDays.first(),
                     age = preferences.userAge.first(),
@@ -88,6 +89,7 @@ class SyncManager @Inject constructor(
                 body.profile?.let { profile ->
                     profile.userContext?.let { preferences.setUserContext(it) }
                     profile.knowledgeBase?.let { preferences.setKnowledgeBase(it) }
+                    profile.professionalUpdates?.let { preferences.setProfessionalUpdates(it) }
                     profile.processedFiles?.let { preferences.setProcessedFiles(it) }
                     profile.loggedDays?.let { preferences.setLoggedDays(it) }
                     profile.age?.let { preferences.setUserAge(it) }

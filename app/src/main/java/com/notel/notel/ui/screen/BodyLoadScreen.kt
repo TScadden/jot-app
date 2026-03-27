@@ -62,7 +62,8 @@ fun BodyLoadScreen(
 
             BodyLoadCard(
                 score = state.score,
-                factors = state.factors.map { it to 0 }, // We don't have individual weights in simple AI yet
+                factors = state.factors.map { it to 0 },
+                advice = state.advice,
                 isLoading = state.isLoading,
                 onAnalyzeClick = { viewModel.refresh() }
             )

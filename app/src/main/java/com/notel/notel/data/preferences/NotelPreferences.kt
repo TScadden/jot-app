@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.first
 import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -57,6 +58,13 @@ class NotelPreferences @Inject constructor(
         val EVENT_COUNTERS = stringPreferencesKey("event_counters")
         val COUNTER_HISTORY = stringPreferencesKey("counter_history")
         val SETTINGS_TUTORIAL_SEEN = booleanPreferencesKey("settings_tutorial_seen")
+        val BODY_LOAD_REMINDERS_ENABLED = booleanPreferencesKey("body_load_reminders_enabled")
+        val DAILY_CUP_UPDATES_ENABLED = booleanPreferencesKey("daily_cup_updates_enabled")
+        val HR_SPIKE_ALERTS_ENABLED = booleanPreferencesKey("hr_spike_alerts_enabled")
+        val SPIKE_THRESHOLD = intPreferencesKey("spike_threshold")
+        val HABIT_REMINDER_ENABLED = booleanPreferencesKey("habit_reminder_enabled")
+        val HR_LAST_ALERT_TIME = longPreferencesKey("hr_last_alert_time")
+        val HABIT_REMINDER_USER_DISABLED = booleanPreferencesKey("habit_reminder_user_disabled")
     }
 
     val authToken: Flow<String> = context.dataStore.data.map { prefs ->
@@ -70,6 +78,13 @@ class NotelPreferences @Inject constructor(
     val eventCounters: Flow<String> = context.dataStore.data.map { it[EVENT_COUNTERS] ?: "[]" }
     val counterHistory: Flow<String> = context.dataStore.data.map { it[COUNTER_HISTORY] ?: "[]" }
     val settingsTutorialSeen: Flow<Boolean> = context.dataStore.data.map { it[SETTINGS_TUTORIAL_SEEN] ?: false }
+    val bodyLoadRemindersEnabled: Flow<Boolean> = context.dataStore.data.map { it[BODY_LOAD_REMINDERS_ENABLED] ?: true }
+    val dailyCupUpdatesEnabled: Flow<Boolean> = context.dataStore.data.map { it[DAILY_CUP_UPDATES_ENABLED] ?: true }
+    val hrSpikeAlertsEnabled: Flow<Boolean> = context.dataStore.data.map { it[HR_SPIKE_ALERTS_ENABLED] ?: false }
+    val spikeThreshold: Flow<Int> = context.dataStore.data.map { it[SPIKE_THRESHOLD] ?: 120 }
+    val habitReminderEnabled: Flow<Boolean> = context.dataStore.data.map { it[HABIT_REMINDER_ENABLED] ?: false }
+    val hrLastAlertTime: Flow<Long> = context.dataStore.data.map { it[HR_LAST_ALERT_TIME] ?: 0L }
+    val habitReminderUserDisabled: Flow<Boolean> = context.dataStore.data.map { it[HABIT_REMINDER_USER_DISABLED] ?: false }
 
     val onboardingComplete: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[ONBOARDING_COMPLETE] ?: false
@@ -306,5 +321,46 @@ class NotelPreferences @Inject constructor(
 
     suspend fun setSettingsTutorialSeen(seen: Boolean) {
         context.dataStore.edit { it[SETTINGS_TUTORIAL_SEEN] = seen }
+    }
+
+    suspend fun setBodyLoadRemindersEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[BODY_LOAD_REMINDERS_ENABLED] = enabled }
+    }
+
+    suspend fun setDailyCupUpdatesEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[DAILY_CUP_UPDATES_ENABLED] = enabled }
+    }
+
+    suspend fun setHrSpikeAlertsEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[HR_SPIKE_ALERTS_ENABLED] = enabled }
+    }
+
+    suspend fun setSpikeThreshold(threshold: Int) {
+        context.dataStore.edit { it[SPIKE_THRESHOLD] = threshold }
+    }
+
+    suspend fun setHabitReminderEnabled(enabled: Boolean) {
+        context.dataStore.edit {
+            it[HABIT_REMINDER_ENABLED] = enabled
+            // If the user manually turns it off, we mark it as explicitly disabled
+            if (!enabled) {
+                it[HABIT_REMINDER_USER_DISABLED] = true
+            } else {
+                it[HABIT_REMINDER_USER_DISABLED] = false
+            }
+        }
+    }
+
+    suspend fun autoEnableHabitReminders() {
+        context.dataStore.edit {
+            val userDisabled = it[HABIT_REMINDER_USER_DISABLED] ?: false
+            if (!userDisabled) {
+                it[HABIT_REMINDER_ENABLED] = true
+            }
+        }
+    }
+
+    suspend fun setHrLastAlertTime(time: Long) {
+        context.dataStore.edit { it[HR_LAST_ALERT_TIME] = time }
     }
 }

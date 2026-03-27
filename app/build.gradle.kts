@@ -64,6 +64,8 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
+    implementation(libs.hilt.work)
+    ksp(libs.hilt.compiler.androidx)
 
     // OkHttp & Retrofit (API)
     implementation(libs.okhttp)
@@ -85,6 +87,7 @@ dependencies {
 
     // Play Billing
     implementation(libs.google.billing)
+    implementation(libs.androidx.work.runtime.ktx)
 
     // Jetpack Glance (home screen widget)
     implementation("androidx.glance:glance-appwidget:1.1.1")
