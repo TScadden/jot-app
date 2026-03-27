@@ -132,18 +132,6 @@ fun BodyLoadCard(
                         close()
                     }
 
-                    // For the "depth" effect, let's also define the inner ellipse at the top
-                    val topRimPath = Path().apply {
-                        addOval(
-                            androidx.compose.ui.geometry.Rect(
-                                left = w * 0.15f,
-                                top = -h * 0.02f, // Lifted slightly
-                                right = w * 0.85f,
-                                bottom = h * 0.10f
-                            )
-                        )
-                    }
-
                     // ── Animated water fill ──
                     clipPath(cupPath) {
                         val fillY = h * (1f - animatedFill * 0.93f) // Keep it within the cup height
@@ -186,8 +174,6 @@ fun BodyLoadCard(
                         join = StrokeJoin.Round
                     )
                     drawPath(cupPath, color = fillColor.copy(alpha = outlineAlpha), style = outlineStyle)
-                    // Draw the top rim too
-                    drawPath(topRimPath, color = fillColor.copy(alpha = outlineAlpha * 0.4f), style = outlineStyle)
                 }
 
                 Spacer(Modifier.width(20.dp))
