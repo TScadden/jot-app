@@ -23,6 +23,7 @@ import com.notel.notel.data.local.entity.Category
 import com.notel.notel.data.local.entity.LogEntry
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.HistoryViewModel
+import com.notel.notel.ui.viewmodel.HabitViewModel
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
 import java.text.SimpleDateFormat
@@ -32,6 +33,7 @@ import java.util.*
 @Composable
 fun HistoryScreen(
     viewModel: HistoryViewModel = hiltViewModel(),
+    habitViewModel: HabitViewModel = hiltViewModel(),
     onBack: () -> Unit,
     onEntryClick: (Long) -> Unit
 ) {
@@ -39,9 +41,27 @@ fun HistoryScreen(
     val categories by viewModel.categories.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val categoryFilter by viewModel.categoryFilter.collectAsState()
+    var isRoutineTab by remember { mutableStateOf(false) }
+
+    val habits by habitViewModel.habits.collectAsState()
+    val isHabitsLoading by habitViewModel.isLoading.collectAsState()
+    val habitError by habitViewModel.error.collectAsState()
+    var newHabitText by remember { mutableStateOf("") }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(habitError) {
+        if (!habitError.isNullOrBlank()) {
+            snackbarHostState.showSnackbar(habitError!!)
+        }
+    }
+
+    val checkedCount = habits.count { habitViewModel.isCheckedToday(it) }
+    val totalCount = habits.size.coerceAtLeast(1)
+    val progressRatio = checkedCount.toFloat() / totalCount.toFloat()
 
     Scaffold(
         containerColor = NotelBackground,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("History", fontWeight = FontWeight.Bold, color = NotelTextPrimary) },
@@ -59,6 +79,115 @@ fun HistoryScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            // ── Two-Tab Toggle ─────────────────────────────────────────────
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(NotelSurfaceHigh),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                TextButton(
+                    onClick = { isRoutineTab = false },
+                    modifier = Modifier.weight(1f).background(if (!isRoutineTab) NotelPrimary else Color.Transparent),
+                    colors = ButtonDefaults.textButtonColors(contentColor = if (!isRoutineTab) Color.White else NotelTextSecondary)
+                ) {
+                    Text("📝 Notes", fontWeight = FontWeight.Bold)
+                }
+                TextButton(
+                    onClick = { isRoutineTab = true },
+                    modifier = Modifier.weight(1f).background(if (isRoutineTab) NotelPrimary else Color.Transparent),
+                    colors = ButtonDefaults.textButtonColors(contentColor = if (isRoutineTab) Color.White else NotelTextSecondary)
+                ) {
+                    Text("🗓️ Routine", fontWeight = FontWeight.Bold)
+                }
+            }
+
+            if (isRoutineTab) {
+                // ── Routine Tab (Live Data) ─────────────────────────────────
+                Column(Modifier.fillMaxSize().padding(16.dp)) {
+                    Text("Daily Progress", color = NotelTextSecondary, fontSize = 14.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(progress = progressRatio, color = NotelPrimary, modifier = Modifier.size(48.dp))
+                        Spacer(Modifier.width(16.dp))
+                        Text("$checkedCount of ${habits.size} Habits Completed 🔥", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.height(24.dp))
+                    Text("Your Daily Routine", color = NotelTextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Spacer(Modifier.height(6.dp))
+                    Text("Tracking actions here explicitly trains your Jot AI context window to actively cross-reference patterns in your daily unstructured Notes against your physical streaks.", color = NotelTextSecondary, fontSize = 12.sp, lineHeight = 16.sp)
+                    Spacer(Modifier.height(16.dp))
+
+                    if (isHabitsLoading && habits.isEmpty()) {
+                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = NotelPrimary, modifier = Modifier.size(32.dp))
+                        }
+                    } else {
+                        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            items(habits, key = { it.id }) { habit ->
+                                val isCheckedToday = habitViewModel.isCheckedToday(habit)
+                                val streak = habitViewModel.getStreak(habit)
+                                GlassyCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = NotelSurface) {
+                                    Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Checkbox(
+                                                checked = isCheckedToday,
+                                                onCheckedChange = { checked ->
+                                                    habitViewModel.toggleHabit(habit.id, checked)
+                                                },
+                                                colors = CheckboxDefaults.colors(checkedColor = NotelPrimary, uncheckedColor = NotelTextSecondary)
+                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                            Column {
+                                                Text(habit.title, color = NotelTextPrimary, fontWeight = FontWeight.Bold)
+                                                Text(habit.target_time ?: "Anytime", color = NotelTextSecondary, fontSize = 12.sp)
+                                            }
+                                        }
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("🔥 $streak", color = if (streak > 0) Color(0xFFE2A123) else NotelTextSecondary)
+                                            Spacer(Modifier.width(8.dp))
+                                            IconButton(onClick = { habitViewModel.deleteHabit(habit.id) }, modifier = Modifier.size(24.dp)) {
+                                                Icon(Icons.Default.Delete, "Delete", tint = NotelTextSecondary, modifier = Modifier.size(18.dp))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            item {
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = newHabitText,
+                                    onValueChange = { newHabitText = it },
+                                    placeholder = { Text("Add new habit...", color = NotelTextSecondary) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    trailingIcon = {
+                                        if (newHabitText.isNotBlank()) {
+                                            IconButton(onClick = {
+                                                habitViewModel.addHabit(newHabitText)
+                                                newHabitText = ""
+                                            }) {
+                                                Icon(Icons.Default.Add, "Add", tint = NotelPrimary)
+                                            }
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(16.dp),
+                                    singleLine = true,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = NotelPrimary,
+                                        unfocusedBorderColor = NotelSurfaceHigh,
+                                        focusedTextColor = NotelTextPrimary,
+                                        unfocusedTextColor = NotelTextPrimary,
+                                        cursorColor = NotelPrimary
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
             // ── Search Bar ───────────────────────────────────────────────
             OutlinedTextField(
                 value = searchQuery,
@@ -166,6 +295,7 @@ fun HistoryScreen(
                     }
                 }
             }
+            } // Close else block for isRoutineTab
         }
     }
 }

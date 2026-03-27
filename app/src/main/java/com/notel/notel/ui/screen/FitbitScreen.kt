@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
@@ -34,6 +35,12 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.FitbitViewModel
+import com.notel.notel.data.healthconnect.DailyHeartRateSummary
+import com.notel.notel.data.preferences.NotelPreferences
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.flow.first
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.decodeFromString
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,6 +50,13 @@ fun FitbitScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
+    var spikeHistory by remember { mutableStateOf<List<DailyHeartRateSummary>>(emptyList()) }
+
+    LaunchedEffect(Unit) {
+        val prefs = context.getSharedPreferences("notel_prefs", android.content.Context.MODE_PRIVATE)
+        // We read the DataStore through the ViewModel's preferences instead
+        // Spike data is cached in DataStore — read it reactively
+    }
     
     val healthConnectLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = viewModel.healthConnectManager.requestPermissionsActivityContract()
@@ -331,6 +345,206 @@ fun FitbitScreen(
                         }
                     }
                     
+                    // ── Orthostatic Spike Card ─────────────────────────────────
+                    val todaySpikes = remember(state.heartRateData) {
+                        val readings = state.heartRateData.map { it.second }
+                        if (readings.isEmpty()) listOf(0, 0, 0, 0)
+                        else {
+                            val sorted = readings.sorted()
+                            val max = sorted.last()
+                            val p10 = sorted[(sorted.size * 0.10).toInt().coerceAtLeast(0)]
+                            
+                            // Group UI count the same way we group events below
+                            val parser = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+                            var eventsCount = 0
+                            var inEvent = false
+                            var eventEndMs = 0L
+                            for ((tStr, bpm) in state.heartRateData) {
+                                val tMs = try { parser.parse(tStr)?.time ?: 0L } catch(e:Exception){0L}
+                                if (bpm >= 100) {
+                                    if (!inEvent || tMs > eventEndMs) {
+                                        eventsCount++
+                                        inEvent = true
+                                    }
+                                    eventEndMs = tMs + (5 * 60 * 1000)
+                                }
+                            }
+                            
+                            val delta = max - p10
+                            listOf(max, eventsCount, delta, p10)
+                        }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+                    val maxBpm = todaySpikes[0]
+                    val spikeCount = todaySpikes[1]
+                    val maxDelta = todaySpikes[2]
+                    val baseline = todaySpikes[3]
+                    val isHighBurden = spikeCount >= 5 || maxDelta >= 50
+                    val noData = maxBpm == 0
+                    var showSpikeDetails by remember { mutableStateOf(false) }
+                    
+                    GlassyCard(
+                        modifier = Modifier.fillMaxWidth().clickable { if (!noData) showSpikeDetails = !showSpikeDetails },
+                        color = if (isHighBurden) Color(0xFF2A1020) else NotelSurface
+                    ) {
+                        if (noData) {
+                            Column(modifier = Modifier.fillMaxWidth().padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "💓 Orthostatic Spikes",
+                                    color = NotelTextPrimary,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp
+                                )
+                                Spacer(Modifier.height(12.dp))
+                                Text(
+                                    "No intraday heart rate data available for today.",
+                                    color = NotelTextSecondary,
+                                    fontSize = 14.sp,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "Ensure your device is connected and syncing.",
+                                    color = NotelTextSecondary.copy(alpha = 0.7f),
+                                    fontSize = 11.sp,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                        } else {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        text = if (isHighBurden) "⚠️ Orthostatic Spikes" else "💓 Orthostatic Spikes",
+                                        color = if (isHighBurden) Color(0xFFFF6B6B) else NotelTextPrimary,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp
+                                    )
+                                    if (isHighBurden) {
+                                        Text(
+                                            "High Symptom Day",
+                                            color = Color(0xFFFF6B6B),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.height(12.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceEvenly
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(
+                                            "$maxBpm",
+                                            color = Color(0xFFE2A123),
+                                            fontSize = 28.sp,
+                                            fontWeight = FontWeight.Black
+                                        )
+                                        Text("Peak bpm", color = NotelTextSecondary, fontSize = 11.sp)
+                                    }
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(
+                                            "$spikeCount",
+                                            color = if (spikeCount >= 5) Color(0xFFFF6B6B) else NotelPrimary,
+                                            fontSize = 28.sp,
+                                            fontWeight = FontWeight.Black
+                                        )
+                                        Text("Spikes >100", color = NotelTextSecondary, fontSize = 11.sp)
+                                    }
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(
+                                            "$baseline ➝ $maxBpm",
+                                            color = if (maxDelta >= 30) Color(0xFFFF6B6B) else NotelTextPrimary,
+                                            fontSize = 24.sp,
+                                            fontWeight = FontWeight.Black
+                                        )
+                                        Text("Largest Spike", color = NotelTextSecondary, fontSize = 11.sp)
+                                    }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "Avg: ${state.averageHeartRate} bpm  ·  Spikes hidden in average",
+                                    color = NotelTextSecondary,
+                                    fontSize = 11.sp
+                                )
+                                if (maxDelta >= 30) {
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        "Significant orthostatic delta detected (+${maxDelta} bpm ≥ 30). This data is being sent to your AI.",
+                                        color = Color(0xFFFF6B6B).copy(alpha = 0.8f),
+                                        fontSize = 11.sp
+                                    )
+                                }
+                                
+                                if (showSpikeDetails && spikeCount > 0) {
+                                    Spacer(Modifier.height(16.dp))
+                                    HorizontalDivider(color = NotelTextSecondary.copy(alpha = 0.2f))
+                                    Spacer(Modifier.height(12.dp))
+                                    Text("Logged Spikes (≥100 bpm)", color = NotelTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                    Spacer(Modifier.height(8.dp))
+                                    
+                                    val parser = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+                                    val formatter = java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault())
+
+                                    class SpikeEvent(val startTime: String, var endTime: String, var peakBpm: Int, var durationMins: Int)
+                                    val events = mutableListOf<SpikeEvent>()
+                                    var currentEvent: SpikeEvent? = null
+                                    var currentEventEndMs = 0L
+
+                                    state.heartRateData.forEach { (timeStr, bpm) ->
+                                        val timeMs = try { parser.parse(timeStr)?.time ?: 0L } catch(e: Exception) { 0L }
+                                        if (timeMs != 0L) {
+                                            if (bpm >= 100) {
+                                                if (currentEvent == null || timeMs > currentEventEndMs) {
+                                                    currentEvent?.let { events.add(it) }
+                                                    currentEvent = SpikeEvent(timeStr, timeStr, bpm, 1)
+                                                } else {
+                                                    currentEvent!!.endTime = timeStr
+                                                    currentEvent!!.peakBpm = maxOf(currentEvent!!.peakBpm, bpm)
+                                                    val startMs = try { parser.parse(currentEvent!!.startTime)?.time ?: timeMs } catch(e:Exception){timeMs}
+                                                    currentEvent!!.durationMins = maxOf(1, ((timeMs - startMs) / 60000).toInt())
+                                                }
+                                                // Keep the event alive for up to 5 minutes after the last spike reading
+                                                currentEventEndMs = timeMs + (5 * 60 * 1000)
+                                            }
+                                        }
+                                    }
+                                    currentEvent?.let { events.add(it) }
+
+                                    events.forEach { event ->
+                                        val displayTime = try {
+                                            parser.parse(event.startTime)?.let { formatter.format(it) } ?: event.startTime
+                                        } catch (e: Exception) { event.startTime }
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column {
+                                                Text(displayTime, color = NotelTextSecondary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                                if (event.durationMins > 1) {
+                                                    Text("Duration: ~${event.durationMins}m", color = NotelTextSecondary.copy(alpha=0.7f), fontSize = 11.sp)
+                                                }
+                                            }
+                                            Text(
+                                                "${event.peakBpm} bpm peak", 
+                                                color = if (event.peakBpm >= 120) Color(0xFFFF6B6B) else Color(0xFFE2A123), 
+                                                fontWeight = FontWeight.Bold, 
+                                                fontSize = 14.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     if (state.connectedDevices.isNotEmpty()) {
                         Spacer(Modifier.height(24.dp))
                         GlassyCard(

@@ -86,6 +86,10 @@ dependencies {
     // Play Billing
     implementation(libs.google.billing)
 
+    // Jetpack Glance (home screen widget)
+    implementation("androidx.glance:glance-appwidget:1.1.1")
+    implementation("androidx.glance:glance-material3:1.1.1")
+
     // Tests
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

@@ -402,7 +402,13 @@ fun SettingsScreen(
                 if (eventCounters.isNotEmpty()) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         eventCounters.forEach { counter ->
-                            val daysRemaining = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(Math.abs(System.currentTimeMillis() - counter.targetDate))
+                            val todayStart = java.util.Calendar.getInstance().apply {
+                                set(java.util.Calendar.HOUR_OF_DAY, 0)
+                                set(java.util.Calendar.MINUTE, 0)
+                                set(java.util.Calendar.SECOND, 0)
+                                set(java.util.Calendar.MILLISECOND, 0)
+                            }.timeInMillis
+                            val daysRemaining = Math.max(0L, Math.abs(todayStart - counter.targetDate) / 86400000L)
                             val direction = if (counter.isUp) "since" else "until"
                             
                             GlassyCard(

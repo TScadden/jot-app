@@ -15,6 +15,31 @@ import java.time.Instant
 import java.time.ZonedDateTime
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class SpikeEventRecord(
+    val peakBpm: Int,
+    val durationMins: Int
+)
+
+/** Per-day heart rate summary exposing spike data for POTS-aware AI analysis. */
+@Serializable
+data class DailyHeartRateSummary(
+    val date: String,
+    val avg: Int,
+    val max: Int,
+    val min: Int,
+    val baseline: Int,      // 10th-percentile — true resting estimate
+    val spikeCount: Int,    // readings >= SPIKE_THRESHOLD_BPM
+    val maxDelta: Int,      // max - baseline (key POTS orthostatic delta)
+    val totalReadings: Int,
+    val eventsList: List<SpikeEventRecord> = emptyList()
+) {
+    companion object {
+        const val SPIKE_THRESHOLD_BPM = 100  // adjust if needed
+    }
+}
 
 class HealthConnectManager(private val context: Context) {
     val healthConnectClient by lazy { HealthConnectClient.getOrCreate(context) }
@@ -160,6 +185,90 @@ class HealthConnectManager(private val context: Context) {
             )
         } catch(e: Exception) {
             return null
+        }
+    }
+
+    /** Reads raw intraday HR samples for the past [days] days and computes
+     *  spike statistics per day — critical for POTS/MCAS users whose daily
+     *  averages appear normal while they experience large orthostatic spikes.
+     */
+    suspend fun readHistoricalHeartRateWithSpikes(days: Int = 30): List<DailyHeartRateSummary> {
+        try {
+            val zoneId = ZoneId.systemDefault()
+            val end = Instant.now()
+            val start = end.minus(days.toLong(), ChronoUnit.DAYS)
+
+            val response = healthConnectClient.readRecords(
+                ReadRecordsRequest(
+                    recordType = HeartRateRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(start, end)
+                )
+            )
+
+            // Group all samples by local date string mapping to time and bpm
+            val byDay = mutableMapOf<String, MutableList<Pair<Long, Int>>>()
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+            response.records.forEach { record ->
+                record.samples.forEach { sample ->
+                    val timestamp = sample.time.toEpochMilli()
+                    val dateStr = sdf.format(java.util.Date(timestamp))
+                    byDay.getOrPut(dateStr) { mutableListOf() }.add(timestamp to sample.beatsPerMinute.toInt())
+                }
+            }
+
+            val threshold = DailyHeartRateSummary.SPIKE_THRESHOLD_BPM
+            return byDay.map { (date, samples) ->
+                val sortedSamples = samples.sortedBy { it.first }
+                val bpmList = sortedSamples.map { it.second }.sorted()
+                val avg = bpmList.average().toInt()
+                val max = bpmList.last()
+                val min = bpmList.first()
+                val p10Index = (bpmList.size * 0.10).toInt().coerceAtLeast(0)
+                val baseline = bpmList[p10Index]
+                val maxDelta = max - baseline
+                
+                var eventCount = 0
+                val eventRecords = mutableListOf<SpikeEventRecord>()
+                var currentEventPeak = 0
+                var currentEventStart = 0L
+                var inEvent = false
+                var eventEndMs = 0L
+                for (s in sortedSamples) {
+                    if (s.second >= threshold) {
+                        if (!inEvent || s.first > eventEndMs) {
+                            if (inEvent) {
+                                val dur = maxOf(1, ((eventEndMs - 300000L - currentEventStart) / 60000L).toInt())
+                                eventRecords.add(SpikeEventRecord(currentEventPeak, dur))
+                            }
+                            eventCount++
+                            inEvent = true
+                            currentEventStart = s.first
+                            currentEventPeak = s.second
+                        } else {
+                            currentEventPeak = maxOf(currentEventPeak, s.second)
+                        }
+                        eventEndMs = s.first + 300000L
+                    }
+                }
+                if (inEvent) {
+                    val dur = maxOf(1, ((eventEndMs - 300000L - currentEventStart) / 60000L).toInt())
+                    eventRecords.add(SpikeEventRecord(currentEventPeak, dur))
+                }
+
+                DailyHeartRateSummary(
+                    date = date,
+                    avg = avg,
+                    max = max,
+                    min = min,
+                    baseline = baseline,
+                    spikeCount = eventCount,
+                    maxDelta = maxDelta,
+                    totalReadings = sortedSamples.size,
+                    eventsList = eventRecords
+                )
+            }.sortedByDescending { it.date }
+        } catch (e: Exception) {
+            return emptyList()
         }
     }
 

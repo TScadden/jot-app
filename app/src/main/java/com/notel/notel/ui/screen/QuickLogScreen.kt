@@ -224,19 +224,26 @@ fun QuickLogScreen(
                     // ── Event Counter Bubble ─────────────────────────────
                     val activeCounter = state.eventCounters.firstOrNull { it.isFavorite } ?: state.eventCounters.firstOrNull()
                     if (activeCounter != null) {
-                        val diffMillis = activeCounter.targetDate - System.currentTimeMillis()
+                        val todayStart = java.util.Calendar.getInstance().apply {
+                            set(java.util.Calendar.HOUR_OF_DAY, 0)
+                            set(java.util.Calendar.MINUTE, 0)
+                            set(java.util.Calendar.SECOND, 0)
+                            set(java.util.Calendar.MILLISECOND, 0)
+                        }.timeInMillis
+                        
+                        val diffMillis = activeCounter.targetDate - todayStart
                         var isUp = activeCounter.isUp
                         var finalDiffMillis = diffMillis
                         
                         if (!isUp && diffMillis < 0 && activeCounter.autoUp) {
                             isUp = true
-                            finalDiffMillis = System.currentTimeMillis() - activeCounter.targetDate
+                            finalDiffMillis = todayStart - activeCounter.targetDate
                         } else if (isUp) {
-                            finalDiffMillis = System.currentTimeMillis() - activeCounter.targetDate
+                            finalDiffMillis = todayStart - activeCounter.targetDate
                         }
                         
                         if (isUp || diffMillis >= 0) {
-                            val daysRemaining = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(Math.abs(finalDiffMillis))
+                            val daysRemaining = Math.max(0L, finalDiffMillis / 86400000L)
                             val direction = if (isUp) "since" else "until"
                             
                             var isCounterExpanded by remember { mutableStateOf(false) }

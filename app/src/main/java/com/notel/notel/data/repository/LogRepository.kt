@@ -8,6 +8,7 @@ import com.notel.notel.data.local.entity.Category
 import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.remote.GeminiService
 import com.notel.notel.data.healthconnect.HealthConnectManager
+import com.notel.notel.data.healthconnect.DailyHeartRateSummary
 import com.notel.notel.data.sync.SyncManager
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -442,9 +443,25 @@ class LogRepository @Inject constructor(
 
         val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
+        // ── Spike-aware heart rate (POTS/MCAS critical) ───────────────────────
+        val spikesJson = preferences.historicalHrSpikes.first()
+        val spikeHistory: List<DailyHeartRateSummary> = if (spikesJson.isNotBlank()) {
+            try { json.decodeFromString(spikesJson) } catch (e: Exception) { emptyList() }
+        } else if (hasHealthConnect) {
+            // Fresh fetch from Health Connect — raw samples, last 30 days
+            val fresh = healthConnectManager.readHistoricalHeartRateWithSpikes(30)
+            if (fresh.isNotEmpty()) {
+                preferences.setHistoricalHrSpikes(kotlinx.serialization.json.Json.encodeToString(
+                    kotlinx.serialization.serializer<List<DailyHeartRateSummary>>(), fresh
+                ))
+            }
+            fresh
+        } else emptyList()
+
+        // ── Plain daily averages (fallback / longer history) ─────────────────
         val heartJson = preferences.historicalHeartRate.first()
         val heartHist = try {
-            if (heartJson.isNotBlank()) json.decodeFromString<List<BiomarkerPoint>>(heartJson).map { it.date to it.value } 
+            if (heartJson.isNotBlank()) json.decodeFromString<List<BiomarkerPoint>>(heartJson).map { it.date to it.value }
             else if (hasHealthConnect) healthConnectManager.readHistoricalHeartRate(180).sortedByDescending { it.first }
             else emptyList()
         } catch (e: Exception) { emptyList() }
@@ -463,28 +480,44 @@ class LogRepository @Inject constructor(
             else emptyList()
         } catch (e: Exception) { emptyList() }
 
-        // Create a daily mapping
-        val dailyMap = mutableMapOf<String, Triple<Int?, Int?, Int?>>() // Date -> (HR, Sleep, Cal)
-        
-        heartHist.take(180).forEach { (date, value) -> 
+        val summary = StringBuilder()
+
+        // ── SECTION 1: Orthostatic spike report (most important for POTS) ────
+        if (spikeHistory.isNotEmpty()) {
+            summary.append("ORTHOSTATIC HEART RATE SPIKE REPORT (Last 30 Days):\n")
+            summary.append("NOTE: Heart rate spikes ≥30 bpm above resting baseline are flagged as orthostatic events.\n")
+            summary.append("Format: Date | Avg | Max | Resting Baseline (p10) | Events >100bpm | Largest Spike | Details\n")
+            spikeHistory.take(30).forEach { d ->
+                summary.append("- ${d.date}: avg ${d.avg} bpm | max ${d.max} bpm | baseline ~${d.baseline} bpm")
+                summary.append(" | events: ${d.spikeCount} | largest spike: ${d.baseline} ➝ ${d.max} bpm (+${d.maxDelta})")
+                if (d.eventsList.isNotEmpty()) {
+                    val details = d.eventsList.joinToString(", ") { "${it.durationMins}m peak @${it.peakBpm}" }
+                    summary.append(" | durations: [$details]")
+                }
+                if (d.maxDelta >= 30) summary.append(" ⚠️ Orthostatic threshold met")
+                summary.append("\n")
+            }
+            summary.append("\n")
+        }
+
+        // ── SECTION 2: Longer-range daily data (sleep, calories, avg HR) ─────
+        val dailyMap = mutableMapOf<String, Triple<Int?, Int?, Int?>>()
+        heartHist.take(180).forEach { (date, value) ->
             val current = dailyMap[date] ?: Triple(null, null, null)
             dailyMap[date] = current.copy(first = value)
         }
-        sleepHist.take(180).forEach { (date, value) -> 
+        sleepHist.take(180).forEach { (date, value) ->
             val current = dailyMap[date] ?: Triple(null, null, null)
             dailyMap[date] = current.copy(second = value)
         }
-        calHist.take(180).forEach { (date, value) -> 
+        calHist.take(180).forEach { (date, value) ->
             val current = dailyMap[date] ?: Triple(null, null, null)
             dailyMap[date] = current.copy(third = value)
         }
 
         val sortedDates = dailyMap.keys.sortedDescending()
-        
-        val summary = StringBuilder()
         summary.append("DAILY BIOMARKER HISTORY (Last 180 Days):\n")
-        summary.append("Format: Date | Heart Rate (avg/resting) | Sleep (minutes) | Calories Burned\n")
-        
+        summary.append("Format: Date | Avg HR | Sleep (minutes) | Calories Burned\n")
         sortedDates.forEach { date ->
             val (hr, sleep, cal) = dailyMap[date]!!
             summary.append("- $date: ")
@@ -496,13 +529,24 @@ class LogRepository @Inject constructor(
             summary.append("\n")
         }
 
-        // Add 3/6 month statistical landmarks to help the AI focus
         if (heartHist.isNotEmpty()) {
             val avgThis = heartHist.take(30).map { it.second }.let { if (it.isNotEmpty()) it.average().toInt() else 0 }
             val avg3 = heartHist.drop(30).take(60).map { it.second }.let { if (it.isNotEmpty()) it.average().toInt() else 0 }
             val avg6 = heartHist.drop(90).take(90).map { it.second }.let { if (it.isNotEmpty()) it.average().toInt() else 0 }
             summary.append("\nSTATISTICAL TREND SUMMARY:\n")
-            summary.append("- HR: Current Month Avg: $avgThis, 3 Months Ago: $avg3, 6 Months Ago: $avg6\n")
+            summary.append("- HR Avg: Current Month: $avgThis bpm, 3 Months Ago: $avg3 bpm, 6 Months Ago: $avg6 bpm\n")
+        }
+
+        if (spikeHistory.isNotEmpty()) {
+            val avgSpikes = spikeHistory.map { it.spikeCount }.average()
+            val avgDelta = spikeHistory.map { it.maxDelta }.average().toInt()
+            val worstDay = spikeHistory.maxByOrNull { it.maxDelta }
+            summary.append("\nORTHOSTATIC SPIKE SUMMARY (Last 30 Days):\n")
+            summary.append("- Avg events per day: ${"%,.1f".format(avgSpikes)} events >100 bpm\n")
+            summary.append("- Avg max orthostatic jump: +${avgDelta} bpm\n")
+            if (worstDay != null) {
+                summary.append("- Worst day: ${worstDay.date} — largest spike ${worstDay.baseline} ➝ ${worstDay.max} bpm (+${worstDay.maxDelta}), ${worstDay.spikeCount} events\n")
+            }
         }
 
         return summary.toString().trim()

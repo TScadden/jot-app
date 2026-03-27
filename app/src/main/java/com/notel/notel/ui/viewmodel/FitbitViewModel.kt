@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.notel.notel.data.healthconnect.HealthConnectManager
+import com.notel.notel.data.healthconnect.DailyHeartRateSummary
 import com.notel.notel.data.preferences.NotelPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
@@ -128,6 +129,7 @@ class FitbitViewModel @Inject constructor(
          val intradayHRDeferred = async { healthConnectManager.readHeartRateIntraday(_state.value.selectedHeartRateDate) }
          val avgHRDeferred = async { healthConnectManager.readHeartRateAverage(_state.value.selectedHeartRateDate) }
          val histHRDeferred = async { healthConnectManager.readHistoricalHeartRate() }
+         val histSpikeDeferred = async { healthConnectManager.readHistoricalHeartRateWithSpikes(30) }
          val histSleepDeferred = async { healthConnectManager.readHistoricalSleep() }
          val sleepDeferred = async { healthConnectManager.readSleepSession(_state.value.selectedSleepDate) }
          val activeCalDeferred = async { healthConnectManager.readActiveCalories(_state.value.selectedHeartRateDate) }
@@ -136,6 +138,7 @@ class FitbitViewModel @Inject constructor(
          val intradayHR = try { intradayHRDeferred.await() } catch(e: Exception) { emptyList() }
          val avgHR = try { avgHRDeferred.await() } catch(e: Exception) { 0 }
          val histHR = try { histHRDeferred.await() } catch(e: Exception) { emptyList() }
+         val histSpikes = try { histSpikeDeferred.await() } catch(e: Exception) { emptyList<DailyHeartRateSummary>() }
          val histSleep = try { histSleepDeferred.await() } catch(e: Exception) { emptyList() }
          val sleepData = try { sleepDeferred.await() } catch(e: Exception) { null }
          val activeCal = try { activeCalDeferred.await() } catch(e: Exception) { 0 }
@@ -172,6 +175,14 @@ class FitbitViewModel @Inject constructor(
          preferences.setHistoricalHeartRate(json.encodeToString(histHR.map { BiomarkerPoint(it.first, it.second) }))
          preferences.setHistoricalSleep(json.encodeToString(histSleep.map { BiomarkerPoint(it.first, it.second) }))
          preferences.setHistoricalCalories(json.encodeToString(histCal.map { BiomarkerPoint(it.first, it.second) }))
+         // Save POTS spike data separately
+         if (histSpikes.isNotEmpty()) {
+             preferences.setHistoricalHrSpikes(
+                 kotlinx.serialization.json.Json.encodeToString(
+                     kotlinx.serialization.serializer<List<DailyHeartRateSummary>>(), histSpikes
+                 )
+             )
+         }
     }
 
     private suspend fun fetchFromFitbitApi(token: String) {

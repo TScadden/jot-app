@@ -12,7 +12,8 @@ data class AiRequest(
     val userContext: String? = null,
     val knowledgeBase: String? = null,
     val pastInsights: String? = null,
-    val fitbitData: String? = null
+    val fitbitData: String? = null,
+    val habitData: String? = null
 )
 
 @Serializable
@@ -57,6 +58,19 @@ data class AuthRequest(
     val email: String,
     val password: String
 )
+
+@Serializable
+data class ForgotPasswordRequest(
+    val email: String
+)
+
+@Serializable
+data class GenericResponse(
+    val success: Boolean,
+    val message: String? = null,
+    val error: String? = null
+)
+
 
 @Serializable
 data class AuthResponse(
@@ -176,6 +190,40 @@ data class BillingVerificationResponse(
     val error: String? = null
 )
 
+// ── Habit Data Models ──────────────────────────────────────
+@Serializable
+data class HabitDtoModel(
+    val id: String,
+    val title: String,
+    val target_time: String? = "Anytime",
+    val created_at: String? = null,
+    val logs: List<String> = emptyList()
+)
+
+@Serializable
+data class HabitListResponse(
+    val habits: List<HabitDtoModel> = emptyList()
+)
+
+@Serializable
+data class CreateHabitRequest(
+    val title: String,
+    val target_time: String = "Anytime"
+)
+
+@Serializable
+data class CreateHabitResponse(
+    val habit: HabitDtoModel? = null,
+    val error: String? = null
+)
+
+@Serializable
+data class LogHabitRequest(
+    val habit_id: String,
+    val completed_date: String,
+    val is_completed: Boolean
+)
+
 interface JotApi {
 
     @POST("api/auth/register")
@@ -183,6 +231,9 @@ interface JotApi {
 
     @POST("api/auth/login")
     suspend fun login(@Body request: AuthRequest): Response<AuthResponse>
+
+    @POST("api/auth/forgot-password")
+    suspend fun forgotPassword(@Body request: ForgotPasswordRequest): Response<GenericResponse>
 
     @POST("api/ai/suggestions")
     suspend fun getSuggestions(@Body request: SuggestionsRequest): Response<AiResponse<List<String>>>
@@ -230,4 +281,17 @@ interface JotApi {
     // ── BILLING ──────────────────────────────────────────
     @POST("api/billing/verify")
     suspend fun verifyPurchase(@Body request: BillingVerificationRequest): Response<BillingVerificationResponse>
+
+    // ── HABITS ───────────────────────────────────────────
+    @retrofit2.http.GET("api/habits")
+    suspend fun getHabits(): Response<HabitListResponse>
+
+    @POST("api/habits")
+    suspend fun createHabit(@Body request: CreateHabitRequest): Response<CreateHabitResponse>
+
+    @retrofit2.http.DELETE("api/habits/{id}")
+    suspend fun deleteHabit(@retrofit2.http.Path("id") id: String): Response<GenericResponse>
+
+    @POST("api/habits/log")
+    suspend fun logHabit(@Body request: LogHabitRequest): Response<GenericResponse>
 }
