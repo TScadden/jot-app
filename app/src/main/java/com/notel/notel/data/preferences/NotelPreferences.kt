@@ -64,6 +64,7 @@ class NotelPreferences @Inject constructor(
         val SPIKE_THRESHOLD = intPreferencesKey("spike_threshold")
         val HR_DELTA_ENABLED = booleanPreferencesKey("hr_delta_enabled")
         val SPIKE_DELTA_THRESHOLD = intPreferencesKey("spike_delta_threshold")
+        val HR_LAST_POKED_BPM = intPreferencesKey("hr_last_poked_bpm")
         val HABIT_REMINDER_ENABLED = booleanPreferencesKey("habit_reminder_enabled")
         val HR_LAST_ALERT_TIME = longPreferencesKey("hr_last_alert_time")
         val HABIT_REMINDER_USER_DISABLED = booleanPreferencesKey("habit_reminder_user_disabled")
@@ -86,6 +87,7 @@ class NotelPreferences @Inject constructor(
     val spikeThreshold: Flow<Int> = context.dataStore.data.map { it[SPIKE_THRESHOLD] ?: 120 }
     val hrDeltaEnabled: Flow<Boolean> = context.dataStore.data.map { it[HR_DELTA_ENABLED] ?: false }
     val spikeDeltaThreshold: Flow<Int> = context.dataStore.data.map { it[SPIKE_DELTA_THRESHOLD] ?: 30 }
+    val hrLastPokedBpm: Flow<Int> = context.dataStore.data.map { it[HR_LAST_POKED_BPM] ?: 0 }
     val habitReminderEnabled: Flow<Boolean> = context.dataStore.data.map { it[HABIT_REMINDER_ENABLED] ?: false }
     val hrLastAlertTime: Flow<Long> = context.dataStore.data.map { it[HR_LAST_ALERT_TIME] ?: 0L }
     val habitReminderUserDisabled: Flow<Boolean> = context.dataStore.data.map { it[HABIT_REMINDER_USER_DISABLED] ?: false }
@@ -349,6 +351,10 @@ class NotelPreferences @Inject constructor(
 
     suspend fun setSpikeDeltaThreshold(threshold: Int) {
         context.dataStore.edit { it[SPIKE_DELTA_THRESHOLD] = threshold }
+    }
+
+    suspend fun setHrLastPokedBpm(bpm: Int) {
+        context.dataStore.edit { it[HR_LAST_POKED_BPM] = bpm }
     }
 
     suspend fun setHabitReminderEnabled(enabled: Boolean) {

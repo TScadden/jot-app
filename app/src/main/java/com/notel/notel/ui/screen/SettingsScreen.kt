@@ -1484,7 +1484,7 @@ fun SettingsScreen(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text("Delta Spike Alerts", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
                                     Text(
-                                        "Alert if BPM jumps more than ${if (tempDeltaThreshold.isNotBlank()) tempDeltaThreshold else "30"} points rapidly.",
+                                        "Alert if BPM jumps more than ${if (tempDeltaThreshold.isNotBlank()) tempDeltaThreshold else "30"} points relative to your last reading (checked every 2-5 mins).",
                                         color = NotelTextSecondary,
                                         fontSize = 11.sp
                                     )

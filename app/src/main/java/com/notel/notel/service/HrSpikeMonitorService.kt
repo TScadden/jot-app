@@ -93,18 +93,16 @@ class HrSpikeMonitorService : Service() {
         val staticThreshold = preferences.spikeThreshold.first()
         val deltaEnabled = preferences.hrDeltaEnabled.first()
         val deltaThreshold = preferences.spikeDeltaThreshold.first()
+        val previousBpm = preferences.hrLastPokedBpm.first()
 
         try {
             val intraday = healthConnectManager.readHeartRateIntraday("today")
             if (intraday.isNotEmpty()) {
-                val bpmList = intraday.map { it.second }.sorted()
                 val latestBpm = intraday.last().second
                 
-                // Calculate daily baseline (10th percentile) for delta comparison
-                val p10Index = (bpmList.size * 0.10).toInt().coerceAtLeast(0)
-                val baseline = bpmList[p10Index]
-                val currentDelta = latestBpm - baseline
-
+                // Track delta from LAST ping (as requested)
+                val currentDelta = if (previousBpm > 0) latestBpm - previousBpm else 0
+                
                 val isStaticSpike = latestBpm >= staticThreshold
                 val isDeltaSpike = deltaEnabled && currentDelta >= deltaThreshold
                 
@@ -114,11 +112,19 @@ class HrSpikeMonitorService : Service() {
                     
                     if (currentTime - lastAlertTime > 300000L) { // 5 minute cooldown
                         withContext(Dispatchers.Main) {
-                            NotificationHelper(this@HrSpikeMonitorService).showSpikeAlert(latestBpm, baseline, currentDelta)
+                            // If it's a jump, show the jump. If it just hit a high number, show the hit.
+                            if (isDeltaSpike && previousBpm > 0) {
+                                NotificationHelper(this@HrSpikeMonitorService).showSpikeAlert(latestBpm, previousBpm, currentDelta)
+                            } else {
+                                NotificationHelper(this@HrSpikeMonitorService).showSpikeAlert(latestBpm)
+                            }
                         }
                         preferences.setHrLastAlertTime(currentTime)
                     }
                 }
+                
+                // Update "Previous" BPM for the NEXT ping
+                preferences.setHrLastPokedBpm(latestBpm)
             }
         } catch (e: Exception) {
             e.printStackTrace()
