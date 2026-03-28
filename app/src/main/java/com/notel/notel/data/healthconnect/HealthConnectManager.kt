@@ -67,15 +67,31 @@ class HealthConnectManager(private val context: Context) {
         return granted.containsAll(permissions)
     }
 
+    private fun startOfDate(dateStr: String): Instant {
+        return try {
+            val zoneId = ZoneId.systemDefault()
+            if (dateStr == "today" || dateStr.isBlank()) {
+                ZonedDateTime.now(zoneId).truncatedTo(ChronoUnit.DAYS).toInstant()
+            } else {
+                val localDate = java.time.LocalDate.parse(dateStr)
+                localDate.atStartOfDay(zoneId).toInstant()
+            }
+        } catch (e: Exception) {
+            Instant.now().truncatedTo(ChronoUnit.DAYS)
+        }
+    }
+
+    private fun endOfDate(dateStr: String): Instant = startOfDate(dateStr).plus(1, ChronoUnit.DAYS)
+
     suspend fun readHeartRateIntraday(dateStr: String): List<Pair<String, Int>> {
         try {
-            val startOfDay = if (dateStr == "today" || dateStr.isBlank()) Instant.now().truncatedTo(ChronoUnit.DAYS) else Instant.parse("${dateStr}T00:00:00Z")
-            val endOfDay = startOfDay.plus(1, ChronoUnit.DAYS)
+            val start = startOfDate(dateStr)
+            val end = endOfDate(dateStr)
             
             val response = healthConnectClient.readRecords(
                 ReadRecordsRequest(
                     recordType = HeartRateRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(startOfDay, endOfDay)
+                    timeRangeFilter = TimeRangeFilter.between(start, end)
                 )
             )
             
@@ -101,13 +117,13 @@ class HealthConnectManager(private val context: Context) {
 
     suspend fun readActiveCalories(dateStr: String): Int {
          try {
-            val startOfDay = if (dateStr == "today" || dateStr.isBlank()) Instant.now().truncatedTo(ChronoUnit.DAYS) else Instant.parse("${dateStr}T00:00:00Z")
-            val endOfDay = startOfDay.plus(1, ChronoUnit.DAYS)
+            val start = startOfDate(dateStr)
+            val end = endOfDate(dateStr)
             
             val response = healthConnectClient.aggregate(
                 AggregateRequest(
                     metrics = setOf(TotalCaloriesBurnedRecord.ENERGY_TOTAL, ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL),
-                    timeRangeFilter = TimeRangeFilter.between(startOfDay, endOfDay)
+                    timeRangeFilter = TimeRangeFilter.between(start, end)
                 )
             )
             
@@ -119,9 +135,6 @@ class HealthConnectManager(private val context: Context) {
             return 0
         }
     }
-    
-    private fun startOfDate(dateStr: String): Instant? = try { if (dateStr=="today") Instant.now().truncatedTo(ChronoUnit.DAYS) else Instant.parse("${dateStr}T00:00:00Z") } catch(e: Exception) { null }
-    private fun endOfDate(dateStr: String): Instant? = startOfDate(dateStr)?.plus(1, ChronoUnit.DAYS)
 
 
     suspend fun readSleepSession(dateStr: String): SleepData? {

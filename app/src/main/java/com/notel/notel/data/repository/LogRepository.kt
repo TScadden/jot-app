@@ -302,8 +302,18 @@ class LogRepository @Inject constructor(
 
     suspend fun getMedicalReportSummary(allCategories: List<Category>): Result<String> {
         val recent = logEntryDao.getRecentEntriesAll(limit = 300)
+        
+        // Calculate the exact date range of the entries provided to the AI
+        val dateSpanText = if (recent.isNotEmpty()) {
+            val timestamps = recent.map { it.timestamp }
+            val minDate = java.text.SimpleDateFormat("MMMM d, yyyy", java.util.Locale.US).format(java.util.Date(timestamps.minOrNull() ?: System.currentTimeMillis()))
+            val maxDate = java.text.SimpleDateFormat("MMMM d, yyyy", java.util.Locale.US).format(java.util.Date(timestamps.maxOrNull() ?: System.currentTimeMillis()))
+            val totalDays = ((timestamps.maxOrNull() ?: System.currentTimeMillis()) - (timestamps.minOrNull() ?: System.currentTimeMillis())) / (24 * 60 * 60 * 1000L) + 1
+            "REPORT TIME SPAN: $minDate to $maxDate ($totalDays Days Total)"
+        } else "REPORT TIME SPAN: Empty"
+
         val catMap = allCategories.associate { it.id to it.name }
-        val context = getEnrichedUserContext()
+        val context = "${getEnrichedUserContext()}\n\n$dateSpanText"
         val kb = getEnrichedKnowledgeBase()
         val pastInsights = getPastInsightsText()
         val hasHealthConnect = healthConnectManager.hasAllPermissions()
@@ -620,8 +630,22 @@ class LogRepository @Inject constructor(
             val avgThis = heartHist.take(30).map { it.second }.let { if (it.isNotEmpty()) it.average().toInt() else 0 }
             val avg3 = heartHist.drop(30).take(60).map { it.second }.let { if (it.isNotEmpty()) it.average().toInt() else 0 }
             val avg6 = heartHist.drop(90).take(90).map { it.second }.let { if (it.isNotEmpty()) it.average().toInt() else 0 }
+            
+            // Group by month for explicit monthly ranges to prevent AI "crunching" errors (like concatenating min/max)
+            val monthlyRanges = heartHist.groupBy { it.first.substring(0, 7) } // YYYY-MM
+                .mapValues { (_, values) -> 
+                    val bpms = values.map { it.second }
+                    "${bpms.minOrNull()} to ${bpms.maxOrNull()}"
+                }
+                .entries.sortedByDescending { it.key }
+                .take(6)
+
             summary.append("\nSTATISTICAL TREND SUMMARY:\n")
             summary.append("- HR Avg: Current Month: $avgThis bpm, 3 Months Ago: $avg3 bpm, 6 Months Ago: $avg6 bpm\n")
+            summary.append("- Monthly Ranges (Min to Max):\n")
+            monthlyRanges.forEach { (month, range) ->
+                summary.append("  * $month: $range bpm\n")
+            }
         }
 
         if (spikeHistory.isNotEmpty()) {
