@@ -77,6 +77,8 @@ fun SettingsScreen(
     val dailyCupUpdatesEnabled by viewModel.dailyCupUpdatesEnabled.collectAsState()
     val hrSpikeAlertsEnabled by viewModel.hrSpikeAlertsEnabled.collectAsState()
     val spikeThreshold by viewModel.spikeThreshold.collectAsState()
+    val hrDeltaEnabled by viewModel.hrDeltaEnabled.collectAsState()
+    val spikeDeltaThreshold by viewModel.spikeDeltaThreshold.collectAsState()
     val habitReminderEnabled by viewModel.habitReminderEnabled.collectAsState()
     val tutorialSeen by viewModel.settingsTutorialSeen.collectAsState()  // null = loading, false = not seen, true = seen
 
@@ -1460,6 +1462,75 @@ fun SettingsScreen(
                                         singleLine = true,
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                         suffix = { Text("BPM", color = NotelTextSecondary, fontSize = 12.sp) },
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = NotelPrimary,
+                                            unfocusedBorderColor = NotelSurfaceHigh,
+                                            focusedTextColor = NotelTextPrimary,
+                                            unfocusedTextColor = NotelTextPrimary,
+                                            focusedContainerColor = NotelSurfaceHigh.copy(alpha = 0.5f),
+                                            unfocusedContainerColor = NotelSurfaceHigh.copy(alpha = 0.3f)
+                                        ),
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                                }
+                            }
+
+                            // ── Delta Spike Setting ──
+                            val initialDelta = remember { spikeDeltaThreshold }
+                            var tempDeltaThreshold by remember { mutableStateOf(initialDelta.toString()) }
+
+                            Spacer(Modifier.height(24.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Delta Spike Alerts", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        "Alert if BPM jumps more than ${if (tempDeltaThreshold.isNotBlank()) tempDeltaThreshold else "30"} points rapidly.",
+                                        color = NotelTextSecondary,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                                Switch(
+                                    checked = hrDeltaEnabled,
+                                    onCheckedChange = { 
+                                        viewModel.setHrDeltaEnabled(it)
+                                        if (it && (tempDeltaThreshold.isBlank() || (tempDeltaThreshold.toIntOrNull() ?: 0) < 5)) {
+                                            tempDeltaThreshold = "30"
+                                            viewModel.setSpikeDeltaThreshold(30)
+                                        }
+                                    },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = NotelPrimary,
+                                        checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
+                                        uncheckedThumbColor = NotelTextSecondary,
+                                        uncheckedTrackColor = NotelSurfaceHigh
+                                    )
+                                )
+                            }
+                            
+                            if (hrDeltaEnabled) {
+                                Spacer(Modifier.height(16.dp))
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Jump Threshold", color = NotelTextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                    OutlinedTextField(
+                                        value = tempDeltaThreshold,
+                                        onValueChange = { newVal ->
+                                            val filtered = newVal.filter { it.isDigit() }
+                                            if (filtered.length <= 2) {
+                                                tempDeltaThreshold = filtered
+                                                val intVal = filtered.toIntOrNull()
+                                                if (intVal != null && intVal in 5..99) {
+                                                    viewModel.setSpikeDeltaThreshold(intVal)
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier.width(130.dp),
+                                        singleLine = true,
+                                        prefix = { Text("+", color = NotelPrimary) },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                         colors = OutlinedTextFieldDefaults.colors(
                                             focusedBorderColor = NotelPrimary,
                                             unfocusedBorderColor = NotelSurfaceHigh,

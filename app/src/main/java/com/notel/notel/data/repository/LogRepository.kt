@@ -599,22 +599,23 @@ class LogRepository @Inject constructor(
 
         // ── SECTION 2: Longer-range daily data (sleep, calories, avg HR) ─────
         val dailyMap = mutableMapOf<String, Triple<Int?, Int?, Int?>>()
-        heartHist.take(180).forEach { (date, value) ->
+        val cutOffDate = java.time.LocalDate.now().minusDays(31).toString()
+        heartHist.filter { it.first >= cutOffDate }.take(31).forEach { (date, value) ->
             val current = dailyMap[date] ?: Triple(null, null, null)
             dailyMap[date] = current.copy(first = value)
         }
-        sleepHist.take(180).forEach { (date, value) ->
+        sleepHist.filter { it.first >= cutOffDate }.take(31).forEach { (date, value) ->
             val current = dailyMap[date] ?: Triple(null, null, null)
             dailyMap[date] = current.copy(second = value)
         }
-        calHist.take(180).forEach { (date, value) ->
+        calHist.filter { it.first >= cutOffDate }.take(31).forEach { (date, value) ->
             val current = dailyMap[date] ?: Triple(null, null, null)
             dailyMap[date] = current.copy(third = value)
         }
 
         val sortedDates = dailyMap.keys.sortedDescending()
-        summary.append("DAILY BIOMARKER HISTORY (Last 180 Days):\n")
-        summary.append("Format: Date | Avg HR | Sleep (minutes) | Calories Burned\n")
+        summary.append("DETAILED DAILY HISTORY (Last 30 Days):\n")
+        summary.append("Format: Date | Avg HR | Sleep | Calories\n")
         sortedDates.forEach { date ->
             val (hr, sleep, cal) = dailyMap[date]!!
             summary.append("- $date: ")
@@ -631,20 +632,20 @@ class LogRepository @Inject constructor(
             val avg3 = heartHist.drop(30).take(60).map { it.second }.let { if (it.isNotEmpty()) it.average().toInt() else 0 }
             val avg6 = heartHist.drop(90).take(90).map { it.second }.let { if (it.isNotEmpty()) it.average().toInt() else 0 }
             
-            // Group by month for explicit monthly ranges to prevent AI "crunching" errors (like concatenating min/max)
+            // Group by month for explicit monthly ranges to prevent AI "crunching" errors
             val monthlyRanges = heartHist.groupBy { it.first.substring(0, 7) } // YYYY-MM
                 .mapValues { (_, values) -> 
                     val bpms = values.map { it.second }
-                    "${bpms.minOrNull()} to ${bpms.maxOrNull()}"
+                    "Min ${bpms.minOrNull()} bpm - Max ${bpms.maxOrNull()} bpm"
                 }
                 .entries.sortedByDescending { it.key }
                 .take(6)
 
-            summary.append("\nSTATISTICAL TREND SUMMARY:\n")
-            summary.append("- HR Avg: Current Month: $avgThis bpm, 3 Months Ago: $avg3 bpm, 6 Months Ago: $avg6 bpm\n")
-            summary.append("- Monthly Ranges (Min to Max):\n")
+            summary.append("\nOVERALL STATISTICAL TRENDS (Last 6 Months):\n")
+            summary.append("- Avg Monthly HR: Current: $avgThis bpm | 3rd Mo: $avg3 bpm | 6th Mo: $avg6 bpm\n")
+            summary.append("- Monthly Intensity Ranges:\n")
             monthlyRanges.forEach { (month, range) ->
-                summary.append("  * $month: $range bpm\n")
+                summary.append("  * $month: $range\n")
             }
         }
 

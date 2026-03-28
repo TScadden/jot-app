@@ -101,6 +101,12 @@ class SettingsViewModel @Inject constructor(
     val spikeThreshold = preferences.spikeThreshold
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 120)
 
+    val hrDeltaEnabled = preferences.hrDeltaEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val spikeDeltaThreshold = preferences.spikeDeltaThreshold
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 30)
+
     val habitReminderEnabled = preferences.habitReminderEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
@@ -350,6 +356,20 @@ class SettingsViewModel @Inject constructor(
     fun setSpikeThreshold(threshold: Int) {
         viewModelScope.launch {
             preferences.setSpikeThreshold(threshold)
+            syncManager.syncAllData()
+        }
+    }
+
+    fun setHrDeltaEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferences.setHrDeltaEnabled(enabled)
+            syncManager.syncAllData()
+        }
+    }
+
+    fun setSpikeDeltaThreshold(threshold: Int) {
+        viewModelScope.launch {
+            preferences.setSpikeDeltaThreshold(threshold)
             syncManager.syncAllData()
         }
     }

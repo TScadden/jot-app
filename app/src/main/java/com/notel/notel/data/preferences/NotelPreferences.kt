@@ -62,6 +62,8 @@ class NotelPreferences @Inject constructor(
         val DAILY_CUP_UPDATES_ENABLED = booleanPreferencesKey("daily_cup_updates_enabled")
         val HR_SPIKE_ALERTS_ENABLED = booleanPreferencesKey("hr_spike_alerts_enabled")
         val SPIKE_THRESHOLD = intPreferencesKey("spike_threshold")
+        val HR_DELTA_ENABLED = booleanPreferencesKey("hr_delta_enabled")
+        val SPIKE_DELTA_THRESHOLD = intPreferencesKey("spike_delta_threshold")
         val HABIT_REMINDER_ENABLED = booleanPreferencesKey("habit_reminder_enabled")
         val HR_LAST_ALERT_TIME = longPreferencesKey("hr_last_alert_time")
         val HABIT_REMINDER_USER_DISABLED = booleanPreferencesKey("habit_reminder_user_disabled")
@@ -82,6 +84,8 @@ class NotelPreferences @Inject constructor(
     val dailyCupUpdatesEnabled: Flow<Boolean> = context.dataStore.data.map { it[DAILY_CUP_UPDATES_ENABLED] ?: true }
     val hrSpikeAlertsEnabled: Flow<Boolean> = context.dataStore.data.map { it[HR_SPIKE_ALERTS_ENABLED] ?: false }
     val spikeThreshold: Flow<Int> = context.dataStore.data.map { it[SPIKE_THRESHOLD] ?: 120 }
+    val hrDeltaEnabled: Flow<Boolean> = context.dataStore.data.map { it[HR_DELTA_ENABLED] ?: false }
+    val spikeDeltaThreshold: Flow<Int> = context.dataStore.data.map { it[SPIKE_DELTA_THRESHOLD] ?: 30 }
     val habitReminderEnabled: Flow<Boolean> = context.dataStore.data.map { it[HABIT_REMINDER_ENABLED] ?: false }
     val hrLastAlertTime: Flow<Long> = context.dataStore.data.map { it[HR_LAST_ALERT_TIME] ?: 0L }
     val habitReminderUserDisabled: Flow<Boolean> = context.dataStore.data.map { it[HABIT_REMINDER_USER_DISABLED] ?: false }
@@ -337,6 +341,14 @@ class NotelPreferences @Inject constructor(
 
     suspend fun setSpikeThreshold(threshold: Int) {
         context.dataStore.edit { it[SPIKE_THRESHOLD] = threshold }
+    }
+
+    suspend fun setHrDeltaEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[HR_DELTA_ENABLED] = enabled }
+    }
+
+    suspend fun setSpikeDeltaThreshold(threshold: Int) {
+        context.dataStore.edit { it[SPIKE_DELTA_THRESHOLD] = threshold }
     }
 
     suspend fun setHabitReminderEnabled(enabled: Boolean) {

@@ -76,7 +76,7 @@ class HrSpikeMonitorService : Service() {
 
                 val lastAlertTime = preferences.hrLastAlertTime.first()
                 val currentTime = System.currentTimeMillis()
-                val cooldownRemaining = 600000L - (currentTime - lastAlertTime)
+                val cooldownRemaining = 300000L - (currentTime - lastAlertTime)
 
                 if (cooldownRemaining > 0) {
                     // We are in a 10-minute cooldown, so wait the remaining time
@@ -90,20 +90,35 @@ class HrSpikeMonitorService : Service() {
     }
 
     private suspend fun checkSpikes() {
-        val threshold = preferences.spikeThreshold.first()
+        val staticThreshold = preferences.spikeThreshold.first()
+        val deltaEnabled = preferences.hrDeltaEnabled.first()
+        val deltaThreshold = preferences.spikeDeltaThreshold.first()
+
         try {
             val intraday = healthConnectManager.readHeartRateIntraday("today")
             if (intraday.isNotEmpty()) {
-                val latest = intraday.last()
-                val bpm = latest.second
+                val bpmList = intraday.map { it.second }.sorted()
+                val latestBpm = intraday.last().second
                 
-                if (bpm >= threshold) {
+                // Calculate daily baseline (10th percentile) for delta comparison
+                val p10Index = (bpmList.size * 0.10).toInt().coerceAtLeast(0)
+                val baseline = bpmList[p10Index]
+                val currentDelta = latestBpm - baseline
+
+                val isStaticSpike = latestBpm >= staticThreshold
+                val isDeltaSpike = deltaEnabled && currentDelta >= deltaThreshold
+                
+                if (isStaticSpike || isDeltaSpike) {
                     val lastAlertTime = preferences.hrLastAlertTime.first()
                     val currentTime = System.currentTimeMillis()
                     
-                    if (currentTime - lastAlertTime > 600000L) { // 10 minute cooldown
+                    if (currentTime - lastAlertTime > 300000L) { // 5 minute cooldown
                         withContext(Dispatchers.Main) {
-                            NotificationHelper(this@HrSpikeMonitorService).showSpikeAlert(bpm)
+                            val alertReason = if (isDeltaSpike && !isStaticSpike) 
+                                "BPM jumped +$currentDelta rapidly" 
+                            else "Threshold Hit: $latestBpm BPM"
+                            
+                            NotificationHelper(this@HrSpikeMonitorService).showSpikeAlert(latestBpm)
                         }
                         preferences.setHrLastAlertTime(currentTime)
                     }
