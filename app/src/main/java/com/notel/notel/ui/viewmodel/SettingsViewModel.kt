@@ -518,9 +518,10 @@ class SettingsViewModel @Inject constructor(
     fun testSpikeNotification(context: android.content.Context) {
         viewModelScope.launch {
             val intraday = healthConnectManager.readHeartRateIntraday("today")
-            val latest = intraday.lastOrNull()?.second ?: 72 // Fallback to 72 if no readings
+            val latest = intraday.lastOrNull()?.second ?: 102
             val helper = com.notel.notel.util.NotificationHelper(context)
-            helper.showSpikeAlert(latest)
+            // Simulating a +30 jump for the test
+            helper.showSpikeAlert(latest, latest - 30, 30)
         }
     }
 

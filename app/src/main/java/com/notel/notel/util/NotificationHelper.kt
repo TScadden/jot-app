@@ -84,7 +84,7 @@ class NotificationHelper(private val context: Context) {
         manager.notify(NOTIFICATION_ID, notification)
     }
 
-    fun showSpikeAlert(bpm: Int) {
+    fun showSpikeAlert(bpm: Int, baseline: Int? = null, delta: Int? = null) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -99,10 +99,16 @@ class NotificationHelper(private val context: Context) {
         val intent = Intent(context, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE)
 
+        val contentText = if (baseline != null && delta != null) {
+            "BPM jumped from $baseline to $bpm (+${delta}). Take a break."
+        } else {
+            "You hit your threshold ($bpm BPM). You should take a break."
+        }
+
         val notification = NotificationCompat.Builder(context, SPIKE_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_noti_j)
-            .setContentTitle("Spike Threshold Hit! ⚠️")
-            .setContentText("You hit your threshold. You should take a break.")
+            .setContentTitle("Heart Rate Spike ⚠️")
+            .setContentText(contentText)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)

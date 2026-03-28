@@ -114,11 +114,7 @@ class HrSpikeMonitorService : Service() {
                     
                     if (currentTime - lastAlertTime > 300000L) { // 5 minute cooldown
                         withContext(Dispatchers.Main) {
-                            val alertReason = if (isDeltaSpike && !isStaticSpike) 
-                                "BPM jumped +$currentDelta rapidly" 
-                            else "Threshold Hit: $latestBpm BPM"
-                            
-                            NotificationHelper(this@HrSpikeMonitorService).showSpikeAlert(latestBpm)
+                            NotificationHelper(this@HrSpikeMonitorService).showSpikeAlert(latestBpm, baseline, currentDelta)
                         }
                         preferences.setHrLastAlertTime(currentTime)
                     }
