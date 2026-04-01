@@ -66,7 +66,8 @@ class QuickLogViewModel @Inject constructor(
     private val logRepository: LogRepository,
     private val categoryRepository: CategoryRepository,
     private val preferences: NotelPreferences,
-    private val habitRepository: HabitRepository
+    private val habitRepository: HabitRepository,
+    private val syncManager: com.notel.notel.data.sync.SyncManager
 ) : ViewModel() {
     
     private val dismissedActions = mutableSetOf<String>()
