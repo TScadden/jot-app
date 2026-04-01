@@ -61,6 +61,12 @@ class SettingsViewModel @Inject constructor(
     private val _healthConnectConnected = MutableStateFlow(false)
     val healthConnectConnected = _healthConnectConnected.asStateFlow()
 
+    private val _isSyncing = MutableStateFlow(false)
+    val isSyncing = _isSyncing.asStateFlow()
+
+    private val _syncError = MutableSharedFlow<String>()
+    val syncError = _syncError.asSharedFlow()
+
     init {
         checkHealthConnectStatus()
     }
@@ -543,6 +549,19 @@ class SettingsViewModel @Inject constructor(
             
             val updated = current.filter { it.id != id }
             preferences.setAiInsights(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(AiInsight.serializer()), updated))
+        }
+    }
+
+    fun recoverAccountData() {
+        viewModelScope.launch {
+            _isSyncing.value = true
+            try {
+                syncManager.pullAllData()
+            } catch (e: Exception) {
+                _syncError.emit(e.message ?: "Failed to recover data")
+            } finally {
+                _isSyncing.value = false
+            }
         }
     }
 }

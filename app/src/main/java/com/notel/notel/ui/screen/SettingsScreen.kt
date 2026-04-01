@@ -1603,46 +1603,69 @@ fun SettingsScreen(
                 Spacer(Modifier.height(24.dp))
             }
 
+            val isSyncing by viewModel.isSyncing.collectAsState()
+            
+            LaunchedEffect(Unit) {
+                viewModel.syncError.collect { msg ->
+                    snackbarHostState.showSnackbar(msg)
+                }
+            }
+
             if (currentMenu == SettingsMenu.MAIN) {
-            Text("About", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(8.dp))
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = NotelSurface)
-            ) {
-                ListItem(
-                    headlineContent = { Text("Jot", color = NotelTextPrimary) },
-                    supportingContent = { Text("Version 1.0", color = NotelTextSecondary) },
-                    leadingContent = { Icon(Icons.Default.Info, null, tint = NotelPrimary) },
-                    colors = ListItemDefaults.colors(containerColor = NotelSurface)
-                )
-            }
+                Text("Account Data", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                
+                GlassyButton(
+                    onClick = { viewModel.recoverAccountData() },
+                    modifier = Modifier.fillMaxWidth(),
+                    containerColor = NotelSurfaceHigh,
+                    enabled = !isSyncing
+                ) {
+                    if (isSyncing) {
+                        CircularProgressIndicator(color = NotelPrimary, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Default.CloudSync, "Sync Data", tint = NotelPrimary)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Sync & Recover Data", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
 
-            Spacer(Modifier.height(32.dp))
+                GlassyButton(
+                    onClick = { showRestartDialog = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    containerColor = NotelSurfaceHigh
+                ) {
+                    Icon(Icons.Default.RestartAlt, "Reset Account", tint = Color.Red.copy(alpha = 0.7f))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Reset Account Status", color = NotelTextPrimary)
+                }
+                Spacer(Modifier.height(16.dp))
 
-
-            Spacer(Modifier.height(16.dp))
-
-            GlassyButton(
-                onClick = { showRestartDialog = true },
-                modifier = Modifier.fillMaxWidth(),
-                containerColor = NotelSurfaceHigh
-            ) {
-                Icon(Icons.Default.RestartAlt, "Reset Account", tint = Color.Red)
-                Spacer(Modifier.width(8.dp))
-                Text("Reset Account", color = Color.Red, fontWeight = FontWeight.Bold)
-            }
-            Spacer(Modifier.height(16.dp))
-
-            GlassyButton(
-                onClick = { showLogoutDialog = true },
-                modifier = Modifier.fillMaxWidth(),
-                containerColor = NotelSurfaceHigh
-            ) {
-                Icon(Icons.Default.Logout, "Logout", tint = NotelPrimary)
-                Spacer(Modifier.width(8.dp))
-                Text("Logout / Switch Account", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
-            }
+                GlassyButton(
+                    onClick = { showLogoutDialog = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    containerColor = NotelSurfaceHigh
+                ) {
+                    Icon(Icons.Default.Logout, "Logout", tint = NotelPrimary)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Logout / Switch Account", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
+                }
+                
+                Spacer(Modifier.height(32.dp))
+                Text("About", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = NotelSurface)
+                ) {
+                    ListItem(
+                        headlineContent = { Text("Jot", color = NotelTextPrimary) },
+                        supportingContent = { Text("Version 1.0", color = NotelTextSecondary) },
+                        leadingContent = { Icon(Icons.Default.Info, null, tint = NotelPrimary) },
+                        colors = ListItemDefaults.colors(containerColor = NotelSurface)
+                    )
+                }
             
 
             if (showLogoutDialog) {

@@ -91,7 +91,13 @@ class QuickLogViewModel @Inject constructor(
                     val selected = state.selectedCategory ?: cats.firstOrNull()
                     state.copy(categories = cats, selectedCategory = selected)
                 }
-                calculateSmartRanking()
+                
+                // If local categories are empty but we are logged in, try to recover data from server
+                if (cats.isEmpty() && preferences.loggedIn.first()) {
+                    syncManager.pullAllData()
+                } else {
+                    calculateSmartRanking()
+                }
             }
         }
         viewModelScope.launch {
