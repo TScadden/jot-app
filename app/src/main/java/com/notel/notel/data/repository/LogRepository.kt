@@ -35,12 +35,13 @@ class LogRepository @Inject constructor(
     private val preferences: NotelPreferences,
     private val healthConnectManager: HealthConnectManager,
     private val syncManager: SyncManager,
-    private val habitRepository: HabitRepository
+    private val habitRepository: HabitRepository,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) {
     private val _isGeneratingReport = MutableStateFlow(false)
     val isGeneratingReport = _isGeneratingReport.asStateFlow()
 
-    private val _generatedReport = MutableStateFlow<File?>(null)
+    private val _generatedReport = MutableStateFlow<java.io.File?>(null)
     val generatedReport = _generatedReport.asStateFlow()
 
     private val _isGeneratingWeeklyRecap = MutableStateFlow(false)
@@ -76,6 +77,11 @@ class LogRepository @Inject constructor(
                 val entries = logEntryDao.getAllEntries().first()
                 val file = reportGenerator.generateReport(entries, allCategories)
                 _generatedReport.value = file
+                
+                // Show notification if it's ready, so they can share it even if backgrounded
+                file?.let {
+                    com.notel.notel.util.NotificationHelper(context).showReportReady(it)
+                }
             } catch (e: Exception) {
                 _processError.value = "Failed to generate report: ${e.message}"
             } finally {
@@ -252,11 +258,26 @@ class LogRepository @Inject constructor(
     private suspend fun getHabitDataSummary(): String {
         val habits = habitRepository.habits.first()
         if (habits.isEmpty()) return ""
-        val today = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
+        val today = java.time.LocalDate.now()
         val sb = StringBuilder()
-        sb.append("Habit Tracker (last 30 days):\n")
+        
+        sb.append("HABIT TRACKER LOGS (Chronological for Correlation):\n")
+        sb.append("Format: Date: [Habits completed on this day]\n")
+        
+        // Show chronological map of the last 15 days of habits for context-aware symptom correlation
+        for (i in 0..14) {
+            val checkDay = today.minusDays(i.toLong())
+            val dateStr = checkDay.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
+            val completed = habits.filter { it.logs.contains(dateStr) }.map { it.title }
+            if (completed.isNotEmpty()) {
+                sb.append("- $dateStr: ${completed.joinToString(", ")}\n")
+            }
+        }
+        
+        sb.append("\nHABIT COMPLETION STATISTICS (Summary for the End of Report):\n")
+        sb.append("NOTE: Only include these stats in a 'Habit Completion' section at the literal end of the PDF report.\n")
+        
         habits.forEach { habit ->
-            val recentLogs = habit.logs.filter { it >= today.substring(0, 7) } // current month
             val streak = run {
                 var s = 0
                 var d = java.time.LocalDate.now()
@@ -266,9 +287,29 @@ class LogRepository @Inject constructor(
                 }
                 s
             }
-            val checkedToday = habit.logs.contains(today)
-            sb.append("- ${habit.title}: streak=$streak days, completed_today=$checkedToday, recent_dates=[${recentLogs.takeLast(10).joinToString(",")}]\n")
+            
+            // Calculate completion rate for the last 10 days
+            var completedCount = 0
+            val missedDates = mutableListOf<String>()
+            for (i in 0..9) {
+                val d = today.minusDays(i.toLong())
+                val dStr = d.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
+                if (habit.logs.contains(dStr)) {
+                    completedCount++
+                } else {
+                    missedDates.add(dStr)
+                }
+            }
+            
+            sb.append("- ${habit.title}: Current Streak: $streak days | Completion: $completedCount/10 days")
+            if (missedDates.isNotEmpty()) {
+                sb.append(" (Missed: ${missedDates.joinToString(", ")})")
+            }
+            sb.append("\n")
         }
+        
+        sb.append("\nAI REPORT INSTRUCTION: Do NOT just list habits in the main medical summary. ONLY mention a habit in the medical trends section IF there is a visible correlation (e.g., 'symptoms decreased after habit X was completed'). MOVE the raw habit streaks and completion rates to the FINAL section of the report.")
+        
         return sb.toString()
     }
 
@@ -328,21 +369,32 @@ class LogRepository @Inject constructor(
 
         val bodyLoadHistory = getBodyLoadHistorySummary()
 
-        val result = geminiService.getMedicalReportSummary(
-            recent, 
-            catMap, 
-            userContext = context, 
-            knowledgeBase = kb, 
-            pastInsights = pastInsights, 
-            fitbitData = fitbitData, 
-            habitData = habitData,
-            bodyLoadHistory = bodyLoadHistory
-        )
-        result.onSuccess { text ->
+        var attempts = 3
+        var finalResult: Result<String> = Result.failure(Exception("Initial"))
+        
+        while (attempts > 0) {
+            finalResult = geminiService.getMedicalReportSummary(
+                recent, 
+                catMap, 
+                userContext = context, 
+                knowledgeBase = kb, 
+                pastInsights = pastInsights, 
+                fitbitData = fitbitData, 
+                habitData = habitData,
+                bodyLoadHistory = bodyLoadHistory
+            )
+            
+            if (finalResult.isSuccess) break
+            
+            attempts--
+            if (attempts > 0) kotlinx.coroutines.delay(1000L) // Wait 1s and try again
+        }
+
+        finalResult.onSuccess { text ->
             preferences.deductBalance(0.05f)
             saveAiInsight(text, "Report")
         }
-        return result
+        return finalResult
     }
 
     suspend fun getWeeklyRecap(allCategories: List<Category>): Result<String> {
@@ -585,8 +637,8 @@ class LogRepository @Inject constructor(
             summary.append("NOTE: Heart rate spikes ≥30 bpm above resting baseline are flagged as orthostatic events.\n")
             summary.append("Format: Date | Avg | Max | Resting Baseline (p10) | Events >100bpm | Largest Spike | Details\n")
             spikeHistory.take(30).forEach { d ->
-                summary.append("- ${formatReportDate(d.date)}: avg ${d.avg} bpm | max ${d.max} bpm | baseline ~${d.baseline} bpm")
-                summary.append(" | events: ${d.spikeCount} | largest spike: ${d.baseline} ➝ ${d.max} bpm (+${d.maxDelta})")
+                summary.append("- ${formatReportDate(d.date)}: avg ${d.avg} bpm | max ${d.max} bpm | baseline ${d.baseline} bpm")
+                summary.append(" | events: ${d.spikeCount} | largest spike: ${d.baseline} to ${d.max} bpm (+${d.maxDelta})")
                 if (d.eventsList.isNotEmpty()) {
                     val details = d.eventsList.joinToString(", ") { "${it.durationMins}m peak @${it.peakBpm}" }
                     summary.append(" | durations: [$details]")
@@ -636,7 +688,7 @@ class LogRepository @Inject constructor(
             val monthlyRanges = heartHist.groupBy { it.first.substring(0, 7) } // YYYY-MM
                 .mapValues { (_, values) -> 
                     val bpms = values.map { it.second }
-                    "Min ${bpms.minOrNull()} bpm - Max ${bpms.maxOrNull()} bpm"
+                    "Low ${bpms.minOrNull()} bpm, High ${bpms.maxOrNull()} bpm"
                 }
                 .entries.sortedByDescending { it.key }
                 .take(6)
@@ -657,7 +709,7 @@ class LogRepository @Inject constructor(
             summary.append("- Avg events per day: ${"%,.1f".format(avgSpikes)} events >100 bpm\n")
             summary.append("- Avg max orthostatic jump: +${avgDelta} bpm\n")
             if (worstDay != null) {
-                summary.append("- Worst day: ${formatReportDate(worstDay.date)} — largest spike ${worstDay.baseline} ➝ ${worstDay.max} bpm (+${worstDay.maxDelta}), ${worstDay.spikeCount} events\n")
+                summary.append("- Worst day: ${formatReportDate(worstDay.date)} — largest spike ${worstDay.baseline} to ${worstDay.max} bpm (+${worstDay.maxDelta}), ${worstDay.spikeCount} events\n")
             }
         }
 

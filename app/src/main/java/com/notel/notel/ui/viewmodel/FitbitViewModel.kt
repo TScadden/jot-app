@@ -32,7 +32,7 @@ data class SleepData(
 data class FitbitState(
     val isConnected: Boolean = false,
     val isLoading: Boolean = false,
-    val heartRateData: List<Pair<String, Int>> = emptyList(), // time String "12:30:00" -> HR int
+    val heartRateData: List<Pair<Long, Int>> = emptyList(), // epoch Long -> HR int
     val averageHeartRate: Int = 0,
     val latestHeartRate: Int = 0,
     val latestHeartRateTime: String = "",
@@ -145,14 +145,13 @@ class FitbitViewModel @Inject constructor(
          val histCal = try { histCalDeferred.await() } catch(e: Exception) { emptyList() }
 
          var latest = intradayHR.lastOrNull()?.second ?: 0
-         val latestTime = intradayHR.lastOrNull()?.first ?: ""
+         val latestTime = intradayHR.lastOrNull()?.first ?: 0L
 
-         val formattedTime = if (latestTime.isNotBlank()) {
+         val formattedTime = if (latestTime > 0) {
              try {
-                 val parser = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
                  val formatter = java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault())
-                 parser.parse(latestTime)?.let { formatter.format(it) } ?: latestTime
-             } catch(e: Exception) { latestTime }
+                 formatter.format(java.util.Date(latestTime))
+             } catch(e: Exception) { latestTime.toString() }
          } else ""
 
          _state.update { 
@@ -300,7 +299,7 @@ class FitbitViewModel @Inject constructor(
 
             _state.update { it.copy(isLoading = true, errorMessage = null, selectedHeartRateDate = date) }
             
-            var intradayHR: List<Pair<String, Int>> = emptyList()
+            var intradayHR: List<Pair<Long, Int>> = emptyList()
             var avgHR = 0
             var activeCal = 0
 
@@ -312,14 +311,13 @@ class FitbitViewModel @Inject constructor(
 
             
             var latest = intradayHR.lastOrNull()?.second ?: 0
-            val latestTime = intradayHR.lastOrNull()?.first ?: ""
+            val latestTime = intradayHR.lastOrNull()?.first ?: 0L
 
-            val formattedTime = if (latestTime.isNotBlank()) {
+            val formattedTime = if (latestTime > 0) {
                 try {
-                    val parser = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
                     val formatter = java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault())
-                    parser.parse(latestTime)?.let { formatter.format(it) } ?: latestTime
-                } catch(e: Exception) { latestTime }
+                    formatter.format(java.util.Date(latestTime))
+                } catch(e: Exception) { latestTime.toString() }
             } else ""
 
             _state.update { 

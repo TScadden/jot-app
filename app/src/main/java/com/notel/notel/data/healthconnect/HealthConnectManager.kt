@@ -83,7 +83,7 @@ class HealthConnectManager(private val context: Context) {
 
     private fun endOfDate(dateStr: String): Instant = startOfDate(dateStr).plus(1, ChronoUnit.DAYS)
 
-    suspend fun readHeartRateIntraday(dateStr: String): List<Pair<String, Int>> {
+    suspend fun readHeartRateIntraday(dateStr: String): List<Pair<Long, Int>> {
         try {
             val start = startOfDate(dateStr)
             val end = endOfDate(dateStr)
@@ -95,12 +95,31 @@ class HealthConnectManager(private val context: Context) {
                 )
             )
             
-            val result = mutableListOf<Pair<String, Int>>()
+            val result = mutableListOf<Pair<Long, Int>>()
             response.records.forEach { record ->
                 record.samples.forEach { sample ->
-                    val zdt = ZonedDateTime.ofInstant(sample.time, ZoneId.systemDefault())
-                    val timeStr = String.format("%02d:%02d:%02d", zdt.hour, zdt.minute, zdt.second)
-                    result.add(timeStr to sample.beatsPerMinute.toInt())
+                    result.add(sample.time.toEpochMilli() to sample.beatsPerMinute.toInt())
+                }
+            }
+            return result.sortedBy { it.first }
+        } catch(e: Exception) {
+            return emptyList()
+        }
+    }
+
+    suspend fun readLatestHeartRate(since: Instant): List<Pair<Long, Int>> {
+        try {
+            val response = healthConnectClient.readRecords(
+                ReadRecordsRequest(
+                    recordType = HeartRateRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(since, Instant.now())
+                )
+            )
+            
+            val result = mutableListOf<Pair<Long, Int>>()
+            response.records.forEach { record ->
+                record.samples.forEach { sample ->
+                    result.add(sample.time.toEpochMilli() to sample.beatsPerMinute.toInt())
                 }
             }
             return result.sortedBy { it.first }

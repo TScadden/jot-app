@@ -359,8 +359,7 @@ fun FitbitScreen(
                             var eventsCount = 0
                             var inEvent = false
                             var eventEndMs = 0L
-                            for ((tStr, bpm) in state.heartRateData) {
-                                val tMs = try { parser.parse(tStr)?.time ?: 0L } catch(e:Exception){0L}
+                            for ((tMs, bpm) in state.heartRateData) {
                                 if (bpm >= 100) {
                                     if (!inEvent || tMs > eventEndMs) {
                                         eventsCount++
@@ -496,29 +495,27 @@ fun FitbitScreen(
                                     var currentEvent: SpikeEvent? = null
                                     var currentEventEndMs = 0L
 
-                                    state.heartRateData.forEach { (timeStr, bpm) ->
-                                        val timeMs = try { parser.parse(timeStr)?.time ?: 0L } catch(e: Exception) { 0L }
-                                        if (timeMs != 0L) {
-                                            if (bpm >= 100) {
-                                                if (currentEvent == null || timeMs > currentEventEndMs) {
-                                                    currentEvent?.let { events.add(it) }
-                                                    currentEvent = SpikeEvent(timeStr, timeStr, bpm, 1)
-                                                } else {
-                                                    currentEvent!!.endTime = timeStr
-                                                    currentEvent!!.peakBpm = maxOf(currentEvent!!.peakBpm, bpm)
-                                                    val startMs = try { parser.parse(currentEvent!!.startTime)?.time ?: timeMs } catch(e:Exception){timeMs}
-                                                    currentEvent!!.durationMins = maxOf(1, ((timeMs - startMs) / 60000).toInt())
-                                                }
-                                                // Keep the event alive for up to 5 minutes after the last spike reading
-                                                currentEventEndMs = timeMs + (5 * 60 * 1000)
+                                    state.heartRateData.forEach { (timeMs, bpm) ->
+                                        if (bpm >= 100) {
+                                            if (currentEvent == null || timeMs > currentEventEndMs) {
+                                                currentEvent?.let { events.add(it) }
+                                                currentEvent = SpikeEvent(timeMs.toString(), timeMs.toString(), bpm, 1)
+                                            } else {
+                                                currentEvent!!.endTime = timeMs.toString()
+                                                currentEvent!!.peakBpm = maxOf(currentEvent!!.peakBpm, bpm)
+                                                val startMs = currentEvent!!.startTime.toLongOrNull() ?: timeMs
+                                                currentEvent!!.durationMins = maxOf(1, ((timeMs - startMs) / 60000).toInt())
                                             }
+                                            // Keep the event alive for up to 5 minutes after the last spike reading
+                                            currentEventEndMs = timeMs + (5 * 60 * 1000)
                                         }
                                     }
                                     currentEvent?.let { events.add(it) }
 
                                     events.forEach { event ->
                                         val displayTime = try {
-                                            parser.parse(event.startTime)?.let { formatter.format(it) } ?: event.startTime
+                                            val tMs = event.startTime.toLongOrNull() ?: 0L
+                                            if (tMs > 0) formatter.format(java.util.Date(tMs)) else event.startTime
                                         } catch (e: Exception) { event.startTime }
 
                                         Row(

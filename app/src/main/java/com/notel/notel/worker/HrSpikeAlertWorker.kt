@@ -33,17 +33,26 @@ class HrSpikeAlertWorker @AssistedInject constructor(
             val intraday = healthConnectManager.readHeartRateIntraday("today")
             if (intraday.isNotEmpty()) {
                 val latest = intraday.last()
-                val bpm = latest.second
+                val latestTime = latest.first
+                val latestBpm = latest.second
                 
-                if (bpm >= threshold) {
+                val lastProcessedTime = preferences.hrLastSampleTime.first()
+                val currentTime = System.currentTimeMillis()
+                
+                val isNewSample = latestTime > lastProcessedTime
+                val isRecent = (currentTime - latestTime) < 600000L // 10 mins
+                
+                if (isNewSample && isRecent && latestBpm >= threshold) {
                     val lastAlertTime = preferences.hrLastAlertTime.first()
-                    val currentTime = System.currentTimeMillis()
                     
-                    if (currentTime - lastAlertTime > 600000L) { // 10 minute cooldown
-                        NotificationHelper(applicationContext).showSpikeAlert(bpm)
+                    if (currentTime - lastAlertTime > 600000L) { // 10 minute alert cooldown
+                        NotificationHelper(applicationContext).showSpikeAlert(latestBpm)
                         preferences.setHrLastAlertTime(currentTime)
                     }
                 }
+                
+                // Track this sample to avoid re-alerting on it if it's stale
+                preferences.setHrLastSampleTime(latestTime)
             }
         } catch (e: Exception) {
             // Log and continue recursion unless critical

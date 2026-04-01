@@ -67,6 +67,7 @@ class NotelPreferences @Inject constructor(
         val HR_LAST_POKED_BPM = intPreferencesKey("hr_last_poked_bpm")
         val HABIT_REMINDER_ENABLED = booleanPreferencesKey("habit_reminder_enabled")
         val HR_LAST_ALERT_TIME = longPreferencesKey("hr_last_alert_time")
+        val HR_LAST_SAMPLE_TIME = longPreferencesKey("hr_last_sample_time")
         val HABIT_REMINDER_USER_DISABLED = booleanPreferencesKey("habit_reminder_user_disabled")
     }
 
@@ -90,6 +91,7 @@ class NotelPreferences @Inject constructor(
     val hrLastPokedBpm: Flow<Int> = context.dataStore.data.map { it[HR_LAST_POKED_BPM] ?: 0 }
     val habitReminderEnabled: Flow<Boolean> = context.dataStore.data.map { it[HABIT_REMINDER_ENABLED] ?: false }
     val hrLastAlertTime: Flow<Long> = context.dataStore.data.map { it[HR_LAST_ALERT_TIME] ?: 0L }
+    val hrLastSampleTime: Flow<Long> = context.dataStore.data.map { it[HR_LAST_SAMPLE_TIME] ?: 0L }
     val habitReminderUserDisabled: Flow<Boolean> = context.dataStore.data.map { it[HABIT_REMINDER_USER_DISABLED] ?: false }
 
     val onboardingComplete: Flow<Boolean> = context.dataStore.data.map { prefs ->
@@ -380,5 +382,9 @@ class NotelPreferences @Inject constructor(
 
     suspend fun setHrLastAlertTime(time: Long) {
         context.dataStore.edit { it[HR_LAST_ALERT_TIME] = time }
+    }
+
+    suspend fun setHrLastSampleTime(time: Long) {
+        context.dataStore.edit { it[HR_LAST_SAMPLE_TIME] = time }
     }
 }

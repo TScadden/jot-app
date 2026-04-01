@@ -74,17 +74,8 @@ class HrSpikeMonitorService : Service() {
                     break
                 }
 
-                val lastAlertTime = preferences.hrLastAlertTime.first()
-                val currentTime = System.currentTimeMillis()
-                val cooldownRemaining = 300000L - (currentTime - lastAlertTime)
-
-                if (cooldownRemaining > 0) {
-                    // We are in a 10-minute cooldown, so wait the remaining time
-                    delay(cooldownRemaining + 5000L) // +5s buffer
-                } else {
-                    checkSpikes()
-                    delay(120000L) // 2 minutes normal check
-                }
+                checkSpikes()
+                delay(30000L) // 30 seconds check for near real-time response
             }
         }
     }
@@ -94,37 +85,52 @@ class HrSpikeMonitorService : Service() {
         val deltaEnabled = preferences.hrDeltaEnabled.first()
         val deltaThreshold = preferences.spikeDeltaThreshold.first()
         val previousBpm = preferences.hrLastPokedBpm.first()
+        val lastProcessedTime = preferences.hrLastSampleTime.first()
 
         try {
-            val intraday = healthConnectManager.readHeartRateIntraday("today")
+            // Read records from the last 15 minutes + any since last processed for efficiency
+            val fifteenMinsAgo = java.time.Instant.now().minus(15, java.time.temporal.ChronoUnit.MINUTES)
+            val intraday = healthConnectManager.readLatestHeartRate(fifteenMinsAgo)
+            
             if (intraday.isNotEmpty()) {
-                val latestBpm = intraday.last().second
+                val latest = intraday.last()
+                val latestTime = latest.first
+                val latestBpm = latest.second
                 
-                // Track delta from LAST ping (as requested)
-                val currentDelta = if (previousBpm > 0) latestBpm - previousBpm else 0
-                
-                val isStaticSpike = latestBpm >= staticThreshold
-                val isDeltaSpike = deltaEnabled && currentDelta >= deltaThreshold
-                
-                if (isStaticSpike || isDeltaSpike) {
-                    val lastAlertTime = preferences.hrLastAlertTime.first()
-                    val currentTime = System.currentTimeMillis()
+                // 1. Only process if this is a NEW sample we haven't seen yet
+                // 2. Only alert if the sample is RECENT (within last 10 minutes)
+                val currentTime = System.currentTimeMillis()
+                val isNewSample = latestTime > lastProcessedTime
+                val isRecent = (currentTime - latestTime) < 600000L // 10 minutes
+
+                if (isNewSample && isRecent) {
+                    val currentDelta = if (previousBpm > 0) latestBpm - previousBpm else 0
                     
-                    if (currentTime - lastAlertTime > 300000L) { // 5 minute cooldown
-                        withContext(Dispatchers.Main) {
-                            // If it's a jump, show the jump. If it just hit a high number, show the hit.
-                            if (isDeltaSpike && previousBpm > 0) {
-                                NotificationHelper(this@HrSpikeMonitorService).showSpikeAlert(latestBpm, previousBpm, currentDelta)
-                            } else {
-                                NotificationHelper(this@HrSpikeMonitorService).showSpikeAlert(latestBpm)
+                    val isStaticSpike = latestBpm >= staticThreshold
+                    val isDeltaSpike = deltaEnabled && currentDelta >= deltaThreshold
+                    
+                    if (isStaticSpike || isDeltaSpike) {
+                        val lastAlertTime = preferences.hrLastAlertTime.first()
+                        
+                        // Cooldown check for notifications - 5 minute gap between PINGS
+                        if (currentTime - lastAlertTime > 300000L) { 
+                            withContext(Dispatchers.Main) {
+                                if (isDeltaSpike && previousBpm > 0) {
+                                    NotificationHelper(this@HrSpikeMonitorService).showSpikeAlert(latestBpm, previousBpm, currentDelta)
+                                } else {
+                                    NotificationHelper(this@HrSpikeMonitorService).showSpikeAlert(latestBpm)
+                                }
                             }
+                            preferences.setHrLastAlertTime(currentTime)
                         }
-                        preferences.setHrLastAlertTime(currentTime)
                     }
+                    
+                    // Track this BPM even if we didn't notify, to calculate delta on the NEXT record
+                    preferences.setHrLastPokedBpm(latestBpm)
                 }
                 
-                // Update "Previous" BPM for the NEXT ping
-                preferences.setHrLastPokedBpm(latestBpm)
+                // Track this sample to avoid re-alerts
+                preferences.setHrLastSampleTime(latestTime)
             }
         } catch (e: Exception) {
             e.printStackTrace()

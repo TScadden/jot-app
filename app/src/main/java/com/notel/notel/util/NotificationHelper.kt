@@ -143,4 +143,55 @@ class NotificationHelper(private val context: Context) {
 
         manager.notify(HABIT_NOTIFICATION_ID, notification)
     }
+
+    fun showReportReady(file: java.io.File) {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val channelId = "report_notifications"
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                "Medical Reports",
+                NotificationManager.IMPORTANCE_HIGH
+            )
+            manager.createNotificationChannel(channel)
+        }
+
+        val fileUri = androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.provider",
+            file
+        )
+
+        // Activity for when they tap the notification itself (open App)
+        val mainIntent = Intent(context, MainActivity::class.java)
+        val mainPendingIntent = PendingIntent.getActivity(context, 0, mainIntent, PendingIntent.FLAG_IMMUTABLE)
+
+        // Intent for the Share action button
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/pdf"
+            putExtra(Intent.EXTRA_STREAM, fileUri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        val chooser = Intent.createChooser(shareIntent, "Share Medical Report")
+        val sharePendingIntent = PendingIntent.getActivity(
+            context, 
+            1, 
+            chooser, 
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(R.drawable.ic_noti_j)
+            .setContentTitle("Clinical Report Ready 📄")
+            .setContentText("Your report has been saved to Downloads. Tap to share or review.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("Your professional medical report has been saved to your Downloads folder. Tap this notification to share it or review the file."))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(sharePendingIntent) // Tapping now shares directly
+            .addAction(android.R.drawable.ic_menu_share, "Share", sharePendingIntent)
+            .setAutoCancel(true)
+            .build()
+
+        manager.notify(2001, notification)
+    }
 }
