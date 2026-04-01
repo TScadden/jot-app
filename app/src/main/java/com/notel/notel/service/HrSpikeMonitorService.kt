@@ -127,8 +127,8 @@ class HrSpikeMonitorService : Service() {
                     if (isStaticSpike || isDeltaSpike) {
                         val lastAlertTime = preferences.hrLastAlertTime.first()
                         
-                        // Cooldown check for notifications - 5 minute gap between PINGS
-                        if (currentTime - lastAlertTime > 300000L) { 
+                        // Cooldown check for notifications - 30 second gap between alerts
+                        if (currentTime - lastAlertTime > 30000L) { 
                             withContext(Dispatchers.Main) {
                                 if (isDeltaSpike && previousBpm > 0) {
                                     NotificationHelper(this@HrSpikeMonitorService).showSpikeAlert(latestBpm, previousBpm, currentDelta)

@@ -5,7 +5,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -61,8 +61,17 @@ class EntryDetailViewModel @Inject constructor(
         val current = _entry.value ?: return
         viewModelScope.launch {
             val updated = current.copy(categoryId = categoryId)
-            logRepository.insertEntry(updated) // Room insert + PrimaryKey handles conflict as Update
-            _entry.value = updated
+            _entry.value = updated // OPTIMISTIC
+            logRepository.updateEntry(updated)
+        }
+    }
+
+    fun updateText(body: String, manualText: String) {
+        val current = _entry.value ?: return
+        viewModelScope.launch {
+            val updated = current.copy(body = body, manualText = manualText)
+            _entry.value = updated // OPTIMISTIC
+            logRepository.updateEntry(updated)
         }
     }
 }
@@ -81,6 +90,7 @@ fun EntryDetailScreen(
     val entry by viewModel.entry.collectAsState()
     val categories by viewModel.categories.collectAsState()
     var showDelete by remember { mutableStateOf(false) }
+    var showEditDialog by remember { mutableStateOf(false) }
     val sdf = remember { SimpleDateFormat("EEEE, MMMM d, yyyy 'at' h:mm a", Locale.getDefault()) }
 
     Scaffold(
@@ -91,6 +101,11 @@ fun EntryDetailScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, "Back", tint = NotelTextSecondary)
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showEditDialog = true }) {
+                        Icon(Icons.Default.Edit, "Edit", tint = NotelPrimary)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = NotelBackground)
@@ -216,6 +231,50 @@ fun EntryDetailScreen(
                 ) {
                     Text("Delete this entry", color = Color.Red.copy(alpha = 0.7f), fontSize = 14.sp)
                 }
+            }
+
+            if (showEditDialog) {
+                var editBody by remember { mutableStateOf(e.body) }
+                var editManual by remember { mutableStateOf(e.manualText) }
+                AlertDialog(
+                    onDismissRequest = { showEditDialog = false },
+                    containerColor = NotelSurface,
+                    title = { Text("Edit Entry Text", color = NotelTextPrimary) },
+                    text = {
+                        Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                            OutlinedTextField(
+                                value = editBody,
+                                onValueChange = { editBody = it },
+                                label = { Text("Logged Content") },
+                                modifier = Modifier.fillMaxWidth().height(150.dp),
+                                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = NotelPrimary, unfocusedBorderColor = NotelPrimary.copy(alpha=0.5f),
+                                    focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary
+                                )
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = editManual,
+                                onValueChange = { editManual = it },
+                                label = { Text("Additional Annotation") },
+                                modifier = Modifier.fillMaxWidth().height(100.dp),
+                                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = NotelPrimary, unfocusedBorderColor = NotelPrimary.copy(alpha=0.5f),
+                                    focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary
+                                )
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            viewModel.updateText(editBody, editManual)
+                            showEditDialog = false
+                        }) { Text("Save", color = NotelPrimary) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showEditDialog = false }) { Text("Cancel", color = NotelTextSecondary) }
+                    }
+                )
             }
 
             if (showDelete) {

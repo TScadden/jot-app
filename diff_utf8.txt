@@ -1,0 +1,312 @@
+﻿diff --git a/app/src/main/java/com/notel/notel/ui/screen/SettingsScreen.kt b/app/src/main/java/com/notel/notel/ui/screen/SettingsScreen.kt
+index 6038774..03ed87f 100644
+--- a/app/src/main/java/com/notel/notel/ui/screen/SettingsScreen.kt
++++ b/app/src/main/java/com/notel/notel/ui/screen/SettingsScreen.kt
+@@ -42,7 +42,7 @@ import android.content.pm.PackageManager
+ import androidx.core.content.ContextCompat
+ 
+ enum class SettingsMenu {
+-    MAIN, USER_PROFILE, CONNECTED_APPS, AI_AND_KNOWLEDGE, EVENT_COUNTERS, WALLET, NOTIFICATIONS
++    MAIN, USER_PROFILE, CONNECTED_APPS, AI_AND_KNOWLEDGE, EVENT_COUNTERS, WALLET, NOTIFICATIONS, DEBUG
+ }
+ 
+ @OptIn(ExperimentalMaterial3Api::class)
+@@ -62,6 +62,7 @@ fun SettingsScreen(
+     val isProcessing by viewModel.isProcessingFile.collectAsState()
+     val processError by viewModel.processError.collectAsState()
+     val aiInsights by viewModel.aiInsights.collectAsState()
++    val showProfessionalCheckIn by viewModel.showProfessionalCheckIn.collectAsState()
+     
+     val isGeneratingWeeklyRecap by viewModel.isGeneratingWeeklyRecap.collectAsState()
+     val isGeneratingDeepResearch by viewModel.isGeneratingDeepResearch.collectAsState()
+@@ -244,6 +245,7 @@ fun SettingsScreen(
+                         SettingsMenu.EVENT_COUNTERS -> "Event Counters"
+                         SettingsMenu.WALLET -> "Wallet & Usage"
+                         SettingsMenu.NOTIFICATIONS -> "Notifications"
++                        SettingsMenu.DEBUG -> "Developer Terminal"
+                     }
+                     Text(titleText, fontWeight = FontWeight.Bold, color = NotelTextPrimary) 
+                 },
+@@ -278,8 +280,30 @@ fun SettingsScreen(
+             Spacer(Modifier.height(16.dp))
+             
+             if (currentMenu == SettingsMenu.MAIN) {
+-                // The Wallet is placed at the top of the settings directly
+-                // (It will be inserted dynamically by changing its if-condition below)
++                // 1. Wallet Card at top of MAIN
++                Text("WALLET & USAGE", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
++                Spacer(Modifier.height(8.dp))
++                GlassyCard(shape = RoundedCornerShape(16.dp), color = NotelSurface) {
++                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                        Column(modifier = Modifier.weight(1f)) {
++                            Text(if (isUnlimited) "Infinite AI Access" else "Available Credits", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
++                            Spacer(Modifier.height(4.dp))
++                            Text(if (isUnlimited) "Γê₧" else "$${String.format("%.2f", userBalance)}", color = NotelPrimary, fontSize = 28.sp, fontWeight = FontWeight.Black)
++                        }
++                        Icon(if (isUnlimited) Icons.Default.AutoAwesome else Icons.Default.AccountBalanceWallet, null, tint = NotelPrimary, modifier = Modifier.size(40.dp))
++                    }
++                    if (isUnlimited) {
++                        Spacer(Modifier.height(8.dp))
++                        Text("Exclusive unlimited access. No billing applies.", color = NotelTextSecondary, fontSize = 11.sp)
++                    }
++                    if (!isUnlimited) {
++                        Spacer(Modifier.height(12.dp))
++                        GlassyButton(onClick = { currentMenu = SettingsMenu.WALLET }, containerColor = NotelSurfaceHigh) {
++                            Text("Manage Wallet", color = NotelTextPrimary)
++                        }
++                    }
++                }
++                Spacer(Modifier.height(24.dp))
+             }
+ 
+             if (currentMenu == SettingsMenu.WALLET) {
+@@ -377,69 +401,26 @@ fun SettingsScreen(
+                 }
+             }
+ 
+-            Spacer(Modifier.height(24.dp))
+-
+-            }
+-
+-            
+             if (currentMenu == SettingsMenu.MAIN) {
+-                Text(
+-                    "BACKGROUND CONTEXT",
+-                    fontSize = 12.sp,
+-                    color = NotelTextSecondary,
+-                    fontWeight = FontWeight.SemiBold
+-                )
++                // 2. Personal Context
++                Text("BACKGROUND CONTEXT", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+                 Spacer(Modifier.height(8.dp))
+-                GlassyCard(
+-                    shape = RoundedCornerShape(16.dp),
+-                    color = NotelSurface,
+-                    modifier = Modifier.onGloballyPositioned { coordPersonalCtx = it }
+-                ) {
+-                    Text("Personal Context", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
++                GlassyCard(shape = RoundedCornerShape(16.dp), color = NotelSurface, modifier = Modifier.onGloballyPositioned { coordPersonalCtx = it }) {
++                    Text("Personal Context", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                     Spacer(Modifier.height(4.dp))
+-                    Text(
+-                        "Help the AI understand you better (e.g. 'I have chronic fatigue' or 'I am training for a marathon').",
+-                        color = NotelTextSecondary,
+-                        fontSize = 12.sp
+-                    )
+-                    Spacer(Modifier.height(12.dp))
++                    Text("Tell Jot about your goals (e.g. 'training for a marathon').", color = NotelTextSecondary, fontSize = 11.sp)
++                    Spacer(Modifier.height(8.dp))
+                     OutlinedTextField(
+-                        value = contextInput,
+-                        onValueChange = {
+-                            contextInput = it
+-                            viewModel.saveUserContext(it.trim())
+-                        },
+-                        modifier = Modifier.fillMaxWidth(),
+-                        minLines = 3,
+-                        maxLines = 5,
+-                        placeholder = { Text("Add background info hereΓÇª", color = NotelTextSecondary) },
++                        value = contextInput, onValueChange = { contextInput = it; viewModel.saveUserContext(it.trim()) },
++                        modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 4,
++                        placeholder = { Text("Add background info hereΓÇª", color = NotelTextSecondary, fontSize = 12.sp) },
+                         shape = RoundedCornerShape(12.dp),
+-                        colors = OutlinedTextFieldDefaults.colors(
+-                            focusedBorderColor = NotelPrimary,
+-                            unfocusedBorderColor = NotelSurfaceHigh,
+-                            focusedTextColor = NotelTextPrimary,
+-                            unfocusedTextColor = NotelTextPrimary,
+-                            cursorColor = NotelPrimary,
+-                            unfocusedContainerColor = NotelSurfaceHigh,
+-                            focusedContainerColor = NotelSurfaceHigh
+-                        )
++                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, unfocusedBorderColor = NotelSurfaceHigh, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
+                     )
+                 }
+ 
+                 Spacer(Modifier.height(24.dp))
+-
+-                Text(
+-                    "SETTINGS",
+-                    fontSize = 12.sp,
+-                    color = NotelPrimary,
+-                    fontWeight = FontWeight.SemiBold,
+-                    modifier = Modifier
+-                        .clickable {
+-                            viewModel.resetSettingsTutorial()
+-                            tutorialStep = 0
+-                        }
+-                        .padding(vertical = 4.dp)
+-                )
++                Text("SETTINGS", fontSize = 12.sp, color = NotelPrimary, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { viewModel.resetSettingsTutorial(); tutorialStep = 0 }.padding(vertical = 4.dp))
+                 Spacer(Modifier.height(8.dp))
+ 
+                 SettingsMenuCard("User Profile", Icons.Default.Person, modifier = Modifier.onGloballyPositioned { coordUserProfile = it }) { currentMenu = SettingsMenu.USER_PROFILE }
+@@ -447,6 +428,19 @@ fun SettingsScreen(
+                 SettingsMenuCard("AI & Knowledge Base", Icons.Default.AutoAwesome, modifier = Modifier.onGloballyPositioned { coordAiKnowledge = it }) { currentMenu = SettingsMenu.AI_AND_KNOWLEDGE }
+                 SettingsMenuCard("Event Counters", Icons.Default.Timer, modifier = Modifier.onGloballyPositioned { coordEventCounters = it }) { currentMenu = SettingsMenu.EVENT_COUNTERS }
+                 SettingsMenuCard("Notifications", Icons.Default.Notifications) { currentMenu = SettingsMenu.NOTIFICATIONS }
++                
++                if (isUnlimited) {
++                    Spacer(Modifier.height(32.dp))
++                    TextButton(onClick = { currentMenu = SettingsMenu.DEBUG }, modifier = Modifier.align(Alignment.End)) {
++                        Icon(Icons.Default.BugReport, null, tint = NotelTextSecondary.copy(alpha = 0.5f), modifier = Modifier.size(14.dp))
++                        Spacer(Modifier.width(4.dp))
++                        Text("Developer Options", color = NotelTextSecondary.copy(alpha = 0.5f), fontSize = 10.sp)
++                    }
++                }
++            }
++            
++            if (currentMenu == SettingsMenu.DEBUG && isUnlimited) {
++                DebugScreen(onBack = { currentMenu = SettingsMenu.MAIN })
+             }
+ 
+ 
+@@ -639,22 +633,22 @@ fun SettingsScreen(
+                     containerColor = NotelSurface
+                 )
+             }
+-
+-            Spacer(Modifier.height(24.dp))
++            
+             }
+ 
++            Spacer(Modifier.height(24.dp))
++            
+             if (currentMenu == SettingsMenu.AI_AND_KNOWLEDGE) {
+-                val lowerCtx = userContext.lowercase()
+-                val lowerKB = knowledgeBase.lowercase()
+-
+-                val professionalType = when {
+-                    lowerCtx.contains("doctor") || lowerCtx.contains("dr.") || lowerKB.contains("doctor") || lowerKB.contains("dr.") -> "Doctor"
+-                    lowerCtx.contains("coach") || lowerKB.contains("coach") -> "Coach"
+-                    lowerCtx.contains("therapist") || lowerKB.contains("therapist") -> "Therapist"
+-                    else -> null
+-                }
+-
+-                if (professionalType != null) {
++                if (showProfessionalCheckIn) {
++                    val lowerCtx = userContext.lowercase()
++                    val lowerKB = knowledgeBase.lowercase()
++
++                    val professionalType = when {
++                        lowerCtx.contains("doctor") || lowerCtx.contains("dr.") || lowerKB.contains("doctor") || lowerKB.contains("dr.") -> "Doctor"
++                        lowerCtx.contains("coach") || lowerKB.contains("coach") -> "Coach"
++                        lowerCtx.contains("therapist") || lowerKB.contains("therapist") -> "Therapist"
++                        else -> "Professional"
++                    }
+                     Text("PROFESSIONAL UPDATES", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+                     Spacer(Modifier.height(8.dp))
+ 
+@@ -1612,34 +1606,6 @@ fun SettingsScreen(
+             }
+ 
+             if (currentMenu == SettingsMenu.MAIN) {
+-                Text("Account Data", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+-                Spacer(Modifier.height(8.dp))
+-                
+-                GlassyButton(
+-                    onClick = { viewModel.recoverAccountData() },
+-                    modifier = Modifier.fillMaxWidth(),
+-                    containerColor = NotelSurfaceHigh,
+-                    enabled = !isSyncing
+-                ) {
+-                    if (isSyncing) {
+-                        CircularProgressIndicator(color = NotelPrimary, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+-                    } else {
+-                        Icon(Icons.Default.CloudSync, "Sync Data", tint = NotelPrimary)
+-                        Spacer(Modifier.width(8.dp))
+-                        Text("Sync & Recover Data", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
+-                    }
+-                }
+-                Spacer(Modifier.height(16.dp))
+-
+-                GlassyButton(
+-                    onClick = { showRestartDialog = true },
+-                    modifier = Modifier.fillMaxWidth(),
+-                    containerColor = NotelSurfaceHigh
+-                ) {
+-                    Icon(Icons.Default.RestartAlt, "Reset Account", tint = Color.Red.copy(alpha = 0.7f))
+-                    Spacer(Modifier.width(8.dp))
+-                    Text("Reset Account Status", color = NotelTextPrimary)
+-                }
+                 Spacer(Modifier.height(16.dp))
+ 
+                 GlassyButton(
+@@ -1666,6 +1632,13 @@ fun SettingsScreen(
+                         colors = ListItemDefaults.colors(containerColor = NotelSurface)
+                     )
+                 }
++                
++                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
++                    TextButton(onClick = { showRestartDialog = true }) {
++                        Text("Reset Account Status", color = Color.Red.copy(alpha = 0.6f), fontSize = 10.sp)
++                    }
++                }
++            }
+             
+ 
+             if (showLogoutDialog) {
+@@ -1742,7 +1715,7 @@ fun SettingsScreen(
+             }
+         )
+     }
+-    } // end outer Box
++    }
+ }
+ @Composable
+ fun InsightTile(insight: com.notel.notel.data.local.entity.AiInsight, onDelete: () -> Unit) {
+@@ -1810,5 +1783,53 @@ fun SettingsMenuCard(
+             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = NotelTextSecondary)
+         }
+     }
+-    Spacer(Modifier.height(16.dp))
++}
++
++@Composable
++fun DebugScreen(
++    onBack: () -> Unit,
++    viewModel: SettingsViewModel = hiltViewModel()
++) {
++    val context = LocalContext.current
++    Column(
++        modifier = Modifier
++            .fillMaxSize()
++            .padding(16.dp)
++            .verticalScroll(rememberScrollState()),
++        horizontalAlignment = Alignment.CenterHorizontally
++    ) {
++        Text("Internal Debug Terminal", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = NotelPrimary)
++        Spacer(Modifier.height(16.dp))
++        
++        Text("Notification Testing", color = NotelTextSecondary, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Start))
++        Spacer(Modifier.height(8.dp))
++        
++        GlassyButton(onClick = { viewModel.testDailyReminder(context) }, modifier = Modifier.fillMaxWidth()) {
++            Text("Test Daily Streak Reminder", color = NotelTextPrimary)
++        }
++        Spacer(Modifier.height(8.dp))
++        GlassyButton(onClick = { viewModel.testBodyLoadNotification(context) }, modifier = Modifier.fillMaxWidth()) {
++            Text("Test Body Load Alert", color = NotelTextPrimary)
++        }
++        Spacer(Modifier.height(8.dp))
++        GlassyButton(onClick = { viewModel.testHabitNotification(context) }, modifier = Modifier.fillMaxWidth()) {
++            Text("Test Habit Tracker", color = NotelTextPrimary)
++        }
++        Spacer(Modifier.height(8.dp))
++        GlassyButton(onClick = { viewModel.testSpikeNotification(context) }, modifier = Modifier.fillMaxWidth()) {
++            Text("Test HR Spike Warning", color = NotelTextPrimary)
++        }
++        
++        Spacer(Modifier.height(24.dp))
++        Text("Data Management", color = NotelTextSecondary, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Start))
++        Spacer(Modifier.height(8.dp))
++        
++        GlassyButton(
++            onClick = { viewModel.recoverAccountData() },
++            modifier = Modifier.fillMaxWidth(),
++            containerColor = NotelSurfaceHigh
++        ) {
++            Text("Force Trigger Sync Pull", color = NotelTextPrimary)
++        }
++    }
+ }

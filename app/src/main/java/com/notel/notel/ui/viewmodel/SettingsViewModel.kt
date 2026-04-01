@@ -67,6 +67,24 @@ class SettingsViewModel @Inject constructor(
     private val _syncError = MutableSharedFlow<String>()
     val syncError = _syncError.asSharedFlow()
 
+    val showProfessionalCheckIn = combine(
+        userContext,
+        knowledgeBase,
+        logRepository.getAllEntries()
+    ) { ctx, kb, logs ->
+        val keywords = listOf("doctor", "dr.", "coach", "physician", "therapist", "running", "marathon", "race", "training")
+        val lowerCtx = ctx.lowercase()
+        val lowerKB = kb.lowercase()
+        
+        val ctxMatch = keywords.any { lowerCtx.contains(it) }
+        val kbMatch = keywords.any { lowerKB.contains(it) }
+        val logMatch = logs.any { log -> 
+            keywords.any { log.body.lowercase().contains(it) }
+        }
+        
+        ctxMatch || kbMatch || logMatch
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     init {
         checkHealthConnectStatus()
     }
@@ -142,6 +160,12 @@ class SettingsViewModel @Inject constructor(
     val isGeneratingWeeklyRecap = logRepository.isGeneratingWeeklyRecap
 
     val isGeneratingDeepResearch = logRepository.isGeneratingDeepResearch
+
+    val allLogs = logRepository.getAllEntries().stateIn(
+        viewModelScope,
+        SharingStarted.Lazily,
+        emptyList()
+    )
 
     val billingEvents = billingManager.billingEvents
 
@@ -281,6 +305,18 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { logRepository.deleteKnowledgeItem(index) }
     }
 
+    fun editKnowledgeItem(index: Int, newText: String) {
+        viewModelScope.launch {
+            val currentKb = preferences.knowledgeBase.first()
+            val facts = currentKb.split("\n\n").filter { it.isNotBlank() }.toMutableList()
+            if (index in facts.indices) {
+                facts[index] = newText
+                preferences.setKnowledgeBase(facts.joinToString("\n\n"))
+                syncManager.pushProfileData()
+            }
+        }
+    }
+
     fun addProfessionalUpdate(professionalType: String, note: String) {
         viewModelScope.launch {
             val dateStr = java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault()).format(java.util.Date())
@@ -288,7 +324,7 @@ class SettingsViewModel @Inject constructor(
             val current = preferences.professionalUpdates.first()
             val combined = if (current.isBlank()) newEntry else "$newEntry\n\n$current"
             preferences.setProfessionalUpdates(combined)
-            syncManager.syncAllData()
+            syncManager.pushProfileData()
         }
     }
 
@@ -296,11 +332,25 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             val current = preferences.professionalUpdates.first()
             if (current.isNotBlank()) {
-                val updatesList = current.split("\n\n").toMutableList()
+                val updatesList = current.split("\n\n").filter { it.isNotBlank() }.toMutableList()
                 if (index in updatesList.indices) {
                     updatesList.removeAt(index)
                     preferences.setProfessionalUpdates(updatesList.joinToString("\n\n"))
-                    syncManager.syncAllData()
+                    syncManager.pushProfileData()
+                }
+            }
+        }
+    }
+
+    fun editProfessionalUpdate(index: Int, newText: String) {
+        viewModelScope.launch {
+            val current = preferences.professionalUpdates.first()
+            if (current.isNotBlank()) {
+                val updatesList = current.split("\n\n").filter { it.isNotBlank() }.toMutableList()
+                if (index in updatesList.indices) {
+                    updatesList[index] = newText
+                    preferences.setProfessionalUpdates(updatesList.joinToString("\n\n"))
+                    syncManager.pushProfileData()
                 }
             }
         }
@@ -309,7 +359,7 @@ class SettingsViewModel @Inject constructor(
     fun clearProfessionalUpdates() {
         viewModelScope.launch { 
             preferences.setProfessionalUpdates("")
-            syncManager.syncAllData()
+            syncManager.pushProfileData()
         }
     }
 

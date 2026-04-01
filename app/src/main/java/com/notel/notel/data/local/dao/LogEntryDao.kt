@@ -36,4 +36,7 @@ interface LogEntryDao {
 
     @Query("SELECT * FROM log_entries ORDER BY timestamp DESC LIMIT :limit")
     suspend fun getRecentEntriesAll(limit: Int = 10): List<LogEntry>
+
+    @Query("SELECT COUNT(*) FROM log_entries")
+    suspend fun countEntries(): Int
 }

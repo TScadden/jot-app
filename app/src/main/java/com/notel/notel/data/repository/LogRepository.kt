@@ -576,6 +576,7 @@ class LogRepository @Inject constructor(
                 val updatedFiles = if (currentFiles.isBlank()) fileName else "$fileName, $currentFiles"
                 preferences.setProcessedFiles(updatedFiles)
                 
+                triggerSync()
                 Result.success(Unit)
             },
             onFailure = { Result.failure(it) }
@@ -590,6 +591,7 @@ class LogRepository @Inject constructor(
     suspend fun clearKnowledgeBase() {
         preferences.setKnowledgeBase("")
         preferences.setProcessedFiles("")
+        triggerSync()
     }
 
     suspend fun deleteKnowledgeItem(index: Int) {
@@ -606,6 +608,7 @@ class LogRepository @Inject constructor(
                 files.removeAt(index)
                 preferences.setProcessedFiles(files.joinToString(", "))
             }
+            triggerSync()
         }
     }
 
@@ -661,8 +664,8 @@ class LogRepository @Inject constructor(
             summary.append("NOTE: Heart rate spikes ≥30 bpm above resting baseline are flagged as orthostatic events.\n")
             summary.append("Format: Date | Avg | Max | Resting Baseline (p10) | Events >100bpm | Largest Spike | Details\n")
             spikeHistory.take(30).forEach { d ->
-                summary.append("- ${formatReportDate(d.date)}: avg ${d.avg} bpm | max ${d.max} bpm | baseline ${d.baseline} bpm")
-                summary.append(" | events: ${d.spikeCount} | largest spike: ${d.baseline} to ${d.max} bpm (+${d.maxDelta})")
+                summary.append("- ${formatReportDate(d.date)}: Average: ${d.avg} bpm | Max: ${d.max} bpm | Baseline: ${d.baseline} bpm")
+                summary.append(" | Active Spike: ${d.baseline} bpm TO ${d.max} bpm (Delta jump of +${d.maxDelta}) | Count: ${d.spikeCount}")
                 if (d.eventsList.isNotEmpty()) {
                     val details = d.eventsList.joinToString(", ") { "${it.durationMins}m peak @${it.peakBpm}" }
                     summary.append(" | durations: [$details]")
@@ -708,27 +711,9 @@ class LogRepository @Inject constructor(
             val avg3 = heartHist.drop(30).take(60).map { it.second }.let { if (it.isNotEmpty()) it.average().toInt() else 0 }
             val avg6 = heartHist.drop(90).take(90).map { it.second }.let { if (it.isNotEmpty()) it.average().toInt() else 0 }
             
-            // Group by month for explicit monthly ranges to prevent AI "crunching" errors
-            val monthlyRanges = heartHist
-                .filter { it.second in 1..300 } // Sanitize: Ignore impossible outliers and garbage artifacts
-                .groupBy { it.first.substring(0, 7) } // YYYY-MM
-                .mapValues { (_, values) -> 
-                    val bpms = values.map { it.second }
-                    val minV = bpms.minOrNull() ?: 0
-                    val maxV = bpms.maxOrNull() ?: 0
-                    val rangeV = maxV - minV
-                    "Low $minV bpm, High $maxV bpm (Calculated Range: $rangeV bpm)"
-                }
-                .entries.sortedByDescending { it.key }
-                .take(6)
-
             summary.append("\nOVERALL STATISTICAL TRENDS (Last 6 Months):\n")
-            summary.append("AI CRITICAL INSTRUCTION: If any 'Sample Count' or 'ID' similar numbers (e.g. 45196) appear in the raw logs above, YOU MUST EXCLUDE THEM. ONLY report the Low/High ranges provided in this section.\n")
+            summary.append("AI CRITICAL INSTRUCTION: If any 'Sample Count' or 'ID' similar numbers (e.g. 45196, 6464, 6182) appear in the raw logs above, YOU MUST EXCLUDE THEM. ONLY report the averages provided in this section.\n")
             summary.append("- Avg Monthly HR: Current: $avgThis bpm | 3rd Mo: $avg3 bpm | 6th Mo: $avg6 bpm\n")
-            summary.append("- Monthly Intensity Statistics (Calculated range is Max - Min):\n")
-            monthlyRanges.forEach { (month, range) ->
-                summary.append("  * $month: $range\n")
-            }
         }
 
         if (spikeHistory.isNotEmpty()) {
@@ -736,10 +721,10 @@ class LogRepository @Inject constructor(
             val avgDelta = spikeHistory.map { it.maxDelta }.average().toInt()
             val worstDay = spikeHistory.maxByOrNull { it.maxDelta }
             summary.append("\nORTHOSTATIC SPIKE SUMMARY (Last 30 Days):\n")
-            summary.append("- Avg events per day: ${"%,.1f".format(avgSpikes)} events >100 bpm\n")
-            summary.append("- Avg max orthostatic jump: +${avgDelta} bpm\n")
+            summary.append("- Avg daily events (>100 bpm): ${"%,.1f".format(avgSpikes)}\n")
+            summary.append("- Avg max jump: +${avgDelta} bpm\n")
             if (worstDay != null) {
-                summary.append("- Worst day: ${formatReportDate(worstDay.date)} — largest spike ${worstDay.baseline} to ${worstDay.max} bpm (+${worstDay.maxDelta}), ${worstDay.spikeCount} events\n")
+                summary.append("- Worst day: ${formatReportDate(worstDay.date)} — Jumped from ${worstDay.baseline} bpm TO ${worstDay.max} bpm total (+${worstDay.maxDelta}), ${worstDay.spikeCount} total events\n")
             }
         }
         

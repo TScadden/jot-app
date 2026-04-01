@@ -16,6 +16,8 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 @Singleton
 class SyncManager @Inject constructor(
@@ -26,39 +28,51 @@ class SyncManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private val tag = "SyncManager"
+    private val syncMutex = Mutex()
 
     suspend fun syncAllData() = withContext(Dispatchers.IO) {
+        if (syncMutex.isLocked) return@withContext
+        syncMutex.withLock {
+            try {
+                if (!preferences.loggedIn.first()) return@withLock
+                
+                Log.d(tag, "Full sync initiated...")
+                
+                // 1. Snapshot Recovery (Local -> Server, then Server -> Local)
+                pushProfileData()
+                val categories = categoryDao.getAllCategories().first()
+                if (categories.isNotEmpty()) {
+                    val categoryDtos = categories.map {
+                        CategoryDtoModel(it.id, it.name, it.icon, it.colorHex, it.isDefault, it.sortOrder)
+                    }
+                    jotApi.syncCategories(SyncCategoriesRequest(categoryDtos))
+                }
+
+                val entries = logEntryDao.getAllEntries().first()
+                if (entries.isNotEmpty()) {
+                    val entryDtos = entries.map {
+                        LogEntryDtoModel(it.id, it.categoryId, it.body, it.chips, it.manualText, it.timestamp)
+                    }
+                    jotApi.syncEntries(SyncEntriesRequest(entryDtos))
+                }
+
+                val pullSuccess = pullAllData()
+                if (!pullSuccess) {
+                    Log.w(tag, "Sync aborted: Recovery failed. To avoid data loss, we will not push local empty state to server.")
+                    return@withLock
+                }
+
+                // Profile is handled at the start for optimistic local updates.
+                Log.d(tag, "Sync cycle complete!")
+            } catch (e: Exception) {
+                Log.e(tag, "Sync cycle failed: ${e.message}")
+            }
+        }
+    }
+
+    suspend fun pushProfileData() = withContext(Dispatchers.IO) {
         try {
             if (!preferences.loggedIn.first()) return@withContext
-            
-            Log.d(tag, "Full sync initiated...")
-            
-            // 1. Snapshot Recovery (Server -> Local)
-            val pullSuccess = pullAllData()
-            if (!pullSuccess) {
-                Log.w(tag, "Sync aborted: Recovery failed. To avoid data loss, we will not push local empty state to server.")
-                return@withContext
-            }
-
-            // 2. Cloud Backup (Local -> Server)
-            // Push only if we have things to push
-            val categories = categoryDao.getAllCategories().first()
-            if (categories.isNotEmpty()) {
-                val categoryDtos = categories.map {
-                    CategoryDtoModel(it.id, it.name, it.icon, it.colorHex, it.isDefault, it.sortOrder)
-                }
-                jotApi.syncCategories(SyncCategoriesRequest(categoryDtos))
-            }
-
-            val entries = logEntryDao.getAllEntries().first()
-            if (entries.isNotEmpty()) {
-                val entryDtos = entries.map {
-                    LogEntryDtoModel(it.id, it.categoryId, it.body, it.chips, it.manualText, it.timestamp)
-                }
-                jotApi.syncEntries(SyncEntriesRequest(entryDtos))
-            }
-
-            // Always sync profile
             jotApi.syncProfile(
                 SyncProfileRequest(
                     userContext = preferences.userContext.first(),
@@ -72,9 +86,8 @@ class SyncManager @Inject constructor(
                     counterHistory = preferences.counterHistory.first()
                 )
             )
-            Log.d(tag, "Sync cycle complete!")
         } catch (e: Exception) {
-            Log.e(tag, "Sync cycle failed: ${e.message}")
+            Log.e(tag, "pushProfileData failed: ${e.message}")
         }
     }
 
@@ -96,9 +109,12 @@ class SyncManager @Inject constructor(
             if (response.isSuccessful && body != null) {
                 Log.d(tag, "Cloud data received!")
                 
+                // Track if we were empty before this.
+                val localLogCount = logEntryDao.countEntries()
+                
                 // Track counts for the user feedback toast
-                var logsFound = body.entries.size
-                var categoriesFound = body.categories.size
+                val logsFound = body.entries.size
+                val categoriesFound = body.categories.size
                 
                 // IMPORTANT SENSITIVITY: If data exists, onboarding is complete
                 if (logsFound > 0 || categoriesFound > 0) {
@@ -161,11 +177,11 @@ class SyncManager @Inject constructor(
                     preferences.setAiInsights(json)
                 }
 
-                withContext(Dispatchers.Main) { 
-                    Toast.makeText(context, "Account Recovery: Restored $logsFound logs and $categoriesFound categories!", Toast.LENGTH_LONG).show() 
+                if (logsFound > 0 && localLogCount == 0) {
+                    withContext(Dispatchers.Main) { 
+                        Toast.makeText(context, "Account Recovery: Restored $logsFound logs and $categoriesFound categories!", Toast.LENGTH_LONG).show() 
+                    }
                 }
-                
-                Log.d(tag, "Recovery success: $logsFound logs, $categoriesFound categories restored.")
                 true
             } else {
                 val errorMsg = response.errorBody()?.string() ?: "Unknown Cloud Error"

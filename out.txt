@@ -1,0 +1,37 @@
+﻿Starting a Gradle Daemon, 1 busy and 2 incompatible and 13 stopped Daemons could not be reused, use --status for details
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :app:generateDebugResValues UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+> Task :app:processDebugMainManifest
+> Task :app:processDebugManifest
+> Task :app:processDebugManifestForPackage
+> Task :app:processDebugResources
+> Task :app:kspDebugKotlin
+> Task :app:compileDebugKotlin
+w: file:///Z:/Jot-App/jot-app/app/src/main/java/com/notel/notel/MainActivity.kt:120:38 'val LocalLifecycleOwner: ProvidableCompositionLocal<LifecycleOwner>' is deprecated. Moved to lifecycle-runtime-compose library in androidx.lifecycle.compose package.
+w: file:///Z:/Jot-App/jot-app/app/src/main/java/com/notel/notel/data/local/NotelDatabase.kt:52:22 'fun fallbackToDestructiveMigration(): RoomDatabase.Builder<NotelDatabase>' is deprecated. Replace by overloaded version with parameter to indicate if all tables should be dropped or not.
+w: file:///Z:/Jot-App/jot-app/app/src/main/java/com/notel/notel/data/repository/HabitRepository.kt:182:25 'fun notifyAppWidgetViewDataChanged(p0: IntArray!, p1: Int): Unit' is deprecated. Deprecated in Java.
+w: file:///Z:/Jot-App/jot-app/app/src/main/java/com/notel/notel/ui/screen/BodyLoadScreen.kt:41:44 'val Icons.Filled.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack.
+w: file:///Z:/Jot-App/jot-app/app/src/main/java/com/notel/notel/ui/screen/EntryDetailScreen.kt:93:44 'val Icons.Filled.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack.
+w: file:///Z:/Jot-App/jot-app/app/src/main/java/com/notel/notel/ui/screen/HistoryScreen.kt:71:44 'val Icons.Filled.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack.
+w: file:///Z:/Jot-App/jot-app/app/src/main/java/com/notel/notel/ui/screen/HistoryScreen.kt:114:25 'fun CircularProgressIndicator(progress: Float, modifier: Modifier = ..., color: Color = ..., strokeWidth: Dp = ..., trackColor: Color = ..., strokeCap: StrokeCap = ...): Unit' is deprecated. Use the overload that takes `progress` as a lambda.
+w: file:///Z:/Jot-App/jot-app/app/src/main/java/com/notel/notel/ui/screen/QuickLogScreen.kt:94:44 'val Icons.Filled.TrendingUp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.TrendingUp.
+w: file:///Z:/Jot-App/jot-app/app/src/main/java/com/notel/notel/ui/screen/QuickLogScreen.kt:547:52 'val Icons.Filled.CompareArrows: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.CompareArrows.
+w: file:///Z:/Jot-App/jot-app/app/src/main/java/com/notel/notel/ui/screen/QuickLogScreen.kt:670:56 'val Icons.Filled.CompareArrows: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.CompareArrows.
+w: file:///Z:/Jot-App/jot-app/app/src/main/java/com/notel/notel/ui/screen/SettingsScreen.kt:1586:40 'val Icons.Filled.Logout: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Logout.
+w: file:///Z:/Jot-App/jot-app/app/src/main/java/com/notel/notel/ui/screen/TrendsScreen.kt:60:44 'val Icons.Filled.List: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.List.
+w: file:///Z:/Jot-App/jot-app/app/src/main/java/com/notel/notel/ui/screen/TrendsScreen.kt:89:48 'val Icons.Filled.TrendingUp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.TrendingUp.
+w: file:///Z:/Jot-App/jot-app/app/src/main/java/com/notel/notel/ui/theme/Theme.kt:37:20 'var statusBarColor: Int' is deprecated. Deprecated in Java.
+w: file:///Z:/Jot-App/jot-app/app/src/main/java/com/notel/notel/widget/HabitWidget.kt:32:13 Redundant creation of Json format. Creating instances for each usage can be slow.
+
+BUILD SUCCESSFUL in 2m 4s
+15 actionable tasks: 6 executed, 9 up-to-date

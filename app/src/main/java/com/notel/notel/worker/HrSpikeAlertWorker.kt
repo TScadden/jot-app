@@ -45,7 +45,7 @@ class HrSpikeAlertWorker @AssistedInject constructor(
                 if (isNewSample && isRecent && latestBpm >= threshold) {
                     val lastAlertTime = preferences.hrLastAlertTime.first()
                     
-                    if (currentTime - lastAlertTime > 600000L) { // 10 minute alert cooldown
+                    if (currentTime - lastAlertTime > 30000L) { // 30 second alert cooldown
                         NotificationHelper(applicationContext).showSpikeAlert(latestBpm)
                         preferences.setHrLastAlertTime(currentTime)
                     }
@@ -66,7 +66,7 @@ class HrSpikeAlertWorker @AssistedInject constructor(
 
     private fun scheduleNextCheck(context: Context) {
         val nextRequest = androidx.work.OneTimeWorkRequestBuilder<HrSpikeAlertWorker>()
-            .setInitialDelay(5, java.util.concurrent.TimeUnit.MINUTES)
+            .setInitialDelay(30, java.util.concurrent.TimeUnit.SECONDS)
             .addTag("hr_spike_alert_recursive")
             .build()
             
