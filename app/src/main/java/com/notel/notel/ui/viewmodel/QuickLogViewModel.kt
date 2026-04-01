@@ -12,7 +12,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.json.Json
+import com.notel.notel.data.sync.SyncManager
 import javax.inject.Inject
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -67,7 +67,7 @@ class QuickLogViewModel @Inject constructor(
     private val categoryRepository: CategoryRepository,
     private val preferences: NotelPreferences,
     private val habitRepository: HabitRepository,
-    private val syncManager: com.notel.notel.data.sync.SyncManager
+    private val syncManager: SyncManager
 ) : ViewModel() {
     
     private val dismissedActions = mutableSetOf<String>()
