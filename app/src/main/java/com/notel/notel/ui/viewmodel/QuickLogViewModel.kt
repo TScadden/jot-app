@@ -85,7 +85,10 @@ class QuickLogViewModel @Inject constructor(
     /** In-memory cache: category ID → chip list. Persists for the lifetime of the ViewModel. */
     private val chipCache = mutableMapOf<Int, List<String>>()
 
+    private var hasAttemptedInitialRecovery = false
+
     init {
+        // Observe categories to populate UI
         viewModelScope.launch {
             categoryRepository.getAllCategories().collect { cats ->
                 _uiState.update { state ->
@@ -93,8 +96,11 @@ class QuickLogViewModel @Inject constructor(
                     state.copy(categories = cats, selectedCategory = selected)
                 }
                 
-                // If local categories are empty but we are logged in, try to recover data from server
-                if (cats.isEmpty() && preferences.loggedIn.first()) {
+                // DATA RECOVERY SAFETY NET:
+                // If local categories are empty (common after login/logout cleanup), try to pull from server.
+                // We use a flag to prevent an infinite loop if the server also has no categories.
+                if (cats.isEmpty() && preferences.loggedIn.first() && !hasAttemptedInitialRecovery) {
+                    hasAttemptedInitialRecovery = true
                     syncManager.pullAllData()
                 } else {
                     calculateSmartRanking()
