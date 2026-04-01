@@ -307,4 +307,7 @@ interface JotApi {
 
     @POST("api/habits/log")
     suspend fun logHabit(@Body request: LogHabitRequest): Response<GenericResponse>
+
+    @POST("api/habits/clear")
+    suspend fun clearHabitData(): Response<GenericResponse>
 }

@@ -98,6 +98,12 @@ class SettingsViewModel @Inject constructor(
     val hrSpikeAlertsEnabled = preferences.hrSpikeAlertsEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
+    val reportReadyEvent = logRepository.reportReadyEvent
+
+    fun resetGeneratedReport() {
+        logRepository.resetGeneratedReport()
+    }
+
     val spikeThreshold = preferences.spikeThreshold
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 120)
 
@@ -305,10 +311,6 @@ class SettingsViewModel @Inject constructor(
         logRepository.generateProfessionalReportAsync(categories.value, reportGenerator)
     }
 
-    fun resetGeneratedReport() {
-        logRepository.resetGeneratedReport()
-    }
-
     fun generateWeeklyRecap() {
         logRepository.generateWeeklyRecapAsync(categories.value)
     }
@@ -378,6 +380,12 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             preferences.setHabitReminderEnabled(enabled)
             syncManager.syncAllData()
+        }
+    }
+
+    fun clearHabitData() {
+        viewModelScope.launch {
+            habitRepository.clearHabitData()
         }
     }
 

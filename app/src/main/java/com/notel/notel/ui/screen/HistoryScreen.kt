@@ -47,6 +47,7 @@ fun HistoryScreen(
     val isHabitsLoading by habitViewModel.isLoading.collectAsState()
     val habitError by habitViewModel.error.collectAsState()
     var newHabitText by remember { mutableStateOf("") }
+    var showClearLogsConfirm by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(habitError) {
@@ -199,8 +200,40 @@ fun HistoryScreen(
                                     )
                                 )
                             }
+                            
+                            if (habits.isNotEmpty()) {
+                                item {
+                                    Spacer(Modifier.height(32.dp))
+                                    TextButton(
+                                        onClick = { showClearLogsConfirm = true },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("Clear All Habit Data", color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f), fontSize = 13.sp)
+                                    }
+                                }
+                            }
                         }
                     }
+                }
+                
+                if (showClearLogsConfirm) {
+                    AlertDialog(
+                        onDismissRequest = { showClearLogsConfirm = false },
+                        containerColor = NotelSurface,
+                        title = { Text("Clear All Habit Data?", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
+                        text = { Text("This will wipe all historical completion streaks and logs from the server. Your habits themselves will remain. This cannot be undone.", color = NotelTextSecondary) },
+                        confirmButton = {
+                            TextButton(onClick = { 
+                                habitViewModel.clearHabitData()
+                                showClearLogsConfirm = false 
+                            }) {
+                                Text("Clear Data", color = MaterialTheme.colorScheme.error)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showClearLogsConfirm = false }) { Text("Cancel", color = NotelTextSecondary) }
+                        }
+                    )
                 }
             } else {
             // ── Search Bar ───────────────────────────────────────────────

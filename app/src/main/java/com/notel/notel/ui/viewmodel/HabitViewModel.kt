@@ -69,4 +69,11 @@ class HabitViewModel @Inject constructor(
     fun getStreak(habit: HabitDtoModel): Int {
         return habitRepository.calculateStreak(habit.logs)
     }
+
+    fun clearHabitData() {
+        viewModelScope.launch {
+            habitRepository.clearHabitData()
+            loadHabits()
+        }
+    }
 }

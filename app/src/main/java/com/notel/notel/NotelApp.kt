@@ -26,6 +26,9 @@ class NotelApp : Application(), Configuration.Provider {
     @Inject
     lateinit var preferences: NotelPreferences
 
+    @Inject
+    lateinit var lifecycleTracker: com.notel.notel.util.AppLifecycleTracker
+
     override val workManagerConfiguration: androidx.work.Configuration
         get() = androidx.work.Configuration.Builder()
             .setWorkerFactory(workerFactory)
@@ -33,6 +36,7 @@ class NotelApp : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        lifecycleTracker.startTracking()
         scheduleDailyBodyLoadReminder()
         scheduleHabitReminder()
         scheduleCupReminder()

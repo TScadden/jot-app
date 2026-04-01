@@ -118,6 +118,23 @@ class HabitRepository @Inject constructor(
         }
     }
 
+    suspend fun clearHabitData(): Result<Unit> {
+        return try {
+            val response = api.clearHabitData()
+            if (response.isSuccessful) {
+                // Keep the habits, but clear all their completion logs locally
+                val cleaned = _habits.value.map { it.copy(logs = emptyList()) }
+                _habits.value = cleaned
+                saveWidgetCache(cleaned)
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception("Failed to clear habit data from server"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     /** Builds a human-readable habit data string for the AI context window */
     fun buildHabitContextForAi(): String {
         val habits = _habits.value

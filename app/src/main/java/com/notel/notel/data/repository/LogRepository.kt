@@ -15,6 +15,8 @@ import com.notel.notel.data.repository.HabitRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.GlobalScope
@@ -36,6 +38,7 @@ class LogRepository @Inject constructor(
     private val healthConnectManager: HealthConnectManager,
     private val syncManager: SyncManager,
     private val habitRepository: HabitRepository,
+    private val lifecycleTracker: com.notel.notel.util.AppLifecycleTracker,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) {
     private val _isGeneratingReport = MutableStateFlow(false)
@@ -43,6 +46,9 @@ class LogRepository @Inject constructor(
 
     private val _generatedReport = MutableStateFlow<java.io.File?>(null)
     val generatedReport = _generatedReport.asStateFlow()
+
+    private val _reportReadyEvent = MutableSharedFlow<java.io.File>()
+    val reportReadyEvent = _reportReadyEvent.asSharedFlow()
 
     private val _isGeneratingWeeklyRecap = MutableStateFlow(false)
     val isGeneratingWeeklyRecap = _isGeneratingWeeklyRecap.asStateFlow()
@@ -78,9 +84,12 @@ class LogRepository @Inject constructor(
                 val file = reportGenerator.generateReport(entries, allCategories)
                 _generatedReport.value = file
                 
-                // Show notification if it's ready, so they can share it even if backgrounded
                 file?.let {
-                    com.notel.notel.util.NotificationHelper(context).showReportReady(it)
+                    _reportReadyEvent.emit(it)
+                    // Only show system notification if the app is NOT in the foreground
+                    if (!lifecycleTracker.isAppInForeground.value) {
+                        com.notel.notel.util.NotificationHelper(context).showReportReady(it)
+                    }
                 }
             } catch (e: Exception) {
                 _processError.value = "Failed to generate report: ${e.message}"
@@ -261,21 +270,36 @@ class LogRepository @Inject constructor(
         val today = java.time.LocalDate.now()
         val sb = StringBuilder()
         
-        sb.append("HABIT TRACKER LOGS (Chronological for Correlation):\n")
-        sb.append("Format: Date: [Habits completed on this day]\n")
+        val allLogsTotallyEmpty = habits.all { it.logs.isEmpty() }
         
-        // Show chronological map of the last 15 days of habits for context-aware symptom correlation
-        for (i in 0..14) {
-            val checkDay = today.minusDays(i.toLong())
-            val dateStr = checkDay.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
-            val completed = habits.filter { it.logs.contains(dateStr) }.map { it.title }
-            if (completed.isNotEmpty()) {
-                sb.append("- $dateStr: ${completed.joinToString(", ")}\n")
+        sb.append("HABIT TRACKER LOGS (Chronological for Correlation):\n")
+        
+        if (allLogsTotallyEmpty) {
+            sb.append("- [STREAK DATA UNAVAILABLE / ALL HISTORICAL HABIT LOGS RECENTLY CLEARED BY USER]\n")
+            sb.append("AI CRITICAL INSTRUCTION: The user has explicitly RESET their habit data. You MUST ignore any habit streaks or completion history from previous sessions or 'Past Insights'. Every current habit streak is 0 days. Report that habit tracking has been reset.\n")
+        } else {
+            sb.append("Format: Date: [Habits completed on this day]\n")
+            var hasAnyLog = false
+            // Show chronological map of the last 15 days of habits for context-aware symptom correlation
+            for (i in 0..14) {
+                val checkDay = today.minusDays(i.toLong())
+                val dateStr = checkDay.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
+                val completed = habits.filter { it.logs.contains(dateStr) }.map { it.title }
+                if (completed.isNotEmpty()) {
+                    hasAnyLog = true
+                    sb.append("- $dateStr: ${completed.joinToString(", ")}\n")
+                }
+            }
+            if (!hasAnyLog) {
+                sb.append("- No habits logged in the last 15 days, but historical logs exist.\n")
             }
         }
         
         sb.append("\nHABIT COMPLETION STATISTICS (Summary for the End of Report):\n")
         sb.append("NOTE: Only include these stats in a 'Habit Completion' section at the literal end of the PDF report.\n")
+        if (allLogsTotallyEmpty) {
+            sb.append("CRITICAL: ALL STATS ARE 0 DUE TO DATA RESET.\n")
+        }
         
         habits.forEach { habit ->
             val streak = run {
@@ -685,17 +709,23 @@ class LogRepository @Inject constructor(
             val avg6 = heartHist.drop(90).take(90).map { it.second }.let { if (it.isNotEmpty()) it.average().toInt() else 0 }
             
             // Group by month for explicit monthly ranges to prevent AI "crunching" errors
-            val monthlyRanges = heartHist.groupBy { it.first.substring(0, 7) } // YYYY-MM
+            val monthlyRanges = heartHist
+                .filter { it.second in 1..300 } // Sanitize: Ignore impossible outliers and garbage artifacts
+                .groupBy { it.first.substring(0, 7) } // YYYY-MM
                 .mapValues { (_, values) -> 
                     val bpms = values.map { it.second }
-                    "Low ${bpms.minOrNull()} bpm, High ${bpms.maxOrNull()} bpm"
+                    val minV = bpms.minOrNull() ?: 0
+                    val maxV = bpms.maxOrNull() ?: 0
+                    val rangeV = maxV - minV
+                    "Low $minV bpm, High $maxV bpm (Calculated Range: $rangeV bpm)"
                 }
                 .entries.sortedByDescending { it.key }
                 .take(6)
 
             summary.append("\nOVERALL STATISTICAL TRENDS (Last 6 Months):\n")
+            summary.append("AI CRITICAL INSTRUCTION: If any 'Sample Count' or 'ID' similar numbers (e.g. 45196) appear in the raw logs above, YOU MUST EXCLUDE THEM. ONLY report the Low/High ranges provided in this section.\n")
             summary.append("- Avg Monthly HR: Current: $avgThis bpm | 3rd Mo: $avg3 bpm | 6th Mo: $avg6 bpm\n")
-            summary.append("- Monthly Intensity Ranges:\n")
+            summary.append("- Monthly Intensity Statistics (Calculated range is Max - Min):\n")
             monthlyRanges.forEach { (month, range) ->
                 summary.append("  * $month: $range\n")
             }
@@ -712,6 +742,8 @@ class LogRepository @Inject constructor(
                 summary.append("- Worst day: ${formatReportDate(worstDay.date)} — largest spike ${worstDay.baseline} to ${worstDay.max} bpm (+${worstDay.maxDelta}), ${worstDay.spikeCount} events\n")
             }
         }
+        
+        summary.append("\nAI DATA INTEGRITY NOTE: Ignore any internal log IDs or large numerical counts. Only report the calculated BPM ranges provided above. If a value exceeds 300 bpm, it is a data artifact and MUST be ignored.")
 
         return summary.toString().trim()
     }

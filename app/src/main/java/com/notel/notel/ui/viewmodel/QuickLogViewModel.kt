@@ -501,4 +501,11 @@ class QuickLogViewModel @Inject constructor(
             habitRepository.fetchHabits() // Refresh
         }
     }
+
+    fun clearHabitData() {
+        viewModelScope.launch {
+            habitRepository.clearHabitData()
+            habitRepository.fetchHabits()
+        }
+    }
 }

@@ -140,17 +140,58 @@ fun SettingsScreen(
     val context = LocalContext.current
     val activity = context as? android.app.Activity
     
+    var currentMenu by remember { mutableStateOf(SettingsMenu.MAIN) }
+    
+    BackHandler(enabled = currentMenu != SettingsMenu.MAIN) {
+        currentMenu = SettingsMenu.MAIN
+    }
+    
+    fun shareFile(context: android.content.Context, file: java.io.File) {
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.provider",
+            file
+        )
+        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "application/pdf"
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        val chooser = android.content.Intent.createChooser(intent, "Share Professional Report")
+        context.startActivity(chooser)
+    }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        viewModel.reportReadyEvent.collect { file ->
+            if (currentMenu == SettingsMenu.AI_AND_KNOWLEDGE) {
+                // If the user is specifically in the AI screen, give them the share sheet now
+                shareFile(context, file)
+            } else {
+                // Otherwise a non-intrusive banner on this screen too
+                snackbarHostState.showSnackbar(
+                    message = "Professional Report is ready and saved to your phone!",
+                    actionLabel = "Share",
+                    duration = androidx.compose.material3.SnackbarDuration.Long
+                ).let { result ->
+                    if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                        shareFile(context, file)
+                    }
+                }
+            }
+        }
+    }
+    
+    // Ensure that if we have a generated report from a foreground task, we don't accidentally
+    // show it when revisiting the screen unless it's a fresh event.
+    // The SharedFlow already handles this by default as it doesn't replay.
+    
     LaunchedEffect(Unit) {
         viewModel.billingEvents.collect { message ->
             snackbarHostState.showSnackbar(message)
         }
     }
     
-    var currentMenu by remember { mutableStateOf(SettingsMenu.MAIN) }
-    
-    BackHandler(enabled = currentMenu != SettingsMenu.MAIN) {
-        currentMenu = SettingsMenu.MAIN
-    }
+    // The SharedFlow already handles this by default as it doesn't replay.
 
     var showProfileDialog by remember { mutableStateOf(false) }
     
@@ -1580,6 +1621,8 @@ fun SettingsScreen(
             Spacer(Modifier.height(32.dp))
 
 
+            Spacer(Modifier.height(16.dp))
+
             GlassyButton(
                 onClick = { showRestartDialog = true },
                 modifier = Modifier.fillMaxWidth(),
@@ -1600,6 +1643,7 @@ fun SettingsScreen(
                 Spacer(Modifier.width(8.dp))
                 Text("Logout / Switch Account", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
             }
+            
 
             if (showLogoutDialog) {
                 AlertDialog(
