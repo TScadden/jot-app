@@ -1,17 +1,19 @@
 package com.notel.notel.data.sync
 
+import android.content.Context
 import android.util.Log
+import android.widget.Toast
 import com.notel.notel.data.local.dao.CategoryDao
 import com.notel.notel.data.local.dao.LogEntryDao
 import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.remote.*
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -20,7 +22,8 @@ class SyncManager @Inject constructor(
     private val jotApi: JotApi,
     private val logEntryDao: LogEntryDao,
     private val categoryDao: CategoryDao,
-    private val preferences: NotelPreferences
+    private val preferences: NotelPreferences,
+    @ApplicationContext private val context: Context
 ) {
     private val tag = "SyncManager"
 
@@ -28,29 +31,34 @@ class SyncManager @Inject constructor(
         try {
             if (!preferences.loggedIn.first()) return@withContext
             
-            Log.d(tag, "Starting background sync...")
+            Log.d(tag, "Full sync initiated...")
             
-            // 1. Sync Categories
+            // 1. Snapshot Recovery (Server -> Local)
+            val pullSuccess = pullAllData()
+            if (!pullSuccess) {
+                Log.w(tag, "Sync aborted: Recovery failed. To avoid data loss, we will not push local empty state to server.")
+                return@withContext
+            }
+
+            // 2. Cloud Backup (Local -> Server)
+            // Push only if we have things to push
             val categories = categoryDao.getAllCategories().first()
             if (categories.isNotEmpty()) {
                 val categoryDtos = categories.map {
                     CategoryDtoModel(it.id, it.name, it.icon, it.colorHex, it.isDefault, it.sortOrder)
                 }
                 jotApi.syncCategories(SyncCategoriesRequest(categoryDtos))
-                Log.d(tag, "Synced ${categories.size} categories")
             }
 
-            // 2. Sync Entries
             val entries = logEntryDao.getAllEntries().first()
             if (entries.isNotEmpty()) {
                 val entryDtos = entries.map {
                     LogEntryDtoModel(it.id, it.categoryId, it.body, it.chips, it.manualText, it.timestamp)
                 }
                 jotApi.syncEntries(SyncEntriesRequest(entryDtos))
-                Log.d(tag, "Synced ${entries.size} entries")
             }
 
-            // 3. Sync Profile
+            // Always sync profile
             jotApi.syncProfile(
                 SyncProfileRequest(
                     userContext = preferences.userContext.first(),
@@ -58,53 +66,47 @@ class SyncManager @Inject constructor(
                     professionalUpdates = preferences.professionalUpdates.first(),
                     processedFiles = preferences.processedFiles.first(),
                     loggedDays = preferences.loggedDays.first(),
-                    age = preferences.userAge.first(),
-                    heightCm = preferences.userHeight.first(),
-                    weightKg = preferences.userWeight.first(),
-                    gender = preferences.userGender.first(),
                     onboardingComplete = preferences.onboardingComplete.first(),
                     autoAiSuggestions = preferences.autoAiSuggestions.first(),
                     eventCounters = preferences.eventCounters.first(),
                     counterHistory = preferences.counterHistory.first()
                 )
             )
-            Log.d(tag, "Synced user profile config")
-
-            // 4. Extract Insights from past AI interactions if needed (Currently skipping for MVP)
-            
-            Log.d(tag, "Background sync push complete!")
+            Log.d(tag, "Sync cycle complete!")
         } catch (e: Exception) {
-            Log.e(tag, "Background sync push failed: ${e.message}")
+            Log.e(tag, "Sync cycle failed: ${e.message}")
         }
     }
 
-    suspend fun pullAllData() = withContext(Dispatchers.IO) {
+    suspend fun pullAllData(): Boolean = withContext(Dispatchers.IO) {
         try {
-            if (!preferences.loggedIn.first()) return@withContext
-            Log.d(tag, "Starting background pull...")
-            val response = jotApi.pullData()
-            val body = response.body()
+            if (!preferences.loggedIn.first()) return@withContext false
+            Log.d(tag, "Contacting account cloud...")
             
+            val response = withTimeoutOrNull(15000L) {
+                jotApi.pullData()
+            }
+            
+            if (response == null) {
+                withContext(Dispatchers.Main) { Toast.makeText(context, "Network Error: Could not reach account server (15s timeout)", Toast.LENGTH_LONG).show() }
+                return@withContext false
+            }
+
+            val body = response.body()
             if (response.isSuccessful && body != null) {
-                body.profile?.let { profile ->
-                    profile.userContext?.let { preferences.setUserContext(it) }
-                    profile.knowledgeBase?.let { preferences.setKnowledgeBase(it) }
-                    profile.professionalUpdates?.let { preferences.setProfessionalUpdates(it) }
-                    profile.processedFiles?.let { preferences.setProcessedFiles(it) }
-                    profile.loggedDays?.let { preferences.setLoggedDays(it) }
-                    profile.age?.let { preferences.setUserAge(it) }
-                    profile.heightCm?.let { preferences.setUserHeight(it) }
-                    profile.weightKg?.let { preferences.setUserWeight(it) }
-                    profile.gender?.let { preferences.setUserGender(it) }
-                    profile.onboardingComplete?.let { preferences.setOnboardingComplete(it) }
-                    profile.autoAiSuggestions?.let { preferences.setAutoAiSuggestions(it) }
-                    profile.eventCounters?.let { preferences.setEventCounters(it) }
-                    profile.counterHistory?.let { preferences.setCounterHistory(it) }
+                Log.d(tag, "Cloud data received!")
+                
+                // Track counts for the user feedback toast
+                var logsFound = body.entries.size
+                var categoriesFound = body.categories.size
+                
+                // IMPORTANT SENSITIVITY: If data exists, onboarding is complete
+                if (logsFound > 0 || categoriesFound > 0) {
+                    preferences.setOnboardingComplete(true)
                 }
 
-                body.isUnlimited?.let { preferences.setIsUnlimited(it) }
-
-                if (body.categories.isNotEmpty()) {
+                // A. Restore Categories FIRST
+                if (categoriesFound > 0) {
                     val catEntities = body.categories.map { 
                         com.notel.notel.data.local.entity.Category(
                             id = it.id, 
@@ -116,10 +118,10 @@ class SyncManager @Inject constructor(
                         ) 
                     }
                     categoryDao.insertAll(catEntities)
-                    Log.d(tag, "Pulled ${catEntities.size} categories")
                 }
 
-                if (body.entries.isNotEmpty()) {
+                // B. Restore Logs
+                if (logsFound > 0) {
                     val entryEntities = body.entries.map { 
                         com.notel.notel.data.local.entity.LogEntry(
                             id = it.id, 
@@ -131,15 +133,50 @@ class SyncManager @Inject constructor(
                         ) 
                     }
                     logEntryDao.insertAll(entryEntities)
-                    Log.d(tag, "Pulled ${entryEntities.size} entries")
                 }
                 
-                Log.d(tag, "Background pull complete!")
+                // C. Restore AI Context/Doctor's Notes
+                body.profile?.let { profile ->
+                    profile.userContext?.let { if (it.isNotBlank()) preferences.setUserContext(it) }
+                    profile.knowledgeBase?.let { if (it.isNotBlank()) preferences.setKnowledgeBase(it) }
+                    profile.professionalUpdates?.let { if (it.isNotBlank()) preferences.setProfessionalUpdates(it) }
+                    profile.processedFiles?.let { if (it.isNotBlank()) preferences.setProcessedFiles(it) }
+                    profile.loggedDays?.let { if (it.isNotBlank()) preferences.setLoggedDays(it) }
+                    profile.age?.let { preferences.setUserAge(it) }
+                    profile.heightCm?.let { preferences.setUserHeight(it) }
+                    profile.weightKg?.let { preferences.setUserWeight(it) }
+                    profile.gender?.let { preferences.setUserGender(it) }
+                    profile.onboardingComplete?.let { if (it) preferences.setOnboardingComplete(true) }
+                    profile.autoAiSuggestions?.let { preferences.setAutoAiSuggestions(it) }
+                    profile.eventCounters?.let { if (it.isNotBlank()) preferences.setEventCounters(it) }
+                    profile.counterHistory?.let { if (it.isNotBlank()) preferences.setCounterHistory(it) }
+                }
+
+                // D. Restore AI Results (Productivity)
+                if (body.insights.isNotEmpty()) {
+                    val insightsList = body.insights.map { 
+                        com.notel.notel.data.local.entity.AiInsight(it.id, it.text, it.timestamp, it.type)
+                    }
+                    val json = Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(com.notel.notel.data.local.entity.AiInsight.serializer()), insightsList)
+                    preferences.setAiInsights(json)
+                }
+
+                withContext(Dispatchers.Main) { 
+                    Toast.makeText(context, "Account Recovery: Restored $logsFound logs and $categoriesFound categories!", Toast.LENGTH_LONG).show() 
+                }
+                
+                Log.d(tag, "Recovery success: $logsFound logs, $categoriesFound categories restored.")
+                true
             } else {
-                Log.e(tag, "Pull failed: ${response.errorBody()?.string()}")
+                val errorMsg = response.errorBody()?.string() ?: "Unknown Cloud Error"
+                withContext(Dispatchers.Main) { Toast.makeText(context, "Sync Rejected: $errorMsg", Toast.LENGTH_LONG).show() }
+                Log.e(tag, "Cloud sync rejected: ${response.code()} $errorMsg")
+                false
             }
         } catch (e: Exception) {
-            Log.e(tag, "Background pull failed: ${e.message}")
+            Log.e(tag, "Recovery failed with critical error: ${e.message}")
+            withContext(Dispatchers.Main) { Toast.makeText(context, "Critical Recovery Error: ${e.message}", Toast.LENGTH_LONG).show() }
+            false
         }
     }
 }

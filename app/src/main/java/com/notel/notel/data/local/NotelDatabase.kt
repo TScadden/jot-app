@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
 
 @Database(
     entities = [LogEntry::class, Category::class],
-    version = 2, // Bumped for Medication category
+    version = 11, // Bumped to 11 to force clear any intermediate bugged versions
     exportSchema = false
 )
 abstract class NotelDatabase : RoomDatabase() {
@@ -49,15 +49,17 @@ abstract class NotelDatabase : RoomDatabase() {
                     NotelDatabase::class.java,
                     "notel_db"
                 )
+                    .fallbackToDestructiveMigration()
                     .addMigrations(MIGRATION_1_2)
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)
-                            // Seed default categories on first launch
-                            INSTANCE?.let { database ->
-                                CoroutineScope(Dispatchers.IO).launch {
-                                    database.categoryDao().insertAll(DefaultCategories.all)
-                                }
+                            // Seed default categories on first launch using raw SQL for reliability
+                            DefaultCategories.all.forEach { cat ->
+                                db.execSQL("""
+                                    INSERT INTO categories (id, name, icon, colorHex, isDefault, sortOrder)
+                                    VALUES (${cat.id}, '${cat.name}', '${cat.icon}', '${cat.colorHex}', ${if (cat.isDefault) 1 else 0}, ${cat.sortOrder})
+                                """.trimIndent())
                             }
                         }
                     })

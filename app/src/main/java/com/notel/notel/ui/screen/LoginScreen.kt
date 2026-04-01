@@ -129,8 +129,12 @@ class LoginViewModel @Inject constructor(
                     // Handle Admin/Friend status and initial balance from server
                     body.isUnlimited?.let { preferences.setIsUnlimited(it) }
                     body.balance?.let { preferences.setUserBalance(it) }
+                    body.onboardingComplete?.let { if (it) preferences.setOnboardingComplete(true) }
+                    
                     syncManager.pullAllData() // Pull existing data on successful login
-                    onboardingCompleteByServer = body.onboardingComplete ?: false
+                    
+                    // Final safety: trust the locally synced preference (which pullAllData updates) over anything else
+                    onboardingCompleteByServer = preferences.onboardingComplete.first()
                     isLoggedIn = true
                 } else {
                     val errorBody = response.errorBody()?.string()

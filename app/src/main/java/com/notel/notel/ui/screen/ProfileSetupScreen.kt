@@ -17,6 +17,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.notel.notel.data.preferences.NotelPreferences
+import com.notel.notel.data.sync.SyncManager
 import com.notel.notel.ui.theme.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
@@ -24,11 +25,22 @@ import javax.inject.Inject
 
 @HiltViewModel
 class ProfileSetupViewModel @Inject constructor(
-    private val preferences: NotelPreferences
+    private val preferences: NotelPreferences,
+    private val syncManager: SyncManager
 ) : ViewModel() {
+    val existingContext = preferences.userContext
+
+    init {
+        // Trigger a pull on start to ensure we have the latest server context
+        viewModelScope.launch {
+            syncManager.pullAllData()
+        }
+    }
+
     fun saveProfileData(profile: String) {
         viewModelScope.launch {
             preferences.setUserContext(profile)
+            syncManager.syncAllData()
         }
     }
 }
@@ -39,7 +51,16 @@ fun ProfileSetupScreen(
     viewModel: ProfileSetupViewModel = hiltViewModel(),
     onNavigateNext: () -> Unit
 ) {
+    val serverContext by viewModel.existingContext.collectAsState(initial = "")
     var profileText by remember { mutableStateOf("") }
+    
+    // Pre-fill once when server data arrives
+    LaunchedEffect(serverContext) {
+        if (profileText.isBlank() && serverContext.isNotBlank()) {
+            profileText = serverContext
+        }
+    }
+
     val wordCount = profileText.trim().split("\\s+".toRegex()).count { it.isNotBlank() }
     val isReady = wordCount >= 10
 

@@ -12,6 +12,7 @@ import com.notel.notel.data.preferences.NotelPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 import java.util.Calendar
@@ -41,10 +42,16 @@ class NotelApp : Application(), Configuration.Provider {
         scheduleHabitReminder()
         scheduleCupReminder()
         
-        // Start HR Monitor Service if enabled
+        // Start HR Monitor Service safely when app enters foreground
         CoroutineScope(Dispatchers.IO).launch {
-            if (preferences.hrSpikeAlertsEnabled.first()) {
-                HrSpikeMonitorService.startService(this@NotelApp)
+            lifecycleTracker.isAppInForeground.collectLatest { isForeground ->
+                try {
+                    if (isForeground && preferences.hrSpikeAlertsEnabled.first()) {
+                        HrSpikeMonitorService.startService(this@NotelApp)
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
         }
     }
