@@ -1,5 +1,8 @@
 package com.notel.notel.ui.screen
 
+import android.content.Intent
+import com.notel.notel.VoiceLogActivity
+
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
