@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalContext
 import com.notel.notel.ui.screen.*
 import com.notel.notel.ui.theme.*
+import com.notel.notel.ui.viewmodel.FitbitViewModel
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
