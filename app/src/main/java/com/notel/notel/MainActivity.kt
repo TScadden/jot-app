@@ -59,15 +59,23 @@ class MainActivity : ComponentActivity() {
      */
     private fun syncShortcuts() {
         try {
-            val shortcut = ShortcutInfoCompat.Builder(this, "create_note_voice")
+            val noteShortcut = ShortcutInfoCompat.Builder(this, "create_note_voice")
                 .setShortLabel("Create Note")
                 .setLongLabel("Make a new note in Jot")
-                .setIcon(IconCompat.createWithResource(this, R.mipmap.ic_launcher))
+                .setIcon(IconCompat.createWithResource(this, R.drawable.ic_jot_launcher))
                 .addCapabilityBinding("actions.intent.CREATE_NOTE", null, null)
                 .setIntent(Intent(Intent.ACTION_VIEW, Uri.parse("jot://create-note")))
                 .build()
 
-            ShortcutManagerCompat.pushDynamicShortcut(this, shortcut)
+            val healthShortcut = ShortcutInfoCompat.Builder(this, "health_note_voice")
+                .setShortLabel("Health Note")
+                .setLongLabel("Log a health note in Jot")
+                .setIcon(IconCompat.createWithResource(this, R.drawable.ic_jot_launcher))
+                .addCapabilityBinding("actions.intent.CREATE_NOTE", null, null)
+                .setIntent(Intent(Intent.ACTION_VIEW, Uri.parse("jot://health-note")))
+                .build()
+
+            ShortcutManagerCompat.addDynamicShortcuts(this, listOf(noteShortcut, healthShortcut))
         } catch (e: Exception) {
             e.printStackTrace()
         }
