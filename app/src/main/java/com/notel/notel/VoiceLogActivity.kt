@@ -98,7 +98,8 @@ fun VoiceLogScreen(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var isListening by remember { mutableStateOf(false) }
-    var recognizedText by remember { mutableStateOf("Listening...") }
+    var recognizedText by remember { mutableStateOf("") }
+    var partialText by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     
     // UI Logic ...
