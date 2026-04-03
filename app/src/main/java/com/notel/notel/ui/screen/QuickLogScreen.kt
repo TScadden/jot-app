@@ -409,6 +409,7 @@ fun QuickLogScreen(
             }
 
             // ── Manual Text Field ─────────────────────────────────────────
+            val context = androidx.compose.ui.platform.LocalContext.current
             OutlinedTextField(
                 value = state.manualText,
                 onValueChange = viewModel::updateManualText,
@@ -416,6 +417,13 @@ fun QuickLogScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
                 placeholder = { Text("Add a custom note…", color = NotelTextSecondary) },
+                trailingIcon = {
+                    IconButton(onClick = { 
+                        context.startActivity(Intent(context, VoiceLogActivity::class.java))
+                    }) {
+                        Icon(Icons.Default.Mic, null, tint = NotelPrimary)
+                    }
+                },
                 shape = RoundedCornerShape(14.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = NotelPrimary,

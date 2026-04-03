@@ -798,7 +798,7 @@ class LogRepository @Inject constructor(
      * Entry point for Google Assistant notes.
      * Cleans text (removes extras like "um", "uh") and classifies into best category.
      */
-    suspend fun handleAssistantNote(rawText: String): Result<String> {
+    suspend fun handleVoiceNote(rawText: String): Result<String> {
         val categories = categoryRepository.getAllCategories().first()
         val catMap = categories.associate { it.id to it.name }
         

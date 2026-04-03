@@ -28,56 +28,17 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalContext
 import com.notel.notel.ui.screen.*
 import com.notel.notel.ui.theme.*
-import com.notel.notel.ui.viewmodel.FitbitViewModel
-import android.content.Intent
-import android.net.Uri
-import androidx.core.content.pm.ShortcutInfoCompat
-import androidx.core.content.pm.ShortcutManagerCompat
-import androidx.core.graphics.drawable.IconCompat
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.collectLatest
-import com.notel.notel.R
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        syncShortcuts()
         setContent {
             NotelTheme {
                 NotelNavGraph()
             }
-        }
-    }
-
-    /**
-     * Manually pushes Jot's capabilities to the system's ShortcutManager.
-     * This helps Google Assistant "see" the app and its BII (Built-In Intents)
-     * even before it is indexed naturally.
-     */
-    private fun syncShortcuts() {
-        try {
-            val noteShortcut = ShortcutInfoCompat.Builder(this, "create_note_voice")
-                .setShortLabel("Create Note")
-                .setLongLabel("Make a new note in Jot")
-                .setIcon(IconCompat.createWithResource(this, R.drawable.ic_jot_launcher))
-                .addCapabilityBinding("actions.intent.OPEN_APP_FEATURE", null, null)
-                .setIntent(Intent(Intent.ACTION_VIEW, Uri.parse("jot://create-note")))
-                .build()
-
-            val healthShortcut = ShortcutInfoCompat.Builder(this, "health_note_voice")
-                .setShortLabel("Health Note")
-                .setLongLabel("Log a health note in Jot")
-                .setIcon(IconCompat.createWithResource(this, R.drawable.ic_jot_launcher))
-                .addCapabilityBinding("actions.intent.OPEN_APP_FEATURE", null, null)
-                .setIntent(Intent(Intent.ACTION_VIEW, Uri.parse("jot://health-note")))
-                .build()
-
-            ShortcutManagerCompat.addDynamicShortcuts(this, listOf(noteShortcut, healthShortcut))
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 }
