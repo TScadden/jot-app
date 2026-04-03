@@ -89,6 +89,7 @@ dependencies {
     // Play Billing
     implementation(libs.google.billing)
     implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.core.google.shortcuts)
 
     // Jetpack Glance (home screen widget)
     implementation("androidx.glance:glance-appwidget:1.1.1")
