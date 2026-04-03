@@ -28,6 +28,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -37,6 +40,7 @@ import com.notel.notel.data.repository.LogRepository
 import com.notel.notel.ui.theme.NotelBackground
 import com.notel.notel.ui.theme.NotelPrimary
 import com.notel.notel.ui.theme.NotelSurface
+import com.notel.notel.ui.theme.NotelSurfaceHigh
 import com.notel.notel.ui.theme.NotelTextPrimary
 import com.notel.notel.ui.theme.NotelTextSecondary
 import com.notel.notel.ui.theme.GlassySpinner
@@ -63,15 +67,15 @@ class VoiceLogActivity : ComponentActivity() {
             VoiceLogScreen(
                 isProcessing = isProcessing,
                 onFinish = { finish() },
-                onSendToAI = { text ->
-                    isProcessing = true
+                onSendToAI = { text, useAI ->
+                    isProcessing = useAI
                     scope.launch {
                         try {
-                            logRepository.handleVoiceNote(text)
+                            logRepository.handleVoiceNote(text, useAI = useAI)
                             finish()
                         } catch (e: Exception) {
                             isProcessing = false
-                            Toast.makeText(this@VoiceLogActivity, "AI cleanup failed, but note was sent locally.", Toast.LENGTH_LONG).show()
+                            Toast.makeText(this@VoiceLogActivity, "Note logging failed.", Toast.LENGTH_LONG).show()
                             finish()
                         }
                     }
@@ -90,7 +94,7 @@ class VoiceLogActivity : ComponentActivity() {
 fun VoiceLogScreen(
     isProcessing: Boolean = false,
     onFinish: () -> Unit,
-    onSendToAI: (String) -> Unit
+    onSendToAI: (String, Boolean) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var isListening by remember { mutableStateOf(false) }
@@ -169,16 +173,16 @@ fun VoiceLogScreen(
 
     DisposableEffect(Unit) {
         val listener = object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) {}
-            override fun onBeginningOfSpeech() { 
-                isListening = true 
+            override fun onReadyForSpeech(params: Bundle?) {
+                isListening = true
+                errorMessage = null
             }
+            override fun onBeginningOfSpeech() { isListening = true }
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() { isListening = false }
             override fun onError(error: Int) {
                 isListening = false
-                // Silence happens often—just restart if user is still in the activity
                 if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
                     val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                         putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -194,14 +198,9 @@ fun VoiceLogScreen(
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 if (!matches.isNullOrEmpty()) {
                     val newText = matches[0]
-                    if (recognizedText == "Listening...") {
-                        recognizedText = newText
-                    } else {
-                        recognizedText += " " + newText
-                    }
+                    recognizedText = if (recognizedText.isEmpty()) newText else "$recognizedText $newText"
                 }
-                
-                // CRITICAL: Restart listening so the user can continue their thought
+                partialText = ""
                 val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
@@ -212,18 +211,15 @@ fun VoiceLogScreen(
             override fun onPartialResults(partialResults: Bundle?) {
                 val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 if (!matches.isNullOrEmpty()) {
-                    // Update UI with partial result (ghost text)
+                    partialText = matches[0]
                 }
             }
             override fun onEvent(eventType: Int, params: Bundle?) {}
         }
         speechRecognizer.setRecognitionListener(listener)
-        onDispose { 
-            speechRecognizer.destroy() 
-        }
+        onDispose { speechRecognizer.destroy() }
     }
 
-    // Ripple Animation
     val infiniteTransition = rememberInfiniteTransition(label = "ripple")
     val rippleScale by infiniteTransition.animateFloat(
         initialValue = 1f,
@@ -290,31 +286,71 @@ fun VoiceLogScreen(
                 }
 
                 Text(
-                    text = if (errorMessage != null) "Error" else "Voice AI Log",
+                    text = if (errorMessage != null) "Recognition Issue" else "Voice AI Log",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.ExtraBold,
                     color = NotelTextPrimary
                 )
 
                 Text(
-                    text = errorMessage ?: recognizedText,
+                    text = buildAnnotatedString {
+                        if (errorMessage != null) {
+                            append(errorMessage!!)
+                        } else {
+                            append(recognizedText)
+                            if (partialText.isNotBlank()) {
+                                if (recognizedText.isNotEmpty()) append(" ")
+                                withStyle(SpanStyle(color = NotelTextSecondary.copy(alpha = 0.4f))) {
+                                    append(partialText)
+                                }
+                            }
+                            if (recognizedText.isEmpty() && partialText.isEmpty()) {
+                                withStyle(SpanStyle(color = NotelTextSecondary.copy(alpha = 0.3f))) {
+                                    append("Waiting to hear you...")
+                                }
+                            }
+                        }
+                    },
                     fontSize = 18.sp,
                     color = if (errorMessage != null) MaterialTheme.colorScheme.error else NotelTextSecondary,
                     fontWeight = FontWeight.Medium,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    lineHeight = 24.sp
+                    textAlign = TextAlign.Center,
+                    lineHeight = 24.sp,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp)
                 )
 
                 Spacer(Modifier.height(8.dp))
 
-                Button(
-                    onClick = { onSendToAI(recognizedText) },
-                    enabled = recognizedText.isNotBlank() && recognizedText != "Listening...",
-                    colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth()
+                // Action Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text("Done", color = Color.White, fontWeight = FontWeight.Bold)
+                    // Option 1: Save Raw
+                    Button(
+                        onClick = { onSendToAI(recognizedText, false) },
+                        enabled = recognizedText.isNotBlank() && recognizedText != "Listening...",
+                        colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Save, null, tint = NotelTextPrimary, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Save Raw", color = NotelTextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+
+                    // Option 2: Clean with AI
+                    Button(
+                        onClick = { onSendToAI(recognizedText, true) },
+                        enabled = recognizedText.isNotBlank() && recognizedText != "Listening...",
+                        colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.AutoAwesome, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Clean AI", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
                 }
 
                 Button(

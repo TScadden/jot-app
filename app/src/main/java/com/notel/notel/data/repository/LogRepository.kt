@@ -798,10 +798,24 @@ class LogRepository @Inject constructor(
      * Entry point for Google Assistant notes.
      * Cleans text (removes extras like "um", "uh") and classifies into best category.
      */
-    suspend fun handleVoiceNote(rawText: String): Result<String> {
+    suspend fun handleVoiceNote(rawText: String, useAI: Boolean = true): Result<String> {
         val categories = categoryRepository.getAllCategories().first()
         val catMap = categories.associate { it.id to it.name }
         
+        if (!useAI) {
+            // Save Raw: Skip AI and put in General category (ID 7)
+            insertEntry(
+                LogEntry(
+                    categoryId = 7, 
+                    body = rawText,
+                    manualText = rawText,
+                    source = "Voice Raw"
+                )
+            )
+            return Result.success("Note saved as raw.")
+        }
+        
+        // Clean with AI (Gemini)
         return geminiService.classifyAndCleanNote(rawText, catMap).fold(
             onSuccess = { response ->
                 insertEntry(
@@ -820,7 +834,8 @@ class LogRepository @Inject constructor(
                     LogEntry(
                         categoryId = 7, 
                         body = rawText,
-                        manualText = rawText
+                        manualText = rawText,
+                        source = "Voice AI (Fallback)"
                     )
                 )
                 Result.success("Note saved to General")
