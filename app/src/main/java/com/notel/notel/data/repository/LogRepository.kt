@@ -41,6 +41,7 @@ class LogRepository @Inject constructor(
     private val categoryRepository: CategoryRepository,
     private val habitRepository: HabitRepository,
     private val lifecycleTracker: com.notel.notel.util.AppLifecycleTracker,
+    private val jotApi: com.notel.notel.data.remote.JotApi,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) {
     private val _isGeneratingReport = MutableStateFlow(false)
