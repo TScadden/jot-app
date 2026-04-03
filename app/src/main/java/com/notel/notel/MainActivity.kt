@@ -63,7 +63,7 @@ class MainActivity : ComponentActivity() {
                 .setShortLabel("Create Note")
                 .setLongLabel("Make a new note in Jot")
                 .setIcon(IconCompat.createWithResource(this, R.drawable.ic_jot_launcher))
-                .addCapabilityBinding("actions.intent.CREATE_NOTE", null, null)
+                .addCapabilityBinding("actions.intent.OPEN_APP_FEATURE", null, null)
                 .setIntent(Intent(Intent.ACTION_VIEW, Uri.parse("jot://create-note")))
                 .build()
 
@@ -71,7 +71,7 @@ class MainActivity : ComponentActivity() {
                 .setShortLabel("Health Note")
                 .setLongLabel("Log a health note in Jot")
                 .setIcon(IconCompat.createWithResource(this, R.drawable.ic_jot_launcher))
-                .addCapabilityBinding("actions.intent.CREATE_NOTE", null, null)
+                .addCapabilityBinding("actions.intent.OPEN_APP_FEATURE", null, null)
                 .setIntent(Intent(Intent.ACTION_VIEW, Uri.parse("jot://health-note")))
                 .build()
 
