@@ -55,10 +55,10 @@ class VoiceLogActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
+            val scope = rememberCoroutineScope()
             VoiceLogScreen(
                 onFinish = { finish() },
                 onSendToAI = { text ->
-                    val scope = rememberCoroutineScope()
                     scope.launch {
                         logRepository.handleVoiceNote(text)
                         finish()
