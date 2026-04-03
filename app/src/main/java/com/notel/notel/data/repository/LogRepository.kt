@@ -8,6 +8,7 @@ import com.notel.notel.data.local.entity.Category
 import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.remote.GeminiService
 import com.notel.notel.data.remote.BodyLoadResponse
+import com.notel.notel.data.remote.ClassifyAndCleanResponse
 import com.notel.notel.data.healthconnect.HealthConnectManager
 import com.notel.notel.data.healthconnect.DailyHeartRateSummary
 import com.notel.notel.data.sync.SyncManager
@@ -37,6 +38,7 @@ class LogRepository @Inject constructor(
     private val preferences: NotelPreferences,
     private val healthConnectManager: HealthConnectManager,
     private val syncManager: SyncManager,
+    private val categoryRepository: CategoryRepository,
     private val habitRepository: HabitRepository,
     private val lifecycleTracker: com.notel.notel.util.AppLifecycleTracker,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
@@ -778,5 +780,38 @@ class LogRepository @Inject constructor(
             preferences.deductBalance(0.05f)
             saveAiInsight("Body Load: ${res.score} | Factors: ${res.factors.joinToString(", ")}", "BodyLoad")
         }
+    }
+
+    /**
+     * Entry point for Google Assistant notes.
+     * Cleans text (removes extras like "um", "uh") and classifies into best category.
+     */
+    suspend fun handleAssistantNote(rawText: String): Result<String> {
+        val categories = categoryRepository.getAllCategories().first()
+        val catMap = categories.associate { it.id to it.name }
+        
+        return geminiService.classifyAndCleanNote(rawText, catMap).fold(
+            onSuccess = { response ->
+                insertEntry(
+                    LogEntry(
+                        categoryId = response.categoryId,
+                        body = response.cleanedText,
+                        manualText = response.cleanedText
+                    )
+                )
+                Result.success("Note saved to ${catMap[response.categoryId] ?: "General"}")
+            },
+            onFailure = { 
+                // Fallback to General (ID 7) if AI fails
+                insertEntry(
+                    LogEntry(
+                        categoryId = 7, 
+                        body = rawText,
+                        manualText = rawText
+                    )
+                )
+                Result.success("Note saved to General")
+            }
+        )
     }
 }

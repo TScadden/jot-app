@@ -289,4 +289,21 @@ class GeminiService @Inject constructor(
             Result.failure(e)
         }
     }
+
+    suspend fun classifyAndCleanNote(
+        noteText: String,
+        categories: Map<Int, String>
+    ): Result<ClassifyAndCleanResponse> {
+        return try {
+            val response = jotApi.classifyAndClean(ClassifyAndCleanRequest(noteText, categories))
+            val result = response.body()?.result
+            if (response.isSuccessful && result != null) {
+                Result.success(result)
+            } else {
+                Result.failure(IOException(response.body()?.error ?: "Unknown API Error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }

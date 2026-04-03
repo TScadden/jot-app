@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Define the ability to create notes via Google Assistant -->
+    <capability android:name="actions.intent.CREATE_NOTE">
+        <intent
+            android:action="com.google.android.gms.actions.CREATE_NOTE"
+            android:targetPackage="com.notel.notel"
+            android:targetClass="com.notel.notel.AssistantNoteActivity">
+            <parameter
+                android:name="note.text"
+                android:key="com.google.android.gms.actions.EXTRA_NOTE_TEXT"/>
+        </intent>
+    </capability>
+</shortcuts>

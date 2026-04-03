@@ -234,6 +234,18 @@ data class LogHabitRequest(
     val is_completed: Boolean
 )
 
+@Serializable
+data class ClassifyAndCleanRequest(
+    val noteText: String,
+    val categories: Map<Int, String>
+)
+
+@Serializable
+data class ClassifyAndCleanResponse(
+    val cleanedText: String,
+    val categoryId: Int
+)
+
 interface JotApi {
 
     @POST("api/auth/register")
@@ -274,6 +286,9 @@ interface JotApi {
 
     @POST("api/ai/body-load")
     suspend fun getBodyLoad(@Body request: AiRequest): Response<AiResponse<BodyLoadResponse>>
+
+    @POST("api/ai/classify-and-clean")
+    suspend fun classifyAndClean(@Body request: ClassifyAndCleanRequest): Response<AiResponse<ClassifyAndCleanResponse>>
 
     // ── SYNC ─────────────────────────────────────────────
     @retrofit2.http.GET("api/sync/pull")
