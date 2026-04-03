@@ -29,6 +29,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -38,6 +39,7 @@ import com.notel.notel.ui.theme.NotelPrimary
 import com.notel.notel.ui.theme.NotelSurface
 import com.notel.notel.ui.theme.NotelTextPrimary
 import com.notel.notel.ui.theme.NotelTextSecondary
+import com.notel.notel.ui.theme.GlassySpinner
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -56,12 +58,22 @@ class VoiceLogActivity : ComponentActivity() {
 
         setContent {
             val scope = rememberCoroutineScope()
+            var isProcessing by remember { mutableStateOf(false) } // State for AI thinking
+
             VoiceLogScreen(
+                isProcessing = isProcessing,
                 onFinish = { finish() },
                 onSendToAI = { text ->
+                    isProcessing = true
                     scope.launch {
-                        logRepository.handleVoiceNote(text)
-                        finish()
+                        try {
+                            logRepository.handleVoiceNote(text)
+                            finish()
+                        } catch (e: Exception) {
+                            isProcessing = false
+                            Toast.makeText(this@VoiceLogActivity, "AI cleanup failed, but note was sent locally.", Toast.LENGTH_LONG).show()
+                            finish()
+                        }
                     }
                 }
             )
@@ -76,6 +88,7 @@ class VoiceLogActivity : ComponentActivity() {
 
 @Composable
 fun VoiceLogScreen(
+    isProcessing: Boolean = false,
     onFinish: () -> Unit,
     onSendToAI: (String) -> Unit
 ) {
@@ -83,6 +96,37 @@ fun VoiceLogScreen(
     var isListening by remember { mutableStateOf(false) }
     var recognizedText by remember { mutableStateOf("Listening...") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    
+    // UI Logic ...
+    if (isProcessing) {
+        // AI Thinking State
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.6f))
+                .padding(24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxWidth().wrapContentHeight().clip(RoundedCornerShape(32.dp)),
+                color = NotelSurface,
+                tonalElevation = 8.dp
+            ) {
+                Column(
+                    modifier = Modifier.padding(32.dp).fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    GlassySpinner(size = 56.dp)
+                    Text("Cleaning with AI...", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = NotelTextPrimary)
+                    Text("Performing surgical cleanup of your log...", style = MaterialTheme.typography.bodyMedium, color = NotelTextSecondary, textAlign = TextAlign.Center)
+                }
+            }
+        }
+        return
+    }
+    
+    // Standard Speech UI Logic ... 
 
     val speechRecognizer = remember { SpeechRecognizer.createSpeechRecognizer(context) }
     
@@ -128,31 +172,47 @@ fun VoiceLogScreen(
             override fun onReadyForSpeech(params: Bundle?) {}
             override fun onBeginningOfSpeech() { 
                 isListening = true 
-                recognizedText = "Listening..."
             }
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() { isListening = false }
             override fun onError(error: Int) {
                 isListening = false
-                errorMessage = when (error) {
-                    SpeechRecognizer.ERROR_NO_MATCH -> "No speech detected"
-                    SpeechRecognizer.ERROR_NETWORK -> "Network error"
-                    else -> "Voice recognition failed"
+                // Silence happens often—just restart if user is still in the activity
+                if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
+                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+                        putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                    }
+                    speechRecognizer.startListening(intent)
+                } else {
+                    errorMessage = "Recognition issue. Try again."
                 }
             }
             override fun onResults(results: Bundle?) {
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 if (!matches.isNullOrEmpty()) {
-                    onSendToAI(matches[0])
-                } else {
-                    onFinish()
+                    val newText = matches[0]
+                    if (recognizedText == "Listening...") {
+                        recognizedText = newText
+                    } else {
+                        recognizedText += " " + newText
+                    }
                 }
+                
+                // CRITICAL: Restart listening so the user can continue their thought
+                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                }
+                speechRecognizer.startListening(intent)
             }
             override fun onPartialResults(partialResults: Bundle?) {
                 val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 if (!matches.isNullOrEmpty()) {
-                    recognizedText = matches[0]
+                    // Update UI with partial result (ghost text)
                 }
             }
             override fun onEvent(eventType: Int, params: Bundle?) {}
