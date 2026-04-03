@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
 
 @Database(
     entities = [LogEntry::class, Category::class],
-    version = 11, // Bumped to 11 to force clear any intermediate bugged versions
+    version = 12, 
     exportSchema = false
 )
 abstract class NotelDatabase : RoomDatabase() {
@@ -25,6 +25,12 @@ abstract class NotelDatabase : RoomDatabase() {
 
     companion object {
         @Volatile private var INSTANCE: NotelDatabase? = null
+
+        private val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE log_entries ADD COLUMN source TEXT")
+            }
+        }
 
         private val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -50,7 +56,7 @@ abstract class NotelDatabase : RoomDatabase() {
                     "notel_db"
                 )
                     .fallbackToDestructiveMigration()
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_11_12)
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)

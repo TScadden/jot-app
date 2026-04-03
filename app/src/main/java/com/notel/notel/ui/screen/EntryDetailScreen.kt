@@ -170,12 +170,43 @@ fun EntryDetailScreen(
                 }
 
                 // Timestamp Section
-                Text(
-                    text = "Logged on ${sdf.format(Date(e.timestamp))}", 
-                    color = NotelTextSecondary, 
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(horizontal = 4.dp)
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Logged on ${sdf.format(Date(e.timestamp))}", 
+                        color = NotelTextSecondary, 
+                        fontSize = 12.sp
+                    )
+                    
+                    if (e.source == "Voice AI") {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFFB39DDB).copy(alpha = 0.15f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.AutoAwesome,
+                                    null,
+                                    tint = Color(0xFFB39DDB),
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    "Processed via Voice AI",
+                                    color = Color(0xFFB39DDB),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
 
                 // Body card
                 GlassyCard(

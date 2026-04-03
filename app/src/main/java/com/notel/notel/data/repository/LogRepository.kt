@@ -796,7 +796,8 @@ class LogRepository @Inject constructor(
                     LogEntry(
                         categoryId = response.categoryId,
                         body = response.cleanedText,
-                        manualText = response.cleanedText
+                        manualText = response.cleanedText,
+                        source = "Voice AI"
                     )
                 )
                 Result.success("Note saved to ${catMap[response.categoryId] ?: "General"}")

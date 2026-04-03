@@ -10,5 +10,6 @@ data class LogEntry(
     val categoryId: Int,
     val body: String,
     val chips: String = "[]",       // JSON array of tapped chip labels
-    val manualText: String = ""     // optional free-form addition
+    val manualText: String = "",    // optional free-form addition
+    val source: String? = null      // e.g. "Voice AI"
 )

@@ -370,19 +370,38 @@ private fun EntryCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Category tag
-                if (category != null) {
-                    val catColor = try { Color(android.graphics.Color.parseColor(category.colorHex)) }
-                    catch (e: Exception) { NotelPrimary }
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = catColor.copy(alpha = 0.2f)
-                    ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (category != null) {
+                        val catColor = try { Color(android.graphics.Color.parseColor(category.colorHex)) }
+                        catch (e: Exception) { NotelPrimary }
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = catColor.copy(alpha = 0.2f)
+                        ) {
+                            Text(
+                                category.name,
+                                color = catColor,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+
+                    if (entry.source == "Voice AI") {
+                        Spacer(Modifier.width(8.dp))
+                        Icon(
+                            Icons.Default.AutoAwesome,
+                            contentDescription = "Voice AI",
+                            tint = Color(0xFFB39DDB), // Light purple
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
                         Text(
-                            category.name,
-                            color = catColor,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            "Voice AI",
+                            color = Color(0xFFB39DDB).copy(alpha = 0.7f),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
