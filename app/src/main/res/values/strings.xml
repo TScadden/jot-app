@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Jot</string>
+    <string name="voice_log_short_label">Voice AI Log</string>
+    <string name="voice_log_long_label">Start a voice log with AI cleanup</string>
 </resources>
