@@ -118,6 +118,7 @@
         <activity
             android:name=".AssistantNoteActivity"
             android:exported="true"
+            android:label="@string/app_name"
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             tools:ignore="ExportedActivity">
             <intent-filter>
@@ -132,6 +133,9 @@
 
         <meta-data
             android:name="android.app.shortcuts"
+            android:resource="@xml/shortcuts" />
+        <meta-data
+            android:name="com.google.android.actions"
             android:resource="@xml/shortcuts" />
 
     </application>
