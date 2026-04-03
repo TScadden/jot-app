@@ -3,7 +3,7 @@
     <!-- Define the ability to create notes via Google Assistant -->
     <capability android:name="actions.intent.CREATE_NOTE">
         <intent
-            android:action="com.google.android.gms.actions.CREATE_NOTE"
+            android:action="android.intent.action.CREATE_NOTE"
             android:targetPackage="com.notel.notel"
             android:targetClass="com.notel.notel.AssistantNoteActivity">
             <parameter

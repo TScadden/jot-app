@@ -23,11 +23,12 @@ class AssistantNoteActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // The note text is usually in one of these two extras
+        // Handle multiple text extras for maximum compatibility
         val text1 = intent.getStringExtra(Intent.EXTRA_TEXT)
         val text2 = intent.getStringExtra("com.google.android.gms.actions.EXTRA_NOTE_TEXT")
+        val text3 = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
         
-        val noteText = text1 ?: text2 ?: ""
+        val noteText = text1 ?: text2 ?: text3 ?: ""
         
         if (noteText.isBlank()) {
             finish()
