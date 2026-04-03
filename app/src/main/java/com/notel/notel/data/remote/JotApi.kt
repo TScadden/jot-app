@@ -306,6 +306,9 @@ interface JotApi {
     @POST("api/sync/insights")
     suspend fun syncInsights(@Body request: SyncInsightsRequest): Response<SyncResponse>
 
+    @retrofit2.http.DELETE("api/sync/entries/{localId}")
+    suspend fun deleteEntry(@retrofit2.http.Path("localId") localId: Long): Response<GenericResponse>
+
     // ── BILLING ──────────────────────────────────────────
     @POST("api/billing/verify")
     suspend fun verifyPurchase(@Body request: BillingVerificationRequest): Response<BillingVerificationResponse>

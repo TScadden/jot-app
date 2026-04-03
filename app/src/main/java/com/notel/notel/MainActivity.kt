@@ -37,6 +37,7 @@ import androidx.core.graphics.drawable.IconCompat
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
+import com.notel.notel.R
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {

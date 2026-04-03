@@ -174,8 +174,19 @@ class LogRepository @Inject constructor(
     }
 
     suspend fun deleteEntry(entry: LogEntry) {
-        logEntryDao.deleteEntry(entry)
-        triggerSync()
+        try {
+            // 1. Local Delete
+            logEntryDao.deleteEntry(entry)
+            
+            // 2. Cloud Delete (so it doesn't come back on the next sync)
+            jotApi.deleteEntry(entry.id)
+            
+            // 3. Trigger refresh
+            triggerSync()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            // At least keep the local deleted
+        }
     }
     
     @OptIn(DelicateCoroutinesApi::class)
