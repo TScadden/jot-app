@@ -316,7 +316,7 @@ fun FitbitScreen(
                             Icon(Icons.Default.FavoriteBorder, null, tint = NotelPrimary, modifier = Modifier.size(64.dp))
                             Spacer(Modifier.height(16.dp))
                             Text(
-                                if (state.selectedHeartRateDate == "today") "Average Today" else "Daily Average",
+                                if (state.selectedHeartRateDate == "today") "Awake Average Today" else "Awake Daily Average",
                                 color = NotelTextSecondary,
                                 fontSize = 14.sp
                             )
@@ -327,6 +327,15 @@ fun FitbitScreen(
                                 fontSize = 48.sp,
                                 fontWeight = FontWeight.Bold
                             )
+                            if (state.asleepHeartRate > 0) {
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "Asleep Average: ${state.asleepHeartRate} bpm",
+                                    color = NotelPrimary,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                             Spacer(Modifier.height(8.dp))
                             Text(
                                 "Calories burned: ${if (state.caloriesBurned > 0) state.caloriesBurned.toString() else "--"} kcal",

@@ -34,6 +34,7 @@ data class FitbitState(
     val isLoading: Boolean = false,
     val heartRateData: List<Pair<Long, Int>> = emptyList(), // epoch Long -> HR int
     val averageHeartRate: Int = 0,
+    val asleepHeartRate: Int = 0,
     val latestHeartRate: Int = 0,
     val latestHeartRateTime: String = "",
     val connectedDevices: List<String> = emptyList(), // Can default to ["Health Connect"]
@@ -136,7 +137,17 @@ class FitbitViewModel @Inject constructor(
          val histCalDeferred = async { healthConnectManager.readHistoricalCalories() }
 
          val intradayHR = try { intradayHRDeferred.await() } catch(e: Exception) { emptyList() }
-         val avgHR = try { avgHRDeferred.await() } catch(e: Exception) { 0 }
+         val zoneId = java.time.ZoneId.systemDefault()
+         val awake = intradayHR.filter { 
+             val h = java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(it.first), zoneId).hour
+             h in 7..22
+         }
+         val asleep = intradayHR.filter { 
+             val h = java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(it.first), zoneId).hour
+             h >= 23 || h < 7
+         }
+         val avgHR = if (awake.isNotEmpty()) awake.map{it.second}.average().toInt() else 0
+         val asleepHR = if (asleep.isNotEmpty()) asleep.map{it.second}.average().toInt() else 0
          val histHR = try { histHRDeferred.await() } catch(e: Exception) { emptyList() }
          val histSpikes = try { histSpikeDeferred.await() } catch(e: Exception) { emptyList<DailyHeartRateSummary>() }
          val histSleep = try { histSleepDeferred.await() } catch(e: Exception) { emptyList() }
@@ -158,6 +169,7 @@ class FitbitViewModel @Inject constructor(
              it.copy(
                  heartRateData = intradayHR,
                  averageHeartRate = avgHR,
+                 asleepHeartRate = asleepHR,
                  latestHeartRate = latest,
                  latestHeartRateTime = formattedTime,
                  historicalHeartRate = histHR,
@@ -301,11 +313,22 @@ class FitbitViewModel @Inject constructor(
             
             var intradayHR: List<Pair<Long, Int>> = emptyList()
             var avgHR = 0
+            var asleepHR = 0
             var activeCal = 0
 
             if (hasHC) {
                 intradayHR = healthConnectManager.readHeartRateIntraday(date)
-                avgHR = healthConnectManager.readHeartRateAverage(date)
+                val zoneId = java.time.ZoneId.systemDefault()
+                val awake = intradayHR.filter { 
+                    val h = java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(it.first), zoneId).hour
+                    h in 7..22
+                }
+                val asleep = intradayHR.filter { 
+                    val h = java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(it.first), zoneId).hour
+                    h >= 23 || h < 7
+                }
+                avgHR = if (awake.isNotEmpty()) awake.map{it.second}.average().toInt() else 0
+                asleepHR = if (asleep.isNotEmpty()) asleep.map{it.second}.average().toInt() else 0
                 activeCal = healthConnectManager.readActiveCalories(date)
             }
 
@@ -325,6 +348,7 @@ class FitbitViewModel @Inject constructor(
                     isLoading = false,
                     heartRateData = intradayHR,
                     averageHeartRate = avgHR,
+                    asleepHeartRate = asleepHR,
                     latestHeartRate = latest,
                     latestHeartRateTime = formattedTime,
                     caloriesBurned = activeCal,
