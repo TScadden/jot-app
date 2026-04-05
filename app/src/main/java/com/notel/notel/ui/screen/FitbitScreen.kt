@@ -412,6 +412,7 @@ fun FitbitScreen(
                         } else {
                             Box(modifier = Modifier.fillMaxWidth()) {
                                 Column(modifier = Modifier.fillMaxWidth()) {
+                                    Spacer(Modifier.height(8.dp))
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -544,6 +545,8 @@ fun FitbitScreen(
                                     }
                                 }
                                 
+                                }
+                                
                                 if (state.historicalSpikes.isNotEmpty()) {
                                     val worstDay = state.historicalSpikes.maxByOrNull { it.spikeCount }
                                     if (worstDay != null && worstDay.spikeCount > spikeCount && worstDay.date != state.selectedHeartRateDate) {
@@ -551,13 +554,14 @@ fun FitbitScreen(
                                             onClick = { viewModel.fetchHeartRateForDate(worstDay.date) },
                                             modifier = Modifier
                                                 .align(Alignment.BottomEnd)
-                                                .padding(8.dp)
-                                                .size(32.dp)
+                                                .padding(bottom = 8.dp, end = 8.dp)
+                                                .size(24.dp)
                                         ) {
                                             Icon(
                                                 Icons.AutoMirrored.Filled.ArrowForward,
                                                 contentDescription = "Skip to worst day",
-                                                tint = NotelPrimary.copy(alpha = 0.8f)
+                                                tint = NotelPrimary.copy(alpha = 0.8f),
+                                                modifier = Modifier.size(18.dp)
                                             )
                                         }
                                     }
