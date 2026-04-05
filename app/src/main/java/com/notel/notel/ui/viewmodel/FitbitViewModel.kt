@@ -345,6 +345,8 @@ class FitbitViewModel @Inject constructor(
                 asleepHR = if (asleep.isNotEmpty()) asleep.map{it.second}.average().toInt() else 0
                 activeCal = healthConnectManager.readActiveCalories(date)
             }
+            
+            val spikes = healthConnectManager.readHeartRateSpikesHistory()
 
             
             var latest = intradayHR.lastOrNull()?.second ?: 0
@@ -366,6 +368,7 @@ class FitbitViewModel @Inject constructor(
                     latestHeartRate = latest,
                     latestHeartRateTime = formattedTime,
                     caloriesBurned = activeCal,
+                    historicalSpikes = spikes,
                     errorMessage = if (intradayHR.isEmpty() && activeCal == 0) "No data found for this date." else null
                 )
             }

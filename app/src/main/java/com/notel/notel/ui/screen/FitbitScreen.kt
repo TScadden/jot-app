@@ -410,7 +410,8 @@ fun FitbitScreen(
                                 )
                             }
                         } else {
-                            Column(modifier = Modifier.fillMaxWidth()) {
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -424,31 +425,6 @@ fun FitbitScreen(
                                         modifier = Modifier.weight(1f)
                                     )
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        if (state.historicalSpikes.isNotEmpty()) {
-                                            // 1. Calculate today's summary info if we are on "today" to make sure it is included in comparison
-                                            val todayDateStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
-                                                timeZone = java.util.TimeZone.getTimeZone("UTC")
-                                            }.format(java.util.Date())
-                                            
-                                            // Use the calculated spikeCount for the currently viewed day if it matches one of the historical dates
-                                            // or just find the max across the saved history.
-                                            val worstDay = state.historicalSpikes.maxByOrNull { it.spikeCount }
-                                            
-                                            // Decide if we should show the skip icon
-                                            // We show it if there exists a day in history that has MORE spikes than what is currently being displayed.
-                                            if (worstDay != null && worstDay.spikeCount > spikeCount && worstDay.date != state.selectedHeartRateDate) {
-                                                IconButton(
-                                                    onClick = { viewModel.fetchHeartRateForDate(worstDay.date) },
-                                                    modifier = Modifier.size(28.dp).padding(end = 8.dp)
-                                                ) {
-                                                    Icon(
-                                                        Icons.AutoMirrored.Filled.ArrowForward,
-                                                        contentDescription = "Skip to worst day",
-                                                        tint = NotelPrimary
-                                                    )
-                                                }
-                                            }
-                                        }
                                         if (isHighBurden) {
                                             Text(
                                                 "High Symptom Day",
@@ -565,9 +541,29 @@ fun FitbitScreen(
                                         }
                                     }
                                 }
+                                    }
+                                }
+                                
+                                if (state.historicalSpikes.isNotEmpty()) {
+                                    val worstDay = state.historicalSpikes.maxByOrNull { it.spikeCount }
+                                    if (worstDay != null && worstDay.spikeCount > spikeCount && worstDay.date != state.selectedHeartRateDate) {
+                                        IconButton(
+                                            onClick = { viewModel.fetchHeartRateForDate(worstDay.date) },
+                                            modifier = Modifier
+                                                .align(Alignment.BottomEnd)
+                                                .padding(8.dp)
+                                                .size(32.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.AutoMirrored.Filled.ArrowForward,
+                                                contentDescription = "Skip to worst day",
+                                                tint = NotelPrimary.copy(alpha = 0.8f)
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
-                    }
 
                     if (state.connectedDevices.isNotEmpty()) {
                         Spacer(Modifier.height(24.dp))
