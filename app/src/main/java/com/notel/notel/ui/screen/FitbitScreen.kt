@@ -50,13 +50,7 @@ fun FitbitScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
-    var spikeHistory by remember { mutableStateOf<List<DailyHeartRateSummary>>(emptyList()) }
-
-    LaunchedEffect(Unit) {
-        val prefs = context.getSharedPreferences("notel_prefs", android.content.Context.MODE_PRIVATE)
-        // We read the DataStore through the ViewModel's preferences instead
-        // Spike data is cached in DataStore — read it reactively
-    }
+    // We read the DataStore through the ViewModel's state.historicalSpikes instead
     
     val healthConnectLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = viewModel.healthConnectManager.requestPermissionsActivityContract()
@@ -435,15 +429,28 @@ fun FitbitScreen(
                                     )
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         if (state.historicalSpikes.isNotEmpty()) {
+                                            // 1. Calculate today's summary info if we are on "today" to make sure it is included in comparison
+                                            val todayDateStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
+                                                timeZone = java.util.TimeZone.getTimeZone("UTC")
+                                            }.format(java.util.Date())
+                                            
+                                            // Use the calculated spikeCount for the currently viewed day if it matches one of the historical dates
+                                            // or just find the max across the saved history.
                                             val worstDay = state.historicalSpikes.maxByOrNull { it.spikeCount }
-                                            if (worstDay != null && worstDay.date != state.selectedHeartRateDate && worstDay.spikeCount > 0) {
-                                                Text(
-                                                    "Skip to worst day ➝",
-                                                    color = NotelPrimary,
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    modifier = Modifier.clickable { viewModel.fetchHeartRateForDate(worstDay.date) }.padding(end = 8.dp)
-                                                )
+                                            
+                                            // Decide if we should show the skip icon
+                                            // We show it if there exists a day in history that has MORE spikes than what is currently being displayed.
+                                            if (worstDay != null && worstDay.spikeCount > spikeCount && worstDay.date != state.selectedHeartRateDate) {
+                                                IconButton(
+                                                    onClick = { viewModel.fetchHeartRateForDate(worstDay.date) },
+                                                    modifier = Modifier.size(28.dp).padding(end = 8.dp)
+                                                ) {
+                                                    Icon(
+                                                        androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowForward,
+                                                        contentDescription = "Skip to worst day",
+                                                        tint = NotelPrimary
+                                                    )
+                                                }
                                             }
                                         }
                                         if (isHighBurden) {
@@ -658,7 +665,7 @@ fun FitbitScreen(
                                     var pastSpikeDelta = 0
                                     var pastSpikeCount = 0
                                     if (compareMode == "Days") {
-                                        val pastSpike = spikeHistory.find { it.date == dateString }
+                                        val pastSpike = state.historicalSpikes.find { it.date == dateString }
                                         pastSpikeDelta = pastSpike?.maxDelta ?: 0
                                         pastSpikeCount = pastSpike?.spikeCount ?: 0
                                     } else {
@@ -672,7 +679,7 @@ fun FitbitScreen(
                                             var count = 0
                                             for (i in 0 until 7) {
                                                 val dStr = format.format(cal.time)
-                                                val sp = spikeHistory.find { it.date == dStr }
+                                                val sp = state.historicalSpikes.find { it.date == dStr }
                                                 if (sp != null) {
                                                     sumD += sp.maxDelta
                                                     sumC += sp.spikeCount
@@ -685,17 +692,17 @@ fun FitbitScreen(
                                                 pastSpikeCount = Math.round(sumC / count).toInt()
                                             }
                                         } else {
-                                            val pastSpike = spikeHistory.find { it.date == dateString }
+                                            val pastSpike = state.historicalSpikes.find { it.date == dateString }
                                             pastSpikeDelta = pastSpike?.maxDelta ?: 0
                                             pastSpikeCount = pastSpike?.spikeCount ?: 0
                                         }
                                     }
                                     val currentSpikeDelta = if (compareMode == "Days") maxDelta else {
-                                        val w = spikeHistory.take(7)
+                                        val w = state.historicalSpikes.take(7)
                                         if (w.isNotEmpty()) w.map { it.maxDelta }.average().toInt() else maxDelta
                                     }
                                     val currentSpikeCount = if (compareMode == "Days") spikeCount else {
-                                        val w = spikeHistory.take(7)
+                                        val w = state.historicalSpikes.take(7)
                                         if (w.isNotEmpty()) Math.round(w.map { it.spikeCount }.average()).toInt() else spikeCount
                                     }
                                     
