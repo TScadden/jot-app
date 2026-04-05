@@ -1226,7 +1226,11 @@ fun SettingsScreen(
                             Column(modifier = Modifier.heightIn(max = 500.dp).verticalScroll(rememberScrollState())) {
                                 Text("AI OVERVIEW", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = NotelTextSecondary.copy(alpha = 0.7f), letterSpacing = 1.sp)
                                 Spacer(Modifier.height(4.dp))
-                                Text(summary, color = NotelTextPrimary, fontSize = 14.sp, lineHeight = 20.sp)
+                                Text(summary.let { 
+                                    var s = it
+                                    repeat(2) { s = android.text.Html.fromHtml(s, android.text.Html.FROM_HTML_MODE_LEGACY).toString() }
+                                    s
+                                }, color = NotelTextPrimary, fontSize = 14.sp, lineHeight = 20.sp)
 
                                 if (posts.isNotEmpty()) {
                                     val threadsWithComments = posts.filter { it.comments.isNotEmpty() }
@@ -1253,7 +1257,11 @@ fun SettingsScreen(
                                                 ) {
                                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                                         Text(
-                                                            post.title,
+                                                            post.title.let {
+                                                                var s = it
+                                                                repeat(2) { s = android.text.Html.fromHtml(s, android.text.Html.FROM_HTML_MODE_LEGACY).toString() }
+                                                                s
+                                                            },
                                                             color = NotelTextPrimary,
                                                             fontWeight = if (isExpanded) FontWeight.Bold else FontWeight.Medium,
                                                             fontSize = 12.sp,
@@ -1286,7 +1294,11 @@ fun SettingsScreen(
                                                                         .background(NotelPrimary.copy(alpha = 0.4f), RoundedCornerShape(1.dp))
                                                                 )
                                                                 Spacer(Modifier.width(8.dp))
-                                                                Text(comment, color = NotelTextSecondary, fontSize = 11.sp, lineHeight = 16.sp)
+                                                                Text(comment.let {
+                                                                    var s = it
+                                                                    repeat(2) { s = android.text.Html.fromHtml(s, android.text.Html.FROM_HTML_MODE_LEGACY).toString() }
+                                                                    s
+                                                                }, color = NotelTextSecondary, fontSize = 11.sp, lineHeight = 16.sp)
                                                             }
                                                         }
                                                     }
