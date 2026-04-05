@@ -77,7 +77,7 @@ class HealthConnectManager(private val context: Context) {
                 localDate.atStartOfDay(zoneId).toInstant()
             }
         } catch (e: Exception) {
-            Instant.now().truncatedTo(ChronoUnit.DAYS)
+            ZonedDateTime.now(ZoneId.systemDefault()).truncatedTo(ChronoUnit.DAYS).toInstant()
         }
     }
 
@@ -158,7 +158,7 @@ class HealthConnectManager(private val context: Context) {
 
     suspend fun readSleepSession(dateStr: String): SleepData? {
         try {
-            val startOfDay = if (dateStr == "today" || dateStr.isBlank()) Instant.now().truncatedTo(ChronoUnit.DAYS) else Instant.parse("${dateStr}T00:00:00Z")
+            val startOfDay = if (dateStr == "today" || dateStr.isBlank()) ZonedDateTime.now(ZoneId.systemDefault()).truncatedTo(ChronoUnit.DAYS).toInstant() else Instant.parse("${dateStr}T00:00:00Z")
             val endOfDay = startOfDay.plus(1, ChronoUnit.DAYS)
             
             val response = healthConnectClient.readRecords(
@@ -306,7 +306,7 @@ class HealthConnectManager(private val context: Context) {
 
     suspend fun readHistoricalHeartRate(days: Int = 180): List<Pair<String, Int>> {
         try {
-            val end = Instant.now().plus(1, ChronoUnit.DAYS).truncatedTo(ChronoUnit.DAYS)
+            val end = ZonedDateTime.now(ZoneId.systemDefault()).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
             val start = end.minus(days.toLong(), ChronoUnit.DAYS)
             
             val response = healthConnectClient.aggregateGroupByDuration(
@@ -335,7 +335,7 @@ class HealthConnectManager(private val context: Context) {
 
     suspend fun readHistoricalCalories(days: Int = 180): List<Pair<String, Int>> {
         try {
-            val end = Instant.now().plus(1, ChronoUnit.DAYS).truncatedTo(ChronoUnit.DAYS)
+            val end = ZonedDateTime.now(ZoneId.systemDefault()).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
             val start = end.minus(days.toLong(), ChronoUnit.DAYS)
             
             val response = healthConnectClient.aggregateGroupByDuration(
@@ -367,7 +367,7 @@ class HealthConnectManager(private val context: Context) {
     suspend fun readHistoricalSleep(days: Int = 180): List<Pair<String, Int>> {
         try {
             // End date slightly shifted to capture sessions that end on the 'end' date
-            val end = Instant.now().plus(1, ChronoUnit.DAYS).truncatedTo(ChronoUnit.DAYS)
+            val end = ZonedDateTime.now(ZoneId.systemDefault()).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
             val start = end.minus(days.toLong(), ChronoUnit.DAYS)
             
             // Note: SLEEP_SESSION_DURATION_TOTAL is the best way to get total minutes,
