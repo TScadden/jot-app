@@ -5,14 +5,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Today
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -446,7 +442,7 @@ fun FitbitScreen(
                                                     modifier = Modifier.size(28.dp).padding(end = 8.dp)
                                                 ) {
                                                     Icon(
-                                                        androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowForward,
+                                                        Icons.AutoMirrored.Filled.ArrowForward,
                                                         contentDescription = "Skip to worst day",
                                                         tint = NotelPrimary
                                                     )
