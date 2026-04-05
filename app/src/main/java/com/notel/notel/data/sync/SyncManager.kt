@@ -29,6 +29,16 @@ class SyncManager @Inject constructor(
 ) {
     private val tag = "SyncManager"
     private val syncMutex = Mutex()
+    private var logCallback: ((String) -> Unit)? = null
+
+    fun setLogCallback(callback: (String) -> Unit) {
+        logCallback = callback
+    }
+
+    private fun log(message: String) {
+        Log.d(tag, message)
+        logCallback?.invoke(message)
+    }
 
     suspend fun syncAllData() = withContext(Dispatchers.IO) {
         if (syncMutex.isLocked) return@withContext
@@ -102,7 +112,7 @@ class SyncManager @Inject constructor(
             }
             
             if (response == null) {
-                withContext(Dispatchers.Main) { Toast.makeText(context, "Network Error: Could not reach account server (15s timeout)", Toast.LENGTH_LONG).show() }
+                log("Cloud Error: Reachable server not found (15s timeout)")
                 return@withContext false
             }
 
@@ -180,20 +190,16 @@ class SyncManager @Inject constructor(
                 }
 
                 if (logsFound > 0 && localLogCount == 0) {
-                    withContext(Dispatchers.Main) { 
-                        Toast.makeText(context, "Account Recovery: Restored $logsFound logs and $categoriesFound categories!", Toast.LENGTH_LONG).show() 
-                    }
+                    log("Account Restored: $logsFound logs & $categoriesFound categories!")
                 }
                 true
             } else {
-                val errorMsg = response.errorBody()?.string() ?: "Unknown Cloud Error"
-                withContext(Dispatchers.Main) { Toast.makeText(context, "Sync Rejected: $errorMsg", Toast.LENGTH_LONG).show() }
-                Log.e(tag, "Cloud sync rejected: ${response.code()} $errorMsg")
+                val errorMsg = response.errorBody()?.string() ?: "Unknown Error"
+                log("Sync Rejected: $errorMsg")
                 false
             }
         } catch (e: Exception) {
-            Log.e(tag, "Recovery failed with critical error: ${e.message}")
-            withContext(Dispatchers.Main) { Toast.makeText(context, "Critical Recovery Error: ${e.message}", Toast.LENGTH_LONG).show() }
+            log("Sync Critical Error: ${e.message}")
             false
         }
     }

@@ -34,6 +34,18 @@ class SettingsViewModel @Inject constructor(
     @ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
 
+    private val _systemLogs = MutableStateFlow<List<SystemLog>>(emptyList())
+    val systemLogs = _systemLogs.asStateFlow()
+
+    fun addSystemLog(body: String) {
+        val newLog = SystemLog(body, System.currentTimeMillis())
+        _systemLogs.update { (listOf(newLog) + it).take(100) }
+    }
+
+    init {
+        syncManager.setLogCallback { addSystemLog(it) }
+    }
+
 
 
     val userContext = preferences.userContext
@@ -792,5 +804,10 @@ data class LinkedSubreddit(
     val postsAnalyzed: Int = 0,
     val autoUpdate: Boolean = false,
     val scannedPosts: List<com.notel.notel.data.remote.RedditPost> = emptyList()
+)
+
+data class SystemLog(
+    val body: String,
+    val timestamp: Long
 )
 

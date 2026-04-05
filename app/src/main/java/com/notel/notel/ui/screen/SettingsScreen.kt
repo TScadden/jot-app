@@ -287,147 +287,146 @@ fun SettingsScreen(
             )
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 16.dp)
-                .verticalScroll(scrollState)
-        ) {
-            Spacer(Modifier.height(16.dp))
-            
-            if (currentMenu == SettingsMenu.MAIN) {
-                // Wallet moved to its own tab
-            }
-
-            if (currentMenu == SettingsMenu.WALLET) {
-            Text("WALLET & USAGE", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(8.dp))
-
-            GlassyCard(
-                shape = RoundedCornerShape(16.dp),
-                color = NotelSurface
+        if (currentMenu == SettingsMenu.DEBUG && isUnlimited) {
+            DebugScreen(onBack = { currentMenu = SettingsMenu.MAIN }, viewModel = viewModel, padding = padding)
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(horizontal = 16.dp)
+                    .verticalScroll(scrollState)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(if (isUnlimited) "Infinite AI Access" else "Available Credits", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
-                        Spacer(Modifier.height(4.dp))
-                        if (isUnlimited) {
-                            Text(
-                                "∞",
-                                color = NotelPrimary,
-                                fontSize = 42.sp,
-                                fontWeight = FontWeight.Black
-                            )
-                        } else {
-                            Text(
-                                "$${String.format("%.2f", userBalance)}",
-                                color = NotelPrimary,
-                                fontSize = 28.sp,
-                                fontWeight = FontWeight.Black
-                            )
-                        }
-                    }
-                    Icon(
-                        if (isUnlimited) Icons.Default.AutoAwesome else Icons.Default.AccountBalanceWallet,
-                        contentDescription = null,
-                        tint = NotelPrimary,
-                        modifier = Modifier.size(40.dp)
-                    )
-                }
-
                 Spacer(Modifier.height(16.dp))
                 
-                Text(
-                    if (isUnlimited) "You have exclusive unlimited access. No billing applies." 
-                    else "You are billed $0.01 per AI action. Your balance covers server and API costs with a small markup for development.",
-                    color = NotelTextSecondary,
-                    fontSize = 12.sp
-                )
-
-                if (!isUnlimited) {
-                    Spacer(Modifier.height(20.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        GlassyButton(
-                            onClick = { activity?.let { viewModel.purchaseCredits(it, "jot_credits_5") } },
-                            modifier = Modifier.weight(1f),
-                            containerColor = NotelPrimary
-                        ) {
-                            Text("Add $5", color = Color.White, fontWeight = FontWeight.Bold)
-                        }
-                        GlassyButton(
-                            onClick = { activity?.let { viewModel.purchaseCredits(it, "jot_credits_10") } },
-                            modifier = Modifier.weight(1f),
-                            containerColor = NotelSurfaceHigh
-                        ) {
-                            Text("Add $10", color = NotelTextPrimary)
-                        }
-                    }
-
-                    Spacer(Modifier.height(16.dp))
-                    
-                    GlassyButton(
-                        onClick = { 
-                            activity?.let { viewModel.purchaseCredits(it, "jot_credit_unit") }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        containerColor = NotelSurfaceHigh
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp), tint = NotelPrimary)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Add Custom Amount ($1/unit)", color = NotelTextPrimary)
-                        }
-                    }
-                    
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        "Note: For custom amounts, select the quantity you'd like to purchase in the Google Play window (each unit is $1.00).",
-                        color = NotelTextSecondary,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
-                        lineHeight = 16.sp
-                    )
+                if (currentMenu == SettingsMenu.MAIN) {
+                    // Wallet moved to its own tab
                 }
-            } // Close GlassyCard
-            } // Close if (currentMenu == SettingsMenu.WALLET)
 
-            if (currentMenu == SettingsMenu.MAIN) {
-                // 2. Personal Context
-                Text("BACKGROUND CONTEXT", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(8.dp))
-                GlassyCard(shape = RoundedCornerShape(16.dp), color = NotelSurface, modifier = Modifier.onGloballyPositioned { coordPersonalCtx = it }) {
-                    Text("Personal Context", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 14.sp)
-                    Spacer(Modifier.height(4.dp))
-                    Text("Tell Jot about your goals (e.g. 'training for a marathon').", color = NotelTextSecondary, fontSize = 11.sp)
+                if (currentMenu == SettingsMenu.WALLET) {
+                    Text("WALLET & USAGE", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = contextInput, onValueChange = { contextInput = it; viewModel.saveUserContext(it.trim()) },
-                        modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 4,
-                        placeholder = { Text("Add background info here…", color = NotelTextSecondary, fontSize = 12.sp) },
-                        shape = RoundedCornerShape(12.dp),
-                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, unfocusedBorderColor = NotelSurfaceHigh, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
-                    )
+
+                    GlassyCard(
+                        shape = RoundedCornerShape(16.dp),
+                        color = NotelSurface
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(if (isUnlimited) "Infinite AI Access" else "Available Credits", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                                Spacer(Modifier.height(4.dp))
+                                if (isUnlimited) {
+                                    Text(
+                                        "∞",
+                                        color = NotelPrimary,
+                                        fontSize = 42.sp,
+                                        fontWeight = FontWeight.Black
+                                    )
+                                } else {
+                                    Text(
+                                        "$${String.format("%.2f", userBalance)}",
+                                        color = NotelPrimary,
+                                        fontSize = 28.sp,
+                                        fontWeight = FontWeight.Black
+                                    )
+                                }
+                            }
+                            Icon(
+                                if (isUnlimited) Icons.Default.AutoAwesome else Icons.Default.AccountBalanceWallet,
+                                contentDescription = null,
+                                tint = NotelPrimary,
+                                modifier = Modifier.size(40.dp)
+                            )
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+                        
+                        Text(
+                            if (isUnlimited) "You have exclusive unlimited access. No billing applies." 
+                            else "You are billed $0.01 per AI action. Your balance covers server and API costs with a small markup for development.",
+                            color = NotelTextSecondary,
+                            fontSize = 12.sp
+                        )
+
+                        if (!isUnlimited) {
+                            Spacer(Modifier.height(20.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                GlassyButton(
+                                    onClick = { activity?.let { viewModel.purchaseCredits(it, "jot_credits_5") } },
+                                    modifier = Modifier.weight(1f),
+                                    containerColor = NotelPrimary
+                                ) {
+                                    Text("Add $5", color = Color.White, fontWeight = FontWeight.Bold)
+                                }
+                                GlassyButton(
+                                    onClick = { activity?.let { viewModel.purchaseCredits(it, "jot_credits_10") } },
+                                    modifier = Modifier.weight(1f),
+                                    containerColor = NotelSurfaceHigh
+                                ) {
+                                    Text("Add $10", color = NotelTextPrimary)
+                                }
+                            }
+
+                            Spacer(Modifier.height(16.dp))
+                            
+                            GlassyButton(
+                                onClick = { 
+                                    activity?.let { viewModel.purchaseCredits(it, "jot_credit_unit") }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                containerColor = NotelSurfaceHigh
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp), tint = NotelPrimary)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Add Custom Amount ($1/unit)", color = NotelTextPrimary)
+                                }
+                            }
+                            
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                "Note: For custom amounts, select the quantity you'd like to purchase in the Google Play window (each unit is $1.00).",
+                                color = NotelTextSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                lineHeight = 16.sp
+                            )
+                        }
+                    } // Close GlassyCard
+                } // Close if (currentMenu == SettingsMenu.WALLET)
+
+                if (currentMenu == SettingsMenu.MAIN) {
+                    // 2. Personal Context
+                    Text("BACKGROUND CONTEXT", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(8.dp))
+                    GlassyCard(shape = RoundedCornerShape(16.dp), color = NotelSurface, modifier = Modifier.onGloballyPositioned { coordPersonalCtx = it }) {
+                        Text("Personal Context", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                        Spacer(Modifier.height(4.dp))
+                        Text("Tell Jot about your goals (e.g. 'training for a marathon').", color = NotelTextSecondary, fontSize = 11.sp)
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = contextInput, onValueChange = { contextInput = it; viewModel.saveUserContext(it.trim()) },
+                            modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 4,
+                            placeholder = { Text("Add background info here…", color = NotelTextSecondary, fontSize = 12.sp) },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, unfocusedBorderColor = NotelSurfaceHigh, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
+                        )
+                    }
+
+                    Spacer(Modifier.height(24.dp))
+                    Text("SETTINGS", fontSize = 12.sp, color = NotelPrimary, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { viewModel.resetSettingsTutorial(); tutorialStep = 0 }.padding(vertical = 4.dp))
+                    Spacer(Modifier.height(8.dp))
+
+                    SettingsMenuCard("User Profile", Icons.Default.Person, modifier = Modifier.onGloballyPositioned { coordUserProfile = it }) { currentMenu = SettingsMenu.USER_PROFILE }
+                    SettingsMenuCard("Connected Apps", Icons.Default.Favorite, modifier = Modifier.onGloballyPositioned { coordConnectedApps = it }) { currentMenu = SettingsMenu.CONNECTED_APPS }
+                    SettingsMenuCard("AI & Knowledge Base", Icons.Default.AutoAwesome, modifier = Modifier.onGloballyPositioned { coordAiKnowledge = it }) { currentMenu = SettingsMenu.AI_AND_KNOWLEDGE }
+                    SettingsMenuCard("Event Counters", Icons.Default.Timer, modifier = Modifier.onGloballyPositioned { coordEventCounters = it }) { currentMenu = SettingsMenu.EVENT_COUNTERS }
+                    SettingsMenuCard("Notifications", Icons.Default.Notifications) { currentMenu = SettingsMenu.NOTIFICATIONS }
                 }
-
-                Spacer(Modifier.height(24.dp))
-                Text("SETTINGS", fontSize = 12.sp, color = NotelPrimary, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { viewModel.resetSettingsTutorial(); tutorialStep = 0 }.padding(vertical = 4.dp))
-                Spacer(Modifier.height(8.dp))
-
-                SettingsMenuCard("User Profile", Icons.Default.Person, modifier = Modifier.onGloballyPositioned { coordUserProfile = it }) { currentMenu = SettingsMenu.USER_PROFILE }
-                SettingsMenuCard("Connected Apps", Icons.Default.Favorite, modifier = Modifier.onGloballyPositioned { coordConnectedApps = it }) { currentMenu = SettingsMenu.CONNECTED_APPS }
-                SettingsMenuCard("AI & Knowledge Base", Icons.Default.AutoAwesome, modifier = Modifier.onGloballyPositioned { coordAiKnowledge = it }) { currentMenu = SettingsMenu.AI_AND_KNOWLEDGE }
-                SettingsMenuCard("Event Counters", Icons.Default.Timer, modifier = Modifier.onGloballyPositioned { coordEventCounters = it }) { currentMenu = SettingsMenu.EVENT_COUNTERS }
-                SettingsMenuCard("Notifications", Icons.Default.Notifications) { currentMenu = SettingsMenu.NOTIFICATIONS }
-            }
-            
-            if (currentMenu == SettingsMenu.DEBUG && isUnlimited) {
-                DebugScreen(onBack = { currentMenu = SettingsMenu.MAIN }, viewModel = viewModel)
-            }
 
 
             if (currentMenu == SettingsMenu.EVENT_COUNTERS) {
@@ -2106,6 +2105,10 @@ fun SettingsScreen(
             }
             Spacer(Modifier.height(48.dp))
         }
+
+        if (currentMenu == SettingsMenu.DEBUG && isUnlimited) {
+            DebugScreen(onBack = { currentMenu = SettingsMenu.MAIN }, viewModel = viewModel, padding = padding)
+        }
     }
 
     // ── Tutorial overlay — sits above the Scaffold so it can cover the top bar ──
@@ -2203,14 +2206,16 @@ fun SettingsMenuCard(
 @Composable
 fun DebugScreen(
     onBack: () -> Unit,
-    viewModel: SettingsViewModel
+    viewModel: SettingsViewModel,
+    padding: PaddingValues
 ) {
     val context = LocalContext.current
-    val logs by viewModel.allLogs.collectAsState()
+    val logs by viewModel.systemLogs.collectAsState()
     
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .padding(padding)
             .padding(16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
