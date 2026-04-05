@@ -1238,7 +1238,8 @@ fun SettingsScreen(
                                         val expansions = remember { mutableStateMapOf<String, Boolean>() }
                                         
                                         threadsWithComments.forEach { post ->
-                                            val isExpanded = expansions[post.title] ?: false
+                                            val key = post.url ?: post.title
+                                            val isExpanded = expansions[key] ?: false
                                             Surface(
                                                 color = NotelSurfaceHigh.copy(alpha = 0.4f),
                                                 shape = RoundedCornerShape(12.dp),
@@ -1246,7 +1247,7 @@ fun SettingsScreen(
                                             ) {
                                                 Column(
                                                     modifier = Modifier
-                                                        .clickable { expansions[post.title] = !isExpanded }
+                                                        .clickable { expansions[key] = !isExpanded }
                                                         .padding(12.dp)
                                                 ) {
                                                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1291,6 +1292,10 @@ fun SettingsScreen(
                                                 }
                                             }
                                         }
+                                    } else {
+                                        Spacer(Modifier.height(24.dp))
+                                        Text("No detailed comments found for your recent scan. The AI summary above still uses the main thread content.", 
+                                            color = NotelTextSecondary, fontSize = 11.sp, textAlign = TextAlign.Center)
                                     }
                                 }
                             }
