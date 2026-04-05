@@ -235,7 +235,7 @@ class FitbitViewModel @Inject constructor(
 
                 // 2. Calories History (6 Months)
                 val calHistRequest = okhttp3.Request.Builder()
-                    .url("https://api.fitbit.com/1/user/-/activities/activityCalories/date/today/6m.json")
+                    .url("https://api.fitbit.com/1/user/-/activities/calories/date/today/6m.json")
                     .header("Authorization", "Bearer $token")
                     .build()
                 
@@ -243,7 +243,7 @@ class FitbitViewModel @Inject constructor(
                     if (response.isSuccessful) {
                         val body = response.body?.string() ?: ""
                         val root = json.parseToJsonElement(body).jsonObject
-                        root["activities-activityCalories"]?.jsonArray?.mapNotNull { el ->
+                        root["activities-calories"]?.jsonArray?.mapNotNull { el ->
                             val obj = el.jsonObject
                             val date = obj["dateTime"]?.jsonPrimitive?.content ?: ""
                             val cal = obj["value"]?.jsonPrimitive?.intOrNull ?: 0
@@ -396,8 +396,7 @@ class FitbitViewModel @Inject constructor(
                     if (response.isSuccessful) {
                         val body = response.body?.string() ?: ""
                         val root = json.parseToJsonElement(body).jsonObject
-                        cals = root["summary"]?.jsonObject?.get("activityCalories")?.jsonPrimitive?.intOrNull 
-                            ?: root["summary"]?.jsonObject?.get("caloriesOut")?.jsonPrimitive?.intOrNull ?: 0
+                        cals = root["summary"]?.jsonObject?.get("caloriesOut")?.jsonPrimitive?.intOrNull ?: 0
                     }
                 }
                 
