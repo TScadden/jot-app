@@ -41,6 +41,7 @@ class NotelApp : Application(), Configuration.Provider {
         scheduleDailyBodyLoadReminder()
         scheduleHabitReminder()
         scheduleCupReminder()
+        com.notel.notel.worker.RedditRefreshWorker.schedule(this)
         
         // Start HR Monitor Service safely when app enters foreground
         CoroutineScope(Dispatchers.IO).launch {

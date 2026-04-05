@@ -247,6 +247,14 @@ data class ClassifyAndCleanResponse(
 )
 
 @Serializable
+data class RedditPost(
+    val title: String,
+    val author: String? = null,
+    val url: String? = null,
+    val comments: List<String> = emptyList()
+)
+
+@Serializable
 data class FetchSubredditRequest(
     val subreddit: String,
     val userContext: String? = null
@@ -255,8 +263,9 @@ data class FetchSubredditRequest(
 @Serializable
 data class FetchSubredditResponse(
     val result: String,
-    val subreddit: String,
+    val subreddit: String? = null,
     val postsAnalyzed: Int = 0,
+    val posts: List<RedditPost>? = null,
     val error: String? = null
 )
 

@@ -6,8 +6,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -41,6 +43,8 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
+import androidx.compose.ui.draw.scale
+import kotlinx.coroutines.*
 
 enum class SettingsMenu {
     MAIN, USER_PROFILE, CONNECTED_APPS, AI_AND_KNOWLEDGE, EVENT_COUNTERS, WALLET, NOTIFICATIONS, DEBUG
@@ -69,6 +73,8 @@ fun SettingsScreen(
     val isGeneratingDeepResearch by viewModel.isGeneratingDeepResearch.collectAsState()
     
     val healthConnectConnected by viewModel.healthConnectConnected.collectAsState()
+    val redditSubreddits by viewModel.redditSubreddits.collectAsState()
+    val isRefreshingReddit by viewModel.isRefreshingReddit.collectAsState()
     
     val userAge by viewModel.userAge.collectAsState()
     val userHeight by viewModel.userHeight.collectAsState()
@@ -1201,6 +1207,104 @@ fun SettingsScreen(
 
 
             if (currentMenu == SettingsMenu.CONNECTED_APPS) {
+                var viewingSubreddit by remember { mutableStateOf<String?>(null) }
+
+                if (viewingSubreddit != null) {
+                    val subState = redditSubreddits.find { it.name == viewingSubreddit }
+                    val summary = viewModel.getSubredditSummary(viewingSubreddit!!)
+                    val posts = subState?.scannedPosts ?: emptyList()
+                    AlertDialog(
+                        onDismissRequest = { viewingSubreddit = null },
+                        title = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Forum, null, tint = Color(0xFFFF4500), modifier = Modifier.size(24.dp))
+                                Text(" r/$viewingSubreddit Knowledge", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
+                            }
+                        },
+                        text = {
+                            Column(modifier = Modifier.heightIn(max = 500.dp).verticalScroll(rememberScrollState())) {
+                                Text("AI OVERVIEW", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = NotelTextSecondary.copy(alpha = 0.7f), letterSpacing = 1.sp)
+                                Spacer(Modifier.height(4.dp))
+                                Text(summary, color = NotelTextPrimary, fontSize = 14.sp, lineHeight = 20.sp)
+
+                                if (posts.isNotEmpty()) {
+                                    val threadsWithComments = posts.filter { it.comments.isNotEmpty() }
+                                    if (threadsWithComments.isNotEmpty()) {
+                                        Spacer(Modifier.height(24.dp))
+                                        Text("SCANNED THREADS (Tap title for comments)", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = NotelTextSecondary.copy(alpha = 0.7f), letterSpacing = 1.sp)
+                                        Spacer(Modifier.height(8.dp))
+                                        
+                                        // Stable expansion state using a map
+                                        val expansions = remember { mutableStateMapOf<String, Boolean>() }
+                                        
+                                        threadsWithComments.forEach { post ->
+                                            val isExpanded = expansions[post.title] ?: false
+                                            Surface(
+                                                color = NotelSurfaceHigh.copy(alpha = 0.4f),
+                                                shape = RoundedCornerShape(12.dp),
+                                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                                            ) {
+                                                Column(
+                                                    modifier = Modifier
+                                                        .clickable { expansions[post.title] = !isExpanded }
+                                                        .padding(12.dp)
+                                                ) {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Text(
+                                                            post.title,
+                                                            color = NotelTextPrimary,
+                                                            fontWeight = if (isExpanded) FontWeight.Bold else FontWeight.Medium,
+                                                            fontSize = 12.sp,
+                                                            modifier = Modifier.weight(1f)
+                                                        )
+                                                        Text(
+                                                            "${post.comments.size}",
+                                                            color = NotelPrimary,
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            modifier = Modifier.padding(end = 4.dp)
+                                                        )
+                                                        Icon(
+                                                            if (isExpanded) {
+                                                                androidx.compose.material.icons.Icons.Default.KeyboardArrowUp
+                                                            } else {
+                                                                androidx.compose.material.icons.Icons.Default.KeyboardArrowDown
+                                                            },
+                                                            null,
+                                                            tint = NotelTextSecondary,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    }
+                                                    if (isExpanded) {
+                                                        Spacer(Modifier.height(12.dp))
+                                                        post.comments.forEach { comment ->
+                                                            Row(modifier = Modifier.padding(bottom = 8.dp).fillMaxWidth()) {
+                                                                Box(
+                                                                    Modifier.width(2.dp).height(24.dp)
+                                                                        .background(NotelPrimary.copy(alpha = 0.4f), RoundedCornerShape(1.dp))
+                                                                )
+                                                                Spacer(Modifier.width(8.dp))
+                                                                Text(comment, color = NotelTextSecondary, fontSize = 11.sp, lineHeight = 16.sp)
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { viewingSubreddit = null }) {
+                                Text("Close", color = NotelPrimary)
+                            }
+                        },
+                        containerColor = NotelSurface,
+                        shape = RoundedCornerShape(20.dp)
+                    )
+                }
+
             Text("LOCAL CONNECTIONS", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(8.dp))
 
@@ -1283,13 +1387,19 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(24.dp))
 
-            val redditSubreddits by viewModel.redditSubreddits.collectAsState()
-            val isRefreshingReddit by viewModel.isRefreshingReddit.collectAsState()
+            // Reddit state and notifications
+            val redditRefreshQueue by viewModel.redditRefreshQueue.collectAsState()
 
-            // Listen for Reddit errors and show them as snackbars
             androidx.compose.runtime.LaunchedEffect(Unit) {
-                viewModel.redditError.collect { err ->
-                    snackbarHostState.showSnackbar(err)
+                launch {
+                    viewModel.redditError.collect { err ->
+                        snackbarHostState.showSnackbar(err)
+                    }
+                }
+                launch {
+                    viewModel.redditSynced.collect { msg ->
+                        snackbarHostState.showSnackbar(msg)
+                    }
                 }
             }
 
@@ -1301,16 +1411,45 @@ fun SettingsScreen(
                 color = NotelSurface
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Reddit alien icon via text emoji as fallback, or use a Material icon
                     Icon(Icons.Default.Forum, null, tint = Color(0xFFFF4500), modifier = Modifier.size(28.dp))
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Reddit Subreddits", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
                         Text(
-                            "Link a subreddit and Jot will scan the top 10 recent posts to build community knowledge for your AI.",
+                            "Link communities to pull deep health insights directly into your AI context.",
                             color = NotelTextSecondary,
                             fontSize = 12.sp
                         )
+                    }
+                }
+
+                if (redditRefreshQueue.isNotEmpty()) {
+                    Spacer(Modifier.height(16.dp))
+                    Column {
+                        Text("REFRESH QUEUE", fontSize = 9.sp, fontWeight = FontWeight.SemiBold, color = NotelTextSecondary.copy(alpha = 0.6f), letterSpacing = 1.sp)
+                        Spacer(Modifier.height(4.dp))
+                        androidx.compose.foundation.lazy.LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(end = 12.dp)
+                        ) {
+                            items(redditRefreshQueue.size) { index ->
+                                val subName = redditRefreshQueue[index]
+                                val isActive = isRefreshingReddit == subName
+                                Surface(
+                                    color = if (isActive) NotelPrimary.copy(alpha = 0.15f) else NotelSurfaceHigh.copy(alpha = 0.4f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = if (isActive) BorderStroke(1.dp, NotelPrimary) else null
+                                ) {
+                                    Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        if (isActive) {
+                                            GlassySpinner(size = 12.dp)
+                                            Spacer(Modifier.width(6.dp))
+                                        }
+                                        Text(subName, color = NotelTextPrimary, fontSize = 11.sp, fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -1368,35 +1507,56 @@ fun SettingsScreen(
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = NotelSurfaceHigh.copy(alpha = 0.6f),
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = { viewingSubreddit = sub.name }
                             ) {
                                 Row(
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            "r/${sub.name}",
-                                            color = Color(0xFFFF4500),
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp
-                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                "r/${sub.name}",
+                                                color = Color(0xFFFF4500),
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp
+                                            )
+                                            if (sub.autoUpdate) {
+                                                Spacer(Modifier.width(6.dp))
+                                                Box(Modifier.size(6.dp).background(Color(0xFF4CAF50), CircleShape))
+                                            }
+                                        }
                                         val lastFetchedStr = if (sub.lastFetched > 0L) {
                                             val diff = System.currentTimeMillis() - sub.lastFetched
                                             when {
-                                                diff < 60 * 60 * 1000L -> "Updated just now · ${sub.postsAnalyzed} posts"
+                                                diff < 60 * 60 * 1000L -> "Updated just now"
                                                 diff < 24 * 60 * 60 * 1000L -> {
                                                     val hrs = (diff / (60 * 60 * 1000L)).toInt()
-                                                    "Updated ${hrs}h ago · ${sub.postsAnalyzed} posts"
+                                                    "Updated ${hrs}h ago"
                                                 }
                                                 else -> {
                                                     val days = (diff / (24 * 60 * 60 * 1000L)).toInt()
-                                                    "Updated ${days}d ago · ${sub.postsAnalyzed} posts"
+                                                    "Updated ${days}d ago"
                                                 }
                                             }
                                         } else "Never synced"
-                                        Text(lastFetchedStr, color = NotelTextSecondary, fontSize = 11.sp)
+                                        Text("$lastFetchedStr · ${sub.postsAnalyzed} posts", color = NotelTextSecondary, fontSize = 11.sp)
                                     }
+
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("AUTO", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = if (sub.autoUpdate) NotelPrimary else NotelTextSecondary)
+                                        Switch(
+                                            checked = sub.autoUpdate,
+                                            onCheckedChange = { viewModel.toggleAutoUpdate(sub.name) },
+                                            modifier = Modifier.scale(0.6f),
+                                            colors = SwitchDefaults.colors(
+                                                checkedThumbColor = NotelPrimary,
+                                                checkedTrackColor = NotelPrimary.copy(alpha = 0.3f)
+                                            )
+                                        )
+                                    }
+
                                     // Refresh button
                                     if (isThisRefreshing) {
                                         GlassySpinner(size = 20.dp)
@@ -1419,6 +1579,7 @@ fun SettingsScreen(
                                     }
                                 }
                             }
+
                         }
                     }
                     Spacer(Modifier.height(8.dp))
