@@ -246,6 +246,20 @@ data class ClassifyAndCleanResponse(
     val categoryId: Int
 )
 
+@Serializable
+data class FetchSubredditRequest(
+    val subreddit: String,
+    val userContext: String? = null
+)
+
+@Serializable
+data class FetchSubredditResponse(
+    val result: String,
+    val subreddit: String,
+    val postsAnalyzed: Int = 0,
+    val error: String? = null
+)
+
 interface JotApi {
 
     @POST("api/auth/register")
@@ -289,6 +303,9 @@ interface JotApi {
 
     @POST("api/ai/classify-and-clean")
     suspend fun classifyAndClean(@Body request: ClassifyAndCleanRequest): Response<AiResponse<ClassifyAndCleanResponse>>
+
+    @POST("api/ai/fetch-subreddit")
+    suspend fun fetchSubreddit(@Body request: FetchSubredditRequest): Response<FetchSubredditResponse>
 
     // ── SYNC ─────────────────────────────────────────────
     @retrofit2.http.GET("api/sync/pull")

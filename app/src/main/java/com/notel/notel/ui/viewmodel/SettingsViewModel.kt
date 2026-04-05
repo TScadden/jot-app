@@ -30,8 +30,10 @@ class SettingsViewModel @Inject constructor(
     private val syncManager: SyncManager,
     private val database: com.notel.notel.data.local.NotelDatabase,
     private val habitRepository: com.notel.notel.data.repository.HabitRepository,
+    private val jotApi: com.notel.notel.data.remote.JotApi,
     @ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
+
 
 
     val userContext = preferences.userContext
@@ -39,6 +41,15 @@ class SettingsViewModel @Inject constructor(
 
     val knowledgeBase = preferences.knowledgeBase
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+
+    val redditSubreddits: StateFlow<List<LinkedSubreddit>> = preferences.redditSubreddits
+        .map { json ->
+            try {
+                if (json.isNotBlank() && json != "[]") Json.decodeFromString<List<LinkedSubreddit>>(json)
+                else emptyList()
+            } catch (e: Exception) { emptyList() }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val professionalUpdates = preferences.professionalUpdates
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
@@ -60,6 +71,12 @@ class SettingsViewModel @Inject constructor(
 
     private val _healthConnectConnected = MutableStateFlow(false)
     val healthConnectConnected = _healthConnectConnected.asStateFlow()
+
+    private val _isRefreshingReddit = MutableStateFlow<String?>(null) // subreddit name currently refreshing
+    val isRefreshingReddit = _isRefreshingReddit.asStateFlow()
+
+    private val _redditError = MutableSharedFlow<String>()
+    val redditError = _redditError.asSharedFlow()
 
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing = _isSyncing.asStateFlow()
@@ -614,6 +631,78 @@ class SettingsViewModel @Inject constructor(
             }
         }
     }
+
+    fun addOrRefreshSubreddit(subredditName: String) {
+        val sub = subredditName.removePrefix("r/").trim().lowercase()
+        if (sub.isBlank()) return
+
+        viewModelScope.launch {
+            _isRefreshingReddit.value = sub
+            try {
+                val ctx = preferences.userContext.first()
+                val request = com.notel.notel.data.remote.FetchSubredditRequest(subreddit = sub, userContext = ctx)
+                val response = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    jotApi.fetchSubreddit(request)
+                }
+                if (response.isSuccessful) {
+                    val body = response.body()
+                    if (body?.result != null) {
+                        // 1. Update/add to subreddit list with timestamp
+                        val currentStr = preferences.redditSubreddits.first()
+                        val current: MutableList<LinkedSubreddit> = try {
+                            if (currentStr.isNotBlank() && currentStr != "[]") Json.decodeFromString(currentStr) else mutableListOf()
+                        } catch (e: Exception) { mutableListOf() }
+                        val existing = current.indexOfFirst { it.name == sub }
+                        val entry = LinkedSubreddit(name = sub, lastFetched = System.currentTimeMillis(), postsAnalyzed = body.postsAnalyzed)
+                        if (existing >= 0) current[existing] = entry else current.add(0, entry)
+                        preferences.setRedditSubreddits(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(LinkedSubreddit.serializer()), current))
+
+                        // 2. Replace old KB entry for this subreddit and prepend fresh one
+                        val timestamp = java.text.SimpleDateFormat("MMMM d, yyyy", java.util.Locale.US).format(java.util.Date())
+                        val redditMarker = "[REDDIT r/$sub]"
+                        val newEntry = "[ADDED $timestamp] $redditMarker\n${body.result}"
+                        val currentKb = preferences.knowledgeBase.first()
+                        // Strip old entry for this subreddit if it exists
+                        val filteredKb = currentKb.split("\n\n")
+                            .filter { !it.contains(redditMarker) }
+                            .joinToString("\n\n")
+                        val updatedKb = if (filteredKb.isBlank()) newEntry else "$newEntry\n\n$filteredKb"
+                        preferences.setKnowledgeBase(updatedKb)
+                        syncManager.pushProfileData()
+                    } else {
+                        _redditError.emit(body?.error ?: "No content returned")
+                    }
+                } else {
+                    val errMsg = response.errorBody()?.string()?.let {
+                        try { org.json.JSONObject(it).optString("error", "Failed to fetch subreddit") } catch (_: Exception) { "Failed to fetch subreddit" }
+                    } ?: "Failed to fetch subreddit"
+                    _redditError.emit(errMsg)
+                }
+            } catch (e: Exception) {
+                _redditError.emit(e.message ?: "Network error")
+            } finally {
+                _isRefreshingReddit.value = null
+            }
+        }
+    }
+
+    fun removeSubreddit(subredditName: String) {
+        viewModelScope.launch {
+            val currentStr = preferences.redditSubreddits.first()
+            val current: MutableList<LinkedSubreddit> = try {
+                if (currentStr.isNotBlank() && currentStr != "[]") Json.decodeFromString(currentStr) else mutableListOf()
+            } catch (e: Exception) { mutableListOf() }
+            current.removeAll { it.name == subredditName }
+            preferences.setRedditSubreddits(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(LinkedSubreddit.serializer()), current))
+
+            // Also remove its KB entry
+            val redditMarker = "[REDDIT r/$subredditName]"
+            val currentKb = preferences.knowledgeBase.first()
+            val filteredKb = currentKb.split("\n\n").filter { !it.contains(redditMarker) }.joinToString("\n\n")
+            preferences.setKnowledgeBase(filteredKb)
+            syncManager.pushProfileData()
+        }
+    }
 }
 
 @kotlinx.serialization.Serializable
@@ -632,3 +721,11 @@ data class CounterHistoryItem(
     val targetDate: Long,
     val endedAt: Long
 )
+
+@kotlinx.serialization.Serializable
+data class LinkedSubreddit(
+    val name: String,
+    val lastFetched: Long = 0L,
+    val postsAnalyzed: Int = 0
+)
+

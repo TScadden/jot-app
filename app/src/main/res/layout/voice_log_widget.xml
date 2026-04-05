@@ -12,7 +12,6 @@
         android:background="@drawable/widget_circle_background"
         android:contentDescription="Voice AI Log"
         android:padding="14dp"
-        android:src="@drawable/ic_noti_j"
-        android:tint="#FFFFFF" />
+        android:src="@drawable/ic_mic_widget" />
 
 </RelativeLayout>

@@ -1283,7 +1283,157 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(24.dp))
 
+            val redditSubreddits by viewModel.redditSubreddits.collectAsState()
+            val isRefreshingReddit by viewModel.isRefreshingReddit.collectAsState()
+
+            // Listen for Reddit errors and show them as snackbars
+            androidx.compose.runtime.LaunchedEffect(Unit) {
+                viewModel.redditError.collect { err ->
+                    snackbarHostState.showSnackbar(err)
+                }
             }
+
+            Text("COMMUNITY KNOWLEDGE", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(8.dp))
+
+            GlassyCard(
+                shape = RoundedCornerShape(16.dp),
+                color = NotelSurface
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Reddit alien icon via text emoji as fallback, or use a Material icon
+                    Icon(Icons.Default.Forum, null, tint = Color(0xFFFF4500), modifier = Modifier.size(28.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Reddit Subreddits", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                        Text(
+                            "Link a subreddit and Jot will scan the top 10 recent posts to build community knowledge for your AI.",
+                            color = NotelTextSecondary,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                var redditInput by remember { mutableStateOf("") }
+
+                OutlinedTextField(
+                    value = redditInput,
+                    onValueChange = { redditInput = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    placeholder = { Text("e.g. POTS  or  r/dysautonomia", color = NotelTextSecondary, fontSize = 13.sp) },
+                    leadingIcon = { Text("r/", color = NotelPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp) },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFFFF4500),
+                        unfocusedBorderColor = NotelSurfaceHigh,
+                        focusedTextColor = NotelTextPrimary,
+                        unfocusedTextColor = NotelTextPrimary
+                    )
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                GlassyButton(
+                    onClick = {
+                        if (redditInput.isNotBlank() && isRefreshingReddit == null) {
+                            viewModel.addOrRefreshSubreddit(redditInput.trim())
+                            redditInput = ""
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = redditInput.isNotBlank() && isRefreshingReddit == null,
+                    containerColor = if (redditInput.isNotBlank()) Color(0xFFFF4500).copy(alpha = 0.85f) else NotelSurfaceHigh
+                ) {
+                    if (isRefreshingReddit != null && redditInput.isBlank()) {
+                        GlassySpinner(size = 20.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Scanning posts...", color = Color.White, fontWeight = FontWeight.Bold)
+                    } else {
+                        Icon(Icons.Default.Search, null, tint = if (redditInput.isNotBlank()) Color.White else NotelTextSecondary, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Scan Subreddit (Top 10 Posts)", color = if (redditInput.isNotBlank()) Color.White else NotelTextSecondary, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                if (redditSubreddits.isNotEmpty()) {
+                    Spacer(Modifier.height(20.dp))
+                    Text("Linked Subreddits", color = NotelTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        redditSubreddits.forEach { sub ->
+                            val isThisRefreshing = isRefreshingReddit == sub.name
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = NotelSurfaceHigh.copy(alpha = 0.6f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            "r/${sub.name}",
+                                            color = Color(0xFFFF4500),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp
+                                        )
+                                        val lastFetchedStr = if (sub.lastFetched > 0L) {
+                                            val diff = System.currentTimeMillis() - sub.lastFetched
+                                            when {
+                                                diff < 60 * 60 * 1000L -> "Updated just now · ${sub.postsAnalyzed} posts"
+                                                diff < 24 * 60 * 60 * 1000L -> {
+                                                    val hrs = (diff / (60 * 60 * 1000L)).toInt()
+                                                    "Updated ${hrs}h ago · ${sub.postsAnalyzed} posts"
+                                                }
+                                                else -> {
+                                                    val days = (diff / (24 * 60 * 60 * 1000L)).toInt()
+                                                    "Updated ${days}d ago · ${sub.postsAnalyzed} posts"
+                                                }
+                                            }
+                                        } else "Never synced"
+                                        Text(lastFetchedStr, color = NotelTextSecondary, fontSize = 11.sp)
+                                    }
+                                    // Refresh button
+                                    if (isThisRefreshing) {
+                                        GlassySpinner(size = 20.dp)
+                                    } else {
+                                        IconButton(
+                                            onClick = { viewModel.addOrRefreshSubreddit(sub.name) },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(Icons.Default.Refresh, "Refresh r/${sub.name}", tint = NotelTextSecondary, modifier = Modifier.size(18.dp))
+                                        }
+                                    }
+                                    Spacer(Modifier.width(4.dp))
+                                    // Remove button
+                                    IconButton(
+                                        onClick = { viewModel.removeSubreddit(sub.name) },
+                                        modifier = Modifier.size(32.dp),
+                                        enabled = !isThisRefreshing
+                                    ) {
+                                        Icon(Icons.Default.Delete, "Remove r/${sub.name}", tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Community knowledge is automatically included in all AI analysis, advice, and reports.",
+                        color = NotelTextSecondary,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            }
+
 
             if (currentMenu == SettingsMenu.USER_PROFILE) {
             Text("USER PROFILE", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)

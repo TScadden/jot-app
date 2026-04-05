@@ -58,6 +58,7 @@ class NotelPreferences @Inject constructor(
         val EVENT_COUNTERS = stringPreferencesKey("event_counters")
         val COUNTER_HISTORY = stringPreferencesKey("counter_history")
         val SETTINGS_TUTORIAL_SEEN = booleanPreferencesKey("settings_tutorial_seen")
+        val REDDIT_SUBREDDITS = stringPreferencesKey("reddit_subreddits")
         val BODY_LOAD_REMINDERS_ENABLED = booleanPreferencesKey("body_load_reminders_enabled")
         val DAILY_CUP_UPDATES_ENABLED = booleanPreferencesKey("daily_cup_updates_enabled")
         val HR_SPIKE_ALERTS_ENABLED = booleanPreferencesKey("hr_spike_alerts_enabled")
@@ -90,6 +91,7 @@ class NotelPreferences @Inject constructor(
     val spikeDeltaThreshold: Flow<Int> = context.dataStore.data.map { it[SPIKE_DELTA_THRESHOLD] ?: 30 }
     val hrLastPokedBpm: Flow<Int> = context.dataStore.data.map { it[HR_LAST_POKED_BPM] ?: 0 }
     val habitReminderEnabled: Flow<Boolean> = context.dataStore.data.map { it[HABIT_REMINDER_ENABLED] ?: false }
+    val redditSubreddits: Flow<String> = context.dataStore.data.map { it[REDDIT_SUBREDDITS] ?: "[]" }
     val hrLastAlertTime: Flow<Long> = context.dataStore.data.map { it[HR_LAST_ALERT_TIME] ?: 0L }
     val hrLastSampleTime: Flow<Long> = context.dataStore.data.map { it[HR_LAST_SAMPLE_TIME] ?: 0L }
     val habitReminderUserDisabled: Flow<Boolean> = context.dataStore.data.map { it[HABIT_REMINDER_USER_DISABLED] ?: false }
@@ -325,6 +327,10 @@ class NotelPreferences @Inject constructor(
 
     suspend fun setCounterHistory(jsonArray: String) {
         context.dataStore.edit { it[COUNTER_HISTORY] = jsonArray }
+    }
+
+    suspend fun setRedditSubreddits(jsonArray: String) {
+        context.dataStore.edit { it[REDDIT_SUBREDDITS] = jsonArray }
     }
 
     suspend fun setSettingsTutorialSeen(seen: Boolean) {
