@@ -542,10 +542,6 @@ fun FitbitScreen(
                                         }
                                     }
                                 }
-                                    }
-                                }
-                                
-                                }
                                 
                                 if (state.historicalSpikes.isNotEmpty()) {
                                     val worstDay = state.historicalSpikes.maxByOrNull { it.spikeCount }
