@@ -83,7 +83,8 @@ class SyncManager @Inject constructor(
                     onboardingComplete = preferences.onboardingComplete.first(),
                     autoAiSuggestions = preferences.autoAiSuggestions.first(),
                     eventCounters = preferences.eventCounters.first(),
-                    counterHistory = preferences.counterHistory.first()
+                    counterHistory = preferences.counterHistory.first(),
+                    redditSubreddits = preferences.redditSubreddits.first()
                 )
             )
         } catch (e: Exception) {
@@ -166,6 +167,7 @@ class SyncManager @Inject constructor(
                     profile.autoAiSuggestions?.let { preferences.setAutoAiSuggestions(it) }
                     profile.eventCounters?.let { if (it.isNotBlank()) preferences.setEventCounters(it) }
                     profile.counterHistory?.let { if (it.isNotBlank()) preferences.setCounterHistory(it) }
+                    profile.redditSubreddits?.let { if (it.isNotBlank()) preferences.setRedditSubreddits(it) }
                 }
 
                 // D. Restore AI Results (Productivity)
