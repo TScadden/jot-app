@@ -1,0 +1,3 @@
+[submodule "jot-server"]
+	path = jot-server
+	url = https://github.com/TScadden/jot-server.git
