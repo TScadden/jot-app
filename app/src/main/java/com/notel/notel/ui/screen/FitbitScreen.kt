@@ -564,7 +564,9 @@ fun FitbitScreen(
                                 }
                             }
                         }
-
+                    }
+                }
+                
                     if (state.connectedDevices.isNotEmpty()) {
                         Spacer(Modifier.height(24.dp))
                         GlassyCard(
