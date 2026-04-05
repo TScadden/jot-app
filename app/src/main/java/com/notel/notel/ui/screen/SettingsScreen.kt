@@ -2105,10 +2105,7 @@ fun SettingsScreen(
             }
             Spacer(Modifier.height(48.dp))
         }
-
-        if (currentMenu == SettingsMenu.DEBUG && isUnlimited) {
-            DebugScreen(onBack = { currentMenu = SettingsMenu.MAIN }, viewModel = viewModel, padding = padding)
-        }
+    }
     }
 
     // ── Tutorial overlay — sits above the Scaffold so it can cover the top bar ──
