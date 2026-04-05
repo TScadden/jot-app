@@ -430,15 +430,30 @@ fun FitbitScreen(
                                         text = if (isHighBurden) "⚠️ Orthostatic Spikes" else "💓 Orthostatic Spikes",
                                         color = if (isHighBurden) Color(0xFFFF6B6B) else NotelTextPrimary,
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 16.sp
+                                        fontSize = 16.sp,
+                                        modifier = Modifier.weight(1f)
                                     )
-                                    if (isHighBurden) {
-                                        Text(
-                                            "High Symptom Day",
-                                            color = Color(0xFFFF6B6B),
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        if (state.historicalSpikes.isNotEmpty()) {
+                                            val worstDay = state.historicalSpikes.maxByOrNull { it.spikeCount }
+                                            if (worstDay != null && worstDay.date != state.selectedHeartRateDate && worstDay.spikeCount > 0) {
+                                                Text(
+                                                    "Skip to worst day ➝",
+                                                    color = NotelPrimary,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier.clickable { viewModel.fetchHeartRateForDate(worstDay.date) }.padding(end = 8.dp)
+                                                )
+                                            }
+                                        }
+                                        if (isHighBurden) {
+                                            Text(
+                                                "High Symptom Day",
+                                                color = Color(0xFFFF6B6B),
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
                                     }
                                 }
                                 Spacer(Modifier.height(12.dp))

@@ -46,7 +46,8 @@ data class FitbitState(
     val selectedHeartRateDate: String = "today",
     val caloriesBurned: Int = 0,
     val isFitbitConnected: Boolean = false,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val historicalSpikes: List<DailyHeartRateSummary> = emptyList()
 )
 
 
@@ -64,8 +65,21 @@ class FitbitViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             try {
-                preferences.fitbitToken.collect { token ->
-                    _state.update { it.copy(isFitbitConnected = token.isNotBlank()) }
+                launch {
+                    preferences.fitbitToken.collect { token ->
+                        _state.update { it.copy(isFitbitConnected = token.isNotBlank()) }
+                    }
+                }
+                launch {
+                    val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                    preferences.historicalHrSpikes.collect { spikesStr ->
+                        if (spikesStr.isNotBlank()) {
+                            try {
+                                val spikes = json.decodeFromString<List<DailyHeartRateSummary>>(spikesStr)
+                                _state.update { it.copy(historicalSpikes = spikes) }
+                            } catch(e: Exception) {}
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 // Ignore background pref errors
