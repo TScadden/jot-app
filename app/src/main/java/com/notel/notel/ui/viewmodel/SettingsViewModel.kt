@@ -215,7 +215,10 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun saveUserContext(text: String) {
-        viewModelScope.launch { preferences.setUserContext(text) }
+        viewModelScope.launch { 
+            preferences.setUserContext(text)
+            preferences.setUserContextLastUpdate(System.currentTimeMillis())
+        }
     }
 
     fun saveUserProfile(age: Int, height: Float, weight: Float, gender: String) {
@@ -535,7 +538,21 @@ class SettingsViewModel @Inject constructor(
             if (index >= 0) {
                 current[index] = current[index].copy(name = name, targetDate = dateMills, isUp = isUp, autoUp = autoUp)
             } else {
-                current.add(EventCounterDto(id, name, dateMills, isUp, autoUp, isFavorite = current.isEmpty()))
+                // Auto-deduplicate: if a counter with this name already exists, append (2), (3), etc.
+                val baseName = name.trimEnd()
+                val existingNames = current.map { it.name }.toSet()
+                val uniqueName = if (!existingNames.contains(baseName)) {
+                    baseName
+                } else {
+                    var suffix = 2
+                    var candidate = "$baseName ($suffix)"
+                    while (existingNames.contains(candidate)) {
+                        suffix++
+                        candidate = "$baseName ($suffix)"
+                    }
+                    candidate
+                }
+                current.add(EventCounterDto(id, uniqueName, dateMills, isUp, autoUp, isFavorite = current.isEmpty()))
             }
             preferences.setEventCounters(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(EventCounterDto.serializer()), current))
         }

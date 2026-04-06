@@ -347,21 +347,23 @@ fun FitbitScreen(
                     // ── Orthostatic Spike Card ─────────────────────────────────
                     val todaySpikes = remember(state.heartRateData) {
                         val readings = state.heartRateData.map { it.second }
-                        if (readings.isEmpty()) listOf(0, 0, 0, 0)
+                        if (readings.isEmpty()) listOf(0, 0, 0, 0, 0, 0)
                         else {
                             val sorted = readings.sorted()
                             val max = sorted.last()
                             val p10 = sorted[(sorted.size * 0.10).toInt().coerceAtLeast(0)]
                             
-                            // Group UI count the same way we group events below
-                            val parser = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
-                            var eventsCount = 0
+                            val zoneId = java.time.ZoneId.systemDefault()
+                            var dayCount = 0
+                            var nightCount = 0
                             var inEvent = false
                             var eventEndMs = 0L
+                            
                             for ((tMs, bpm) in state.heartRateData) {
                                 if (bpm >= 100) {
                                     if (!inEvent || tMs > eventEndMs) {
-                                        eventsCount++
+                                        val h = java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(tMs), zoneId).hour
+                                        if (h in 7..21) dayCount++ else nightCount++
                                         inEvent = true
                                     }
                                     eventEndMs = tMs + (5 * 60 * 1000)
@@ -369,15 +371,17 @@ fun FitbitScreen(
                             }
                             
                             val delta = max - p10
-                            listOf(max, eventsCount, delta, p10)
+                            listOf(max, dayCount + nightCount, delta, p10, dayCount, nightCount)
                         }
                     }
 
-                    Spacer(Modifier.height(16.dp))
                     val maxBpm = todaySpikes[0]
                     val spikeCount = todaySpikes[1]
                     val maxDelta = todaySpikes[2]
                     val baseline = todaySpikes[3]
+                    val daySpikeCount = todaySpikes[4]
+                    val nightSpikeCount = todaySpikes[5]
+                    
                     val isHighBurden = spikeCount >= 5 || maxDelta >= 50
                     val noData = maxBpm == 0
                     var showSpikeDetails by remember { mutableStateOf(false) }
@@ -434,20 +438,7 @@ fun FitbitScreen(
                                                 fontWeight = FontWeight.SemiBold
                                             )
                                         }
-                                        val worstDay = state.historicalSpikes.maxByOrNull { it.spikeCount }
-                                        if (worstDay != null && worstDay.spikeCount > 0 && worstDay.date != state.selectedHeartRateDate) {
-                                            IconButton(
-                                                onClick = { viewModel.fetchHeartRateForDate(worstDay.date) },
-                                                modifier = Modifier.size(36.dp)
-                                            ) {
-                                                Icon(
-                                                    Icons.AutoMirrored.Filled.ArrowForward,
-                                                    contentDescription = "Skip to worst day",
-                                                    tint = NotelPrimary,
-                                                    modifier = Modifier.size(20.dp)
-                                                )
-                                            }
-                                        }
+
                                     }
                                 }
                                 Spacer(Modifier.height(12.dp))
@@ -465,11 +456,19 @@ fun FitbitScreen(
                                         Text("Peak bpm", color = NotelTextSecondary, fontSize = 11.sp)
                                     }
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                "$spikeCount",
+                                                color = if (spikeCount >= 5) Color(0xFFFF6B6B) else NotelPrimary,
+                                                fontSize = 28.sp,
+                                                fontWeight = FontWeight.Black
+                                            )
+                                        }
                                         Text(
-                                            "$spikeCount",
-                                            color = if (spikeCount >= 5) Color(0xFFFF6B6B) else NotelPrimary,
-                                            fontSize = 28.sp,
-                                            fontWeight = FontWeight.Black
+                                            "Day: $daySpikeCount | Night: $nightSpikeCount", 
+                                            color = NotelTextSecondary, 
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold
                                         )
                                         Text("Spikes >100", color = NotelTextSecondary, fontSize = 11.sp)
                                     }
@@ -502,58 +501,111 @@ fun FitbitScreen(
                                     Spacer(Modifier.height(16.dp))
                                     HorizontalDivider(color = NotelTextSecondary.copy(alpha = 0.2f))
                                     Spacer(Modifier.height(12.dp))
-                                    Text("Logged Spikes (≥100 bpm)", color = NotelTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                                    Spacer(Modifier.height(8.dp))
-                                    
-                                    val parser = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
-                                    val formatter = java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault())
 
-                                    class SpikeEvent(val startTime: String, var endTime: String, var peakBpm: Int, var durationMins: Int)
-                                    val events = mutableListOf<SpikeEvent>()
-                                    var currentEvent: SpikeEvent? = null
+                                    val formatter = java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault())
+                                    val zoneId = java.time.ZoneId.systemDefault()
+
+                                    class SpikeEvent(val startTimeMs: Long, var peakBpm: Int, var durationMins: Int)
+
+                                    // Build all spike events
+                                    val allEvents = mutableListOf<SpikeEvent>()
+                                    var currentEventStart = 0L
+                                    var currentEventPeak = 0
                                     var currentEventEndMs = 0L
+                                    var inEvent = false
 
                                     state.heartRateData.forEach { (timeMs, bpm) ->
                                         if (bpm >= 100) {
-                                            if (currentEvent == null || timeMs > currentEventEndMs) {
-                                                currentEvent?.let { events.add(it) }
-                                                currentEvent = SpikeEvent(timeMs.toString(), timeMs.toString(), bpm, 1)
+                                            if (!inEvent || timeMs > currentEventEndMs) {
+                                                if (inEvent) {
+                                                    val dur = maxOf(1, ((currentEventEndMs - 300_000L - currentEventStart) / 60000).toInt())
+                                                    allEvents.add(SpikeEvent(currentEventStart, currentEventPeak, dur))
+                                                }
+                                                inEvent = true
+                                                currentEventStart = timeMs
+                                                currentEventPeak = bpm
                                             } else {
-                                                currentEvent!!.endTime = timeMs.toString()
-                                                currentEvent!!.peakBpm = maxOf(currentEvent!!.peakBpm, bpm)
-                                                val startMs = currentEvent!!.startTime.toLongOrNull() ?: timeMs
-                                                currentEvent!!.durationMins = maxOf(1, ((timeMs - startMs) / 60000).toInt())
+                                                currentEventPeak = maxOf(currentEventPeak, bpm)
                                             }
-                                            // Keep the event alive for up to 5 minutes after the last spike reading
                                             currentEventEndMs = timeMs + (5 * 60 * 1000)
                                         }
                                     }
-                                    currentEvent?.let { events.add(it) }
+                                    if (inEvent) {
+                                        val dur = maxOf(1, ((currentEventEndMs - 300_000L - currentEventStart) / 60000).toInt())
+                                        allEvents.add(SpikeEvent(currentEventStart, currentEventPeak, dur))
+                                    }
 
-                                    events.forEach { event ->
-                                        val displayTime = try {
-                                            val tMs = event.startTime.toLongOrNull() ?: 0L
-                                            if (tMs > 0) formatter.format(java.util.Date(tMs)) else event.startTime
-                                        } catch (e: Exception) { event.startTime }
+                                    // Split into day (7am–10pm) and night (10pm–7am)
+                                    val dayEvents = allEvents.filter { event ->
+                                        val h = java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(event.startTimeMs), zoneId).hour
+                                        h in 7..21
+                                    }
+                                    val nightEvents = allEvents.filter { event ->
+                                        val h = java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(event.startTimeMs), zoneId).hour
+                                        h >= 22 || h < 7
+                                    }
 
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Column {
-                                                Text(displayTime, color = NotelTextSecondary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                                if (event.durationMins > 1) {
-                                                    Text("Duration: ~${event.durationMins}m", color = NotelTextSecondary.copy(alpha=0.7f), fontSize = 11.sp)
-                                                }
-                                            }
+                                    // ── Daytime spikes ────────────────────────────────
+                                    if (dayEvents.isNotEmpty()) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("☀️", fontSize = 14.sp)
+                                            Spacer(Modifier.width(4.dp))
                                             Text(
-                                                "${event.peakBpm} bpm peak", 
-                                                color = if (event.peakBpm >= 120) Color(0xFFFF6B6B) else Color(0xFFE2A123), 
-                                                fontWeight = FontWeight.Bold, 
-                                                fontSize = 14.sp
+                                                "Daytime Spikes (${dayEvents.size})",
+                                                color = NotelTextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp
                                             )
                                         }
+                                        Spacer(Modifier.height(8.dp))
+                                        dayEvents.forEach { event ->
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column {
+                                                    Text(formatter.format(java.util.Date(event.startTimeMs)), color = NotelTextSecondary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                                    if (event.durationMins > 1) Text("Duration: ~${event.durationMins}m", color = NotelTextSecondary.copy(alpha = 0.7f), fontSize = 11.sp)
+                                                }
+                                                Text("${event.peakBpm} bpm peak", color = if (event.peakBpm >= 120) Color(0xFFFF6B6B) else Color(0xFFE2A123), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                            }
+                                        }
+                                    }
+
+                                    // ── Nighttime spikes ──────────────────────────────
+                                    if (nightEvents.isNotEmpty()) {
+                                        if (dayEvents.isNotEmpty()) {
+                                            Spacer(Modifier.height(14.dp))
+                                            HorizontalDivider(color = NotelTextSecondary.copy(alpha = 0.15f))
+                                            Spacer(Modifier.height(10.dp))
+                                        }
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("🌙", fontSize = 14.sp)
+                                            Spacer(Modifier.width(4.dp))
+                                            Text(
+                                                "Nighttime Spikes (${nightEvents.size})",
+                                                color = Color(0xFF9B8FD4), fontWeight = FontWeight.Bold, fontSize = 14.sp
+                                            )
+                                        }
+                                        Spacer(Modifier.height(4.dp))
+                                        Text("10 pm – 7 am", color = NotelTextSecondary.copy(alpha = 0.6f), fontSize = 11.sp)
+                                        Spacer(Modifier.height(8.dp))
+                                        nightEvents.forEach { event ->
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column {
+                                                    Text(formatter.format(java.util.Date(event.startTimeMs)), color = NotelTextSecondary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                                    if (event.durationMins > 1) Text("Duration: ~${event.durationMins}m", color = NotelTextSecondary.copy(alpha = 0.7f), fontSize = 11.sp)
+                                                }
+                                                Text("${event.peakBpm} bpm peak", color = if (event.peakBpm >= 120) Color(0xFFFF6B6B) else Color(0xFFE2A123), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                            }
+                                        }
+                                    }
+
+                                    if (dayEvents.isEmpty() && nightEvents.isEmpty()) {
+                                        Text("No spike events found in detail data.", color = NotelTextSecondary, fontSize = 13.sp)
                                     }
                                 }
                             }

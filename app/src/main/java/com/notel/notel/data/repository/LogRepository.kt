@@ -232,14 +232,20 @@ class LogRepository @Inject constructor(
 
     private suspend fun getEnrichedUserContext(): String {
         val baseContext = preferences.userContext.first()
+        val lastUpdate = preferences.userContextLastUpdate.first()
+        val updateDate = if (lastUpdate > 0) java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.US).format(java.util.Date(lastUpdate)) else "Unknown"
+        
+        val header = "📋 USER BACKGROUND CONTEXT (Last Updated: $updateDate):\n$baseContext\n\n"
+        
         val countersJson = preferences.eventCounters.first()
-        if (countersJson.isBlank() || countersJson == "[]") return baseContext
+        if (countersJson.isBlank() || countersJson == "[]") return header
         
         var counterContext = ""
         try {
             val counters = kotlinx.serialization.json.Json.decodeFromString<List<com.notel.notel.ui.viewmodel.EventCounterDto>>(countersJson)
             if (counters.isNotEmpty()) {
-                val sb = java.lang.StringBuilder("\n\nActive Event Counters (IMPORTANT CONTEXT):\n")
+                val sb = java.lang.StringBuilder("⏰ ACTIVE EVENT COUNTERS (CHRONOLOGICAL PRIORITY):\n")
+                sb.append("Rule: Use these dates to determine the user's current status (e.g., 'X days since event Y').\n")
                 counters.forEach { counter ->
                     val diffMillis = counter.targetDate - System.currentTimeMillis()
                     var isUp = counter.isUp
@@ -255,7 +261,8 @@ class LogRepository @Inject constructor(
                     if (isUp || diffMillis >= 0) {
                         val daysRemaining = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(Math.abs(finalDiffMillis))
                         val direction = if (isUp) "since" else "until"
-                        sb.append("- ${counter.name}: ${daysRemaining} days ${direction}\n")
+                        val startDate = java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.US).format(java.util.Date(counter.targetDate))
+                        sb.append("- ${counter.name}: ${daysRemaining} days ${direction} (Started/Target: $startDate)\n")
                     }
                 }
                 counterContext = sb.toString()
@@ -265,9 +272,9 @@ class LogRepository @Inject constructor(
         }
         
         return if (counterContext.isNotEmpty()) {
-            "$baseContext$counterContext"
+            "$header$counterContext"
         } else {
-            baseContext
+            header
         }
     }
 
@@ -275,7 +282,20 @@ class LogRepository @Inject constructor(
         val kb = preferences.knowledgeBase.first()
         val proUpdates = preferences.professionalUpdates.first()
         if (proUpdates.isBlank()) return kb
-        return if (kb.isBlank()) "PROFESSIONAL INSTRUCTIONS:\n$proUpdates" else "$kb\n\nPROFESSIONAL INSTRUCTIONS:\n$proUpdates"
+
+        // Professional updates are date-stamped and override personal context.
+        // Build a header that makes the recency priority crystal-clear to the AI.
+        val proSection = buildString {
+            append("⚠️ PROFESSIONAL / DOCTOR INSTRUCTIONS (HIGHEST PRIORITY — OVERRIDES PERSONAL CONTEXT):\n")
+            append("RULE: If a professional instruction conflicts with anything in the user's personal context or knowledge base,\n")
+            append("      the MOST RECENT dated professional instruction ALWAYS wins. Treat these as binding clinical directives.\n\n")
+            // Split on blank lines so each update is a separate entry
+            val updates = proUpdates.split("\n\n").filter { it.isNotBlank() }
+            updates.forEach { update -> append("• $update\n\n") }
+            append("(If two instructions conflict, the one with the more recent date takes precedence.)\n")
+        }
+
+        return if (kb.isBlank()) proSection else "$proSection\n---\nKNOWLEDGE BASE / UPLOADED DOCUMENTS (reference, lower priority than professional instructions):\n$kb"
     }
 
     private suspend fun getHabitDataSummary(): String {

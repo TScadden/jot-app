@@ -99,6 +99,43 @@ class FitbitViewModel @Inject constructor(
         }
     }
 
+    fun navigateToWorstSpikeDay() {
+        viewModelScope.launch {
+            try {
+                _state.update { it.copy(isLoading = true) }
+                // Always do a live fetch — never rely on the DataStore cache for this
+                val freshSpikes = healthConnectManager.readHistoricalHeartRateWithSpikes(180)
+                if (freshSpikes.isNotEmpty()) {
+                    // Save updated data to DataStore as a side effect
+                    preferences.setHistoricalHrSpikes(
+                        kotlinx.serialization.json.Json.encodeToString(
+                            kotlinx.serialization.serializer<List<DailyHeartRateSummary>>(), freshSpikes
+                        )
+                    )
+                    _state.update { it.copy(historicalSpikes = freshSpikes, isLoading = false) }
+                    val currentDate = _state.value.selectedHeartRateDate
+                    val worstDay = freshSpikes
+                        .filter { it.date != currentDate }
+                        .maxByOrNull { it.spikeCount }
+                    if (worstDay != null && worstDay.spikeCount > 0) {
+                        fetchHeartRateForDate(worstDay.date)
+                    }
+                } else {
+                    _state.update { it.copy(isLoading = false) }
+                }
+            } catch (e: Exception) {
+                // Fallback to cached data
+                _state.update { it.copy(isLoading = false) }
+                val cached = _state.value.historicalSpikes
+                val currentDate = _state.value.selectedHeartRateDate
+                val worstDay = cached.filter { it.date != currentDate }.maxByOrNull { it.spikeCount }
+                if (worstDay != null && worstDay.spikeCount > 0) {
+                    fetchHeartRateForDate(worstDay.date)
+                }
+            }
+        }
+    }
+
     fun sync(force: Boolean = false) {
         if (_state.value.isLoading) return
         
@@ -144,7 +181,7 @@ class FitbitViewModel @Inject constructor(
          val intradayHRDeferred = async { healthConnectManager.readHeartRateIntraday(_state.value.selectedHeartRateDate) }
          val avgHRDeferred = async { healthConnectManager.readHeartRateAverage(_state.value.selectedHeartRateDate) }
          val histHRDeferred = async { healthConnectManager.readHistoricalHeartRate() }
-         val histSpikeDeferred = async { healthConnectManager.readHistoricalHeartRateWithSpikes(30) }
+         val histSpikeDeferred = async { healthConnectManager.readHistoricalHeartRateWithSpikes(180) }
          val histSleepDeferred = async { healthConnectManager.readHistoricalSleep() }
          val sleepDeferred = async { healthConnectManager.readSleepSession(_state.value.selectedSleepDate) }
          val activeCalDeferred = async { healthConnectManager.readActiveCalories(_state.value.selectedHeartRateDate) }

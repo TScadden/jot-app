@@ -20,7 +20,8 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class SpikeEventRecord(
     val peakBpm: Int,
-    val durationMins: Int
+    val durationMins: Int,
+    val startTimeMs: Long = 0L
 )
 
 /** Per-day heart rate summary exposing spike data for POTS-aware AI analysis. */
@@ -31,7 +32,9 @@ data class DailyHeartRateSummary(
     val max: Int,
     val min: Int,
     val baseline: Int,      // 10th-percentile — true resting estimate
-    val spikeCount: Int,    // readings >= SPIKE_THRESHOLD_BPM
+    val spikeCount: Int,    // total readings >= SPIKE_THRESHOLD_BPM
+    val daySpikeCount: Int = 0,   // Spikes from 7am-10pm
+    val nightSpikeCount: Int = 0, // Spikes from 10pm-7am
     val maxDelta: Int,      // max - baseline (key POTS orthostatic delta)
     val totalReadings: Int,
     val eventsList: List<SpikeEventRecord> = emptyList()
@@ -259,20 +262,24 @@ class HealthConnectManager(private val context: Context) {
                 val baseline = bpmList[p10Index]
                 val maxDelta = max - baseline
                 
-                var eventCount = 0
+                var dayCount = 0
+                var nightCount = 0
                 val eventRecords = mutableListOf<SpikeEventRecord>()
                 var currentEventPeak = 0
                 var currentEventStart = 0L
                 var inEvent = false
                 var eventEndMs = 0L
+                
                 for (s in sortedSamples) {
                     if (s.second >= threshold) {
                         if (!inEvent || s.first > eventEndMs) {
                             if (inEvent) {
                                 val dur = maxOf(1, ((eventEndMs - 300000L - currentEventStart) / 60000L).toInt())
-                                eventRecords.add(SpikeEventRecord(currentEventPeak, dur))
+                                eventRecords.add(SpikeEventRecord(currentEventPeak, dur, currentEventStart))
+                                
+                                val h = java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(currentEventStart), zoneId).hour
+                                if (h in 7..21) dayCount++ else nightCount++
                             }
-                            eventCount++
                             inEvent = true
                             currentEventStart = s.first
                             currentEventPeak = s.second
@@ -284,7 +291,9 @@ class HealthConnectManager(private val context: Context) {
                 }
                 if (inEvent) {
                     val dur = maxOf(1, ((eventEndMs - 300000L - currentEventStart) / 60000L).toInt())
-                    eventRecords.add(SpikeEventRecord(currentEventPeak, dur))
+                    eventRecords.add(SpikeEventRecord(currentEventPeak, dur, currentEventStart))
+                    val h = java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(currentEventStart), zoneId).hour
+                    if (h in 7..21) dayCount++ else nightCount++
                 }
 
                 DailyHeartRateSummary(
@@ -293,7 +302,9 @@ class HealthConnectManager(private val context: Context) {
                     max = max,
                     min = min,
                     baseline = baseline,
-                    spikeCount = eventCount,
+                    spikeCount = dayCount + nightCount,
+                    daySpikeCount = dayCount,
+                    nightSpikeCount = nightCount,
                     maxDelta = maxDelta,
                     totalReadings = sortedSamples.size,
                     eventsList = eventRecords

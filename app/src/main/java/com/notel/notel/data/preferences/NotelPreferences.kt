@@ -70,6 +70,7 @@ class NotelPreferences @Inject constructor(
         val HR_LAST_ALERT_TIME = longPreferencesKey("hr_last_alert_time")
         val HR_LAST_SAMPLE_TIME = longPreferencesKey("hr_last_sample_time")
         val HABIT_REMINDER_USER_DISABLED = booleanPreferencesKey("habit_reminder_user_disabled")
+        val USER_CONTEXT_LAST_UPDATE = longPreferencesKey("user_context_last_update")
     }
 
     val authToken: Flow<String> = context.dataStore.data.map { prefs ->
@@ -95,6 +96,7 @@ class NotelPreferences @Inject constructor(
     val hrLastAlertTime: Flow<Long> = context.dataStore.data.map { it[HR_LAST_ALERT_TIME] ?: 0L }
     val hrLastSampleTime: Flow<Long> = context.dataStore.data.map { it[HR_LAST_SAMPLE_TIME] ?: 0L }
     val habitReminderUserDisabled: Flow<Boolean> = context.dataStore.data.map { it[HABIT_REMINDER_USER_DISABLED] ?: false }
+    val userContextLastUpdate: Flow<Long> = context.dataStore.data.map { it[USER_CONTEXT_LAST_UPDATE] ?: 0L }
 
     val onboardingComplete: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[ONBOARDING_COMPLETE] ?: false
@@ -198,7 +200,11 @@ class NotelPreferences @Inject constructor(
     }
 
     suspend fun setOnboardingComplete(complete: Boolean) {
-        context.dataStore.edit { it[ONBOARDING_COMPLETE] = complete }
+        context.dataStore.edit { prefs -> prefs[ONBOARDING_COMPLETE] = complete }
+    }
+
+    suspend fun setUserContextLastUpdate(timestamp: Long) {
+        context.dataStore.edit { prefs -> prefs[USER_CONTEXT_LAST_UPDATE] = timestamp }
     }
 
     suspend fun setLoggedIn(loggedIn: Boolean) {
