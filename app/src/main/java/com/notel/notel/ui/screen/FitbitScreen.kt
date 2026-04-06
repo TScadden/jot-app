@@ -434,6 +434,20 @@ fun FitbitScreen(
                                                 fontWeight = FontWeight.SemiBold
                                             )
                                         }
+                                        val worstDay = state.historicalSpikes.maxByOrNull { it.spikeCount }
+                                        if (worstDay != null && worstDay.spikeCount > 0 && worstDay.date != state.selectedHeartRateDate) {
+                                            IconButton(
+                                                onClick = { viewModel.fetchHeartRateForDate(worstDay.date) },
+                                                modifier = Modifier.size(36.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.AutoMirrored.Filled.ArrowForward,
+                                                    contentDescription = "Skip to worst day",
+                                                    tint = NotelPrimary,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                                 Spacer(Modifier.height(12.dp))
@@ -542,27 +556,8 @@ fun FitbitScreen(
                                         }
                                     }
                                 }
-                                
-                                if (state.historicalSpikes.isNotEmpty()) {
-                                    val worstDay = state.historicalSpikes.maxByOrNull { it.spikeCount }
-                                    if (worstDay != null && worstDay.spikeCount > spikeCount && worstDay.date != state.selectedHeartRateDate) {
-                                        IconButton(
-                                            onClick = { viewModel.fetchHeartRateForDate(worstDay.date) },
-                                            modifier = Modifier
-                                                .align(Alignment.BottomEnd)
-                                                .padding(bottom = 8.dp, end = 8.dp)
-                                                .size(24.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.AutoMirrored.Filled.ArrowForward,
-                                                contentDescription = "Skip to worst day",
-                                                tint = NotelPrimary.copy(alpha = 0.8f),
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        }
-                                    }
-                                }
                             }
+
                         }
                     }
                 }

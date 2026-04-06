@@ -346,9 +346,6 @@ class FitbitViewModel @Inject constructor(
                 activeCal = healthConnectManager.readActiveCalories(date)
             }
             
-            val spikes = healthConnectManager.readHeartRateSpikesHistory()
-
-            
             var latest = intradayHR.lastOrNull()?.second ?: 0
             val latestTime = intradayHR.lastOrNull()?.first ?: 0L
 
@@ -359,8 +356,8 @@ class FitbitViewModel @Inject constructor(
                 } catch(e: Exception) { latestTime.toString() }
             } else ""
 
-            _state.update { 
-                it.copy(
+            _state.update { currentState ->
+                currentState.copy(
                     isLoading = false,
                     heartRateData = intradayHR,
                     averageHeartRate = avgHR,
@@ -368,7 +365,7 @@ class FitbitViewModel @Inject constructor(
                     latestHeartRate = latest,
                     latestHeartRateTime = formattedTime,
                     caloriesBurned = activeCal,
-                    historicalSpikes = spikes,
+                    // historicalSpikes is populated from the DataStore preferences flow in init{}
                     errorMessage = if (intradayHR.isEmpty() && activeCal == 0) "No data found for this date." else null
                 )
             }
