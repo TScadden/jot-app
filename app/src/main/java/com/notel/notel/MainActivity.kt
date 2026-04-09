@@ -7,15 +7,34 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.geometry.Size
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
@@ -31,6 +50,24 @@ import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.FitbitViewModel
 import dagger.hilt.android.AndroidEntryPoint
 
+// Custom Bowtie shape for the main button
+val BowtieShape = object : Shape {
+    override fun createOutline(size: Size, layoutDirection: androidx.compose.ui.unit.LayoutDirection, density: Density): Outline {
+        val path = Path().apply {
+            moveTo(size.width * 0.25f, 0f)
+            lineTo(size.width * 0.75f, 0f)
+            lineTo(size.width, size.height * 0.25f)
+            lineTo(size.width, size.height * 0.75f)
+            lineTo(size.width * 0.75f, size.height)
+            lineTo(size.width * 0.25f, size.height)
+            lineTo(0f, size.height * 0.75f)
+            lineTo(0f, size.height * 0.25f)
+            close()
+        }
+        return Outline.Generic(path)
+    }
+}
+
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,9 +75,192 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             NotelTheme {
-                NotelNavGraph()
+                val navController = rememberNavController()
+                val navBackStackEntry by navController.currentBackStackEntryAsState()
+                val currentRoute = navBackStackEntry?.destination?.route
+
+                Box(modifier = Modifier.fillMaxSize()) {
+                    // Main Content
+                    NavHost(
+                        navController = navController,
+                        startDestination = "login",
+                        modifier = Modifier.fillMaxSize(),
+                        enterTransition = { EnterTransition.None },
+                        exitTransition = { ExitTransition.None },
+                        popEnterTransition = { EnterTransition.None },
+                        popExitTransition = { ExitTransition.None }
+                    ) {
+                        composable("login") {
+                            val loginViewModel: com.notel.notel.ui.screen.LoginViewModel = hiltViewModel()
+                            LoginScreen(
+                                onLoginSuccess = { isComplete ->
+                                    if (isComplete) {
+                                        navController.navigate("body_load") { popUpTo("login") { inclusive = true } }
+                                    } else {
+                                        navController.navigate("profile_setup") { popUpTo("login") { inclusive = true } }
+                                    }
+                                }
+                            )
+                        }
+                        composable("profile_setup") {
+                            ProfileSetupScreen(onNavigateNext = { navController.navigate("connections") })
+                        }
+                        composable("connections") {
+                            ConnectionsScreen(onNavigateNext = { navController.navigate("setup_loading") })
+                        }
+                        composable("setup_loading") {
+                            SetupLoadingScreen(onNavigateMain = { 
+                                navController.navigate("body_load") {
+                                    popUpTo("setup_loading") { inclusive = true }
+                                }
+                            })
+                        }
+                        composable("body_load") {
+                            BodyLoadScreen(onBack = { /* Root */ })
+                        }
+                        composable("history") {
+                            HistoryScreen(
+                                onBack = { navController.popBackStack() },
+                                onEntryClick = { id -> navController.navigate("detail/$id") }
+                            )
+                        }
+                        composable("quick_log") {
+                            QuickLogScreen(
+                                onNavigateToHistory = { navController.navigate("history") },
+                                onNavigateToSettings = { navController.navigate("settings") },
+                                onNavigateToTrends = { /* trends Lego piece coming soon */ },
+                                onNavigateToFitbit = { /* fitbit Lego piece coming soon */ },
+                                onNavigateToSleep = { /* sleep Lego piece coming soon */ },
+                                onNavigateToBodyLoad = { navController.navigate("body_load") }
+                            )
+                        }
+                        composable(
+                            route = "detail/{entryId}",
+                            arguments = listOf(navArgument("entryId") { type = NavType.LongType })
+                        ) { backStack ->
+                            val id = backStack.arguments?.getLong("entryId") ?: return@composable
+                            EntryDetailScreen(
+                                entryId = id,
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+                        composable("settings") {
+                            val settingsViewModel: com.notel.notel.ui.viewmodel.SettingsViewModel = hiltViewModel()
+                            SettingsScreen(
+                                onBack = { navController.popBackStack() },
+                                onRestartOnboarding = {
+                                    navController.navigate("profile_setup") {
+                                        popUpTo("body_load") { inclusive = true }
+                                    }
+                                },
+                                onLogout = {
+                                    navController.navigate("login") {
+                                        popUpTo(0) { inclusive = true }
+                                    }
+                                }
+                            )
+                        }
+                        composable("fitbit") {
+                            val fitbitViewModel: com.notel.notel.ui.viewmodel.FitbitViewModel = hiltViewModel()
+                            FitbitScreen(viewModel = fitbitViewModel, onBack = { navController.popBackStack() })
+                        }
+                    }
+
+                    // Floating Glass Nav Banner
+                    val onboardingRoutes = listOf("login", "profile_setup", "connections", "setup_loading")
+                    if (currentRoute !in onboardingRoutes && currentRoute != null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .align(Alignment.BottomCenter)
+                                .padding(start = 24.dp, end = 24.dp, bottom = 12.dp)
+                                .navigationBarsPadding()
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .liquidGlass(
+                                        shape = RoundedCornerShape(32.dp),
+                                        color = NotelSurface,
+                                        alpha = 0.9f,
+                                        showBorder = true
+                                    )
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxSize(),
+                                    horizontalArrangement = Arrangement.SpaceAround,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    NavIcon(
+                                        icon = Icons.Default.Home,
+                                        label = "Cup",
+                                        isSelected = currentRoute == "body_load",
+                                        onClick = { navController.navigate("body_load") }
+                                    )
+                                    NavIcon(
+                                        icon = Icons.Default.List,
+                                        label = "History",
+                                        isSelected = currentRoute == "history",
+                                        onClick = { navController.navigate("history") }
+                                    )
+                                    
+                                    // Simple Purple Pencil Note Button
+                                    IconButton(onClick = { navController.navigate("quick_log") }) {
+                                        Icon(
+                                            imageVector = Icons.Default.Edit,
+                                            contentDescription = "New Note",
+                                            tint = NotelPrimary,
+                                            modifier = Modifier.size(26.dp)
+                                        )
+                                    }
+
+                                    NavIcon(
+                                        icon = Icons.Default.Favorite,
+                                        label = "Heart",
+                                        isSelected = currentRoute == "fitbit",
+                                        onClick = { navController.navigate("fitbit") }
+                                    )
+                                    NavIcon(
+                                        icon = Icons.Default.Settings,
+                                        label = "Settings",
+                                        isSelected = currentRoute == "settings",
+                                        onClick = { navController.navigate("settings") }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
+    }
+}
+
+@Composable
+fun NavIcon(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 4.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = if (isSelected) NotelPrimary else NotelTextSecondary,
+            modifier = Modifier.size(20.dp)
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            fontSize = 9.sp,
+            color = if (isSelected) NotelPrimary else NotelTextSecondary,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+        )
     }
 }
 

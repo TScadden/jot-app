@@ -39,4 +39,10 @@ interface LogEntryDao {
 
     @Query("SELECT COUNT(*) FROM log_entries")
     suspend fun countEntries(): Int
+
+    @Query("SELECT COUNT(*) FROM log_entries WHERE timestamp >= :since")
+    suspend fun getEntryCountSince(since: Long): Int
+
+    @Query("SELECT COUNT(*) FROM log_entries WHERE timestamp >= :start AND timestamp <= :end")
+    suspend fun getEntryCountInRange(start: Long, end: Long): Int
 }

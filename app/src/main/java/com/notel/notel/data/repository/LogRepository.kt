@@ -198,6 +198,54 @@ class LogRepository @Inject constructor(
     }
 
     suspend fun getEntryById(id: Long): LogEntry? = logEntryDao.getEntryById(id)
+    
+    suspend fun getJotCountOverPastDays(days: Int): Int {
+        val since = System.currentTimeMillis() - (days * 24 * 60 * 60 * 1000L)
+        return logEntryDao.getEntryCountSince(since)
+    }
+
+    suspend fun getDailyStatsSummary(dateStr: String? = null): Map<String, Int> {
+        val targetDay = dateStr ?: java.time.LocalDate.now().toString()
+        val hasHealthConnect = healthConnectManager.hasAllPermissions()
+        
+        val calories = if (hasHealthConnect) healthConnectManager.readActiveCalories(targetDay) else 0
+        val sleepData = if (hasHealthConnect) healthConnectManager.readSleepSession(targetDay) else null
+        val sleepMins = sleepData?.minutesAsleep ?: 0
+        
+        // Match what is shown in the heart rate tab (FitbitViewModel) by using cached spikes
+        val cachedSpikesStr = preferences.historicalHrSpikes.first()
+        var spikeCount = 0
+        
+        if (cachedSpikesStr.isNotBlank()) {
+            try {
+                val spikes = Json { ignoreUnknownKeys = true }
+                    .decodeFromString<List<com.notel.notel.data.healthconnect.DailyHeartRateSummary>>(cachedSpikesStr)
+                spikeCount = spikes.find { it.date == targetDay }?.spikeCount ?: 0
+            } catch (e: Exception) { }
+        }
+        
+        // Fallback: If cache is 0 or missing, do a live calculation using the REAL summary logic
+        if (spikeCount == 0 && hasHealthConnect) {
+            try {
+                // Fetch last 7 days to ensure we have context/baseline if needed
+                val spikesResponse = healthConnectManager.readHistoricalHeartRateWithSpikes(7)
+                spikeCount = spikesResponse.find { it.date == targetDay }?.spikeCount ?: 0
+            } catch (e: Exception) { }
+        }
+        
+        // Jots for the 7 days leading up to the target day
+        val dateObj = if (dateStr != null) try { java.time.LocalDate.parse(dateStr) } catch(e: Exception) { java.time.LocalDate.now() } else java.time.LocalDate.now()
+        val endTs = dateObj.atTime(23, 59).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val startTs = endTs - (7L * 24 * 60 * 60 * 1000L)
+        val jotCount = logEntryDao.getEntryCountInRange(startTs, endTs)
+        
+        return mapOf(
+            "calories" to calories,
+            "sleepMins" to sleepMins,
+            "spikeCount" to spikeCount,
+            "jotCount" to jotCount
+        )
+    }
 
     /**
      * Fetches AI chip suggestions for the given [category].
@@ -589,6 +637,7 @@ class LogRepository @Inject constructor(
         } catch(e: Exception) { mutableListOf() }
         insights.add(0, AiInsight(java.util.UUID.randomUUID().toString(), text, System.currentTimeMillis(), type))
         preferences.setAiInsights(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(AiInsight.serializer()), insights.take(20))) // Keep last 20
+        triggerSync()
     }
 
     suspend fun ingestDocumentFile(fileName: String, mimeType: String, base64Data: String): Result<Unit> {
@@ -794,7 +843,7 @@ class LogRepository @Inject constructor(
 
         val recent = logEntryDao.getRecentEntriesAll(limit = 50)
         val catMap = allCategories.associate { it.id to it.name }
-        val context = getEnrichedUserContext()
+        val context = getEnrichedUserContext() + "\nSystem Instruction: Provide your 'advice' as 3 distinct bullet points. Use characters like * or • at the start of each line."
         val kb = getEnrichedKnowledgeBase()
         val fitbitData = getFitbitDataSummary()
         val habitData = getHabitDataSummary()
@@ -810,7 +859,7 @@ class LogRepository @Inject constructor(
             pastInsights = pastInsights
         ).onSuccess { res ->
             preferences.deductBalance(0.05f)
-            saveAiInsight("Body Load: ${res.score} | Factors: ${res.factors.joinToString(", ")}", "BodyLoad")
+            saveAiInsight("Body Load: ${res.score} | Factors: ${res.factors.joinToString(", ")} | Advice: ${res.advice}", "BodyLoad")
         }
     }
 

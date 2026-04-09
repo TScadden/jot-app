@@ -71,6 +71,10 @@ class NotelPreferences @Inject constructor(
         val HR_LAST_SAMPLE_TIME = longPreferencesKey("hr_last_sample_time")
         val HABIT_REMINDER_USER_DISABLED = booleanPreferencesKey("habit_reminder_user_disabled")
         val USER_CONTEXT_LAST_UPDATE = longPreferencesKey("user_context_last_update")
+        val LAST_BODY_LOAD_REFRESH = longPreferencesKey("last_body_load_refresh")
+        val LAST_BODY_LOAD_SCORE = intPreferencesKey("last_body_load_score")
+        val LAST_BODY_LOAD_FACTORS = stringPreferencesKey("last_body_load_factors")
+        val LAST_BODY_LOAD_ADVICE = stringPreferencesKey("last_body_load_advice")
     }
 
     val authToken: Flow<String> = context.dataStore.data.map { prefs ->
@@ -97,6 +101,10 @@ class NotelPreferences @Inject constructor(
     val hrLastSampleTime: Flow<Long> = context.dataStore.data.map { it[HR_LAST_SAMPLE_TIME] ?: 0L }
     val habitReminderUserDisabled: Flow<Boolean> = context.dataStore.data.map { it[HABIT_REMINDER_USER_DISABLED] ?: false }
     val userContextLastUpdate: Flow<Long> = context.dataStore.data.map { it[USER_CONTEXT_LAST_UPDATE] ?: 0L }
+    val lastBodyLoadRefresh: Flow<Long> = context.dataStore.data.map { it[LAST_BODY_LOAD_REFRESH] ?: 0L }
+    val lastBodyLoadScore: Flow<Int> = context.dataStore.data.map { it[LAST_BODY_LOAD_SCORE] ?: 0 }
+    val lastBodyLoadFactors: Flow<String> = context.dataStore.data.map { it[LAST_BODY_LOAD_FACTORS] ?: "" }
+    val lastBodyLoadAdvice: Flow<String?> = context.dataStore.data.map { it[LAST_BODY_LOAD_ADVICE] }
 
     val onboardingComplete: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[ONBOARDING_COMPLETE] ?: false
@@ -205,6 +213,16 @@ class NotelPreferences @Inject constructor(
 
     suspend fun setUserContextLastUpdate(timestamp: Long) {
         context.dataStore.edit { prefs -> prefs[USER_CONTEXT_LAST_UPDATE] = timestamp }
+    }
+    suspend fun setLastBodyLoadRefresh(timestamp: Long) {
+        context.dataStore.edit { prefs -> prefs[LAST_BODY_LOAD_REFRESH] = timestamp }
+    }
+    suspend fun setLastBodyLoadData(score: Int, factors: String, advice: String?) {
+        context.dataStore.edit { prefs ->
+            prefs[LAST_BODY_LOAD_SCORE] = score
+            prefs[LAST_BODY_LOAD_FACTORS] = factors
+            if (advice != null) prefs[LAST_BODY_LOAD_ADVICE] = advice else prefs.remove(LAST_BODY_LOAD_ADVICE)
+        }
     }
 
     suspend fun setLoggedIn(loggedIn: Boolean) {

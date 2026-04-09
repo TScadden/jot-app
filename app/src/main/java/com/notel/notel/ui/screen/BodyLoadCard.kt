@@ -1,8 +1,12 @@
 package com.notel.notel.ui.screen
 
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -10,270 +14,269 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.notel.notel.ui.theme.GlassyCard
 import com.notel.notel.ui.theme.*
+import com.notel.notel.ui.viewmodel.BodyLoadState
 import kotlin.math.PI
 import kotlin.math.sin
 
-/**
- * Displays the "Body Load Index" as an animated cup fill.
- *
- * @param score     0–100 load score. 0 = empty/great, 100 = overflowing/critical.
- * @param factors   List of (label, weight) pairs — top contributors to the load.
- * @param isLoading Show a shimmer/placeholder if the AI is still calculating.
- */
 @Composable
 fun BodyLoadCard(
-    score: Int = 65,
-    factors: List<Pair<String, Int>> = emptyList(),
-    advice: String? = null,
-    isLoading: Boolean = false,
-    onAnalyzeClick: () -> Unit = {}
+    state: BodyLoadState,
+    onDaySelected: (String) -> Unit = {}
 ) {
-    // Animate the fill level
-    val animatedFill by animateFloatAsState(
-        targetValue = score / 100f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        label = "fill"
-    )
+    val score = state.score
+    val isLoading = state.isLoading
+    val todayStr = java.time.LocalDate.now().toString()
 
-    // Sloshing wave
-    val infiniteTransition = rememberInfiniteTransition(label = "wave")
-    val wavePhase by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2f * PI.toFloat()),
-        animationSpec = infiniteRepeatable(
-            animation = tween(3200, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "wavePhase"
-    )
-
-    // Color shifts blue → amber → red as score rises
-    val fillColor = when {
-        score < 35 -> Color(0xFF4FC3F7)
-        score < 65 -> Color(0xFFFFB74D)
-        else       -> Color(0xFFEF5350)
-    }
-
-    val statusText = when {
-        score < 35 -> "Low Load · Feeling good 🟢"
-        score < 65 -> "Moderate Load · Monitor trends 🟡"
-        else       -> "High Load · Body under stress 🔴"
-    }
-
-    GlassyCard(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        color = NotelSurface
+            .padding(vertical = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
+        // ── Top Row: Days of the Week ──────────────────────────────────
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 20.dp, horizontal = 16.dp)
+                .padding(horizontal = 16.dp, vertical = 24.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Header
-            Text(
-                "Body Load",
-                color = NotelTextPrimary,
-                fontWeight = FontWeight.ExtraBold,
-                fontSize = 17.sp,
-                letterSpacing = 0.3.sp
-            )
-            Text(
-                "Subjective · Based on your logs",
-                color = NotelTextSecondary,
-                fontSize = 11.sp
-            )
+            // Generate last 7 days
+            val last7Days = (0..6).map { 
+                val d = java.time.LocalDate.now().minusDays(it.toLong())
+                d.toString() to d.format(java.time.format.DateTimeFormatter.ofPattern("EEE"))
+            }.reversed()
 
-            Spacer(Modifier.height(20.dp))
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                // ── Cup silhouette ──────────────────────────────────
-                Canvas(modifier = Modifier.size(130.dp, 160.dp)) {
-                    val w = size.width
-                    val h = size.height
-
-                    // ── Cup outline path (open top trapezoid cup) ──
-                    val cupPath = Path().apply {
-                        // Top left edge
-                        moveTo(w * 0.15f, h * 0.05f)
-                        // Down to bottom left (rounded base)
-                        lineTo(w * 0.25f, h * 0.90f)
-                        quadraticTo(
-                            w * 0.27f, h * 0.98f,
-                            w * 0.35f, h * 0.98f
-                        )
-                        // Bottom across
-                        lineTo(w * 0.65f, h * 0.98f)
-                        quadraticTo(
-                            w * 0.73f, h * 0.98f,
-                            w * 0.75f, h * 0.90f
-                        )
-                        // Up to top right edge
-                        lineTo(w * 0.85f, h * 0.05f)
-                        // Top edge is now flat
-                        lineTo(w * 0.15f, h * 0.05f)
-                        close()
-                    }
-
-                    // ── Animated water fill ──
-                    clipPath(cupPath) {
-                        val fillY = h * (1f - animatedFill * 0.93f) // Keep it within the cup height
-
-                        // Background wave (depth/shadow layer)
-                        val bgWave = Path().apply {
-                            moveTo(0f, h)
-                            lineTo(0f, fillY + sin(wavePhase + 1.0f) * 5f + 5f)
-                            var x = 0f
-                            while (x <= w) {
-                                lineTo(x, fillY + sin(x / 30f + wavePhase + 1.0f) * 5f + 5f)
-                                x += 3f
-                            }
-                            lineTo(w, h)
-                            close()
-                        }
-
-                        // Foreground wave (top surface)
-                        val fgWave = Path().apply {
-                            moveTo(0f, h)
-                            lineTo(0f, fillY + sin(wavePhase) * 5f)
-                            var x = 0f
-                            while (x <= w) {
-                                lineTo(x, fillY + sin(x / 28f + wavePhase) * 5f)
-                                x += 3f
-                            }
-                            lineTo(w, h)
-                            close()
-                        }
-
-                        drawPath(bgWave, color = fillColor.copy(alpha = 0.28f))
-                        drawPath(fgWave, color = fillColor.copy(alpha = 0.72f))
-                    }
-
-                    // ── Outline drawn on top ──
-                    val outlineAlpha = if (score > 0) 0.80f else 0.30f
-                    val outlineStyle = Stroke(
-                        width = 3.dp.toPx(),
-                        cap = StrokeCap.Round,
-                        join = StrokeJoin.Round
-                    )
-                    drawPath(cupPath, color = fillColor.copy(alpha = outlineAlpha), style = outlineStyle)
-                }
-
-                Spacer(Modifier.width(20.dp))
-
-                // ── Score + label ────────────────────────────────────────
+            last7Days.forEach { (dateStr, dayLabel) ->
+                val historicalScore = state.historyScores.find { it.date == dateStr }?.score ?: 0
+                val isSelected = state.selectedDate == dateStr
+                
                 Column(
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier.weight(1f)
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.clickable { onDaySelected(dateStr) }
                 ) {
-                    // Big score number
-                    Text(
-                        "$score",
-                        color = fillColor,
-                        fontSize = 52.sp,
-                        fontWeight = FontWeight.Black,
-                        lineHeight = 52.sp
-                    )
-                    Text(
-                        "out of 100",
-                        color = NotelTextSecondary,
-                        fontSize = 12.sp
-                    )
-
-                    Spacer(Modifier.height(6.dp))
-
-                    Text(
-                        statusText,
-                        color = NotelTextSecondary,
-                        fontSize = 12.sp,
-                        lineHeight = 17.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-
-                    Spacer(Modifier.height(10.dp))
-
-                    if (isLoading) {
-                        Text("Analyzing…", color = NotelTextSecondary, fontSize = 11.sp)
-                    } else if (factors.isNotEmpty()) {
+                    Text(dayLabel, color = NotelTextSecondary, fontSize = 12.sp, modifier = Modifier.padding(bottom = 6.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .border(
+                                width = if (isSelected) 2.dp else 1.dp,
+                                brush = if (isSelected) Brush.linearGradient(listOf(NotelPrimary, NotelAccent)) else SolidColor(NotelSurfaceHigh.copy(alpha = 0.5f)),
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                     ) {
                         Text(
-                            "Top contributors:",
-                            color = NotelTextSecondary,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.SemiBold
+                            text = if (historicalScore > 0) historicalScore.toString() else "-",
+                            color = if (isSelected) NotelTextPrimary else NotelTextSecondary,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            fontSize = 13.sp
                         )
-                        Spacer(Modifier.height(2.dp))
-                        factors.take(4).forEach { (label, _) ->
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                                Text("▲", color = fillColor, fontSize = 9.sp)
-                                Spacer(Modifier.width(4.dp))
-                                Text(
-                                    label, 
-                                    color = NotelTextSecondary, 
-                                    fontSize = 11.sp,
-                                    maxLines = 1,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // ── Main Tree Section ──────────────────────────────────────────
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(320.dp),
+            contentAlignment = Alignment.TopCenter
+        ) {
+            // ... (Canvas and Node tree remains the same logic)
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val centerTop = Offset(size.width / 2, 70.dp.toPx())
+                val splitY = 160.dp.toPx()
+                val bottomY = 240.dp.toPx()
+                val itemWidth = size.width / 4
+                val p1 = Offset(itemWidth * 0.5f, bottomY)
+                val p2 = Offset(itemWidth * 1.5f, bottomY)
+                val p3 = Offset(itemWidth * 2.5f, bottomY)
+                val p4 = Offset(itemWidth * 3.5f, bottomY)
+                val lineStyle = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round)
+                val lineColor = NotelSurfaceHigh.copy(alpha = 0.6f)
+                drawLine(lineColor, centerTop.copy(y = centerTop.y + 50.dp.toPx()), Offset(size.width / 2, splitY), strokeWidth = lineStyle.width)
+                drawLine(lineColor, Offset(p1.x, splitY), Offset(p4.x, splitY), strokeWidth = lineStyle.width)
+                drawLine(lineColor, Offset(p1.x, splitY), p1, strokeWidth = lineStyle.width)
+                drawLine(lineColor, Offset(p2.x, splitY), p2, strokeWidth = lineStyle.width)
+                drawLine(lineColor, Offset(p3.x, splitY), p3, strokeWidth = lineStyle.width)
+                drawLine(lineColor, Offset(p4.x, splitY), p4, strokeWidth = lineStyle.width)
+            }
+
+            // Central Big Node (The Score)
+            Column(
+                modifier = Modifier.align(Alignment.TopCenter),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(100.dp)
+                        .border(
+                            width = 4.dp,
+                            brush = Brush.sweepGradient(listOf(NotelPrimary, NotelAccent, NotelPrimary)),
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(color = NotelPrimary, modifier = Modifier.size(24.dp))
                     } else {
-                        TextButton(
-                            onClick = onAnalyzeClick,
-                            contentPadding = PaddingValues(0.dp)
-                        ) {
+                        Row(verticalAlignment = Alignment.Bottom) {
                             Text(
-                                "Analyze my logs →",
-                                color = NotelPrimary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
+                                text = score.toString(),
+                                fontSize = 42.sp,
+                                fontWeight = FontWeight.Black,
+                                color = NotelTextPrimary
                             )
                         }
                     }
                 }
             }
 
-            if (!isLoading && advice != null && advice.isNotBlank()) {
-                Spacer(Modifier.height(20.dp))
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = NotelSurfaceHigh.copy(alpha = 0.5f),
-                    modifier = Modifier.fillMaxWidth()
+            // Sub-Pillars Bottom Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 10.dp),
+                horizontalArrangement = Arrangement.SpaceAround,
+                verticalAlignment = Alignment.Top
+            ) {
+                PillarNode(
+                    icon = Icons.Default.Whatshot,
+                    value = "${state.activeCalories}",
+                    target = "",
+                    label = "CALORIES",
+                    progress = (state.activeCalories / 2500f).coerceIn(0f, 1f),
+                    color = Color(0xFFFF5252)
+                )
+                PillarNode(
+                    icon = Icons.Default.Nightlight,
+                    value = formatSleep(state.sleepMinutes),
+                    target = "",
+                    label = "HOURS SLEPT",
+                    progress = (state.sleepMinutes / 480f).coerceIn(0f, 1f),
+                    color = Color(0xFF7C6EFF)
+                )
+                PillarNode(
+                    icon = Icons.Default.Edit,
+                    value = "${state.jotCount7Days}",
+                    target = "",
+                    label = "JOTS (7D)",
+                    progress = (state.jotCount7Days / 20f).coerceIn(0f, 1f),
+                    color = Color(0xFF4ECDC4)
+                )
+                PillarNode(
+                    icon = Icons.Default.Favorite,
+                    value = "${state.spikeCount}",
+                    target = "",
+                    label = "HR SPIKES",
+                    progress = (1f - (state.spikeCount / 10f)).coerceIn(0f, 1f), // Less is better
+                    color = Color(0xFFFFB74D)
+                )
+            }
+        }
+        
+        // ── Advice Tiles Row ──────────────────────────────────────────
+        if (!isLoading && state.adviceList.isNotEmpty()) {
+            Spacer(Modifier.height(32.dp))
+            
+            Text(
+                text = "HOW TO LOWER YOUR LOAD",
+                color = NotelTextSecondary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+
+            state.adviceList.forEach { idea ->
+                GlassyCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    color = NotelSurfaceHigh.copy(alpha = 0.3f)
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Info, null, tint = NotelPrimary, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("What Helps:", color = NotelPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .background(NotelPrimary.copy(alpha = 0.15f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Lightbulb,
+                                contentDescription = null,
+                                tint = NotelPrimary,
+                                modifier = Modifier.size(16.dp)
+                            )
                         }
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(Modifier.width(16.dp))
                         Text(
-                            text = advice,
+                            text = idea,
                             color = NotelTextPrimary,
-                            fontSize = 12.sp,
-                            lineHeight = 17.sp,
-                            modifier = Modifier.fillMaxWidth()
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
                         )
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+fun PillarNode(
+    icon: ImageVector,
+    value: String,
+    target: String,
+    label: String,
+    progress: Float,
+    color: Color
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(80.dp)) {
+        Box(
+            modifier = Modifier
+                .size(54.dp)
+                .background(NotelSurface, CircleShape)
+                .border(2.dp, NotelSurfaceHigh.copy(alpha = 0.3f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            // Circular Progress
+            Canvas(modifier = Modifier.fillMaxSize().padding(2.dp)) {
+                drawArc(
+                    color = color,
+                    startAngle = -90f,
+                    sweepAngle = 360f * progress,
+                    useCenter = false,
+                    style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+                )
+            }
+            Icon(icon, null, tint = color, modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(value, color = NotelTextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            if (target.isNotEmpty()) {
+                Text("/$target", color = NotelTextSecondary, fontSize = 10.sp, modifier = Modifier.padding(bottom = 1.dp))
+            }
+        }
+        Text(label, color = NotelTextSecondary, fontSize = 8.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+    }
+}
+
+private fun formatSleep(mins: Int): String {
+    val h = mins / 60
+    val m = mins % 60
+    return if (h > 0) "${h}h${m}m" else "${m}m"
 }

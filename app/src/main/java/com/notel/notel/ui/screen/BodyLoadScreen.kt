@@ -6,6 +6,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,15 +26,21 @@ fun BodyLoadScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
 
+    val sheetState = rememberModalBottomSheetState()
+    var showTheorySheet by remember { mutableStateOf(false) }
+    val todayStr = java.time.LocalDate.now().toString()
+    val isToday = state.selectedDate == todayStr
+
     Scaffold(
         containerColor = NotelBackground,
         topBar = {
             TopAppBar(
                 title = {
                     Text(
-                        "Body Load Index",
+                        "Score",
                         fontWeight = FontWeight.Bold,
-                        color = NotelTextPrimary
+                        color = NotelTextPrimary,
+                        fontSize = 20.sp
                     )
                 },
                 navigationIcon = {
@@ -42,8 +49,17 @@ fun BodyLoadScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { viewModel.refresh() }, enabled = !state.isLoading) {
-                        Icon(Icons.Default.Refresh, "Refresh", tint = NotelPrimary)
+                    TextButton(onClick = { showTheorySheet = true }) {
+                        Text("What is this?", color = NotelTextSecondary, fontSize = 14.sp)
+                    }
+                    if (isToday) {
+                        IconButton(onClick = { viewModel.refresh() }, enabled = !state.isLoading) {
+                            Icon(Icons.Default.Refresh, "Refresh", tint = NotelPrimary)
+                        }
+                    } else {
+                        IconButton(onClick = { viewModel.selectDay(todayStr) }) {
+                            Icon(Icons.Default.DateRange, "Back to Today", tint = NotelPrimary)
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = NotelBackground)
@@ -58,14 +74,9 @@ fun BodyLoadScreen(
                 .padding(bottom = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(Modifier.height(16.dp))
-
             BodyLoadCard(
-                score = state.score,
-                factors = state.factors.map { it to 0 },
-                advice = state.advice,
-                isLoading = state.isLoading,
-                onAnalyzeClick = { viewModel.refresh() }
+                state = state,
+                onDaySelected = { viewModel.selectDay(it) }
             )
 
             if (state.error != null) {
@@ -77,31 +88,43 @@ fun BodyLoadScreen(
                     modifier = Modifier.padding(horizontal = 32.dp)
                 )
             }
+        }
+    }
 
-            Spacer(Modifier.height(24.dp))
-
-            // Info card
-            GlassyCard(
+    if (showTheorySheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showTheorySheet = false },
+            sheetState = sheetState,
+            containerColor = NotelSurface
+        ) {
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                color = NotelSurface
+                    .padding(24.dp)
+                    .padding(bottom = 40.dp)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        "What is this?",
-                        color = NotelTextPrimary,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Your body is like a cup. Food reactions, pain flares, poor sleep, and stress all fill it up. When it overflows, your system becomes hypersensitive and random symptoms appear.\n\n" +
-                        "This score is a subjective measurement of that cumulative physiological load, derived from your daily logs. It is not a medical measurement.",
-                        color = NotelTextSecondary,
-                        fontSize = 13.sp,
-                        lineHeight = 19.sp
-                    )
+                Text(
+                    text = "The Cup Theory",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = NotelPrimary
+                )
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    text = "Think of your body's capacity as a cup. Every stressor—poor sleep, dehydration, high heart rate, or physical exertion—adds water to that cup.\n\n" +
+                           "When the cup is nearly empty, you feel resilient. When it's full (High Load), even a small drop can cause it to overflow, leading to symptom flares and crashes.\n\n" +
+                           "Your Body Load score helps you visualize how full your cup is right now based on your recent data, so you can decide when to push and when to rest.",
+                    color = NotelTextPrimary,
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp
+                )
+                Spacer(Modifier.height(24.dp))
+                Button(
+                    onClick = { showTheorySheet = false },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary)
+                ) {
+                    Text("Got it")
                 }
             }
         }
