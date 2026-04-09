@@ -13,9 +13,14 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+data class FactorWeight(
+    val name: String,
+    val weight: Float
+)
+
 data class BodyLoadState(
     val score: Int = 0,
-    val factors: List<String> = emptyList(),
+    val factors: List<FactorWeight> = emptyList(),
     val adviceList: List<String> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null,
@@ -28,14 +33,15 @@ data class BodyLoadState(
     
     // History for the top row (Day score list)
     val historyScores: List<BodyLoadSnapshot> = emptyList(),
-    val selectedDate: String = java.time.LocalDate.now().toString() // "yyyy-MM-dd"
+    val selectedDate: String = java.time.LocalDate.now().toString(), // "yyyy-MM-dd"
+    val selectedFactor: String? = null
 )
 
 data class BodyLoadSnapshot(
     val date: String,    // "yyyy-MM-dd"
     val displayDay: String, // "Fri"
     val score: Int,
-    val factors: List<String>,
+    val factors: List<FactorWeight>,
     val adviceList: List<String>
 )
 
@@ -53,6 +59,10 @@ class BodyLoadViewModel @Inject constructor(
         refresh(force = false)
     }
 
+    fun selectFactor(name: String?) {
+        _uiState.value = _uiState.value.copy(selectedFactor = name)
+    }
+
     fun selectDay(dateStr: String) {
         viewModelScope.launch {
             val history = _uiState.value.historyScores
@@ -67,21 +77,24 @@ class BodyLoadViewModel @Inject constructor(
                     score = snapshot.score,
                     factors = snapshot.factors,
                     adviceList = snapshot.adviceList,
-                    activeCalories = stats["calories"] ?: 0,
-                    sleepMinutes = stats["sleepMins"] ?: 0,
-                    spikeCount = stats["spikeCount"] ?: 0,
-                    jotCount7Days = stats["jotCount"] ?: 0
+                    activeCalories = stats["calories"]?.toInt() ?: 0,
+                    sleepMinutes = stats["sleepMins"]?.toInt() ?: 0,
+                    spikeCount = stats["spikeCount"]?.toInt() ?: 0,
+                    jotCount7Days = stats["jotCount"]?.toInt() ?: 0
                 )
             } else if (dateStr == java.time.LocalDate.now().toString()) {
                 // Today but no snapshot yet? Just load stats
                 val currentAdvice = preferences.lastBodyLoadAdvice.first() ?: ""
+                val currentFactors = preferences.lastBodyLoadFactors.first()
                 _uiState.value = _uiState.value.copy(
                     selectedDate = dateStr,
+                    score = preferences.lastBodyLoadScore.first(),
+                    factors = parseFactors(currentFactors),
                     adviceList = splitAdvice(currentAdvice),
-                    activeCalories = stats["calories"] ?: 0,
-                    sleepMinutes = stats["sleepMins"] ?: 0,
-                    spikeCount = stats["spikeCount"] ?: 0,
-                    jotCount7Days = stats["jotCount"] ?: 0
+                    activeCalories = stats["calories"]?.toInt() ?: 0,
+                    sleepMinutes = stats["sleepMins"]?.toInt() ?: 0,
+                    spikeCount = stats["spikeCount"]?.toInt() ?: 0,
+                    jotCount7Days = stats["jotCount"]?.toInt() ?: 0
                 )
             }
         }
@@ -107,10 +120,10 @@ class BodyLoadViewModel @Inject constructor(
             val history = getHistoricalScores()
             
             _uiState.value = _uiState.value.copy(
-                activeCalories = stats["calories"] ?: 0,
-                sleepMinutes = stats["sleepMins"] ?: 0,
-                spikeCount = stats["spikeCount"] ?: 0,
-                jotCount7Days = stats["jotCount"] ?: 0,
+                activeCalories = stats["calories"]?.toInt() ?: 0,
+                sleepMinutes = stats["sleepMins"]?.toInt() ?: 0,
+                spikeCount = stats["spikeCount"]?.toInt() ?: 0,
+                jotCount7Days = stats["jotCount"]?.toInt() ?: 0,
                 historyScores = history,
                 selectedDate = todayStr
             )
@@ -118,9 +131,10 @@ class BodyLoadViewModel @Inject constructor(
             if (!force && !isNewDay) {
                 // Not forced and already ran today - Load from cache
                 val cachedAdvice = preferences.lastBodyLoadAdvice.first() ?: ""
+                val cachedFactors = preferences.lastBodyLoadFactors.first()
                 _uiState.value = _uiState.value.copy(
                     score = preferences.lastBodyLoadScore.first(),
-                    factors = preferences.lastBodyLoadFactors.first().split(",").filter { it.isNotBlank() },
+                    factors = parseFactors(cachedFactors),
                     adviceList = splitAdvice(cachedAdvice),
                     isLoading = false
                 )
@@ -134,14 +148,14 @@ class BodyLoadViewModel @Inject constructor(
                 .onSuccess { res ->
                     _uiState.value = _uiState.value.copy(
                         score = res.score,
-                        factors = res.factors,
+                        factors = parseFactors(res.factors.joinToString(", ")),
                         adviceList = splitAdvice(res.advice ?: ""),
                         isLoading = false
                     )
                     preferences.setLastBodyLoadRefresh(now)
                     preferences.setLastBodyLoadData(
                         res.score,
-                        res.factors.joinToString(","),
+                        res.factors.joinToString(", "),
                         res.advice ?: ""
                     )
                     // Refresh history after new result
@@ -153,6 +167,20 @@ class BodyLoadViewModel @Inject constructor(
                         error = e.message ?: "Analysis failed"
                     )
                 }
+        }
+    }
+
+    private fun parseFactors(factorsStr: String): List<FactorWeight> {
+        if (factorsStr.isBlank()) return emptyList()
+        return try {
+            factorsStr.split(",").map { part ->
+                val pair = part.split(":")
+                val name = pair[0].trim()
+                val weight = if (pair.size > 1) pair[1].trim().toFloatOrNull() ?: 0.1f else 0.2f
+                FactorWeight(name, weight)
+            }.filter { it.name.isNotBlank() }
+        } catch (e: Exception) {
+            emptyList()
         }
     }
 
@@ -201,11 +229,9 @@ class BodyLoadViewModel @Inject constructor(
             }
             
             val factorsStr = insight.text.substringAfter("Factors: ").substringBefore(" |")
-            val factors = factorsStr.split(", ").filter { it.isNotBlank() }
-            
             val adviceStr = insight.text.substringAfter("Advice: ").trim()
             
-            BodyLoadSnapshot(date, displayDay, score, factors, splitAdvice(adviceStr))
+            BodyLoadSnapshot(date, displayDay, score, parseFactors(factorsStr), splitAdvice(adviceStr))
         }
     }
 }

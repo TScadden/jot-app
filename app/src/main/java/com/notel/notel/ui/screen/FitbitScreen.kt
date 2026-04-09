@@ -51,9 +51,9 @@ fun FitbitScreen(
     val healthConnectLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = viewModel.healthConnectManager.requestPermissionsActivityContract()
     ) { granted ->
-        if (granted.containsAll(viewModel.healthConnectManager.permissions)) {
-            viewModel.onPermissionsGranted()
-        }
+        // Trigger generic refresh even if only partial or no permissions granted 
+        // to check current actual state.
+        viewModel.onPermissionsGranted()
     }
     var showCompareCalendar by remember { mutableStateOf(false) }
     var showCalendar by remember { mutableStateOf(false) }

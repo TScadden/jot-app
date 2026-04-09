@@ -149,6 +149,8 @@ fun SettingsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     val activity = context as? android.app.Activity
+    val fitbitViewModel: com.notel.notel.ui.viewmodel.FitbitViewModel = hiltViewModel()
+    val fitbitState by fitbitViewModel.state.collectAsState()
     
     var currentMenu by remember { mutableStateOf(SettingsMenu.MAIN) }
     
@@ -230,9 +232,9 @@ fun SettingsScreen(
     val healthConnectLauncher = rememberLauncherForActivityResult(
         contract = viewModel.healthConnectManager.requestPermissionsActivityContract()
     ) { granted ->
-        if (granted.containsAll(viewModel.healthConnectManager.permissions)) {
-            viewModel.checkHealthConnectStatus()
-        }
+        // Relax checking: if they granted ANYTHING, check status.
+        // Also if granted is empty but they come back, we check anyway.
+        viewModel.checkHealthConnectStatus()
     }
 
     val requestNotificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -1364,8 +1366,6 @@ fun SettingsScreen(
             }
 
             Spacer(Modifier.height(24.dp))
-            val fitbitViewModel: com.notel.notel.ui.viewmodel.FitbitViewModel = hiltViewModel()
-            val fitbitState by fitbitViewModel.state.collectAsState()
 
             Text("ADVANCED DATA SOURCES", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(8.dp))

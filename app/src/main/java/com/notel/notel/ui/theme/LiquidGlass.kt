@@ -99,7 +99,8 @@ fun GlassyButton(
                 color = if (enabled) containerColor else Color.Gray,
                 alpha = if (enabled) 0.5f else 0.2f
             ),
-        color = Color.Transparent
+        color = Color.White.copy(alpha = 0.01f), // Ensure hit-testing works on the whole area
+        shape = shape
     ) {
         Row(
             modifier = Modifier

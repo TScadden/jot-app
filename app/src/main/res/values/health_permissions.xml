@@ -9,5 +9,7 @@
         <item>android.permission.health.READ_BASAL_METABOLIC_RATE</item>
         <item>android.permission.health.READ_WEIGHT</item>
         <item>android.permission.health.READ_HEIGHT</item>
+        <item>android.permission.health.READ_HEART_RATE_VARIABILITY</item>
+        <item>android.permission.health.READ_POWER</item>
     </array>
 </resources>

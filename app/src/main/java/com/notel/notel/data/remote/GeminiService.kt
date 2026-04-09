@@ -290,6 +290,34 @@ class GeminiService @Inject constructor(
         }
     }
 
+    suspend fun getBodyLoadEnriched(
+        recentEntries: List<LogEntry>,
+        categories: Map<Int, String>,
+        userContext: String = "",
+        knowledgeBase: String = "",
+        technicalStats: String = ""
+    ): Result<BodyLoadResponse> {
+        return try {
+            val response = jotApi.getBodyLoadEnriched(
+                BodyLoadEnrichedRequest(
+                    entries = recentEntries.toDto(),
+                    categories = categories,
+                    userContext = userContext,
+                    knowledgeBase = knowledgeBase,
+                    technicalStats = technicalStats
+                )
+            )
+            val result = response.body()?.result
+            if (response.isSuccessful && result != null) {
+                Result.success(result)
+            } else {
+                Result.failure(IOException(response.body()?.error ?: "Unknown API Error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun classifyAndCleanNote(
         noteText: String,
         categories: Map<Int, String>

@@ -2,6 +2,7 @@ package com.notel.notel.ui.screen
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,7 +28,9 @@ import kotlin.math.sin
 @Composable
 fun BodyLoadCard(
     state: BodyLoadState,
-    onDaySelected: (String) -> Unit = {}
+    onDaySelected: (String) -> Unit = {},
+    onFactorSelected: (String?) -> Unit = {},
+    onResetSelection: () -> Unit = {}
 ) {
     val score = state.score
     val isLoading = state.isLoading
@@ -119,13 +122,63 @@ fun BodyLoadCard(
                 Box(
                     modifier = Modifier
                         .size(100.dp)
-                        .border(
-                            width = 4.dp,
-                            brush = Brush.sweepGradient(listOf(NotelPrimary, NotelAccent, NotelPrimary)),
-                            shape = CircleShape
-                        ),
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) { onResetSelection() },
                     contentAlignment = Alignment.Center
                 ) {
+                    // Segmented Factor Ring
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val strokeWidth = 5.dp.toPx()
+                        val factors = state.factors
+                        val selectedFactor = state.selectedFactor
+                        
+                        if (factors.isEmpty() || isLoading) {
+                            drawArc(
+                                brush = Brush.sweepGradient(listOf(NotelPrimary, NotelAccent, NotelPrimary)),
+                                startAngle = 0f,
+                                sweepAngle = 360f,
+                                useCenter = false,
+                                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                            )
+                        } else {
+                            var startAngle = -90f // Start from top
+                            val fixedWeights = listOf(0.35f, 0.30f, 0.20f, 0.10f, 0.05f)
+                            
+                            factors.forEachIndexed { index, factor ->
+                                val archWeight = fixedWeights.getOrElse(index) { 0.1f }
+                                val sweep = archWeight * 360f
+                                val isSelected = selectedFactor == null || factor.name.lowercase().contains(selectedFactor.lowercase())
+                                
+                                // Calculate the hinderance (0.0 to 1.0) relative to its architecture weight
+                                val hinderFraction = if (archWeight > 0) (factor.weight / archWeight) else 0f
+                                val color = getFactorColor(factor.name)
+                                
+                                // Background TRACK for the segment (fixed size, always visible)
+                                drawArc(
+                                    color = color.copy(alpha = if (isSelected) 0.25f else 0.1f),
+                                    startAngle = startAngle + 2f,
+                                    sweepAngle = sweep - 4f,
+                                    useCenter = false,
+                                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                                )
+
+                                // Foreground FILL (minimum 10% for color visibility)
+                                val fillFraction = hinderFraction.coerceIn(0.1f, 1f)
+                                drawArc(
+                                    color = if (isSelected) color else color.copy(alpha = 0.3f),
+                                    startAngle = startAngle + 2f,
+                                    sweepAngle = (sweep - 4f) * fillFraction,
+                                    useCenter = false,
+                                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                                )
+                                
+                                startAngle += sweep
+                            }
+                        }
+                    }
+
                     if (isLoading) {
                         CircularProgressIndicator(color = NotelPrimary, modifier = Modifier.size(24.dp))
                     } else {
@@ -150,37 +203,52 @@ fun BodyLoadCard(
                 horizontalArrangement = Arrangement.SpaceAround,
                 verticalAlignment = Alignment.Top
             ) {
+                // Calories Pillar
                 PillarNode(
+                    modifier = Modifier.clickable { onFactorSelected("Calories") },
                     icon = Icons.Default.Whatshot,
                     value = "${state.activeCalories}",
                     target = "",
                     label = "CALORIES",
-                    progress = (state.activeCalories / 2500f).coerceIn(0f, 1f),
-                    color = Color(0xFFFF5252)
+                    progress = state.factors.find { it.name.lowercase().contains("cal") || it.name.lowercase().contains("activity") }?.weight?.times(3.0f)?.coerceIn(0f, 1f)
+                                ?: (state.activeCalories / 2500f).coerceIn(0f, 1f),
+                    color = Color(0xFFFF5252) // Red
                 )
+                
+                // Sleep Pillar
                 PillarNode(
+                    modifier = Modifier.clickable { onFactorSelected("Sleep") },
                     icon = Icons.Default.Nightlight,
                     value = formatSleep(state.sleepMinutes),
                     target = "",
                     label = "HOURS SLEPT",
-                    progress = (state.sleepMinutes / 480f).coerceIn(0f, 1f),
-                    color = Color(0xFF7C6EFF)
+                    progress = state.factors.find { it.name.lowercase().contains("sleep") || it.name.lowercase().contains("rest") }?.weight?.times(3.5f)?.coerceIn(0f, 1f)
+                                ?: (state.sleepMinutes / 480f).coerceIn(0f, 1f),
+                    color = Color(0xFF42A5F5) // Blue
                 )
+                
+                // Jots Pillar
                 PillarNode(
+                    modifier = Modifier.clickable { onFactorSelected("Jot") },
                     icon = Icons.Default.Edit,
                     value = "${state.jotCount7Days}",
                     target = "",
                     label = "JOTS (7D)",
-                    progress = (state.jotCount7Days / 20f).coerceIn(0f, 1f),
-                    color = Color(0xFF4ECDC4)
+                    progress = state.factors.find { it.name.lowercase().contains("jot") || it.name.lowercase().contains("note") }?.weight?.times(3.0f)?.coerceIn(0f, 1f) 
+                                ?: (state.jotCount7Days / 20f).coerceIn(0f, 1f),
+                    color = Color(0xFFF48FB1) // Pink
                 )
+                
+                // HR Spikes Pillar
                 PillarNode(
+                    modifier = Modifier.clickable { onFactorSelected("Spike") },
                     icon = Icons.Default.Favorite,
                     value = "${state.spikeCount}",
                     target = "",
                     label = "HR SPIKES",
-                    progress = (1f - (state.spikeCount / 10f)).coerceIn(0f, 1f), // Less is better
-                    color = Color(0xFFFFB74D)
+                    progress = state.factors.find { it.name.lowercase().contains("spike") || it.name.lowercase().contains("pots") || it.name.lowercase().contains("heart") }?.weight?.times(3.0f)?.coerceIn(0f, 1f)
+                                ?: (state.spikeCount / 10f).coerceIn(0f, 1f),
+                    color = Color(0xFF7C6EFF) // Purple
                 )
             }
         }
@@ -237,6 +305,7 @@ fun BodyLoadCard(
 
 @Composable
 fun PillarNode(
+    modifier: Modifier = Modifier,
     icon: ImageVector,
     value: String,
     target: String,
@@ -244,7 +313,7 @@ fun PillarNode(
     progress: Float,
     color: Color
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(80.dp)) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier.width(80.dp)) {
         Box(
             modifier = Modifier
                 .size(54.dp)
@@ -279,4 +348,17 @@ private fun formatSleep(mins: Int): String {
     val h = mins / 60
     val m = mins % 60
     return if (h > 0) "${h}h${m}m" else "${m}m"
+}
+
+private fun getFactorColor(name: String): Color {
+    val lowName = name.lowercase()
+    return when {
+        lowName.contains("hrv") || lowName.contains("ready") -> Color(0xFF4DB6AC) // Teal/Mint for HRV
+        lowName.contains("cal") || lowName.contains("activity") || lowName.contains("exercise") -> Color(0xFFFF5252) // Red
+        lowName.contains("sleep") || lowName.contains("rest") -> Color(0xFF42A5F5) // Blue
+        lowName.contains("jot") || lowName.contains("note") -> Color(0xFFF48FB1) // Pink
+        lowName.contains("cardio") || lowName.contains("pots") || lowName.contains("hr") || lowName.contains("spike") -> Color(0xFF7C6EFF) // Purple
+        lowName.contains("mcas") || lowName.contains("histamine") || lowName.contains("allergy") -> Color(0xFFFFB74D) // Orange
+        else -> NotelPrimary
+    }
 }

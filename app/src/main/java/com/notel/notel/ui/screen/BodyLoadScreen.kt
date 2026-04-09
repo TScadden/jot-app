@@ -76,7 +76,9 @@ fun BodyLoadScreen(
         ) {
             BodyLoadCard(
                 state = state,
-                onDaySelected = { viewModel.selectDay(it) }
+                onDaySelected = { viewModel.selectDay(it) },
+                onFactorSelected = { viewModel.selectFactor(it) },
+                onResetSelection = { viewModel.selectFactor(null) }
             )
 
             if (state.error != null) {
@@ -112,8 +114,14 @@ fun BodyLoadScreen(
                 Spacer(Modifier.height(16.dp))
                 Text(
                     text = "Think of your body's capacity as a cup. Every stressor—poor sleep, dehydration, high heart rate, or physical exertion—adds water to that cup.\n\n" +
-                           "When the cup is nearly empty, you feel resilient. When it's full (High Load), even a small drop can cause it to overflow, leading to symptom flares and crashes.\n\n" +
-                           "Your Body Load score helps you visualize how full your cup is right now based on your recent data, so you can decide when to push and when to rest.",
+                           "Your Body Load score is calculated using clinical biometric weighting:\n\n" +
+                           "• 30% Autonomic Balance (HRV): Deviations from your 30-day RMSSD mean.\n" +
+                           "• 25% Sleep Architecture: Accounting for your recent 'Sleep Debt'.\n" +
+                           "• 20% Activity Stress: Your 7-day vs. 42-day workload ratio.\n" +
+                           "• 15% Orthostatic Spikes: High HR events (>100bpm) that fill your cup.\n" +
+                           "• 5% Heart Rate: Real-time RHR jumps from your baseline.\n" +
+                           "• 5% Subjective Jots: AI context for pain, anxiety, and flares.\n\n" +
+                           "When the cup is nearly empty, you feel resilient. When it's full, even a small drop can cause it to overflow, leading to symptom flares.",
                     color = NotelTextPrimary,
                     fontSize = 15.sp,
                     lineHeight = 22.sp

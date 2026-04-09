@@ -56,7 +56,9 @@ class HealthConnectManager(private val context: Context) {
             HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class),
             HealthPermission.getReadPermission(BasalMetabolicRateRecord::class),
             HealthPermission.getReadPermission(WeightRecord::class),
-            HealthPermission.getReadPermission(HeightRecord::class)
+            HealthPermission.getReadPermission(HeightRecord::class),
+            HealthPermission.getReadPermission(HeartRateVariabilityRmssdRecord::class),
+            HealthPermission.getReadPermission(PowerRecord::class)
         )
     }
 
@@ -444,6 +446,35 @@ class HealthConnectManager(private val context: Context) {
             val latest = response.records.firstOrNull() ?: return null
             return latest.height.inInches.toFloat()
         } catch(e: Exception) { return null }
+    }
+
+    suspend fun readHeartRateVariability(days: Int = 30): List<Pair<String, Double>> {
+        try {
+            val end = ZonedDateTime.now(ZoneId.systemDefault()).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
+            val start = end.minus(days.toLong(), ChronoUnit.DAYS)
+            
+            val response = healthConnectClient.readRecords(
+                ReadRecordsRequest(
+                    recordType = HeartRateVariabilityRmssdRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(start, end)
+                )
+            )
+            
+            val formatter = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
+                timeZone = java.util.TimeZone.getTimeZone("UTC")
+            }
+            
+            // Group by day, take mean of RMSSD for the day (ideally nocturnal but depends on wearable source)
+            val dailyValues = response.records.groupBy { 
+                formatter.format(java.util.Date(it.time.toEpochMilli()))
+            }.mapValues { entry ->
+                entry.value.map { it.heartRateVariabilityMillis }.average()
+            }
+            
+            return dailyValues.toList().sortedBy { it.first }
+        } catch(e: Exception) {
+            return emptyList()
+        }
     }
 
     fun requestPermissionsActivityContract(): androidx.activity.result.contract.ActivityResultContract<Set<String>, Set<String>> {

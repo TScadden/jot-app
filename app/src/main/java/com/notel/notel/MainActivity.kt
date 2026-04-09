@@ -74,6 +74,39 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
+            val context = LocalContext.current
+            val activity = context as? ComponentActivity
+            // Provide a global instance of FitbitViewModel at the activity level
+            // so it can handle the auth redirect regardless of current navigation destination.
+            val fitbitViewModel: FitbitViewModel = hiltViewModel()
+            
+            DisposableEffect(activity) {
+                val listener = androidx.core.util.Consumer<android.content.Intent> { intent ->
+                    if (intent.data?.scheme == "potscube" && intent.data?.host == "callback") {
+                        val code = intent.data?.getQueryParameter("code")
+                        if (code != null) {
+                            fitbitViewModel.exchangeCodeForToken(code)
+                            intent.data = null
+                        }
+                    }
+                }
+                activity?.addOnNewIntentListener(listener)
+                
+                // Check initial intent in case the app was launched directly via link
+                val initialData = activity?.intent?.data
+                if (initialData?.scheme == "potscube" && initialData.host == "callback") {
+                    val code = initialData.getQueryParameter("code")
+                    if (code != null) {
+                        fitbitViewModel.exchangeCodeForToken(code)
+                        activity?.intent?.data = null
+                    }
+                }
+                
+                onDispose {
+                    activity?.removeOnNewIntentListener(listener)
+                }
+            }
+
             NotelTheme {
                 val navController = rememberNavController()
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
