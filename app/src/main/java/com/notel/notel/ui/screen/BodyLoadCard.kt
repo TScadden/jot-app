@@ -82,6 +82,25 @@ fun BodyLoadCard(
                             fontSize = 13.sp
                         )
                     }
+                    
+                    if (dayLabel == "Sat" || dayLabel == "Sun") {
+                        Spacer(Modifier.height(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(width = 16.dp, height = 3.dp)
+                                .shadow(
+                                    elevation = 8.dp,
+                                    shape = RoundedCornerShape(1.5.dp),
+                                    ambientColor = Color(0xFF42A5F5),
+                                    spotColor = Color(0xFF42A5F5),
+                                    clip = false
+                                )
+                                .border(0.5.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(1.5.dp))
+                                .background(Color(0xFF42A5F5), RoundedCornerShape(1.5.dp))
+                        )
+                    } else {
+                        Spacer(Modifier.height(9.dp))
+                    }
                 }
             }
         }
