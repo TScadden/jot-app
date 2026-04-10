@@ -195,10 +195,9 @@ fun BodyLoadCard(
                     modifier = Modifier,
                     icon = Icons.Default.Nightlight,
                     value = formatSleep(state.sleepMinutes),
-                    target = "",
+                    target = "7h",
                     label = "HOURS SLEPT",
-                    progress = state.factors.find { it.name.lowercase().contains("sleep") || it.name.lowercase().contains("rest") }?.weight?.times(3.5f)?.coerceIn(0f, 1f)
-                                ?: (state.sleepMinutes / 480f).coerceIn(0f, 1f),
+                    progress = (state.sleepMinutes / 420f).coerceIn(0f, 1f),
                     color = Color(0xFF42A5F5) // Blue
                 )
                 
