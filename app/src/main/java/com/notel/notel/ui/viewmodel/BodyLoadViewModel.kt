@@ -133,7 +133,9 @@ class BodyLoadViewModel @Inject constructor(
             val fallBackAdvice = todaySnapshot?.adviceList ?: _uiState.value.adviceList
             
             val mergedHistory = if (todaySnapshot == null && fallBackScore > 0) {
-                history + BodyLoadSnapshot(todayStr, fallBackScore, fallBackFactors, fallBackAdvice)
+                val sdfDay = java.text.SimpleDateFormat("EEE", java.util.Locale.US)
+                val displayDayStr = sdfDay.format(java.util.Date())
+                history + BodyLoadSnapshot(todayStr, displayDayStr, fallBackScore, fallBackFactors, fallBackAdvice)
             } else history
             
             _uiState.value = _uiState.value.copy(
