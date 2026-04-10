@@ -195,7 +195,6 @@ fun BodyLoadCard(
                     }
                 }
             } // End Box wrapping Ring + Badge
-            }
 
             // Sub-Pillars Bottom Row
             Row(
