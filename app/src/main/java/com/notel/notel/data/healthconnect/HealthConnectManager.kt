@@ -377,11 +377,21 @@ class HealthConnectManager(private val context: Context) {
         }
     }
 
-    suspend fun readHistoricalSleep(days: Int = 180): List<Pair<String, Int>> {
+    suspend fun readHistoricalSleep(days: Int = 180, targetDateStr: String? = null): List<Pair<String, Int>> {
         try {
-            // End date slightly shifted to capture sessions that end on the 'end' date
-            val end = ZonedDateTime.now(ZoneId.systemDefault()).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
-            val start = end.minus(days.toLong(), ChronoUnit.DAYS)
+            val anchorDate = if (targetDateStr != null) {
+                ZonedDateTime.of(java.time.LocalDate.parse(targetDateStr), java.time.LocalTime.MAX, ZoneId.systemDefault())
+            } else {
+                ZonedDateTime.now(ZoneId.systemDefault())
+            }
+            
+            // Clamp end to now; HealthConnect rejects future timestamps unconditionally
+            var end = anchorDate.plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
+            if (end.isAfter(Instant.now())) {
+                end = Instant.now()
+            }
+            
+            val start = anchorDate.minusDays(days.toLong()).truncatedTo(ChronoUnit.DAYS).toInstant()
             
             // Note: SLEEP_SESSION_DURATION_TOTAL is the best way to get total minutes,
             // but for actual 'minutes asleep' we might still need sessions if we want awake deduction.
