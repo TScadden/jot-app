@@ -227,7 +227,8 @@ fun BodyLoadCard(
                             val m = displayDebt % 60
                             val displayStr = if (h > 0) "${h}h ${m}m" else "${m}m"
                             val label = if (isSurplus) "surplus" else "deficit"
-                            val color = if (isSurplus) Color(0xFF66BB6A) else if (displayDebt > 120) Color(0xFFFF5252) else Color(0xFFFFB74D)
+                            // Red for >10h deficit, Orange for >2h, Green for surplus
+                            val color = if (isSurplus) Color(0xFF66BB6A) else if (displayDebt > 600) Color(0xFFFF5252) else if (displayDebt > 120) Color(0xFFFFB74D) else Color(0xFFE0E0E0).copy(alpha = 0.7f)
                             
                             Text(
                                 text = "$displayStr $label",
