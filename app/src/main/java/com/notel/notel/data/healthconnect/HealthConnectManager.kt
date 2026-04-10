@@ -428,13 +428,15 @@ class HealthConnectManager(private val context: Context) {
             
             sortedSessions.forEach { current ->
                 val overlap = uniqueSessions.find { 
-                    (current.first.isBefore(it.second) && current.second.isAfter(it.first))
+                    val overlapStart = if (current.first.isAfter(it.first)) current.first else it.first
+                    val overlapEnd = if (current.second.isBefore(it.second)) current.second else it.second
+                    val overlapMins = if (overlapEnd.isAfter(overlapStart)) java.time.Duration.between(overlapStart, overlapEnd).toMinutes() else 0L
+                    overlapMins > 15
                 }
                 
                 if (overlap == null) {
                     uniqueSessions.add(current)
                 } else {
-                    // If they overlap significantly, prefer the longer one
                     if (current.third > overlap.third) {
                         uniqueSessions.remove(overlap)
                         uniqueSessions.add(current)

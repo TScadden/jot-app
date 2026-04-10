@@ -251,8 +251,8 @@ class LogRepository @Inject constructor(
         val chronicCalories = activityHistory.map { it.second }.average()
         val acwr = if (chronicCalories > 100) acuteCalories / chronicCalories else 1.0
         
-        // Sleep Debt (180-day chronic sum of missing hours relative to 7h)
-        val sleepHistory = if (isAvailable) try { healthConnectManager.readHistoricalSleep(180, targetDay) } catch(e: Exception) { emptyList() } else emptyList()
+        // Sleep Debt (Fixed 730-day chronic sum, acts as a stable lifetime accumulator)
+        val sleepHistory = if (isAvailable) try { healthConnectManager.readHistoricalSleep(730, targetDay) } catch(e: Exception) { emptyList() } else emptyList()
         val sleepDebt = sleepHistory.sumOf { 7.0 - (it.second / 60.0) }
         
         // Jots for the 7 days
