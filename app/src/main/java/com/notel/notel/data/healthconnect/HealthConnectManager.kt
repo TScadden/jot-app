@@ -224,47 +224,6 @@ class HealthConnectManager(private val context: Context) {
             return null
         }
     }
-    
-    suspend fun readHistoricalSleep(days: Int): List<Pair<String, Int>> {
-        try {
-            val end = ZonedDateTime.now(ZoneId.systemDefault()).truncatedTo(ChronoUnit.DAYS).plusDays(1).toInstant()
-            val start = end.minus(days.toLong() + 2, ChronoUnit.DAYS)
-            
-            val response = healthConnectClient.readRecords(
-                ReadRecordsRequest(
-                    recordType = SleepSessionRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start, end)
-                )
-            )
-            
-            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
-            val resultMap = mutableMapOf<String, Int>()
-            
-            response.records.forEach { session ->
-                // Attribute session to the day it ends on (most sleep happens overnight and ends in the morning)
-                val endZone = java.time.ZonedDateTime.ofInstant(session.endTime, java.time.ZoneId.systemDefault())
-                val targetDateStr = String.format("%04d-%02d-%02d", endZone.year, endZone.monthValue, endZone.dayOfMonth)
-                
-                var awake = 0
-                session.stages.forEach { stage ->
-                    if (stage.stage == SleepSessionRecord.STAGE_TYPE_AWAKE || 
-                        stage.stage == SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED || 
-                        stage.stage == SleepSessionRecord.STAGE_TYPE_OUT_OF_BED) {
-                        awake += ChronoUnit.MINUTES.between(stage.startTime, stage.endTime).toInt()
-                    }
-                }
-                
-                val timeInBed = ChronoUnit.MINUTES.between(session.startTime, session.endTime).toInt()
-                val totalAsleep = timeInBed - awake
-                
-                resultMap[targetDateStr] = (resultMap[targetDateStr] ?: 0) + totalAsleep
-            }
-            
-            return resultMap.map { it.key to it.value }.sortedBy { it.first }
-        } catch(e: Exception) {
-            return emptyList()
-        }
-    }
 
     /** Reads raw intraday HR samples for the past [days] days and computes
      *  spike statistics per day — critical for POTS/MCAS users whose daily
@@ -449,10 +408,9 @@ class HealthConnectManager(private val context: Context) {
                     }
                 }
                 val asleep = Duration.between(session.startTime, session.endTime).toMinutes() - awake
-                // Prefer the longest session if multiple exist (e.g. nap vs main sleep)
-                if (asleep > (dailySessions[dateStr] ?: 0)) {
-                    dailySessions[dateStr] = asleep.toInt()
-                }
+                // Sum session durations to include multiple intervals (e.g. daily naps)
+                val current = dailySessions[dateStr] ?: 0
+                dailySessions[dateStr] = current + asleep.toInt()
             }
             
             return dailySessions.keys.map { it to dailySessions[it]!! }.sortedBy { it.first }
