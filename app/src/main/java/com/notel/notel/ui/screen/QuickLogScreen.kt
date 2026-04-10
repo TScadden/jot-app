@@ -365,14 +365,7 @@ fun QuickLogScreen(
                         }
                     }
 
-                    // ── Productivity Agent ─────────────────────────────
-                    ProductivityDashboard(
-                        loggedDays = state.loggedDays,
-                        onToggleDay = viewModel::toggleLoggedDay,
-                        isExpanded = isProductivityExpanded,
-                        onExpandedChange = { isProductivityExpanded = it }
-                    )
-                    Spacer(Modifier.height(12.dp))
+
                 }
             }
 

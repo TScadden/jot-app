@@ -214,6 +214,58 @@ fun BodyLoadCard(
                     color = Color(0xFF7C6EFF) // Purple
                 )
             }
+            
+            Spacer(Modifier.height(24.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Current Streak
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .liquidGlass(shape = RoundedCornerShape(16.dp), color = NotelBackground, alpha = 0.6f)
+                        .padding(vertical = 12.dp, horizontal = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "🔥 ${state.currentStreak}",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NotelTextPrimary
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = "Current Streak",
+                        fontSize = 11.sp,
+                        color = NotelTextSecondary,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                // Best Streak
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .liquidGlass(shape = RoundedCornerShape(16.dp), color = NotelBackground, alpha = 0.6f)
+                        .padding(vertical = 12.dp, horizontal = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "🏆 ${state.bestStreak}",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NotelTextPrimary
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = "Best Streak",
+                        fontSize = 11.sp,
+                        color = NotelTextSecondary,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
         }
         
         // ── Advice Tiles Row ──────────────────────────────────────────

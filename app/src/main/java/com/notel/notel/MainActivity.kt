@@ -80,6 +80,11 @@ class MainActivity : ComponentActivity() {
             // so it can handle the auth redirect regardless of current navigation destination.
             val fitbitViewModel: FitbitViewModel = hiltViewModel()
             val bodyLoadViewModel: com.notel.notel.ui.viewmodel.BodyLoadViewModel = hiltViewModel()
+            val notelPreferences = remember { com.notel.notel.data.preferences.NotelPreferences(context) }
+            
+            LaunchedEffect(Unit) {
+                notelPreferences.updateStreak()
+            }
             
             DisposableEffect(activity) {
                 val listener = androidx.core.util.Consumer<android.content.Intent> { intent ->

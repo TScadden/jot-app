@@ -147,7 +147,9 @@ data class SyncProfileRequest(
     val autoAiSuggestions: Boolean? = null,
     val eventCounters: String? = null,
     val counterHistory: String? = null,
-    val redditSubreddits: String? = null
+    val redditSubreddits: String? = null,
+    val currentStreak: Int? = null,
+    val bestStreak: Int? = null
 )
 
 @Serializable
@@ -185,7 +187,9 @@ data class ProfileDtoModel(
     val autoAiSuggestions: Boolean? = null,
     val eventCounters: String? = null,
     val counterHistory: String? = null,
-    val redditSubreddits: String? = null
+    val redditSubreddits: String? = null,
+    val currentStreak: Int? = null,
+    val bestStreak: Int? = null
 )
 
 @Serializable

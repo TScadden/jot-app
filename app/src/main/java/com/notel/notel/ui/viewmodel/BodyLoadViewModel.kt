@@ -31,6 +31,8 @@ data class BodyLoadState(
     val jotCount7Days: Int = 0,
     val jotCountDaily: Int = 0,
     val spikeCount: Int = 0,
+    val currentStreak: Int = 0,
+    val bestStreak: Int = 0,
     
     // History for the top row (Day score list)
     val historyScores: List<BodyLoadSnapshot> = emptyList(),
@@ -131,6 +133,8 @@ class BodyLoadViewModel @Inject constructor(
                 spikeCount = stats["spikeCount"]?.toInt() ?: 0,
                 jotCount7Days = stats["jotCount"]?.toInt() ?: 0,
                 jotCountDaily = stats["jotCountDaily"]?.toInt() ?: 0,
+                currentStreak = preferences.currentStreak.first(),
+                bestStreak = preferences.bestStreak.first(),
                 historyScores = history,
                 selectedDate = todayStr
             )

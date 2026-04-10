@@ -75,6 +75,10 @@ class NotelPreferences @Inject constructor(
         val LAST_BODY_LOAD_SCORE = intPreferencesKey("last_body_load_score")
         val LAST_BODY_LOAD_FACTORS = stringPreferencesKey("last_body_load_factors")
         val LAST_BODY_LOAD_ADVICE = stringPreferencesKey("last_body_load_advice")
+        
+        val CURRENT_STREAK = intPreferencesKey("current_streak")
+        val BEST_STREAK = intPreferencesKey("best_streak")
+        val LAST_OPEN_DATE = stringPreferencesKey("last_open_date")
     }
 
     val authToken: Flow<String> = context.dataStore.data.map { prefs ->
@@ -105,6 +109,10 @@ class NotelPreferences @Inject constructor(
     val lastBodyLoadScore: Flow<Int> = context.dataStore.data.map { it[LAST_BODY_LOAD_SCORE] ?: 0 }
     val lastBodyLoadFactors: Flow<String> = context.dataStore.data.map { it[LAST_BODY_LOAD_FACTORS] ?: "" }
     val lastBodyLoadAdvice: Flow<String?> = context.dataStore.data.map { it[LAST_BODY_LOAD_ADVICE] }
+    
+    val currentStreak: Flow<Int> = context.dataStore.data.map { it[CURRENT_STREAK] ?: 0 }
+    val bestStreak: Flow<Int> = context.dataStore.data.map { it[BEST_STREAK] ?: 0 }
+    val lastOpenDate: Flow<String> = context.dataStore.data.map { it[LAST_OPEN_DATE] ?: "" }
 
     val onboardingComplete: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[ONBOARDING_COMPLETE] ?: false
@@ -223,6 +231,96 @@ class NotelPreferences @Inject constructor(
             prefs[LAST_BODY_LOAD_FACTORS] = factors
             if (advice != null) prefs[LAST_BODY_LOAD_ADVICE] = advice else prefs.remove(LAST_BODY_LOAD_ADVICE)
         }
+    }
+
+    suspend fun updateStreak() {
+        val today = java.time.LocalDate.now()
+        context.dataStore.edit { prefs ->
+            val lastOpenStr = prefs[LAST_OPEN_DATE] ?: ""
+            var current = prefs[CURRENT_STREAK] ?: 0
+            var best = prefs[BEST_STREAK] ?: 0
+
+            // One-time port from legacy `LOGGED_DAYS` memory state
+            if (lastOpenStr.isBlank()) {
+                val loggedDaysStr = prefs[LOGGED_DAYS] ?: "[]"
+                try {
+                    val daysList = kotlinx.serialization.json.Json.decodeFromString<List<String>>(loggedDaysStr)
+                    val sortedDates = daysList.mapNotNull { 
+                        try { java.time.LocalDate.parse(it) } catch(e:Exception){ null } 
+                    }.sorted().distinct()
+                    
+                    var tempBest = 0
+                    var tempCurrent = 0
+                    var prevDate: java.time.LocalDate? = null
+                    
+                    for (d in sortedDates) {
+                        if (prevDate == null) {
+                            tempCurrent = 1
+                        } else if (d == prevDate.plusDays(1)) {
+                            tempCurrent++
+                        } else {
+                            tempCurrent = 1
+                        }
+                        if (tempCurrent > tempBest) tempBest = tempCurrent
+                        prevDate = d
+                    }
+                    
+                    var calcCurrent = 0
+                    if (sortedDates.contains(today)) {
+                        var temp = today
+                        while(sortedDates.contains(temp)) { calcCurrent++; temp = temp.minusDays(1) }
+                    } else {
+                        var temp = today.minusDays(1)
+                        while(sortedDates.contains(temp)) { calcCurrent++; temp = temp.minusDays(1) }
+                    }
+                    
+                    current = maxOf(current, calcCurrent)
+                    best = maxOf(best, tempBest)
+                } catch(e: Exception) {}
+            }
+
+            if (lastOpenStr == today.toString()) {
+                // Already checked in today, do nothing
+            } else if (lastOpenStr == today.minusDays(1).toString()) {
+                // Continuation
+                current += 1
+                prefs[CURRENT_STREAK] = current
+                prefs[LAST_OPEN_DATE] = today.toString()
+            } else {
+                // Streak broken or starting fresh (or migrating from above algorithm)
+                if (lastOpenStr.isBlank() && current > 0) {
+                     // Since we migrated, don't reset to 1 if we actually have data, but +1 for today!
+                     if (!sortedDatesConstContainsToday(prefs, today)) {
+                         current += 1 
+                     }
+                } else {
+                    current = 1
+                }
+                prefs[CURRENT_STREAK] = current
+                prefs[LAST_OPEN_DATE] = today.toString()
+            }
+
+            if (current > best) {
+                best = current
+                prefs[BEST_STREAK] = best
+            }
+        }
+    }
+    
+    private fun sortedDatesConstContainsToday(prefs: MutablePreferences, today: java.time.LocalDate): Boolean {
+        try {
+            val loggedDaysStr = prefs[LOGGED_DAYS] ?: "[]"
+            val daysList = kotlinx.serialization.json.Json.decodeFromString<List<String>>(loggedDaysStr)
+            return daysList.contains(today.toString())
+        } catch(e: Exception) { return false }
+    }
+    
+    suspend fun setCurrentStreak(streak: Int) {
+        context.dataStore.edit { it[CURRENT_STREAK] = streak }
+    }
+    
+    suspend fun setBestStreak(streak: Int) {
+        context.dataStore.edit { it[BEST_STREAK] = streak }
     }
 
     suspend fun setLoggedIn(loggedIn: Boolean) {
