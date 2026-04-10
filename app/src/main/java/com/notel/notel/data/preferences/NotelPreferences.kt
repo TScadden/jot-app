@@ -302,8 +302,8 @@ class NotelPreferences @Inject constructor(
 
             if (current > best) {
                 best = current
-                prefs[BEST_STREAK] = best
             }
+            prefs[BEST_STREAK] = best
         }
     }
     

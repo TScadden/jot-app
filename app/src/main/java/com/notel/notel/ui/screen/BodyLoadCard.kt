@@ -214,9 +214,10 @@ fun BodyLoadCard(
                     color = Color(0xFF7C6EFF) // Purple
                 )
             }
+        }
             
-            Spacer(Modifier.height(24.dp))
-            Row(
+        Spacer(Modifier.height(24.dp))
+        Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
@@ -266,7 +267,6 @@ fun BodyLoadCard(
                     )
                 }
             }
-        }
         
         // ── Advice Tiles Row ──────────────────────────────────────────
         if (!isLoading && state.adviceList.isNotEmpty()) {
