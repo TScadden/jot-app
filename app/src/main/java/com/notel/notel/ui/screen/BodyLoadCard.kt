@@ -170,7 +170,7 @@ fun BodyLoadCard(
                 } // End ring Box
                 
                 // Sleep Debt Badge Layout
-                val debtMins = 420 - state.sleepMinutes
+                val debtMins = state.sleepDebtMins
                 if (debtMins > 0 && !isLoading) {
                     val dH = debtMins / 60
                     val dM = debtMins % 60

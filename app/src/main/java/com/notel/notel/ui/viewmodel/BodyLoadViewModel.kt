@@ -28,6 +28,7 @@ data class BodyLoadState(
     // Detailed stats for the sub-pillars
     val activeCalories: Int = 0,
     val sleepMinutes: Int = 0,
+    val sleepDebtMins: Int = 0,
     val jotCount7Days: Int = 0,
     val jotCountDaily: Int = 0,
     val spikeCount: Int = 0,
@@ -96,6 +97,7 @@ class BodyLoadViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(
                 activeCalories = stats["calories"]?.toInt() ?: 0,
                 sleepMinutes = stats["sleepMins"]?.toInt() ?: 0,
+                sleepDebtMins = ((stats["sleepDebt"] ?: 0.0) * 60).toInt(),
                 spikeCount = stats["spikeCount"]?.toInt() ?: 0,
                 jotCount7Days = stats["jotCount"]?.toInt() ?: 0,
                 jotCountDaily = stats["jotCountDaily"]?.toInt() ?: 0
@@ -141,6 +143,7 @@ class BodyLoadViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(
                 activeCalories = stats["calories"]?.toInt() ?: 0,
                 sleepMinutes = stats["sleepMins"]?.toInt() ?: 0,
+                sleepDebtMins = ((stats["sleepDebt"] ?: 0.0) * 60).toInt(),
                 spikeCount = stats["spikeCount"]?.toInt() ?: 0,
                 jotCount7Days = stats["jotCount"]?.toInt() ?: 0,
                 jotCountDaily = stats["jotCountDaily"]?.toInt() ?: 0,
