@@ -198,9 +198,9 @@ fun BodyLoadCard(
                         modifier = Modifier,
                         icon = Icons.Default.Nightlight,
                         value = formatSleep(state.sleepMinutes),
-                        target = "7h",
+                        target = "8h",
                         label = "HOURS SLEPT",
-                        progress = (state.sleepMinutes / 420f).coerceIn(0f, 1f),
+                        progress = (state.sleepMinutes / 480f).coerceIn(0f, 1f),
                         color = Color(0xFF42A5F5) // Blue
                     )
                     
