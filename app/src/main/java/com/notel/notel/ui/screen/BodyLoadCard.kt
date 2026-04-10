@@ -192,8 +192,8 @@ fun BodyLoadCard(
                     color = Color(0xFFFF5252) // Red
                 )
                 
-                // Sleep Pillar Column block
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                // Sleep Pillar Box block
+                Box(contentAlignment = Alignment.TopCenter) {
                     PillarNode(
                         modifier = Modifier,
                         icon = Icons.Default.Nightlight,
@@ -206,22 +206,29 @@ fun BodyLoadCard(
                     
                     val debtMins = state.sleepDebtMins
                     if (!isLoading) {
-                        Spacer(Modifier.height(4.dp))
                         val isZero = debtMins <= 0
                         val dH = debtMins / 60
                         val dM = debtMins % 60
-                        val debtStr = if (isZero) "0m debt" else if (dH > 0) "${dH}h ${dM}m debt" else "${dM}m debt"
+                        val debtStr = if (isZero) "0m" else if (dH > 0) "${dH}h ${dM}m" else "${dM}m"
                         val debtColor = if (isZero) Color(0xFF66BB6A) else if (debtMins > 120) Color(0xFFFF5252) else Color(0xFFFFB74D)
                         val sign = if (isZero) "" else "-"
                         
                         Row(
                             modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .offset(x = 24.dp, y = (-12).dp)
                                 .liquidGlass(shape = RoundedCornerShape(8.dp), color = NotelBackground, alpha = if(isZero) 0.3f else 0.8f)
-                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                                .padding(horizontal = 4.dp, vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            val sign = if (debtMins < 0) "+" else if (isZero) "" else "-"
+                            val displayDebt = if (debtMins < 0) -debtMins else debtMins
+                            val h = displayDebt / 60
+                            val m = displayDebt % 60
+                            val displayStr = if (h > 0) "${h}h ${m}m" else "${m}m"
+                            
                             Text(
-                                text = "$sign$debtStr",
+                                text = "$sign$displayStr",
                                 color = debtColor,
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold

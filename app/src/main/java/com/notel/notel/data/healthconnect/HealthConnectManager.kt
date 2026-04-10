@@ -404,7 +404,7 @@ class HealthConnectManager(private val context: Context) {
             )
             
             val formatter = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
-                timeZone = java.util.TimeZone.getTimeZone("UTC")
+                timeZone = java.util.TimeZone.getTimeZone(ZoneId.systemDefault())
             }
             
             val dailySessions = mutableMapOf<String, Int>()
