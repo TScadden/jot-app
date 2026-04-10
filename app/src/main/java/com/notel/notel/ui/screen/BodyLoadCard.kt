@@ -171,26 +171,30 @@ fun BodyLoadCard(
                 
                 // Sleep Debt Badge Layout
                 val debtMins = state.sleepDebtMins
-                if (debtMins > 0 && !isLoading) {
+                if (!isLoading) {
+                    val isZero = debtMins <= 0
                     val dH = debtMins / 60
                     val dM = debtMins % 60
-                    val debtStr = if (dH > 0) "${dH}h ${dM}m" else "${dM}m"
-                    val debtColor = if (debtMins > 120) Color(0xFFFF5252) else Color(0xFFFFB74D) // Red for >2h debt, Orange otherwise
+                    val debtStr = if (isZero) "0m" else if (dH > 0) "${dH}h ${dM}m" else "${dM}m"
+                    val debtColor = if (isZero) Color(0xFF66BB6A) else if (debtMins > 120) Color(0xFFFF5252) else Color(0xFFFFB74D)
+                    val bgAlpha = if (isZero) 0.3f else 0.8f
+                    val sign = if (isZero) "" else "-"
                     
                     Row(
                         modifier = Modifier
                             .offset(x = 80.dp, y = (-20).dp)
-                            .liquidGlass(shape = RoundedCornerShape(12.dp), color = NotelBackground)
+                            .liquidGlass(shape = RoundedCornerShape(12.dp), color = NotelBackground, alpha = bgAlpha)
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Nightlight, contentDescription = null, tint = debtColor, modifier = Modifier.size(10.dp))
+                        val iconTint = debtColor.copy(alpha = if (isZero) 0.8f else 1f)
+                        Icon(Icons.Default.Nightlight, contentDescription = null, tint = iconTint, modifier = Modifier.size(10.dp))
                         Spacer(Modifier.width(4.dp))
                         Text(
-                            text = "-$debtStr",
-                            color = debtColor,
+                            text = "$sign$debtStr",
+                            color = iconTint,
                             fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = if (isZero) FontWeight.Medium else FontWeight.Bold
                         )
                     }
                 }
