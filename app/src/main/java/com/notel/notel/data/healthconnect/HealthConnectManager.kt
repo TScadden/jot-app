@@ -409,13 +409,6 @@ class HealthConnectManager(private val context: Context) {
             
             val dailySessions = mutableMapOf<String, Int>()
             
-            // Pre-seed the requested trailing window with 0s so fully missing days correctly hit the penalty
-            for (i in 0 until days) {
-                val d = anchorDate.minusDays(i.toLong())
-                val dStr = String.format("%04d-%02d-%02d", d.year, d.monthValue, d.dayOfMonth)
-                dailySessions[dStr] = 0
-            }
-            
             val sessionIntervals = mutableListOf<Triple<Instant, Instant, Int>>()
             
             response.records.forEach { session ->
@@ -451,9 +444,7 @@ class HealthConnectManager(private val context: Context) {
             
             uniqueSessions.forEach { session ->
                 val dateStr = formatter.format(java.util.Date(session.second.toEpochMilli()))
-                if (dailySessions.containsKey(dateStr)) {
-                    dailySessions[dateStr] = (dailySessions[dateStr] ?: 0) + session.third
-                }
+                dailySessions[dateStr] = (dailySessions[dateStr] ?: 0) + session.third
             }
             
             return dailySessions.entries.map { it.key to it.value }.sortedBy { it.first }

@@ -226,12 +226,12 @@ fun BodyLoadCard(
                             val h = displayDebt / 60
                             val m = displayDebt % 60
                             val displayStr = if (h > 0) "${h}h ${m}m" else "${m}m"
-                            val label = if (isSurplus) "surplus" else "debt"
-                            val sign = if (isSurplus) "+" else if (isZero) "" else "-"
+                            val label = if (isSurplus) "surplus" else "deficit"
+                            val color = if (isSurplus) Color(0xFF66BB6A) else if (displayDebt > 120) Color(0xFFFF5252) else Color(0xFFFFB74D)
                             
                             Text(
-                                text = "$sign$displayStr $label",
-                                color = debtColor,
+                                text = "$displayStr $label",
+                                color = color,
                                 fontSize = 8.sp,
                                 fontWeight = FontWeight.Bold
                             )
