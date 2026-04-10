@@ -126,6 +126,7 @@ class BodyLoadViewModel @Inject constructor(
             // Always fetch daily stats regardless of whether we run AI
             val stats = logRepository.getDailyStatsSummary(todayStr)
             val history = getHistoricalScores()
+            val todaySnapshot = history.find { it.date == todayStr }
             
             _uiState.value = _uiState.value.copy(
                 activeCalories = stats["calories"]?.toInt() ?: 0,
@@ -136,7 +137,10 @@ class BodyLoadViewModel @Inject constructor(
                 currentStreak = preferences.currentStreak.first(),
                 bestStreak = preferences.bestStreak.first(),
                 historyScores = history,
-                selectedDate = todayStr
+                selectedDate = todayStr,
+                score = todaySnapshot?.score ?: _uiState.value.score,
+                factors = todaySnapshot?.factors ?: _uiState.value.factors,
+                adviceList = todaySnapshot?.adviceList ?: _uiState.value.adviceList
             )
 
             // Auto-refresh rule: 1 hour (3,600,000 ms)

@@ -268,53 +268,7 @@ fun BodyLoadCard(
                 }
             }
         
-        // ── Advice Tiles Row ──────────────────────────────────────────
-        if (!isLoading && state.adviceList.isNotEmpty()) {
-            Spacer(Modifier.height(32.dp))
-            
-            Text(
-                text = "HOW TO LOWER YOUR LOAD",
-                color = NotelTextSecondary,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
 
-            state.adviceList.forEach { idea ->
-                GlassyCard(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                    color = NotelSurfaceHigh.copy(alpha = 0.3f)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .background(NotelPrimary.copy(alpha = 0.15f), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Lightbulb,
-                                contentDescription = null,
-                                tint = NotelPrimary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                        Spacer(Modifier.width(16.dp))
-                        Text(
-                            text = idea,
-                            color = NotelTextPrimary,
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp
-                        )
-                    }
-                }
-            }
-        }
     }
 }
 
