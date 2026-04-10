@@ -88,7 +88,7 @@ fun BodyLoadCard(
                         Spacer(Modifier.height(6.dp))
                         Box(
                             modifier = Modifier
-                                .size(width = 16.dp, height = 3.dp)
+                                .size(width = 38.dp, height = 4.dp)
                                 .shadow(
                                     elevation = 8.dp,
                                     shape = RoundedCornerShape(1.5.dp),
