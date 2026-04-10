@@ -221,16 +221,18 @@ fun BodyLoadCard(
                                 .padding(horizontal = 4.dp, vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            val sign = if (debtMins < 0) "+" else if (isZero) "" else "-"
-                            val displayDebt = if (debtMins < 0) -debtMins else debtMins
+                            val isSurplus = debtMins < 0
+                            val displayDebt = if (isSurplus) -debtMins else debtMins
                             val h = displayDebt / 60
                             val m = displayDebt % 60
                             val displayStr = if (h > 0) "${h}h ${m}m" else "${m}m"
+                            val label = if (isSurplus) "surplus" else "debt"
+                            val sign = if (isSurplus) "+" else if (isZero) "" else "-"
                             
                             Text(
-                                text = "$sign$displayStr",
+                                text = "$sign$displayStr $label",
                                 color = debtColor,
-                                fontSize = 9.sp,
+                                fontSize = 8.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }

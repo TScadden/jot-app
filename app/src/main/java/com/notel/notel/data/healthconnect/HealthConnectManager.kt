@@ -416,8 +416,9 @@ class HealthConnectManager(private val context: Context) {
                 dailySessions[dStr] = 0
             }
             
+            val sessionIntervals = mutableListOf<Triple<Instant, Instant, Int>>()
+            
             response.records.forEach { session ->
-                val dateStr = formatter.format(java.util.Date(session.endTime.toEpochMilli()))
                 var awake = 0L
                 session.stages.forEach { stage ->
                     if (stage.stage in listOf(SleepSessionRecord.STAGE_TYPE_AWAKE, SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED, SleepSessionRecord.STAGE_TYPE_OUT_OF_BED)) {
@@ -425,12 +426,37 @@ class HealthConnectManager(private val context: Context) {
                     }
                 }
                 val asleep = Duration.between(session.startTime, session.endTime).toMinutes() - awake
-                // Sum session durations to include multiple intervals (e.g. daily naps)
-                val current = dailySessions[dateStr] ?: 0
-                dailySessions[dateStr] = current + asleep.toInt()
+                sessionIntervals.add(Triple(session.startTime, session.endTime, asleep.toInt()))
             }
             
-            return dailySessions.keys.map { it to dailySessions[it]!! }.sortedBy { it.first }
+            // Sort by start time and filter overlaps to prevent double-counting
+            val sortedSessions = sessionIntervals.sortedBy { it.first }
+            val uniqueSessions = mutableListOf<Triple<Instant, Instant, Int>>()
+            
+            sortedSessions.forEach { current ->
+                val overlap = uniqueSessions.find { 
+                    (current.first.isBefore(it.second) && current.second.isAfter(it.first))
+                }
+                
+                if (overlap == null) {
+                    uniqueSessions.add(current)
+                } else {
+                    // If they overlap significantly, prefer the longer one
+                    if (current.third > overlap.third) {
+                        uniqueSessions.remove(overlap)
+                        uniqueSessions.add(current)
+                    }
+                }
+            }
+            
+            uniqueSessions.forEach { session ->
+                val dateStr = formatter.format(java.util.Date(session.second.toEpochMilli()))
+                if (dailySessions.containsKey(dateStr)) {
+                    dailySessions[dateStr] = (dailySessions[dateStr] ?: 0) + session.third
+                }
+            }
+            
+            return dailySessions.entries.map { it.key to it.value }.sortedBy { it.first }
         } catch(e: Exception) {
             return emptyList()
         }
