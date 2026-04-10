@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -99,19 +100,17 @@ fun BodyLoadCard(
                 val centerTop = Offset(size.width / 2, 70.dp.toPx())
                 val splitY = 160.dp.toPx()
                 val bottomY = 240.dp.toPx()
-                val itemWidth = size.width / 4
+                val itemWidth = size.width / 3
                 val p1 = Offset(itemWidth * 0.5f, bottomY)
                 val p2 = Offset(itemWidth * 1.5f, bottomY)
                 val p3 = Offset(itemWidth * 2.5f, bottomY)
-                val p4 = Offset(itemWidth * 3.5f, bottomY)
                 val lineStyle = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round)
                 val lineColor = NotelSurfaceHigh.copy(alpha = 0.6f)
                 drawLine(lineColor, centerTop.copy(y = centerTop.y + 50.dp.toPx()), Offset(size.width / 2, splitY), strokeWidth = lineStyle.width)
-                drawLine(lineColor, Offset(p1.x, splitY), Offset(p4.x, splitY), strokeWidth = lineStyle.width)
+                drawLine(lineColor, Offset(p1.x, splitY), Offset(p3.x, splitY), strokeWidth = lineStyle.width)
                 drawLine(lineColor, Offset(p1.x, splitY), p1, strokeWidth = lineStyle.width)
                 drawLine(lineColor, Offset(p2.x, splitY), p2, strokeWidth = lineStyle.width)
                 drawLine(lineColor, Offset(p3.x, splitY), p3, strokeWidth = lineStyle.width)
-                drawLine(lineColor, Offset(p4.x, splitY), p4, strokeWidth = lineStyle.width)
             }
 
             // Central Big Node (The Score)
@@ -119,63 +118,39 @@ fun BodyLoadCard(
                 modifier = Modifier.align(Alignment.TopCenter),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                val infiniteTransition = rememberInfiniteTransition()
+                val rotation by infiniteTransition.animateFloat(
+                    initialValue = 0f,
+                    targetValue = 360f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(15000, easing = LinearEasing),
+                        repeatMode = RepeatMode.Restart
+                    )
+                )
+
                 Box(
-                    modifier = Modifier
-                        .size(100.dp)
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() }
-                        ) { onResetSelection() },
+                    modifier = Modifier.size(100.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    // Segmented Factor Ring
+                    // Smooth sweep gradient ring
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         val strokeWidth = 5.dp.toPx()
-                        val factors = state.factors
-                        val selectedFactor = state.selectedFactor
                         
-                        if (factors.isEmpty() || isLoading) {
+                        val gradientColors = listOf(
+                            Color(0xFFFF5252), // Red
+                            Color(0xFF42A5F5), // Blue
+                            Color(0xFF7C6EFF), // Purple
+                            Color(0xFFFF5252)  // Close loop
+                        )
+                        
+                        rotate(rotation) {
                             drawArc(
-                                brush = Brush.sweepGradient(listOf(NotelPrimary, NotelAccent, NotelPrimary)),
+                                brush = Brush.sweepGradient(gradientColors),
                                 startAngle = 0f,
                                 sweepAngle = 360f,
                                 useCenter = false,
                                 style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
                             )
-                        } else {
-                            var startAngle = -90f // Start from top
-                            val fixedWeights = listOf(0.35f, 0.30f, 0.20f, 0.10f, 0.05f)
-                            
-                            factors.forEachIndexed { index, factor ->
-                                val archWeight = fixedWeights.getOrElse(index) { 0.1f }
-                                val sweep = archWeight * 360f
-                                val isSelected = selectedFactor == null || factor.name.lowercase().contains(selectedFactor.lowercase())
-                                
-                                // Calculate the hinderance (0.0 to 1.0) relative to its architecture weight
-                                val hinderFraction = if (archWeight > 0) (factor.weight / archWeight) else 0f
-                                val color = getFactorColor(factor.name)
-                                
-                                // Background TRACK for the segment (fixed size, always visible)
-                                drawArc(
-                                    color = color.copy(alpha = if (isSelected) 0.25f else 0.1f),
-                                    startAngle = startAngle + 2f,
-                                    sweepAngle = sweep - 4f,
-                                    useCenter = false,
-                                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                                )
-
-                                // Foreground FILL (minimum 10% for color visibility)
-                                val fillFraction = hinderFraction.coerceIn(0.1f, 1f)
-                                drawArc(
-                                    color = if (isSelected) color else color.copy(alpha = 0.3f),
-                                    startAngle = startAngle + 2f,
-                                    sweepAngle = (sweep - 4f) * fillFraction,
-                                    useCenter = false,
-                                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                                )
-                                
-                                startAngle += sweep
-                            }
                         }
                     }
 
@@ -205,7 +180,7 @@ fun BodyLoadCard(
             ) {
                 // Calories Pillar
                 PillarNode(
-                    modifier = Modifier.clickable { onFactorSelected("Calories") },
+                    modifier = Modifier,
                     icon = Icons.Default.Whatshot,
                     value = "${state.activeCalories}",
                     target = "",
@@ -217,7 +192,7 @@ fun BodyLoadCard(
                 
                 // Sleep Pillar
                 PillarNode(
-                    modifier = Modifier.clickable { onFactorSelected("Sleep") },
+                    modifier = Modifier,
                     icon = Icons.Default.Nightlight,
                     value = formatSleep(state.sleepMinutes),
                     target = "",
@@ -229,25 +204,13 @@ fun BodyLoadCard(
                 
                 // Jots Pillar
                 PillarNode(
-                    modifier = Modifier.clickable { onFactorSelected("Jot") },
+                    modifier = Modifier,
                     icon = Icons.Default.Edit,
-                    value = "${state.jotCount7Days}",
+                    value = "${state.jotCountDaily}",
                     target = "",
-                    label = "JOTS (7D)",
+                    label = "JOTS",
                     progress = state.factors.find { it.name.lowercase().contains("jot") || it.name.lowercase().contains("note") }?.weight?.times(3.0f)?.coerceIn(0f, 1f) 
                                 ?: (state.jotCount7Days / 20f).coerceIn(0f, 1f),
-                    color = Color(0xFFF48FB1) // Pink
-                )
-                
-                // HR Spikes Pillar
-                PillarNode(
-                    modifier = Modifier.clickable { onFactorSelected("Spike") },
-                    icon = Icons.Default.Favorite,
-                    value = "${state.spikeCount}",
-                    target = "",
-                    label = "HR SPIKES",
-                    progress = state.factors.find { it.name.lowercase().contains("spike") || it.name.lowercase().contains("pots") || it.name.lowercase().contains("heart") }?.weight?.times(3.0f)?.coerceIn(0f, 1f)
-                                ?: (state.spikeCount / 10f).coerceIn(0f, 1f),
                     color = Color(0xFF7C6EFF) // Purple
                 )
             }
@@ -356,7 +319,7 @@ private fun getFactorColor(name: String): Color {
         lowName.contains("hrv") || lowName.contains("ready") -> Color(0xFF4DB6AC) // Teal/Mint for HRV
         lowName.contains("cal") || lowName.contains("activity") || lowName.contains("exercise") -> Color(0xFFFF5252) // Red
         lowName.contains("sleep") || lowName.contains("rest") -> Color(0xFF42A5F5) // Blue
-        lowName.contains("jot") || lowName.contains("note") -> Color(0xFFF48FB1) // Pink
+        lowName.contains("jot") || lowName.contains("note") -> Color(0xFF7C6EFF) // Purple
         lowName.contains("cardio") || lowName.contains("pots") || lowName.contains("hr") || lowName.contains("spike") -> Color(0xFF7C6EFF) // Purple
         lowName.contains("mcas") || lowName.contains("histamine") || lowName.contains("allergy") -> Color(0xFFFFB74D) // Orange
         else -> NotelPrimary

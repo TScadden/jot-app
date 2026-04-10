@@ -79,6 +79,7 @@ class MainActivity : ComponentActivity() {
             // Provide a global instance of FitbitViewModel at the activity level
             // so it can handle the auth redirect regardless of current navigation destination.
             val fitbitViewModel: FitbitViewModel = hiltViewModel()
+            val bodyLoadViewModel: com.notel.notel.ui.viewmodel.BodyLoadViewModel = hiltViewModel()
             
             DisposableEffect(activity) {
                 val listener = androidx.core.util.Consumer<android.content.Intent> { intent ->
@@ -149,7 +150,10 @@ class MainActivity : ComponentActivity() {
                             })
                         }
                         composable("body_load") {
-                            BodyLoadScreen(onBack = { /* Root */ })
+                            BodyLoadScreen(
+                                viewModel = bodyLoadViewModel,
+                                onBack = { /* Root */ }
+                            )
                         }
                         composable("history") {
                             HistoryScreen(

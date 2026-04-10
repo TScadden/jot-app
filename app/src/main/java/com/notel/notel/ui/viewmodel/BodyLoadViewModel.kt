@@ -29,6 +29,7 @@ data class BodyLoadState(
     val activeCalories: Int = 0,
     val sleepMinutes: Int = 0,
     val jotCount7Days: Int = 0,
+    val jotCountDaily: Int = 0,
     val spikeCount: Int = 0,
     
     // History for the top row (Day score list)
@@ -68,35 +69,35 @@ class BodyLoadViewModel @Inject constructor(
             val history = _uiState.value.historyScores
             val snapshot = history.find { it.date == dateStr }
             
-            // Fetch raw stats for this day
-            val stats = logRepository.getDailyStatsSummary(dateStr)
-            
+            // 1. Immediately update the UI with AI snapshot / cache data so there is no delay
             if (snapshot != null) {
                 _uiState.value = _uiState.value.copy(
                     selectedDate = dateStr,
                     score = snapshot.score,
                     factors = snapshot.factors,
-                    adviceList = snapshot.adviceList,
-                    activeCalories = stats["calories"]?.toInt() ?: 0,
-                    sleepMinutes = stats["sleepMins"]?.toInt() ?: 0,
-                    spikeCount = stats["spikeCount"]?.toInt() ?: 0,
-                    jotCount7Days = stats["jotCount"]?.toInt() ?: 0
+                    adviceList = snapshot.adviceList
                 )
             } else if (dateStr == java.time.LocalDate.now().toString()) {
-                // Today but no snapshot yet? Just load stats
                 val currentAdvice = preferences.lastBodyLoadAdvice.first() ?: ""
                 val currentFactors = preferences.lastBodyLoadFactors.first()
                 _uiState.value = _uiState.value.copy(
                     selectedDate = dateStr,
                     score = preferences.lastBodyLoadScore.first(),
                     factors = parseFactors(currentFactors),
-                    adviceList = splitAdvice(currentAdvice),
-                    activeCalories = stats["calories"]?.toInt() ?: 0,
-                    sleepMinutes = stats["sleepMins"]?.toInt() ?: 0,
-                    spikeCount = stats["spikeCount"]?.toInt() ?: 0,
-                    jotCount7Days = stats["jotCount"]?.toInt() ?: 0
+                    adviceList = splitAdvice(currentAdvice)
                 )
             }
+
+            // 2. Fetch raw stats for this day and merge them in
+            val stats = logRepository.getDailyStatsSummary(dateStr)
+            
+            _uiState.value = _uiState.value.copy(
+                activeCalories = stats["calories"]?.toInt() ?: 0,
+                sleepMinutes = stats["sleepMins"]?.toInt() ?: 0,
+                spikeCount = stats["spikeCount"]?.toInt() ?: 0,
+                jotCount7Days = stats["jotCount"]?.toInt() ?: 0,
+                jotCountDaily = stats["jotCountDaily"]?.toInt() ?: 0
+            )
         }
     }
 
@@ -108,11 +109,16 @@ class BodyLoadViewModel @Inject constructor(
             val now = System.currentTimeMillis()
             val todayStr = java.time.LocalDate.now().toString()
             
-            val isNewDay = if (lastRefresh == 0L) true else {
-                val calendarLast = java.util.Calendar.getInstance().apply { timeInMillis = lastRefresh }
-                val calendarNow = java.util.Calendar.getInstance().apply { timeInMillis = now }
-                calendarLast.get(java.util.Calendar.DAY_OF_YEAR) != calendarNow.get(java.util.Calendar.DAY_OF_YEAR) ||
-                calendarLast.get(java.util.Calendar.YEAR) != calendarNow.get(java.util.Calendar.YEAR)
+            // Immediately load cached body load so UI doesn't look empty/loading
+            if (_uiState.value.factors.isEmpty()) {
+                val cachedAdvice = preferences.lastBodyLoadAdvice.first() ?: ""
+                val cachedFactors = preferences.lastBodyLoadFactors.first()
+                val cachedScore = preferences.lastBodyLoadScore.first()
+                _uiState.value = _uiState.value.copy(
+                    score = cachedScore,
+                    factors = parseFactors(cachedFactors),
+                    adviceList = splitAdvice(cachedAdvice)
+                )
             }
 
             // Always fetch daily stats regardless of whether we run AI
@@ -124,20 +130,15 @@ class BodyLoadViewModel @Inject constructor(
                 sleepMinutes = stats["sleepMins"]?.toInt() ?: 0,
                 spikeCount = stats["spikeCount"]?.toInt() ?: 0,
                 jotCount7Days = stats["jotCount"]?.toInt() ?: 0,
+                jotCountDaily = stats["jotCountDaily"]?.toInt() ?: 0,
                 historyScores = history,
                 selectedDate = todayStr
             )
 
-            if (!force && !isNewDay) {
-                // Not forced and already ran today - Load from cache
-                val cachedAdvice = preferences.lastBodyLoadAdvice.first() ?: ""
-                val cachedFactors = preferences.lastBodyLoadFactors.first()
-                _uiState.value = _uiState.value.copy(
-                    score = preferences.lastBodyLoadScore.first(),
-                    factors = parseFactors(cachedFactors),
-                    adviceList = splitAdvice(cachedAdvice),
-                    isLoading = false
-                )
+            // Auto-refresh rule: 1 hour (3,600,000 ms)
+            val shouldAutoRefresh = (now - lastRefresh) > (60 * 60 * 1000L)
+
+            if (!force && !shouldAutoRefresh) {
                 return@launch
             }
 
@@ -164,7 +165,7 @@ class BodyLoadViewModel @Inject constructor(
                 .onFailure { e ->
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        error = e.message ?: "Analysis failed"
+                        error = null // Fail silently so we don't display 'api error' on the UI
                     )
                 }
         }
@@ -186,19 +187,26 @@ class BodyLoadViewModel @Inject constructor(
 
     private fun splitAdvice(advice: String): List<String> {
         if (advice.isBlank()) return emptyList()
+        if (advice.contains("error", ignoreCase = true) || advice.contains("Exception", ignoreCase = true)) return emptyList()
         
         // 1. Split by hard delimiters (newlines, bullets, asterisks, pipes, semicolons)
-        val parts = advice.split(Regex("[\\n\\*\\•\\-\\|\\;]"))
-            .flatMap { s ->
-                // 2. Split by numbered lists ("1. ", "2. ")
-                s.split(Regex("\\d+\\.\\s+"))
-            }
-            .flatMap { s ->
-                // 3. Fallback: Split by periods followed by space and Capital letter
-                s.split(Regex("(?<=\\.)\\s+(?=[A-Z])"))
-            }
+        var parts = advice.split(Regex("[\\n\\*\\•\\-\\|\\;]"))
             .map { it.trim().removePrefix("-").removePrefix("•").trim() }
             .filter { it.length > 10 }
+            
+        // If the AI completely failed to format and just gave us a giant paragraph, chunk it by sentences instead
+        if (parts.size <= 1) {
+            parts = advice.split(Regex("(?<=\\.)(?=\\s|$)"))
+                .map { it.trim().removePrefix("-").removePrefix("•").removePrefix(Regex("\\d+\\.\\s+").toString()).trim() }
+                .filter { it.length > 10 }
+                .chunked(2) { chunk -> chunk.joinToString(" ") }
+        } else {
+            // Otherwise, we have parts, let's limit each part to 2 sentences max
+            parts = parts.map { piece ->
+                val sentences = piece.split(Regex("(?<=\\.)(?=\\s|$)"))
+                sentences.take(2).joinToString("").trim()
+            }.filter { it.isNotEmpty() }
+        }
             
         return parts.take(3)
     }
@@ -228,8 +236,13 @@ class BodyLoadViewModel @Inject constructor(
                 insight.text.substringAfter("Body Load: ").substringBefore(" |").trim().toIntOrNull() ?: 0
             }
             
-            val factorsStr = insight.text.substringAfter("Factors: ").substringBefore(" |")
-            val adviceStr = insight.text.substringAfter("Advice: ").trim()
+            val factorsStr = if (insight.text.contains("Factors: ")) {
+                insight.text.substringAfter("Factors: ").substringBefore(" |")
+            } else ""
+            
+            val adviceStr = if (insight.text.contains("Advice: ")) {
+                insight.text.substringAfter("Advice: ").trim()
+            } else ""
             
             BodyLoadSnapshot(date, displayDay, score, parseFactors(factorsStr), splitAdvice(adviceStr))
         }

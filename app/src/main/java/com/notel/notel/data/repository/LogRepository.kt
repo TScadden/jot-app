@@ -259,13 +259,16 @@ class LogRepository @Inject constructor(
         val dateObj = if (dateStr != null) try { java.time.LocalDate.parse(dateStr) } catch(e: Exception) { java.time.LocalDate.now() } else java.time.LocalDate.now()
         val endTs = dateObj.atTime(23, 59).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
         val startTs = endTs - (7L * 24 * 60 * 60 * 1000L)
+        val startOfDayTs = dateObj.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
         val jotCount = logEntryDao.getEntryCountInRange(startTs, endTs).toDouble()
+        val jotCountDaily = logEntryDao.getEntryCountInRange(startOfDayTs, endTs).toDouble()
         
         return mapOf(
             "calories" to calories.toDouble(),
             "sleepMins" to sleepMins,
             "spikeCount" to spikeCount,
             "jotCount" to jotCount,
+            "jotCountDaily" to jotCountDaily,
             "hrv" to hrv,
             "hrvMean" to hrvMean,
             "hrvStd" to hrvStd,
@@ -974,7 +977,7 @@ class LogRepository @Inject constructor(
                 "Jots:${"%.2f".format((subjectiveImpact/100.0) * 0.05)}"
             )
             
-            saveAiInsight("Body Load: $finalScore | Algorithm: HRV:$hrvScore, Sleep:$sleepScore, ACWR:$activityScore, Cardio:$cardioScore, Subj:$subjectiveScore", "BodyLoad")
+            saveAiInsight("Body Load: $finalScore | Factors: ${res.factors.joinToString(", ")} | Advice: ${res.advice ?: "Keep resting and focusing on your health."}", "BodyLoad")
         }
     }
 
