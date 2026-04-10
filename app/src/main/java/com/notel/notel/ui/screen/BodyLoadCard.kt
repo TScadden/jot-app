@@ -168,36 +168,7 @@ fun BodyLoadCard(
                         }
                     }
                 } // End ring Box
-                
-                // Sleep Debt Badge Layout
-                val debtMins = state.sleepDebtMins
-                if (!isLoading) {
-                    val isZero = debtMins <= 0
-                    val dH = debtMins / 60
-                    val dM = debtMins % 60
-                    val debtStr = if (isZero) "0m" else if (dH > 0) "${dH}h ${dM}m" else "${dM}m"
-                    val debtColor = if (isZero) Color(0xFF66BB6A) else if (debtMins > 120) Color(0xFFFF5252) else Color(0xFFFFB74D)
-                    val bgAlpha = if (isZero) 0.3f else 0.8f
-                    val sign = if (isZero) "" else "-"
-                    
-                    Row(
-                        modifier = Modifier
-                            .offset(x = 80.dp, y = (-20).dp)
-                            .liquidGlass(shape = RoundedCornerShape(12.dp), color = NotelBackground, alpha = bgAlpha)
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        val iconTint = debtColor.copy(alpha = if (isZero) 0.8f else 1f)
-                        Icon(Icons.Default.Nightlight, contentDescription = null, tint = iconTint, modifier = Modifier.size(10.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            text = "$sign$debtStr",
-                            color = iconTint,
-                            fontSize = 11.sp,
-                            fontWeight = if (isZero) FontWeight.Medium else FontWeight.Bold
-                        )
-                    }
-                }
+
             } // End Box wrapping Ring + Badge
 
             // Sub-Pillars Bottom Row
@@ -221,16 +192,43 @@ fun BodyLoadCard(
                     color = Color(0xFFFF5252) // Red
                 )
                 
-                // Sleep Pillar
-                PillarNode(
-                    modifier = Modifier,
-                    icon = Icons.Default.Nightlight,
-                    value = formatSleep(state.sleepMinutes),
-                    target = "7h",
-                    label = "HOURS SLEPT",
-                    progress = (state.sleepMinutes / 420f).coerceIn(0f, 1f),
-                    color = Color(0xFF42A5F5) // Blue
-                )
+                // Sleep Pillar Column block
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    PillarNode(
+                        modifier = Modifier,
+                        icon = Icons.Default.Nightlight,
+                        value = formatSleep(state.sleepMinutes),
+                        target = "7h",
+                        label = "HOURS SLEPT",
+                        progress = (state.sleepMinutes / 420f).coerceIn(0f, 1f),
+                        color = Color(0xFF42A5F5) // Blue
+                    )
+                    
+                    val debtMins = state.sleepDebtMins
+                    if (!isLoading) {
+                        Spacer(Modifier.height(4.dp))
+                        val isZero = debtMins <= 0
+                        val dH = debtMins / 60
+                        val dM = debtMins % 60
+                        val debtStr = if (isZero) "0m debt" else if (dH > 0) "${dH}h ${dM}m debt" else "${dM}m debt"
+                        val debtColor = if (isZero) Color(0xFF66BB6A) else if (debtMins > 120) Color(0xFFFF5252) else Color(0xFFFFB74D)
+                        val sign = if (isZero) "" else "-"
+                        
+                        Row(
+                            modifier = Modifier
+                                .liquidGlass(shape = RoundedCornerShape(8.dp), color = NotelBackground, alpha = if(isZero) 0.3f else 0.8f)
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "$sign$debtStr",
+                                color = debtColor,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
                 
                 // Jots Pillar
                 PillarNode(

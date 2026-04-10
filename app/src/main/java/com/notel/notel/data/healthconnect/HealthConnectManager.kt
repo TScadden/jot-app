@@ -409,6 +409,13 @@ class HealthConnectManager(private val context: Context) {
             
             val dailySessions = mutableMapOf<String, Int>()
             
+            // Pre-seed the requested trailing window with 0s so fully missing days correctly hit the penalty
+            for (i in 0 until days) {
+                val d = anchorDate.minusDays(i.toLong())
+                val dStr = String.format("%04d-%02d-%02d", d.year, d.monthValue, d.dayOfMonth)
+                dailySessions[dStr] = 0
+            }
+            
             response.records.forEach { session ->
                 val dateStr = formatter.format(java.util.Date(session.endTime.toEpochMilli()))
                 var awake = 0L
