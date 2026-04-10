@@ -128,6 +128,14 @@ class BodyLoadViewModel @Inject constructor(
             val history = getHistoricalScores()
             val todaySnapshot = history.find { it.date == todayStr }
             
+            val fallBackScore = todaySnapshot?.score ?: _uiState.value.score
+            val fallBackFactors = todaySnapshot?.factors ?: _uiState.value.factors
+            val fallBackAdvice = todaySnapshot?.adviceList ?: _uiState.value.adviceList
+            
+            val mergedHistory = if (todaySnapshot == null && fallBackScore > 0) {
+                history + BodyLoadSnapshot(todayStr, fallBackScore, fallBackFactors, fallBackAdvice)
+            } else history
+            
             _uiState.value = _uiState.value.copy(
                 activeCalories = stats["calories"]?.toInt() ?: 0,
                 sleepMinutes = stats["sleepMins"]?.toInt() ?: 0,
@@ -136,11 +144,11 @@ class BodyLoadViewModel @Inject constructor(
                 jotCountDaily = stats["jotCountDaily"]?.toInt() ?: 0,
                 currentStreak = preferences.currentStreak.first(),
                 bestStreak = preferences.bestStreak.first(),
-                historyScores = history,
+                historyScores = mergedHistory,
                 selectedDate = todayStr,
-                score = todaySnapshot?.score ?: _uiState.value.score,
-                factors = todaySnapshot?.factors ?: _uiState.value.factors,
-                adviceList = todaySnapshot?.adviceList ?: _uiState.value.adviceList
+                score = fallBackScore,
+                factors = fallBackFactors,
+                adviceList = fallBackAdvice
             )
 
             // Auto-refresh rule: 1 hour (3,600,000 ms)
