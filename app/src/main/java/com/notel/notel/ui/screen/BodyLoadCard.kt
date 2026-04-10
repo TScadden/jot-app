@@ -167,7 +167,34 @@ fun BodyLoadCard(
                             )
                         }
                     }
+                } // End ring Box
+                
+                // Sleep Debt Badge Layout
+                val debtMins = 420 - state.sleepMinutes
+                if (debtMins > 0 && !isLoading) {
+                    val dH = debtMins / 60
+                    val dM = debtMins % 60
+                    val debtStr = if (dH > 0) "${dH}h ${dM}m" else "${dM}m"
+                    val debtColor = if (debtMins > 120) Color(0xFFFF5252) else Color(0xFFFFB74D) // Red for >2h debt, Orange otherwise
+                    
+                    Row(
+                        modifier = Modifier
+                            .offset(x = 80.dp, y = (-20).dp)
+                            .liquidGlass(shape = RoundedCornerShape(12.dp), color = NotelBackground)
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Nightlight, contentDescription = null, tint = debtColor, modifier = Modifier.size(10.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = "-$debtStr",
+                            color = debtColor,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
+            } // End Box wrapping Ring + Badge
             }
 
             // Sub-Pillars Bottom Row
