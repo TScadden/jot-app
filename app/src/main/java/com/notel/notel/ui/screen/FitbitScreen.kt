@@ -796,7 +796,7 @@ fun FitbitScreen(
                     Spacer(Modifier.height(48.dp))
                     
                     GlassyButton(
-                        onClick = { viewModel.disconnect() },
+                        onClick = { viewModel.disconnectFitbit() },
                         modifier = Modifier.fillMaxWidth(0.8f),
                         containerColor = NotelSurfaceHigh
                     ) {
