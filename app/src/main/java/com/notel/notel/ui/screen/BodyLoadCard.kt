@@ -42,13 +42,49 @@ fun BodyLoadCard(
     onResetSelection: () -> Unit = {},
     onShowTheory: () -> Unit = {},
     onRefresh: () -> Unit = {},
-    onBackToToday: () -> Unit = {}
+    onBackToToday: () -> Unit = {},
+    onLocationUpdate: (Double, Double, String) -> Unit = { _, _, _ -> }
 ) {
     val score = state.score
     val isLoading = state.isLoading
     val todayStr = java.time.LocalDate.now().toString()
     var showDebtHistory by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    // ── Location Precision Logic ──────────────────────────────────────
+    val locationClient = remember {
+        com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(context)
+    }
     
+    val locationPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions[android.Manifest.permission.ACCESS_COARSE_LOCATION] == true ||
+            permissions[android.Manifest.permission.ACCESS_FINE_LOCATION] == true) {
+            
+            try {
+                locationClient.lastLocation.addOnSuccessListener { location ->
+                    location?.let {
+                        val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
+                        val addresses = geocoder.getFromLocation(it.latitude, it.longitude, 1)
+                        val city = addresses?.firstOrNull()?.locality ?: "Current Location"
+                        
+                        onLocationUpdate(it.latitude, it.longitude, city)
+                    }
+                }
+            } catch (e: SecurityException) {}
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        locationPermissionLauncher.launch(
+            arrayOf(
+                android.Manifest.permission.ACCESS_FINE_LOCATION,
+                android.Manifest.permission.ACCESS_COARSE_LOCATION
+            )
+        )
+    }
+
     if (showDebtHistory) {
         SleepDebtHistoryDialog(
             history = state.sleepDebtHistory,

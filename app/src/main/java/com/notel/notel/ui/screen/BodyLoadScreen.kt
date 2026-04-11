@@ -85,7 +85,10 @@ fun BodyLoadScreen(
                     showTheorySheet = true 
                 },
                 onRefresh = { viewModel.refresh() },
-                onBackToToday = { viewModel.selectDay(todayStr) }
+                onBackToToday = { viewModel.selectDay(todayStr) },
+                onLocationUpdate = { lat, lon, city ->
+                    viewModel.updateLocation(lat, lon, city)
+                }
             )
 
             if (state.error != null) {

@@ -4,7 +4,6 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.Calendar
 
 @Serializable
 data class IpLocationResponse(
@@ -58,21 +57,39 @@ class WeatherApi {
         return connection.inputStream.bufferedReader().use { it.readText() }
     }
 
-    suspend fun getDetailedWeather(): WeatherInfo? {
+    /**
+     * Fetches detailed weather. If lat/lon/cityName are provided (e.g. from GPS),
+     * it bypasses IP-based geolocation for maximum precision.
+     */
+    suspend fun getDetailedWeather(
+        manualLat: Double? = null,
+        manualLon: Double? = null,
+        manualCity: String? = null
+    ): WeatherInfo? {
         return try {
-            // 1. Get Location from IP via ipinfo.io (another high-precision provider)
-            val locResponseText = fetchUrl("https://ipinfo.io/json")
-            // Note: ipinfo.io uses "loc": "lat,long" instead of separate fields
-            val jsonObject = kotlinx.serialization.json.Json.parseToJsonElement(locResponseText).asJsonObject
-            val city = jsonObject["city"]?.asString ?: "Unknown"
-            val loc = jsonObject["loc"]?.asString?.split(",") ?: listOf("40.7128", "-74.0060")
-            val country = jsonObject["country"]?.asString ?: "US"
-            
-            val lat = loc[0].toDoubleOrNull() ?: 40.7128
-            val lon = loc[1].toDoubleOrNull() ?: -74.0060
+            val lat: Double
+            val lon: Double
+            val city: String
+            val countryCode: String
+
+            if (manualLat != null && manualLon != null) {
+                lat = manualLat
+                lon = manualLon
+                city = manualCity ?: "Current Location"
+                countryCode = "US" // Default to US units if forced, Geocoder could refine this
+            } else {
+                // Fallback to IP Geolocation
+                val locResponseText = fetchUrl("https://ipinfo.io/json")
+                val jsonObject = Json.parseToJsonElement(locResponseText).jsonObject
+                city = jsonObject["city"]?.jsonPrimitive?.content ?: "Unknown"
+                val loc = jsonObject["loc"]?.jsonPrimitive?.content?.split(",") ?: listOf("40.7128", "-74.0060")
+                countryCode = jsonObject["country"]?.jsonPrimitive?.content ?: "US"
+                lat = loc[0].toDoubleOrNull() ?: 40.7128
+                lon = loc[1].toDoubleOrNull() ?: -74.0060
+            }
             
             // 2. Determine Units
-            val units = if (country == "US") "fahrenheit" else "celsius"
+            val units = if (countryCode == "US") "fahrenheit" else "celsius"
             val unitLabel = if (units == "fahrenheit") "F" else "C"
             
             // 3. Get Weather with is_day
@@ -122,8 +139,4 @@ class WeatherApi {
             else -> if (isDay) "☀️" else "🌙"
         }
     }
-    
-    // Helper to handle raw JSON if needed
-    private val kotlinx.serialization.json.JsonElement.asJsonObject: Map<String, kotlinx.serialization.json.JsonElement> get() = this.jsonObject
-    private val kotlinx.serialization.json.JsonElement.asString: String? get() = try { this.jsonPrimitive.content } catch(e: Exception) { null }
 }

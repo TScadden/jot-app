@@ -103,6 +103,9 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.core.google.shortcuts)
 
+    // Location
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+
     // Jetpack Glance (home screen widget)
     implementation("androidx.glance:glance-appwidget:1.1.1")
     implementation("androidx.glance:glance-material3:1.1.1")
