@@ -515,15 +515,17 @@ fun BodyLoadScreen(
                 )
                 Spacer(Modifier.height(16.dp))
                 Text(
-                    text = "Think of your body's capacity as a cup. Every stressor—poor sleep, dehydration, high heart rate, or physical exertion—adds water to that cup.\n\n" +
-                           "Your Body Load score is calculated using clinical biometric weighting:\n\n" +
-                           "• 30% Autonomic Balance (HRV): Deviations from your 30-day RMSSD mean.\n" +
-                           "• 25% Sleep Architecture: Accounting for your recent 'Sleep Debt'.\n" +
-                           "• 20% Activity Stress: Your 7-day vs. 42-day workload ratio.\n" +
-                           "• 15% Orthostatic Spikes: High HR events (>100bpm) that fill your cup.\n" +
-                           "• 5% Heart Rate: Real-time RHR jumps from your baseline.\n" +
-                           "• 5% Subjective Jots: AI context for pain, anxiety, and flares.\n\n" +
-                           "When the cup is nearly empty, you feel resilient. When it's full, even a small drop can cause it to overflow, leading to symptom flares.",
+                    text = "Think of your body's capacity as a 'Cup'. Every stressor—poor sleep, dehydration, high heart rate spikes, or physical exertion—adds 'water' to that cup.\n\n" +
+                           "Your Body Load score (0-100) represents how much of your cup is currently full:\n\n" +
+                           "• LOW (15-40): High Resilience. Your cup is mostly empty; you have plenty of room for activity.\n" +
+                           "• MODERATE (41-65): Managing Load. You have used a fair amount of your daily capacity.\n" +
+                           "• HIGH (66-90+): High Strain. Your cup is nearly full. Even small drops (stressors) could cause an 'overflow' (a flare or crash).\n\n" +
+                           "Your score is weighted using clinical biometric markers:\n" +
+                           "• 30% Autonomic Balance (HRV)\n" +
+                           "• 25% Sleep Architecture & Debt\n" +
+                           "• 20% Activity Workload (ACWR)\n" +
+                           "• 15% Orthostatic Spikes (>100bpm)\n" +
+                           "• 10% Symptoms & Subjective Jots",
                     color = NotelTextPrimary,
                     fontSize = 15.sp,
                     lineHeight = 22.sp
