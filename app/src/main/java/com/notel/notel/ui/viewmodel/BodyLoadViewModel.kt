@@ -110,49 +110,6 @@ class BodyLoadViewModel @Inject constructor(
         }
     }
 
-    fun selectFactor(name: String?) {
-        _uiState.value = _uiState.value.copy(selectedFactor = name)
-    }
-
-    fun selectDay(dateStr: String) {
-        viewModelScope.launch {
-            val history = _uiState.value.historyScores
-            val snapshot = history.find { it.date == dateStr }
-            
-            // 1. Immediately update the UI with AI snapshot / cache data so there is no delay
-            if (snapshot != null) {
-                _uiState.value = _uiState.value.copy(
-                    selectedDate = dateStr,
-                    score = snapshot.score,
-                    factors = snapshot.factors,
-                    adviceList = snapshot.adviceList
-                )
-            } else if (dateStr == java.time.LocalDate.now().toString()) {
-                val currentAdvice = preferences.lastBodyLoadAdvice.first() ?: ""
-                val currentFactors = preferences.lastBodyLoadFactors.first()
-                _uiState.value = _uiState.value.copy(
-                    selectedDate = dateStr,
-                    score = preferences.lastBodyLoadScore.first(),
-                    factors = parseFactors(currentFactors),
-                    adviceList = splitAdvice(currentAdvice)
-                )
-            }
-
-            // 2. Fetch raw stats for this day and merge them in
-            val stats = logRepository.getDailyStatsSummary(dateStr)
-            
-            _uiState.value = _uiState.value.copy(
-                activeCalories = stats["calories"] as? Int ?: (stats["calories"] as? Double)?.toInt() ?: 0,
-                sleepMinutes = stats["sleepMins"] as? Int ?: (stats["sleepMins"] as? Double)?.toInt() ?: 0,
-                sleepDebtMins = ((stats["sleepDebt"] as? Double ?: 0.0) * 60).toInt(),
-                sleepDebtHistory = stats["sleepDebtHistory"] as? List<Triple<String, Double, Double>> ?: emptyList(),
-                spikeCount = stats["spikeCount"] as? Int ?: (stats["spikeCount"] as? Double)?.toInt() ?: 0,
-                jotCount7Days = stats["jotCount"] as? Int ?: (stats["jotCount"] as? Double)?.toInt() ?: 0,
-                jotCountDaily = stats["jotCountDaily"] as? Int ?: (stats["jotCountDaily"] as? Double)?.toInt() ?: 0
-            )
-        }
-    }
-
     fun refresh(force: Boolean = true) {
         if (_uiState.value.isLoading) return
         
