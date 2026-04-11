@@ -477,6 +477,15 @@ fun BodyLoadScreen(
             }
 
             item {
+                Spacer(Modifier.height(24.dp))
+                HorizontalDivider(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                    color = Color.White.copy(alpha = 0.05f)
+                )
+                Spacer(Modifier.height(24.dp))
+            }
+
+            item {
                 BodyLoadMonthView(
                     state = state,
                     onDaySelected = { viewModel.selectDay(it) }

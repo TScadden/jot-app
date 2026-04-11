@@ -156,10 +156,10 @@ fun BodyLoadMonthView(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
-                                            text = if (score > 0) score.toString() else dayIndex.toString(),
-                                            color = if (isPastToday) NotelTextSecondary.copy(alpha = 0.2f) else if (score > 0) NotelTextPrimary else NotelTextSecondary,
-                                            fontSize = if (score > 0) 11.sp else 12.sp,
-                                            fontWeight = if (score > 0 || isToday) FontWeight.Black else FontWeight.Medium
+                                            text = if (score > 0) score.toString() else "",
+                                            color = NotelTextPrimary,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Black
                                         )
                                     }
                                 }
