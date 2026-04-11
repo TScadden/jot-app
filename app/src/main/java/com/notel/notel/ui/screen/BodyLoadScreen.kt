@@ -46,6 +46,14 @@ fun BodyLoadScreen(
     val quickLogState by quickLogViewModel.uiState.collectAsState()
     val habits by habitViewModel.habits.collectAsState()
 
+    // Auto-hide success message
+    LaunchedEffect(quickLogState.saveSuccess) {
+        if (quickLogState.saveSuccess) {
+            kotlinx.coroutines.delay(3000)
+            quickLogViewModel.resetSaveSuccess()
+        }
+    }
+
     // Auto-fetch suggestions if category is selected and auto is on
     LaunchedEffect(quickLogState.selectedCategory, quickLogState.autoAiSuggestions) {
         if (quickLogState.autoAiSuggestions && quickLogState.selectedCategory != null && quickLogState.chips.isEmpty()) {
@@ -113,170 +121,171 @@ fun BodyLoadScreen(
             )
         }
     ) { padding ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
                 .padding(bottom = 140.dp),
+            contentPadding = PaddingValues(top = padding.calculateTopPadding()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            BodyLoadCard(
-                state = state,
-                counters = quickLogState.eventCounters,
-                onDaySelected = { viewModel.selectDay(it) },
-                onFactorSelected = { viewModel.selectFactor(it) },
-                onResetSelection = { viewModel.selectFactor(null) },
-                onShowTheory = { 
-                    viewModel.markTheorySeen()
-                    showTheorySheet = true 
-                },
-                onRefresh = { viewModel.refresh() },
-                onBackToToday = { viewModel.selectDay(todayStr) },
-                onLocationUpdate = { lat, lon, city ->
-                    viewModel.updateLocation(lat, lon, city)
-                }
-            )
+            item {
+                BodyLoadCard(
+                    state = state,
+                    counters = quickLogState.eventCounters,
+                    onDaySelected = { viewModel.selectDay(it) },
+                    onFactorSelected = { viewModel.selectFactor(it) },
+                    onResetSelection = { viewModel.selectFactor(null) },
+                    onShowTheory = { 
+                        viewModel.markTheorySeen()
+                        showTheorySheet = true 
+                    },
+                    onRefresh = { viewModel.refresh() },
+                    onBackToToday = { viewModel.selectDay(todayStr) },
+                    onLocationUpdate = { lat, lon, city ->
+                        viewModel.updateLocation(lat, lon, city)
+                    }
+                )
+            }
 
             // Success Indicator for Logs
-            AnimatedVisibility(
-                visible = quickLogState.saveSuccess,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
-            ) {
-                Surface(
-                    modifier = Modifier.padding(16.dp),
-                    color = Color(0xFF43A047).copy(alpha = 0.1f),
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, Color(0xFF43A047).copy(alpha = 0.2f))
+            item {
+                AnimatedVisibility(
+                    visible = quickLogState.saveSuccess,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
                 ) {
-                    Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.CheckCircle, "Success", tint = Color(0xFF43A047), modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Log saved successfully!", color = Color.White, fontSize = 12.sp)
+                    Surface(
+                        modifier = Modifier.padding(16.dp),
+                        color = Color(0xFF43A047).copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color(0xFF43A047).copy(alpha = 0.2f))
+                    ) {
+                        Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.CheckCircle, "Success", tint = Color(0xFF43A047), modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Log saved successfully!", color = Color.White, fontSize = 12.sp)
+                        }
                     }
                 }
             }
             
-            // Auto-hide success message
-            LaunchedEffect(quickLogState.saveSuccess) {
-                if (quickLogState.saveSuccess) {
-                    kotlinx.coroutines.delay(3000)
-                    quickLogViewModel.resetSaveSuccess()
-                }
-            }
-
             // Divider under streak area
-            HorizontalDivider(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                color = Color.White.copy(alpha = 0.05f)
-            )
-            
-            Spacer(Modifier.height(16.dp))
+            item {
+                HorizontalDivider(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    color = Color.White.copy(alpha = 0.05f)
+                )
+                
+                Spacer(Modifier.height(16.dp))
+            }
 
             // ── Recommended for You Layer ─────────────────────────────
             if (quickLogState.smartCategories.isNotEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(top = 8.dp),
-                    contentAlignment = Alignment.CenterStart
-                ) {
-                    Text(
-                        "Recommended for You",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = NotelPrimary
-                    )
-
-                    // Compact Inline Log Button - Fade only to prevent shifts
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = quickLogState.selectedChips.isNotEmpty(),
-                        enter = fadeIn(animationSpec = tween(400)),
-                        exit = fadeOut(animationSpec = tween(400)),
-                        modifier = Modifier.align(Alignment.CenterEnd)
+                item {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(top = 8.dp),
+                        contentAlignment = Alignment.CenterStart
                     ) {
-                        Surface(
-                            onClick = { quickLogViewModel.saveEntry() },
-                            color = NotelPrimary.copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(8.dp),
-                            border = BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.3f))
+                        Text(
+                            "Recommended for You",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = NotelPrimary
+                        )
+
+                        // Compact Inline Log Button - Fade only to prevent shifts
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = quickLogState.selectedChips.isNotEmpty(),
+                            enter = fadeIn(animationSpec = tween(400)),
+                            exit = fadeOut(animationSpec = tween(400)),
+                            modifier = Modifier.align(Alignment.CenterEnd)
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                            Surface(
+                                onClick = { quickLogViewModel.saveEntry() },
+                                color = NotelPrimary.copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.3f))
                             ) {
-                                Icon(Icons.Default.Check, "Log", tint = NotelPrimary, modifier = Modifier.size(12.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("LOG ENTRY", color = NotelPrimary, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Check, "Log", tint = NotelPrimary, modifier = Modifier.size(12.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("LOG ENTRY", color = NotelPrimary, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                                }
                             }
                         }
                     }
-                }
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(quickLogState.smartCategories) { cat ->
-                        CategoryChipSmall(
-                            category = cat,
-                            isSelected = cat.id == quickLogState.selectedCategory?.id,
-                            onClick = { quickLogViewModel.selectCategory(cat) }
-                        )
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(quickLogState.smartCategories) { cat ->
+                            CategoryChipSmall(
+                                category = cat,
+                                isSelected = cat.id == quickLogState.selectedCategory?.id,
+                                onClick = { quickLogViewModel.selectCategory(cat) }
+                            )
+                        }
                     }
                 }
             }
             
-            Spacer(Modifier.height(8.dp))
+            item { Spacer(Modifier.height(8.dp)) }
             
             // ── AI Suggestions Grid ─────────────────────────────
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
-                    .heightIn(min = 100.dp)
-            ) {
-                when {
-                    quickLogState.isLoadingChips -> Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = NotelPrimary, modifier = Modifier.size(24.dp))
-                    }
-                    quickLogState.chips.isEmpty() && !quickLogState.autoAiSuggestions -> {
-                        Column(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text("No suggestions loaded", color = NotelTextSecondary, fontSize = 12.sp)
-                            Spacer(Modifier.height(8.dp))
-                            TextButton(onClick = { quickLogViewModel.fetchSuggestions() }) {
-                                Text("Load Suggestions", color = NotelPrimary, fontWeight = FontWeight.Bold)
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                        .heightIn(min = 100.dp)
+                ) {
+                    when {
+                        quickLogState.isLoadingChips -> Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = NotelPrimary, modifier = Modifier.size(24.dp))
+                        }
+                        quickLogState.chips.isEmpty() && !quickLogState.autoAiSuggestions -> {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text("No suggestions loaded", color = NotelTextSecondary, fontSize = 12.sp)
+                                Spacer(Modifier.height(8.dp))
+                                TextButton(onClick = { quickLogViewModel.fetchSuggestions() }) {
+                                    Text("Load Suggestions", color = NotelPrimary, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
-                    }
-                    else -> {
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            quickLogState.chips.forEach { chip ->
-                                val isSelected = chip in quickLogState.selectedChips
-                                Surface(
-                                    onClick = { quickLogViewModel.toggleChip(chip) },
-                                    modifier = Modifier
-                                        .animateContentSize()
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .background(if (isSelected) NotelPrimary.copy(alpha = 0.8f) else NotelSurfaceHigh.copy(alpha = 0.2f))
-                                        .border(
-                                            width = 1.dp,
-                                            color = if (isSelected) Color.Transparent else Color.White.copy(alpha = 0.05f),
-                                            shape = RoundedCornerShape(14.dp)
-                                        ),
-                                    color = Color.Transparent
-                                ) {
-                                    Text(
-                                        chip,
-                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                        color = if (isSelected) Color.White else NotelTextPrimary,
-                                        fontSize = 13.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                    )
+                        else -> {
+                            FlowRow(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                quickLogState.chips.forEach { chip ->
+                                    val isSelected = chip in quickLogState.selectedChips
+                                    Surface(
+                                        onClick = { quickLogViewModel.toggleChip(chip) },
+                                        modifier = Modifier
+                                            .animateContentSize()
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(if (isSelected) NotelPrimary.copy(alpha = 0.8f) else NotelSurfaceHigh.copy(alpha = 0.2f))
+                                            .border(
+                                                width = 1.dp,
+                                                color = if (isSelected) Color.Transparent else Color.White.copy(alpha = 0.05f),
+                                                shape = RoundedCornerShape(14.dp)
+                                            ),
+                                        color = Color.Transparent
+                                    ) {
+                                        Text(
+                                            chip,
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                            color = if (isSelected) Color.White else NotelTextPrimary,
+                                            fontSize = 13.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -285,108 +294,112 @@ fun BodyLoadScreen(
             }
 
             // ── Daily Routine Section ─────────────────────────────
-            Spacer(Modifier.height(24.dp))
-            HorizontalDivider(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                color = Color.White.copy(alpha = 0.05f)
-            )
-            Spacer(Modifier.height(24.dp))
+            item {
+                Spacer(Modifier.height(24.dp))
+                HorizontalDivider(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                    color = Color.White.copy(alpha = 0.05f)
+                )
+                Spacer(Modifier.height(24.dp))
+            }
 
             if (habits.isNotEmpty()) {
-                val checkedCount = habits.count { habitViewModel.isCheckedToday(it) }
-                val progressRatio = if (habits.isEmpty()) 0f else checkedCount.toFloat() / habits.size.toFloat()
+                item {
+                    val checkedCount = habits.count { habitViewModel.isCheckedToday(it) }
+                    val progressRatio = if (habits.isEmpty()) 0f else checkedCount.toFloat() / habits.size.toFloat()
 
-                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Daily Routine",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = NotelTextPrimary
-                        )
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = NotelPrimary.copy(alpha = 0.1f),
-                            border = BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.2f))
+                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                "$checkedCount/${habits.size} DONE",
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                color = NotelPrimary,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Black,
-                                letterSpacing = 1.sp
+                                "Daily Routine",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = NotelTextPrimary
                             )
-                        }
-                    }
-                    
-                    Spacer(Modifier.height(8.dp))
-                    
-                    // Glassy Progress Bar
-                    Box(modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(NotelSurfaceHigh.copy(alpha = 0.1f))) {
-                        Box(modifier = Modifier.fillMaxWidth(progressRatio).fillMaxHeight().background(NotelPrimary))
-                    }
-                    
-                    Spacer(Modifier.height(16.dp))
-                    
-                    // Horizontal scrolling habits
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth().offset(x = (-24).dp),
-                        contentPadding = PaddingValues(horizontal = 24.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        items(habits) { habit ->
-                            val isChecked = habitViewModel.isCheckedToday(habit)
-                            val streak = habitViewModel.getStreak(habit)
-                            
                             Surface(
-                                onClick = { habitViewModel.toggleHabit(habit.id, !isChecked) },
-                                modifier = Modifier
-                                    .width(140.dp)
-                                    .height(100.dp),
-                                shape = RoundedCornerShape(20.dp),
-                                color = if (isChecked) NotelPrimary.copy(alpha = 0.15f) else NotelSurfaceHigh.copy(alpha = 0.1f),
-                                border = BorderStroke(1.dp, if (isChecked) NotelPrimary.copy(alpha = 0.3f) else Color.White.copy(alpha = 0.05f))
+                                shape = RoundedCornerShape(12.dp),
+                                color = NotelPrimary.copy(alpha = 0.1f),
+                                border = BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.2f))
                             ) {
-                                Column(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalArrangement = Arrangement.SpaceBetween
+                                Text(
+                                    "$checkedCount/${habits.size} DONE",
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    color = NotelPrimary,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 1.sp
+                                )
+                            }
+                        }
+                        
+                        Spacer(Modifier.height(8.dp))
+                        
+                        // Glassy Progress Bar
+                        Box(modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(NotelSurfaceHigh.copy(alpha = 0.1f))) {
+                            Box(modifier = Modifier.fillMaxWidth(progressRatio).fillMaxHeight().background(NotelPrimary))
+                        }
+                        
+                        Spacer(Modifier.height(16.dp))
+                        
+                        // Horizontal scrolling habits
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth().offset(x = (-24).dp),
+                            contentPadding = PaddingValues(horizontal = 24.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            items(habits) { habit ->
+                                val isChecked = habitViewModel.isCheckedToday(habit)
+                                val streak = habitViewModel.getStreak(habit)
+                                
+                                Surface(
+                                    onClick = { habitViewModel.toggleHabit(habit.id, !isChecked) },
+                                    modifier = Modifier
+                                        .width(140.dp)
+                                        .height(100.dp),
+                                    shape = RoundedCornerShape(20.dp),
+                                    color = if (isChecked) NotelPrimary.copy(alpha = 0.15f) else NotelSurfaceHigh.copy(alpha = 0.1f),
+                                    border = BorderStroke(1.dp, if (isChecked) NotelPrimary.copy(alpha = 0.3f) else Color.White.copy(alpha = 0.05f))
                                 ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.Top
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Text(
-                                            if (isChecked) "✅" else "🔥 $streak",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (streak > 0) Color(0xFFE2A123) else NotelTextSecondary
-                                        )
-                                        if (isChecked) {
-                                            Icon(Icons.Default.CheckCircle, null, tint = NotelPrimary, modifier = Modifier.size(16.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.Top
+                                        ) {
+                                            Text(
+                                                if (isChecked) "✅" else "🔥 $streak",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (streak > 0) Color(0xFFE2A123) else NotelTextSecondary
+                                            )
+                                            if (isChecked) {
+                                                Icon(Icons.Default.CheckCircle, null, tint = NotelPrimary, modifier = Modifier.size(16.dp))
+                                            }
                                         }
-                                    }
-                                    
-                                    Column {
-                                        Text(
-                                            habit.title,
-                                            color = NotelTextPrimary,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis,
-                                            lineHeight = 16.sp
-                                        )
-                                        Text(
-                                            habit.target_time ?: "Anytime",
-                                            color = NotelTextSecondary,
-                                            fontSize = 10.sp
-                                        )
+                                        
+                                        Column {
+                                            Text(
+                                                habit.title,
+                                                color = NotelTextPrimary,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis,
+                                                lineHeight = 16.sp
+                                            )
+                                            Text(
+                                                habit.target_time ?: "Anytime",
+                                                color = NotelTextSecondary,
+                                                fontSize = 10.sp
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -396,13 +409,15 @@ fun BodyLoadScreen(
             }
 
             if (state.error != null) {
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    state.error!!,
-                    color = MaterialTheme.colorScheme.error,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(horizontal = 32.dp)
-                )
+                item {
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        state.error!!,
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 32.dp)
+                    )
+                }
             }
         }
     }
