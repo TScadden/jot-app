@@ -223,10 +223,17 @@ class QuickLogViewModel @Inject constructor(
             logRepository.getChipSuggestions(cat).fold(
                 onSuccess = { rawChips ->
                     val chips = rawChips.map { 
-                        it.replace(Regex("\\(.*?\\)"), "") // Remove () and everything inside
+                        val cleaned = it.replace(Regex("\\(.*?\\)"), "") // Remove () and everything inside
                           .replace("?", "")
                           .trim()
-                          .replace("\\s+".toRegex(), " ") // Fix extra spaces if something was removed in the middle
+                          .replace("\\s+".toRegex(), " ")
+                        
+                        val words = cleaned.split(" ")
+                        if (words.size > 3) {
+                            words.take(3).joinToString(" ")
+                        } else {
+                            cleaned
+                        }
                     }.filter { it.isNotBlank() }
                     
                     chipCache[cat.id] = chips  // store in cache
