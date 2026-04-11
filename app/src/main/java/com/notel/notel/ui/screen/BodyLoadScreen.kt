@@ -1,14 +1,19 @@
 package com.notel.notel.ui.screen
 
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Adjust
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,77 +38,121 @@ fun BodyLoadScreen(
     val todayStr = java.time.LocalDate.now().toString()
     val isToday = state.selectedDate == todayStr
 
-    Scaffold(
-        containerColor = NotelBackground,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = CircleShape,
-                            color = NotelPrimary.copy(alpha = 0.1f),
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    Icons.Default.Adjust,
-                                    contentDescription = null,
-                                    tint = NotelPrimary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                        Spacer(Modifier.width(12.dp))
+    var hasLoadedOnce by remember { mutableStateOf(false) }
+    
+    LaunchedEffect(state.isLoading) {
+        if (!state.isLoading) {
+            hasLoadedOnce = true
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            containerColor = NotelBackground,
+            topBar = {
+                TopAppBar(
+                    title = {
                         Text(
                             "Jot",
                             fontWeight = FontWeight.Black,
                             color = NotelTextPrimary,
                             fontSize = 22.sp
                         )
-                    }
-                },
-                navigationIcon = {},
-                actions = {
-                    TextButton(onClick = { showTheorySheet = true }) {
-                        Text("What is this?", color = NotelTextSecondary, fontSize = 14.sp)
-                    }
-                    if (isToday) {
-                        IconButton(onClick = { viewModel.refresh() }, enabled = !state.isLoading) {
-                            Icon(Icons.Default.Refresh, "Refresh", tint = NotelPrimary)
+                    },
+                    navigationIcon = {},
+                    actions = {
+                        TextButton(onClick = { showTheorySheet = true }) {
+                            Text("What is this?", color = NotelTextSecondary, fontSize = 14.sp)
                         }
-                    } else {
-                        IconButton(onClick = { viewModel.selectDay(todayStr) }) {
-                            Icon(Icons.Default.DateRange, "Back to Today", tint = NotelPrimary)
+                        if (isToday) {
+                            IconButton(onClick = { viewModel.refresh() }, enabled = !state.isLoading) {
+                                Icon(Icons.Default.Refresh, "Refresh", tint = NotelPrimary)
+                            }
+                        } else {
+                            IconButton(onClick = { viewModel.selectDay(todayStr) }) {
+                                Icon(Icons.Default.DateRange, "Back to Today", tint = NotelPrimary)
+                            }
                         }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = NotelBackground)
-            )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(bottom = 32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            BodyLoadCard(
-                state = state,
-                onDaySelected = { viewModel.selectDay(it) },
-                onFactorSelected = { viewModel.selectFactor(it) },
-                onResetSelection = { viewModel.selectFactor(null) }
-            )
-
-            if (state.error != null) {
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    state.error!!,
-                    color = MaterialTheme.colorScheme.error,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(horizontal = 32.dp)
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = NotelBackground)
                 )
+            }
+        ) { padding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(bottom = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                BodyLoadCard(
+                    state = state,
+                    onDaySelected = { viewModel.selectDay(it) },
+                    onFactorSelected = { viewModel.selectFactor(it) },
+                    onResetSelection = { viewModel.selectFactor(null) }
+                )
+
+                if (state.error != null) {
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        state.error!!,
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 32.dp)
+                    )
+                }
+            }
+        }
+
+        // Initial Loading Splash
+        androidx.compose.animation.AnimatedVisibility(
+            visible = !hasLoadedOnce && state.isLoading,
+            enter = androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.fadeOut(animationSpec = tween(1000, easing = LinearOutSlowInEasing))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(NotelBackground),
+                contentAlignment = Alignment.Center
+            ) {
+                val infiniteTransition = rememberInfiniteTransition()
+                val scale by infiniteTransition.animateFloat(
+                    initialValue = 0.8f,
+                    targetValue = 1.1f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(1000, easing = FastOutSlowInEasing),
+                        repeatMode = RepeatMode.Reverse
+                    )
+                )
+                
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(modifier = Modifier.graphicsLayer(scaleX = scale, scaleY = scale)) {
+                        Surface(
+                            shape = CircleShape,
+                            color = NotelPrimary.copy(alpha = 0.1f),
+                            modifier = Modifier.size(80.dp),
+                            border = BorderStroke(2.dp, NotelPrimary.copy(alpha = 0.2f))
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.Adjust,
+                                    contentDescription = null,
+                                    tint = NotelPrimary,
+                                    modifier = Modifier.size(40.dp)
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(24.dp))
+                    Text(
+                        "Synchronizing Health Data...",
+                        color = NotelTextSecondary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
         }
     }
