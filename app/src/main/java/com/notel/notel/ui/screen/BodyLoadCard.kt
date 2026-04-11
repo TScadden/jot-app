@@ -60,8 +60,26 @@ fun BodyLoadCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // ── Top Accent Divider ──────────────────────────────────────────
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(3.dp)
+                .padding(horizontal = 2.dp)
+                .background(
+                    brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+                        listOf(
+                            NotelPrimary.copy(alpha = 0f),
+                            NotelSurfaceHigh,
+                            NotelPrimary.copy(alpha = 0f)
+                        )
+                    ),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(percent = 50)
+                )
+        )
+        Spacer(Modifier.height(16.dp))
+
         // ── Top Row: Days of the Week ──────────────────────────────────
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
