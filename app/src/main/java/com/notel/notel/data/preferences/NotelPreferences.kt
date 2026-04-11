@@ -79,6 +79,7 @@ class NotelPreferences @Inject constructor(
         val CURRENT_STREAK = intPreferencesKey("current_streak")
         val BEST_STREAK = intPreferencesKey("best_streak")
         val LAST_OPEN_DATE = stringPreferencesKey("last_open_date")
+        val CUP_THEORY_SEEN = booleanPreferencesKey("cup_theory_seen")
     }
 
     val authToken: Flow<String> = context.dataStore.data.map { prefs ->
@@ -113,6 +114,7 @@ class NotelPreferences @Inject constructor(
     val currentStreak: Flow<Int> = context.dataStore.data.map { it[CURRENT_STREAK] ?: 0 }
     val bestStreak: Flow<Int> = context.dataStore.data.map { it[BEST_STREAK] ?: 0 }
     val lastOpenDate: Flow<String> = context.dataStore.data.map { it[LAST_OPEN_DATE] ?: "" }
+    val cupTheorySeen: Flow<Boolean> = context.dataStore.data.map { it[CUP_THEORY_SEEN] ?: false }
 
     val onboardingComplete: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[ONBOARDING_COMPLETE] ?: false
@@ -514,5 +516,9 @@ class NotelPreferences @Inject constructor(
 
     suspend fun setHrLastSampleTime(time: Long) {
         context.dataStore.edit { it[HR_LAST_SAMPLE_TIME] = time }
+    }
+
+    suspend fun setCupTheorySeen(seen: Boolean) {
+        context.dataStore.edit { it[CUP_THEORY_SEEN] = seen }
     }
 }

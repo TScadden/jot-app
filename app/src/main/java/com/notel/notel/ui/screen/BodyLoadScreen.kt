@@ -79,7 +79,10 @@ fun BodyLoadScreen(
                 onDaySelected = { viewModel.selectDay(it) },
                 onFactorSelected = { viewModel.selectFactor(it) },
                 onResetSelection = { viewModel.selectFactor(null) },
-                onShowTheory = { showTheorySheet = true }
+                onShowTheory = { 
+                    viewModel.markTheorySeen()
+                    showTheorySheet = true 
+                }
             )
 
             if (state.error != null) {

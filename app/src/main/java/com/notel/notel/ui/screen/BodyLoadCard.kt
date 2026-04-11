@@ -1,5 +1,6 @@
 package com.notel.notel.ui.screen
 
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -64,11 +65,25 @@ fun BodyLoadCard(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             verticalAlignment = Alignment.Bottom
         ) {
+            val infiniteTransition = rememberInfiniteTransition()
+            val pulseColor by if (!state.cupTheorySeen) {
+                infiniteTransition.animateColor(
+                    initialValue = NotelTextPrimary,
+                    targetValue = Color(0xFFB388FF), // Light Violet/Purple pulse
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(1200, easing = FastOutSlowInEasing),
+                        repeatMode = RepeatMode.Reverse
+                    )
+                )
+            } else {
+                remember { mutableStateOf(NotelTextPrimary) }
+            }
+
             Text(
                 "Score",
                 fontWeight = FontWeight.Black,
                 fontSize = 14.sp,
-                color = NotelTextPrimary,
+                color = pulseColor,
                 modifier = Modifier.clickable { onShowTheory() }
             )
         }

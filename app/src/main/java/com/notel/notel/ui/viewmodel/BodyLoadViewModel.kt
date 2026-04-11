@@ -39,7 +39,8 @@ data class BodyLoadState(
     val historyScores: List<BodyLoadSnapshot> = emptyList(),
     val selectedDate: String = java.time.LocalDate.now().toString(), // "yyyy-MM-dd"
     val selectedFactor: String? = null,
-    val sleepDebtHistory: List<Triple<String, Double, Double>> = emptyList()
+    val sleepDebtHistory: List<Triple<String, Double, Double>> = emptyList(),
+    val cupTheorySeen: Boolean = false
 )
 
 data class BodyLoadSnapshot(
@@ -156,7 +157,8 @@ class BodyLoadViewModel @Inject constructor(
                 selectedDate = todayStr,
                 score = fallBackScore,
                 factors = fallBackFactors,
-                adviceList = fallBackAdvice
+                adviceList = fallBackAdvice,
+                cupTheorySeen = preferences.cupTheorySeen.first()
             )
 
             // Auto-refresh rule: 1 hour (3,600,000 ms)
@@ -192,6 +194,13 @@ class BodyLoadViewModel @Inject constructor(
                         error = null // Fail silently so we don't display 'api error' on the UI
                     )
                 }
+        }
+    }
+
+    fun markTheorySeen() {
+        viewModelScope.launch {
+            preferences.setCupTheorySeen(true)
+            _uiState.value = _uiState.value.copy(cupTheorySeen = true)
         }
     }
 

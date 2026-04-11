@@ -2,12 +2,10 @@
 <resources>
 
     <style name="Theme.Notel" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">#030303</item> <!-- NotelBackground -->
+        <item name="android:windowBackground">#030303</item>
         <item name="android:statusBarColor">#030303</item>
         <item name="android:navigationBarColor">#030303</item>
-        <!-- Android 12+ Splash Screen support -->
-        <item name="android:windowSplashScreenBackground">#030303</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_jot_launcher</item>
+        <item name="android:windowIsTranslucent">true</item>
     </style>
     
     <style name="Theme.Notel.Floating" parent="@android:style/Theme.Translucent.NoTitleBar">
