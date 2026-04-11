@@ -8,9 +8,9 @@ import java.util.Locale
 @Serializable
 data class IpLocationResponse(
     val city: String = "Unknown Location",
-    val lat: Double = 40.7128,
-    val lon: Double = -74.0060,
-    val countryCode: String = "US"
+    val latitude: Double = 40.7128,
+    val longitude: Double = -74.0060,
+    val country_code: String = "US"
 )
 
 @Serializable
@@ -48,16 +48,16 @@ class WeatherApi {
 
     suspend fun getDetailedWeather(): WeatherInfo? {
         return try {
-            // 1. Get Location from IP (no key needed)
-            val locResponseText = URL("http://ip-api.com/json").readText()
+            // 1. Get Location from IP via ipapi.co (often more granular for Utah cities like Vineyard)
+            val locResponseText = URL("https://ipapi.co/json/").readText()
             val loc = json.decodeFromString<IpLocationResponse>(locResponseText)
             
             // 2. Determine Units
-            val units = if (loc.countryCode == "US") "fahrenheit" else "celsius"
+            val units = if (loc.country_code == "US") "fahrenheit" else "celsius"
             val unitLabel = if (units == "fahrenheit") "F" else "C"
             
             // 3. Get Weather
-            val url = "https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&current=temperature_2m,weather_code&hourly=uv_index,relative_humidity_2m,wind_speed_10m&forecast_days=1&temperature_unit=$units"
+            val url = "https://api.open-meteo.com/v1/forecast?latitude=${loc.latitude}&longitude=${loc.longitude}&current=temperature_2m,weather_code&hourly=uv_index,relative_humidity_2m,wind_speed_10m&forecast_days=1&temperature_unit=$units"
             val responseText = URL(url).readText()
             val data = json.decodeFromString<OpenMeteoResponse>(responseText)
             
