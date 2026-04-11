@@ -47,7 +47,7 @@ fun BodyLoadScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "Jot",
+                        text = "Jot",
                         fontWeight = FontWeight.Black,
                         color = NotelTextPrimary,
                         fontSize = 22.sp
@@ -55,39 +55,42 @@ fun BodyLoadScreen(
                 },
                 navigationIcon = {},
                 actions = {
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { showWeatherSheet = true }
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    IconButton(
+                        onClick = { showWeatherSheet = true },
+                        modifier = Modifier.width(64.dp)
                     ) {
-                        state.weather?.let { w ->
-                            Text(
-                                text = "${w.temp}°",
-                                color = NotelTextPrimary.copy(alpha = 0.8f),
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            state.weather?.let { w ->
+                                Text(
+                                    text = "${w.temp}°",
+                                    color = NotelTextPrimary.copy(alpha = 0.8f),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.Default.Cloud,
+                                contentDescription = "Weather",
+                                tint = NotelPrimary.copy(alpha = 0.7f),
+                                modifier = Modifier.size(20.dp)
                             )
                         }
-                        Icon(
-                            imageVector = Icons.Default.Cloud,
-                            contentDescription = "Weather",
-                            tint = NotelPrimary.copy(alpha = 0.7f),
-                            modifier = Modifier.size(20.dp)
-                        )
                     }
                     IconButton(onClick = onNavigateToConnections) {
                         Icon(
-                            Icons.Default.Watch,
+                            imageVector = Icons.Default.Watch,
                             contentDescription = "Connections",
                             tint = NotelPrimary,
                             modifier = Modifier.size(24.dp)
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = NotelBackground)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = NotelBackground
+                )
             )
         }
     ) { padding ->
