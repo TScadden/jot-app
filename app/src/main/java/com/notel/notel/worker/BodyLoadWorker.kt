@@ -17,9 +17,10 @@ class BodyLoadWorker @AssistedInject constructor(
     @Assisted params: WorkerParameters,
     private val preferences: NotelPreferences,
     private val logRepository: LogRepository,
-    private val categoryRepository: CategoryRepository,
-    private val weatherRepository: com.notel.notel.data.repository.WeatherRepository
+    private val categoryRepository: CategoryRepository
 ) : CoroutineWorker(context, params) {
+
+    private val weatherApi = com.notel.notel.data.remote.WeatherApi()
 
     override suspend fun doWork(): Result {
         if (!preferences.loggedIn.first()) return Result.success()
@@ -49,11 +50,13 @@ class BodyLoadWorker @AssistedInject constructor(
         }
 
         try {
-            // Update weather
-            val lat = preferences.lastKnownLat.first()
-            val lon = preferences.lastKnownLon.first()
-            if (lat != 0.0 && lon != 0.0) {
-                weatherRepository.fetchWeather(lat, lon, "F")
+            // Update weather using persistent location
+            val lat = preferences.lastKnownLat.first().takeIf { it != 0.0 }
+            val lon = preferences.lastKnownLon.first().takeIf { it != 0.0 }
+            val city = preferences.lastKnownCity.first()
+            
+            if (lat != null && lon != null) {
+                weatherApi.getDetailedWeather(lat, lon, city)
             }
 
             val categories = categoryRepository.getAllCategories().first()

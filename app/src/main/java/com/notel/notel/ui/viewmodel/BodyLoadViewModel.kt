@@ -91,12 +91,19 @@ class BodyLoadViewModel @Inject constructor(
         lastKnownLat = lat
         lastKnownLon = lon
         lastKnownCity = city
-        fetchWeather()
+        viewModelScope.launch {
+            preferences.setLastKnownLocation(lat, lon, city)
+            fetchWeather()
+        }
     }
 
     private fun fetchWeather() {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            weatherApi.getDetailedWeather(lastKnownLat, lastKnownLon, lastKnownCity)?.let { info ->
+            val lat = lastKnownLat ?: preferences.lastKnownLat.first().takeIf { it != 0.0 }
+            val lon = lastKnownLon ?: preferences.lastKnownLon.first().takeIf { it != 0.0 }
+            val city = lastKnownCity ?: preferences.lastKnownCity.first()
+
+            weatherApi.getDetailedWeather(lat, lon, city)?.let { info ->
                 _uiState.update { it.copy(
                     weather = WeatherState(
                         temp = info.temp,
