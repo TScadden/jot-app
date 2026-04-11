@@ -22,8 +22,10 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -139,21 +141,26 @@ fun BodyLoadCard(
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         val strokeWidth = 2.dp.toPx()
                         val colors = listOf(Color(0xFFFF5252), Color(0xFF42A5F5), Color(0xFF7C6EFF), Color(0xFFFF5252))
-                        rotate(rotation) {
-                            // Using a rounded rect path for the animated border
-                            val path = Path().apply {
-                                addRoundRect(
-                                    RoundRect(
-                                        rect = Rect(Offset.Zero, size),
-                                        cornerRadius = CornerRadius(8.dp.toPx(), 8.dp.toPx())
+                        
+                        // We want the square to stay still, but the colors to rotate.
+                        // We clip to the border shape and draw a rotating gradient background.
+                        val outerPath = Path().apply {
+                            addRoundRect(RoundRect(Rect(Offset.Zero, size), CornerRadius(8.dp.toPx())))
+                        }
+                        val innerPath = Path().apply {
+                            addRoundRect(RoundRect(Rect(strokeWidth, strokeWidth, size.width - strokeWidth, size.height - strokeWidth), CornerRadius((8.dp.toPx() - strokeWidth).coerceAtLeast(0f))))
+                        }
+
+                        clipPath(outerPath) {
+                            clipPath(innerPath, clipOp = ClipOp.Difference) {
+                                rotate(rotation) {
+                                    drawRect(
+                                        brush = Brush.sweepGradient(colors),
+                                        size = size * 2f,
+                                        topLeft = Offset(-size.width / 2f, -size.height / 2f)
                                     )
-                                )
+                                }
                             }
-                            drawPath(
-                                path = path,
-                                brush = Brush.sweepGradient(colors),
-                                style = Stroke(width = strokeWidth)
-                            )
                         }
                     }
 
