@@ -53,6 +53,7 @@ data class BodyLoadState(
     val selectedFactor: String? = null,
     val sleepDebtHistory: List<Triple<String, Double, Double>> = emptyList(),
     val cupTheorySeen: Boolean = false,
+    val selectedDayStats: Map<String, Any> = emptyMap(),
     val weather: WeatherState? = null
 )
 
@@ -159,37 +160,39 @@ class BodyLoadViewModel @Inject constructor(
             ) }
 
             // ── Heuristic Logic: Populate gaps in background ──────────────
-            // We only do 10 days proactively to keep the UI snappy
-            viewModelScope.launch {
-                val updatedHistory = history.toMutableList()
-                val sdfDay = java.text.SimpleDateFormat("EEE", java.util.Locale.US)
-                val lookbackRange = (0..14).map { java.time.LocalDate.now().minusDays(it.toLong()) }
-                
-                var changed = false
-                lookbackRange.forEach { dateObj ->
-                    val dStr = dateObj.toString()
-                    val existing = updatedHistory.find { it.date == dStr }
-                    if (existing == null) {
-                        try {
-                            val dStats = logRepository.getDailyStatsSummary(dStr)
-                            val hScore = calculateHeuristicScore(dStats)
-                            if (hScore > 0) {
-                                val displayDayStr = sdfDay.format(java.util.Date.from(dateObj.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant()))
-                                updatedHistory.add(BodyLoadSnapshot(
-                                    date = dStr,
-                                    displayDay = displayDayStr,
-                                    score = hScore,
-                                    factors = listOf(FactorWeight("Biometric Heuristic", 0.5f)),
-                                    adviceList = listOf("Heuristic analysis based on raw sensor data.")
-                                ))
-                                changed = true
-                            }
-                        } catch (e: Exception) { /* Skip failed day */ }
+            // We only do this on auto-refresh (force=false) to avoid heavy loops on manual refresh
+            if (!force) {
+                viewModelScope.launch {
+                    val updatedHistory = history.toMutableList()
+                    val sdfDay = java.text.SimpleDateFormat("EEE", java.util.Locale.US)
+                    val lookbackRange = (0..14).map { java.time.LocalDate.now().minusDays(it.toLong()) }
+                    
+                    var changed = false
+                    lookbackRange.forEach { dateObj ->
+                        val dStr = dateObj.toString()
+                        val existing = updatedHistory.find { it.date == dStr }
+                        if (existing == null) {
+                            try {
+                                val dStats = logRepository.getDailyStatsSummary(dStr)
+                                val hScore = calculateHeuristicScore(dStats)
+                                if (hScore > 0) {
+                                    val displayDayStr = sdfDay.format(java.util.Date.from(dateObj.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant()))
+                                    updatedHistory.add(BodyLoadSnapshot(
+                                        date = dStr,
+                                        displayDay = displayDayStr,
+                                        score = hScore,
+                                        factors = listOf(FactorWeight("Biometric Heuristic", 0.5f)),
+                                        adviceList = listOf("Heuristic analysis based on raw sensor data.")
+                                    ))
+                                    changed = true
+                                }
+                            } catch (e: Exception) { /* Skip failed day */ }
+                        }
                     }
-                }
-                
-                if (changed) {
-                    _uiState.update { it.copy(historyScores = updatedHistory.sortedByDescending { h -> h.date }) }
+                    
+                    if (changed) {
+                        _uiState.update { it.copy(historyScores = updatedHistory.sortedByDescending { h -> h.date }) }
+                    }
                 }
             }
 
@@ -264,6 +267,10 @@ class BodyLoadViewModel @Inject constructor(
 
     fun selectDay(date: String) {
         _uiState.update { it.copy(selectedDate = date) }
+        viewModelScope.launch {
+            val stats = logRepository.getDailyStatsSummary(date)
+            _uiState.update { it.copy(selectedDayStats = stats) }
+        }
     }
 
     fun selectFactor(factor: String?) {

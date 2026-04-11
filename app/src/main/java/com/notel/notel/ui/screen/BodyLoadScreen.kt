@@ -572,15 +572,35 @@ fun BodyLoadScreen(
                             }
                         }
                         
-                        if (selectedDay.adviceList.isNotEmpty()) {
-                            Spacer(Modifier.height(16.dp))
-                            Text("Historical Advice", color = NotelTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            Spacer(Modifier.height(8.dp))
-                            selectedDay.adviceList.forEach { advice ->
-                                Row(modifier = Modifier.padding(vertical = 4.dp)) {
-                                    Text("•", color = NotelPrimary, modifier = Modifier.padding(end = 8.dp))
-                                    Text(advice, color = NotelTextPrimary, fontSize = 12.sp, lineHeight = 18.sp)
-                                }
+                        // Historical Stats Section
+                        Spacer(Modifier.height(20.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(12.dp))
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            val cal = state.selectedDayStats["calories"] ?: 0
+                            val sleep = state.selectedDayStats["sleepMins"] as? Int ?: 0
+                            val debt = state.selectedDayStats["sleepDebt"] as? Double ?: 0.0
+                            val jots = state.selectedDayStats["jotCountDaily"] ?: 0
+                            
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("${cal}k", color = NotelTextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Black)
+                                Text("CAL", color = NotelTextSecondary, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("${sleep / 60}h", color = NotelTextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Black)
+                                Text("SLEEP", color = NotelTextSecondary, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("${String.format("%.1f", debt)}h", color = if (debt < 0) NotelError else NotelPrimary, fontSize = 15.sp, fontWeight = FontWeight.Black)
+                                Text("DEBT", color = NotelTextSecondary, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("${jots}", color = NotelTextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Black)
+                                Text("RECORDS", color = NotelTextSecondary, fontSize = 8.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
