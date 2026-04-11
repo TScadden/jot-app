@@ -61,9 +61,6 @@ fun BodyLoadScreen(
                     },
                     navigationIcon = {},
                     actions = {
-                        TextButton(onClick = { showTheorySheet = true }) {
-                            Text("What is this?", color = NotelTextSecondary, fontSize = 14.sp)
-                        }
                         if (isToday) {
                             IconButton(onClick = { viewModel.refresh() }, enabled = !state.isLoading) {
                                 Icon(Icons.Default.Refresh, "Refresh", tint = NotelPrimary)
@@ -90,7 +87,8 @@ fun BodyLoadScreen(
                     state = state,
                     onDaySelected = { viewModel.selectDay(it) },
                     onFactorSelected = { viewModel.selectFactor(it) },
-                    onResetSelection = { viewModel.selectFactor(null) }
+                    onResetSelection = { viewModel.selectFactor(null) },
+                    onShowTheory = { showTheorySheet = true }
                 )
 
                 if (state.error != null) {

@@ -38,7 +38,8 @@ fun BodyLoadCard(
     state: BodyLoadState,
     onDaySelected: (String) -> Unit = {},
     onFactorSelected: (String?) -> Unit = {},
-    onResetSelection: () -> Unit = {}
+    onResetSelection: () -> Unit = {},
+    onShowTheory: () -> Unit = {}
 ) {
     val score = state.score
     val isLoading = state.isLoading
@@ -60,9 +61,24 @@ fun BodyLoadCard(
     ) {
         // ── Top Row: Days of the Week ──────────────────────────────────
         Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Text(
+                "Score",
+                fontWeight = FontWeight.Black,
+                fontSize = 14.sp,
+                color = NotelTextPrimary,
+                modifier = Modifier.clickable { onShowTheory() }
+            )
+        }
+        
+        Spacer(Modifier.height(8.dp))
+
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 24.dp),
+                .padding(horizontal = 16.dp, vertical = 2.dp), // Tightened vertical padding
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             // Generate last 7 days
