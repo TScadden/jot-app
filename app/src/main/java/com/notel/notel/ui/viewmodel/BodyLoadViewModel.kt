@@ -153,13 +153,16 @@ class BodyLoadViewModel @Inject constructor(
         }
     }
 
-    fun refresh(force: Boolean = true) {
+    fun refresh(force: Boolean = false) {
         if (_uiState.value.isLoading) return
         
         viewModelScope.launch {
             val now = System.currentTimeMillis()
             val todayStr = java.time.LocalDate.now().toString()
             val lastRefresh = preferences.lastBodyLoadRefresh.first()
+            
+            // Update weather alongside other stats
+            fetchWeather()
             
             // 1. Fetch current stats immediately to check sleep status
             val stats = logRepository.getDailyStatsSummary(todayStr)

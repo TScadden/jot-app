@@ -55,6 +55,11 @@ fun BodyLoadScreen(
         }
     }
 
+    // Refresh data on entry (respects 1-hour auto-limit unless forced)
+    LaunchedEffect(Unit) {
+        viewModel.refresh(force = false)
+    }
+
     // Auto-fetch suggestions if category is selected and auto is on
     LaunchedEffect(quickLogState.selectedCategory, quickLogState.autoAiSuggestions) {
         if (quickLogState.autoAiSuggestions && quickLogState.selectedCategory != null && quickLogState.chips.isEmpty()) {
@@ -142,7 +147,7 @@ fun BodyLoadScreen(
                         viewModel.markTheorySeen()
                         showTheorySheet = true 
                     },
-                    onRefresh = { viewModel.refresh() },
+                    onRefresh = { viewModel.refresh(force = true) },
                     onBackToToday = { viewModel.selectDay(todayStr) },
                     onLocationUpdate = { lat, lon, city ->
                         viewModel.updateLocation(lat, lon, city)
