@@ -269,7 +269,7 @@ fun BodyLoadCard(
                 onClick = { if (isToday) onRefresh() else onBackToToday() },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 18.dp, bottom = 2.dp) // Positioned slightly overlapping bottom right
+                    .padding(end = 16.dp, bottom = 10.dp) // Elevated position
                     .size(28.dp),
                 enabled = !isLoading
             ) {
