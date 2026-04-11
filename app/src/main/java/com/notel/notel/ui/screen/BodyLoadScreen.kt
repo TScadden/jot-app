@@ -106,7 +106,27 @@ fun BodyLoadScreen(
                     containerColor = NotelBackground
                 )
             )
-        }
+        },
+        floatingActionButton = {
+            AnimatedVisibility(
+                visible = quickLogState.selectedChips.isNotEmpty(),
+                enter = scaleIn() + fadeIn(),
+                exit = scaleOut() + fadeOut()
+            ) {
+                ExtendedFloatingActionButton(
+                    onClick = { quickLogViewModel.saveEntry() },
+                    containerColor = NotelPrimary,
+                    contentColor = Color.White,
+                    shape = RoundedCornerShape(16.dp),
+                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 8.dp)
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = "Save Log")
+                    Spacer(Modifier.width(8.dp))
+                    Text("Log Entry", fontWeight = FontWeight.Bold)
+                }
+            }
+        },
+        floatingActionButtonPosition = FabPosition.Center
     ) { padding ->
         Column(
             modifier = Modifier
@@ -132,6 +152,34 @@ fun BodyLoadScreen(
                     viewModel.updateLocation(lat, lon, city)
                 }
             )
+
+            // Success Indicator for Logs
+            AnimatedVisibility(
+                visible = quickLogState.saveSuccess,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Surface(
+                    modifier = Modifier.padding(16.dp),
+                    color = Color(0xFF43A047).copy(alpha = 0.1f),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Color(0xFF43A047).copy(alpha = 0.2f))
+                ) {
+                    Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.CheckCircle, "Success", tint = Color(0xFF43A047), modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Log saved successfully!", color = Color.White, fontSize = 12.sp)
+                    }
+                }
+            }
+            
+            // Auto-hide success message
+            LaunchedEffect(quickLogState.saveSuccess) {
+                if (quickLogState.saveSuccess) {
+                    kotlinx.coroutines.delay(3000)
+                    quickLogViewModel.resetSaveStatus()
+                }
+            }
 
             // Divider under streak area
             HorizontalDivider(
