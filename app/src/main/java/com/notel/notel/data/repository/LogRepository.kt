@@ -255,7 +255,7 @@ class LogRepository @Inject constructor(
         val sleepHistoryRecords = if (isAvailable) try { healthConnectManager.readHistoricalSleep(3650, targetDay) } catch(e: Exception) { emptyList() } else emptyList()
         
         var runningBank = 0.0
-        val bankHistory = mutableListOf<Pair<String, Double>>()
+        val bankHistory = mutableListOf<Triple<String, Double, Double>>() // Date, DailyDelta, RunningBank
         
         // Sequential walk through the history in order of date (Oldest to Newest)
         // We filter <= targetDay to ensure we don't show "future" data when viewing a past day
@@ -266,7 +266,7 @@ class LogRepository @Inject constructor(
             val actualHours = minutes / 60.0
             val delta = actualHours - 8.0 // 8h target balance logic
             runningBank += delta
-            bankHistory.add(day to runningBank)
+            bankHistory.add(Triple(day, delta, runningBank))
         }
         
         val sleepDebt = runningBank // Total bank balance as of targetDay

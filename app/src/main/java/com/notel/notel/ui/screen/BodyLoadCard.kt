@@ -420,7 +420,8 @@ fun SleepDebtHistoryDialog(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(history.reversed()) { (date, balanceHours) ->
+                    items(history.reversed()) { triple ->
+                        val (date, delta, balanceHours) = triple
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -432,16 +433,42 @@ fun SleepDebtHistoryDialog(
                             Column {
                                 Text(date, color = Color.Gray, fontSize = 10.sp)
                                 val isSurplus = balanceHours >= 0
-                                val color = if (isSurplus) Color(0xFF66BB6A) else Color(0xFFFF5252)
+                                val balanceColor = if (isSurplus) Color(0xFF66BB6A) else Color(0xFFFF5252)
                                 val h = Math.abs(balanceHours).toInt()
                                 val m = ((Math.abs(balanceHours) - h) * 60).toInt()
                                 val balanceStr = (if (isSurplus) "+" else "-") + "${h}h ${m}m"
                                 
                                 Text(
                                     text = if (isSurplus) "$balanceStr Surplus" else "$balanceStr Deficit",
-                                    color = color,
+                                    color = balanceColor,
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Total Bank",
+                                    color = Color.Gray,
+                                    fontSize = 9.sp
+                                )
+                            }
+                            
+                            // Daily Delta on the right
+                            Column(horizontalAlignment = Alignment.End) {
+                                val isPosDelta = delta >= 0
+                                val deltaColor = if (isPosDelta) Color(0xFF66BB6A).copy(alpha = 0.8f) else Color(0xFFFFB74D).copy(alpha = 0.8f)
+                                val dh = Math.abs(delta).toInt()
+                                val dm = ((Math.abs(delta) - dh) * 60).toInt()
+                                val deltaStr = (if (isPosDelta) "+" else "-") + "${dh}h ${dm}m"
+                                
+                                Text(
+                                    text = deltaStr,
+                                    color = deltaColor,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    text = "Daily Impact",
+                                    color = Color.Gray,
+                                    fontSize = 9.sp
                                 )
                             }
                         }
