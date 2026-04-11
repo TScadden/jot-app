@@ -260,6 +260,7 @@ fun BodyLoadScreen(
                                 }
                             }
                         }
+                        else -> {
                             Column {
                                 FlowRow(
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
