@@ -7,6 +7,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.*
 import androidx.compose.foundation.lazy.LazyColumn
+import kotlinx.coroutines.flow.collectLatest
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CutCornerShape
@@ -59,11 +60,13 @@ fun BodyLoadCard(
         pageCount = { infinitePageCount }
     )
     
-    // Auto-scroll logic with infinite loop and reset capability
-    LaunchedEffect(pagerState.currentPage, counters.size) {
+    // Robust Auto-scroll logic tied to settledPage to prevent mid-transition freezes during background/foreground events
+    LaunchedEffect(counters.size) {
         if (counters.size > 1) {
-            kotlinx.coroutines.delay(15000)
-            pagerState.animateScrollToPage(pagerState.currentPage + 1)
+            snapshotFlow { pagerState.settledPage }.collectLatest { settledIndex ->
+                kotlinx.coroutines.delay(15000)
+                pagerState.animateScrollToPage(settledIndex + 1)
+            }
         }
     }
     
