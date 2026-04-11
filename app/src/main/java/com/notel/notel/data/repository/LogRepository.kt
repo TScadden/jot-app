@@ -258,7 +258,11 @@ class LogRepository @Inject constructor(
         val bankHistory = mutableListOf<Pair<String, Double>>()
         
         // Sequential walk through the history in order of date (Oldest to Newest)
-        sleepHistoryRecords.sortedBy { it.first }.forEach { (day, minutes) ->
+        // We filter <= targetDay to ensure we don't show "future" data when viewing a past day
+        sleepHistoryRecords
+            .filter { it.first <= targetDay }
+            .sortedBy { it.first }
+            .forEach { (day, minutes) ->
             val actualHours = minutes / 60.0
             val delta = actualHours - 8.0 // 8h target balance logic
             runningBank += delta
