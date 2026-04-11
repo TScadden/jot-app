@@ -305,6 +305,14 @@ class BodyLoadViewModel @Inject constructor(
         return cupScore.toInt().coerceIn(5, 100)
     }
 
+    fun selectDay(date: String) {
+        _uiState.update { it.copy(selectedDate = date) }
+    }
+
+    fun selectFactor(factor: String?) {
+        _uiState.update { it.copy(selectedFactor = factor) }
+    }
+
     fun markTheorySeen() {
         viewModelScope.launch {
             preferences.setCupTheorySeen(true)

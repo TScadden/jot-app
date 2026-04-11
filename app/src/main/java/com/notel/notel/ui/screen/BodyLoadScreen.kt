@@ -492,6 +492,101 @@ fun BodyLoadScreen(
                 )
             }
 
+            item {
+                val selectedDay = state.historyScores.find { it.date == state.selectedDate }
+                
+                if (selectedDay != null) {
+                    Spacer(Modifier.height(16.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp)
+                            .liquidGlass(
+                                shape = RoundedCornerShape(24.dp),
+                                color = NotelSurface,
+                                alpha = 0.5f,
+                                showBorder = true
+                            )
+                            .padding(20.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Historical Record",
+                                    color = NotelPrimary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Black
+                                )
+                                Text(
+                                    text = selectedDay.date,
+                                    color = NotelTextPrimary,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Black
+                                )
+                            }
+                            
+                            Box(
+                                modifier = Modifier
+                                    .size(50.dp)
+                                    .background(NotelPrimary.copy(alpha = 0.15f), CircleShape)
+                                    .border(1.dp, NotelPrimary.copy(alpha = 0.3f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    selectedDay.score.toString(),
+                                    color = NotelTextPrimary,
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Black
+                                )
+                            }
+                        }
+                        
+                        if (selectedDay.factors.isNotEmpty()) {
+                            Spacer(Modifier.height(16.dp))
+                            Text("Primary Factors", color = NotelTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(8.dp))
+                            
+                            FlowRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                maxItemsInEachRow = 3
+                            ) {
+                                selectedDay.factors.forEach { factor ->
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = NotelSurfaceHigh.copy(alpha = 0.1f),
+                                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+                                    ) {
+                                        Text(
+                                            factor.name,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            color = NotelTextPrimary,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (selectedDay.adviceList.isNotEmpty()) {
+                            Spacer(Modifier.height(16.dp))
+                            Text("Historical Advice", color = NotelTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(8.dp))
+                            selectedDay.adviceList.forEach { advice ->
+                                Row(modifier = Modifier.padding(vertical = 4.dp)) {
+                                    Text("•", color = NotelPrimary, modifier = Modifier.padding(end = 8.dp))
+                                    Text(advice, color = NotelTextPrimary, fontSize = 12.sp, lineHeight = 18.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             item { Spacer(Modifier.height(110.dp)) }
 
             if (state.error != null) {
