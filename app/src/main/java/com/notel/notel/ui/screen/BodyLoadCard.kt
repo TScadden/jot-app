@@ -102,7 +102,7 @@ fun BodyLoadCard(
             Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(340.dp),
+                .height(360.dp),
             contentAlignment = Alignment.Center
         ) {
             // Generative Connection Lines
@@ -111,16 +111,16 @@ fun BodyLoadCard(
                 val lineStyle = Stroke(width = 1.dp.toPx(), cap = StrokeCap.Round)
                 val lineColor = NotelSurfaceHigh.copy(alpha = 0.3f)
                 
-                // Orbiter target positions
-                val calY = 40.dp.toPx() + 40.dp.toPx() 
-                val sleepX = 80.dp.toPx()
-                val sleepY = size.height - 70.dp.toPx()
-                val jotsX = size.width - 80.dp.toPx()
-                val jotsY = size.height - 70.dp.toPx()
+                // Orbiter target circle centers
+                val caloriesCenterY = 10.dp.toPx() + 27.dp.toPx()
+                val sleepCenterX = 24.dp.toPx() + 40.dp.toPx()
+                val sleepCenterY = size.height - 40.dp.toPx() - 27.dp.toPx() - 15.dp.toPx() // padding + circleCenter + textAdjustment
+                val jotsCenterX = size.width - 24.dp.toPx() - 40.dp.toPx()
+                val jotsCenterY = sleepCenterY
                 
-                drawLine(lineColor, hub, Offset(hub.x, calY), strokeWidth = lineStyle.width)
-                drawLine(lineColor, hub, Offset(sleepX, sleepY), strokeWidth = lineStyle.width)
-                drawLine(lineColor, hub, Offset(jotsX, jotsY), strokeWidth = lineStyle.width)
+                drawLine(lineColor, hub, Offset(hub.x, caloriesCenterY), strokeWidth = lineStyle.width)
+                drawLine(lineColor, hub, Offset(sleepCenterX, sleepCenterY), strokeWidth = lineStyle.width)
+                drawLine(lineColor, hub, Offset(jotsCenterX, jotsCenterY), strokeWidth = lineStyle.width)
             }
 
             // Central Score Hub
@@ -173,7 +173,7 @@ fun BodyLoadCard(
             // Mind Map Orbiters
             
             // 1. Calories (Top Center)
-            Box(modifier = Modifier.align(Alignment.TopCenter).padding(top = 40.dp)) {
+            Box(modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp)) {
                 PillarNode(
                     icon = Icons.Default.Whatshot,
                     value = "${state.activeCalories}",
