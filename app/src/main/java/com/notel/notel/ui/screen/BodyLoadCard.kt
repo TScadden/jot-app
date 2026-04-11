@@ -56,7 +56,7 @@ fun BodyLoadCard(
     LaunchedEffect(counters.size) {
         if (counters.size > 1) {
             while (true) {
-                kotlinx.coroutines.delay(4000)
+                kotlinx.coroutines.delay(15000)
                 currentCounterIndex = (currentCounterIndex + 1) % counters.size
             }
         }
