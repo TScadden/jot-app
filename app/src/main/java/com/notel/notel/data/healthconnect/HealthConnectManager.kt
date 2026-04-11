@@ -151,8 +151,8 @@ class HealthConnectManager(private val context: Context) {
                 )
             )
             
-            val totalKcal = response[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories?.toInt() 
-                ?: response[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories?.toInt() ?: 0
+            val totalKcal = response[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories?.toInt() 
+                ?: response[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories?.toInt() ?: 0
             
             return totalKcal
         } catch(e: Exception) {
@@ -364,8 +364,8 @@ class HealthConnectManager(private val context: Context) {
             }
             
             return response.mapNotNull { bucket ->
-                val total = bucket.result[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories 
-                    ?: bucket.result[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories
+                val total = bucket.result[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories
+                    ?: bucket.result[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories
                 
                 if (total != null && total > 0) {
                     val dateStr = formatter.format(java.util.Date(bucket.startTime.toEpochMilli()))
