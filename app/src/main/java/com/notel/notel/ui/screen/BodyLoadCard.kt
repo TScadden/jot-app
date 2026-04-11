@@ -101,80 +101,27 @@ fun BodyLoadCard(
 
         Spacer(Modifier.height(16.dp))
 
-        Row(
+        Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            shape = RoundedCornerShape(12.dp),
+            color = Color.Black.copy(alpha = 0.3f),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
         ) {
-            // Slot 1 (Sat): Calories
-            SmallPillarNode(
-                icon = Icons.Default.Whatshot,
-                value = "${state.activeCalories}",
-                label = "CAL",
-                progress = (state.activeCalories / 2500f).coerceIn(0f, 1f),
-                color = Color(0xFFFF5252)
-            )
-
-            // Slot 2 (Sun): Jots
-            SmallPillarNode(
-                icon = Icons.Default.Edit,
-                value = "${state.jotCountDaily}",
-                label = "JOTS",
-                progress = (state.jotCount7Days / 20f).coerceIn(0f, 1f),
-                color = Color(0xFF7C6EFF)
-            )
-
-            // Slot 3 (Mon): Sleep
-            SmallPillarNode(
-                icon = Icons.Default.Nightlight,
-                value = formatSleep(state.sleepMinutes),
-                label = "SLEEP",
-                progress = (state.sleepMinutes / 480f).coerceIn(0f, 1f),
-                color = Color(0xFF42A5F5)
-            )
-
-            // Slot 4-5: Sleep Debt Long Rectangle (Beveled)
-            val debtMins = state.sleepDebtMins
-            if (!isLoading) {
-                val isDeficit = debtMins < 0
-                val h = Math.abs(debtMins) / 60
-                val m = Math.abs(debtMins) % 60
-                val dStr = if (isDeficit) "-${h}h ${m}m" else "+${h}h ${m}m"
-                val bColor = if (!isDeficit) Color(0xFF66BB6A) else if (Math.abs(debtMins) > 600) Color(0xFFFF5252) else Color(0xFFFFB74D)
-
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(88.dp)) { // Approx 2 slots + gap
-                    Surface(
-                        shape = CutCornerShape(4.dp), // Beveled edge
-                        color = bColor.copy(alpha = 0.08f),
-                        border = BorderStroke(1.dp, bColor.copy(alpha = 0.3f)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(38.dp)
-                            .clickable { showDebtHistory = true },
-                        contentColor = bColor
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(dStr, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                    Text("Sleep Debt", fontSize = 7.sp, color = NotelTextSecondary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
-                }
-            } else {
-                Spacer(Modifier.width(88.dp))
-            }
-
-            // Slot 6: Empty
-            Spacer(Modifier.size(38.dp))
-
-            // Slot 7 (Fri): Main Score (48dp)
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(48.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Left: Main Score (Replaces Fitbit Logo)
                 Box(
                     modifier = Modifier
-                        .size(48.dp) // A little bigger
-                        .background(NotelSurfaceHigh.copy(alpha = 0.1f), CircleShape)
-                        .border(3.dp, Brush.sweepGradient(listOf(Color(0xFFFF5252), Color(0xFF42A5F5), Color(0xFF7C6EFF), Color(0xFFFF5252))), CircleShape),
+                        .size(48.dp)
+                        .background(NotelSurfaceHigh.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                        .border(2.dp, Brush.sweepGradient(listOf(Color(0xFFFF5252), Color(0xFF42A5F5), Color(0xFF7C6EFF), Color(0xFFFF5252))), RoundedCornerShape(8.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     if (isLoading) {
@@ -188,7 +135,63 @@ fun BodyLoadCard(
                         )
                     }
                 }
-                Text("LOAD", fontSize = 7.sp, color = NotelTextSecondary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
+
+                // Center Metrics
+                Row(
+                    modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Calories
+                    MetricItem(
+                        icon = Icons.Default.Whatshot,
+                        value = "${state.activeCalories}",
+                        color = Color(0xFFFF5252)
+                    )
+
+                    // Jots (represented similarly to steps icon in the UI image)
+                    MetricItem(
+                        icon = Icons.Default.Edit,
+                        value = "${state.jotCountDaily}",
+                        color = Color(0xFF66BB6A)
+                    )
+
+                    // Sleep
+                    MetricItem(
+                        icon = Icons.Default.Nightlight,
+                        value = formatSleep(state.sleepMinutes),
+                        color = Color(0xFF42A5F5)
+                    )
+                }
+
+                // Right: Sleep Debt (Replaces Clock)
+                val debtMins = state.sleepDebtMins
+                if (!isLoading) {
+                    val isDeficit = debtMins < 0
+                    val h = Math.abs(debtMins) / 60
+                    val m = Math.abs(debtMins) % 60
+                    val dStr = if (isDeficit) "-${h}h ${m}m" else "+${h}h ${m}m"
+                    val bColor = if (!isDeficit) Color(0xFF66BB6A) else if (Math.abs(debtMins) > 600) Color(0xFFFF5252) else Color(0xFFFFB74D)
+
+                    Row(
+                        modifier = Modifier.clickable { showDebtHistory = true },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.AccessTime,
+                            null,
+                            tint = Color.Gray,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = dStr,
+                            color = bColor,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
             }
         }
             
@@ -245,6 +248,19 @@ fun BodyLoadCard(
             }
         
 
+    }
+}
+
+@Composable
+fun MetricItem(
+    icon: ImageVector,
+    value: String,
+    color: Color
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = color, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(value, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
     }
 }
 
