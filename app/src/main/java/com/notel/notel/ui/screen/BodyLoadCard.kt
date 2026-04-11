@@ -99,28 +99,29 @@ fun BodyLoadCard(
 
         Spacer(Modifier.height(16.dp))
 
-            Box(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(360.dp),
+                .height(400.dp),
             contentAlignment = Alignment.Center
         ) {
-            // Generative Connection Lines
+            val radius = 130.dp
+            val radPx = with(LocalDensity.current) { radius.toPx() }
+            
+            // Generative Connection Lines (Equilateral Triangle Vertices)
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val hub = Offset(size.width / 2, size.height / 2)
                 val lineStyle = Stroke(width = 1.dp.toPx(), cap = StrokeCap.Round)
                 val lineColor = NotelSurfaceHigh.copy(alpha = 0.3f)
                 
-                // Orbiter target circle centers
-                val caloriesCenterY = 10.dp.toPx() + 27.dp.toPx()
-                val sleepCenterX = 24.dp.toPx() + 40.dp.toPx()
-                val sleepCenterY = size.height - 40.dp.toPx() - 27.dp.toPx() - 15.dp.toPx() // padding + circleCenter + textAdjustment
-                val jotsCenterX = size.width - 24.dp.toPx() - 40.dp.toPx()
-                val jotsCenterY = sleepCenterY
+                // Vertices relative to Hub
+                val v1 = Offset(hub.x, hub.y - radPx) // Top
+                val v2 = Offset(hub.x - radPx * 0.866f, hub.y + radPx * 0.5f) // Bottom Left
+                val v3 = Offset(hub.x + radPx * 0.866f, hub.y + radPx * 0.5f) // Bottom Right
                 
-                drawLine(lineColor, hub, Offset(hub.x, caloriesCenterY), strokeWidth = lineStyle.width)
-                drawLine(lineColor, hub, Offset(sleepCenterX, sleepCenterY), strokeWidth = lineStyle.width)
-                drawLine(lineColor, hub, Offset(jotsCenterX, jotsCenterY), strokeWidth = lineStyle.width)
+                drawLine(lineColor, hub, v1, strokeWidth = lineStyle.width)
+                drawLine(lineColor, hub, v2, strokeWidth = lineStyle.width)
+                drawLine(lineColor, hub, v3, strokeWidth = lineStyle.width)
             }
 
             // Central Score Hub
@@ -128,6 +129,7 @@ fun BodyLoadCard(
                 modifier = Modifier.align(Alignment.Center),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                // ... (Rotation logic remains)
                 val infiniteTransition = rememberInfiniteTransition()
                 val rotation by infiniteTransition.animateFloat(
                     initialValue = 0f,
@@ -170,10 +172,10 @@ fun BodyLoadCard(
                 Text("SUMMARY", fontSize = 10.sp, color = NotelTextSecondary, fontWeight = FontWeight.Bold)
             }
 
-            // Mind Map Orbiters
+            // Triangle Vertices (Node Orbiters)
             
-            // 1. Calories (Top Center)
-            Box(modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp)) {
+            // 1. Calories (Top Node)
+            Box(modifier = Modifier.align(Alignment.Center).offset(y = -radius)) {
                 PillarNode(
                     icon = Icons.Default.Whatshot,
                     value = "${state.activeCalories}",
@@ -184,8 +186,8 @@ fun BodyLoadCard(
                 )
             }
 
-            // 2. Sleep (Bottom Left)
-            Box(modifier = Modifier.align(Alignment.BottomStart).padding(start = 24.dp, bottom = 40.dp)) {
+            // 2. Sleep (Bottom Left Node)
+            Box(modifier = Modifier.align(Alignment.Center).offset(x = -radius * 0.866f, y = radius * 0.5f)) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     PillarNode(
                         icon = Icons.Default.Nightlight,
@@ -196,7 +198,7 @@ fun BodyLoadCard(
                         color = Color(0xFF42A5F5)
                     )
                     
-                    // Sleep Debt: Now anchored to Sleep Node
+                    // Sleep Debt
                     val debtMins = state.sleepDebtMins
                     if (!isLoading) {
                         val isSurplus = debtMins > 0
@@ -223,8 +225,8 @@ fun BodyLoadCard(
                 }
             }
 
-            // 3. Jots (Bottom Right)
-            Box(modifier = Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 40.dp)) {
+            // 3. Jots (Bottom Right Node)
+            Box(modifier = Modifier.align(Alignment.Center).offset(x = radius * 0.866f, y = radius * 0.5f)) {
                 PillarNode(
                     icon = Icons.Default.Edit,
                     value = "${state.jotCountDaily}",
