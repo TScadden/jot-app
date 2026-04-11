@@ -278,6 +278,8 @@ fun BodyLoadScreen(
                 }
             }
         }
+    }
+
     if (showUvInfo) {
         ModalBottomSheet(
             onDismissRequest = { showUvInfo = false },

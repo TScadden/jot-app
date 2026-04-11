@@ -7,4 +7,6 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <color name="notel_background">#0A0A0E</color>
+    <color name="notel_primary">#7C6EFF</color>
 </resources>
