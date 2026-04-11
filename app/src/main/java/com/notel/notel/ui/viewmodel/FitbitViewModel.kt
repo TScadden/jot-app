@@ -523,12 +523,19 @@ class FitbitViewModel @Inject constructor(
         }
     }
 
-    fun disconnect() {
-        // Just clear the preference, or we can't truly disconnect Health Connect permissions easily,
-        // but we can just set a local preference indicating we are ignoring it.
+    fun disconnectHealthConnect() {
         viewModelScope.launch {
-            preferences.setFitbitToken("") // legacy cleanup
             _state.update { it.copy(isConnected = false) }
+            // Note: System permissions can't be revoked via API easily, 
+            // but we stop showing it as connected in Jot.
+        }
+    }
+
+    fun disconnectFitbit() {
+        viewModelScope.launch {
+            preferences.setFitbitToken("")
+            preferences.setFitbitRefreshToken("")
+            _state.update { it.copy(isFitbitConnected = false) }
         }
     }
 

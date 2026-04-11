@@ -20,7 +20,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -35,6 +34,7 @@ fun DataConnectionsScreen(
 ) {
     val state by fitbitViewModel.state.collectAsState()
     val context = LocalContext.current
+    var selectedAppForManagement by remember { mutableStateOf<AppInfo?>(null) }
 
     val healthConnectLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = fitbitViewModel.healthConnectManager.requestPermissionsActivityContract()
@@ -53,7 +53,7 @@ fun DataConnectionsScreen(
                 logo = { HealthConnectLogo() },
                 isConnected = state.isConnected,
                 onConnect = { healthConnectLauncher.launch(fitbitViewModel.healthConnectManager.permissions) },
-                onDisconnect = { fitbitViewModel.disconnect() }
+                onDisconnect = { fitbitViewModel.disconnectHealthConnect() }
             ),
             AppInfo(
                 id = "fitbit",
@@ -61,7 +61,7 @@ fun DataConnectionsScreen(
                 logo = { FitbitLogo() },
                 isConnected = state.isFitbitConnected,
                 onConnect = { fitbitViewModel.connectFitbit(context) },
-                onDisconnect = { fitbitViewModel.disconnect() } // Fitbit specific disconnect logic could be added
+                onDisconnect = { fitbitViewModel.disconnectFitbit() }
             ),
             AppInfo(
                 id = "google_fit",
@@ -132,7 +132,7 @@ fun DataConnectionsScreen(
                             name = app.name,
                             logo = app.logo,
                             status = "Connected",
-                            onClick = { app.onDisconnect() }
+                            onClick = { selectedAppForManagement = app }
                         )
                     }
                 } else {
@@ -169,7 +169,7 @@ fun DataConnectionsScreen(
                         "You've connected every supported tracker.",
                         color = NotelTextSecondary.copy(alpha = 0.5f),
                         fontSize = 14.sp,
-                        textAlign = TextAlign.Center,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 16.dp)
@@ -204,6 +204,69 @@ fun DataConnectionsScreen(
                     color = NotelTextSecondary,
                     fontSize = 14.sp,
                     lineHeight = 20.sp
+                )
+            }
+        }
+    }
+
+    if (selectedAppForManagement != null) {
+        val app = selectedAppForManagement!!
+        ModalBottomSheet(
+            onDismissRequest = { selectedAppForManagement = null },
+            containerColor = NotelSurface,
+            dragHandle = { BottomSheetDefaults.DragHandle(color = NotelTextSecondary.copy(alpha = 0.3f)) }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 32.dp)
+                    .padding(bottom = 64.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .background(Color.White.copy(alpha = 0.05f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    app.logo()
+                }
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    app.name,
+                    color = NotelTextPrimary,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Black
+                )
+                Text(
+                    "Connected",
+                    color = Color(0xFF66BB6A),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                
+                Spacer(Modifier.height(48.dp))
+                
+                Button(
+                    onClick = {
+                        app.onDisconnect()
+                        selectedAppForManagement = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF5350).copy(alpha = 0.1f)),
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.3f))
+                ) {
+                    Text("Disconnect from Jot", color = Color(0xFFEF5350), fontWeight = FontWeight.Bold)
+                }
+                
+                Spacer(Modifier.height(32.dp))
+                
+                Text(
+                    "Disconnecting stops Jot from pulling new data from ${app.name}. You can reconnect at any time.",
+                    color = NotelTextSecondary,
+                    fontSize = 12.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
             }
         }
@@ -265,7 +328,7 @@ fun ConnectionItem(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
-                tint = if (status == "Connected") Color(0xFFEF5350) else NotelTextSecondary.copy(alpha = 0.5f),
+                tint = NotelTextSecondary.copy(alpha = 0.5f),
                 modifier = Modifier.size(20.dp)
             )
         }
