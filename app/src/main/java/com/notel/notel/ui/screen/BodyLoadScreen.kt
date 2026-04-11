@@ -37,6 +37,7 @@ fun BodyLoadScreen(
 
     val sheetState = rememberModalBottomSheetState()
     var showTheorySheet by remember { mutableStateOf(false) }
+    var showWeatherSheet by remember { mutableStateOf(false) }
     val todayStr = java.time.LocalDate.now().toString()
     val isToday = state.selectedDate == todayStr
 
@@ -54,6 +55,14 @@ fun BodyLoadScreen(
                 },
                 navigationIcon = {},
                 actions = {
+                    IconButton(onClick = { showWeatherSheet = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Cloud,
+                            contentDescription = "Weather",
+                            tint = NotelPrimary.copy(alpha = 0.7f),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                     IconButton(onClick = onNavigateToConnections) {
                         Icon(
                             Icons.Default.Watch,
@@ -143,6 +152,80 @@ fun BodyLoadScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary)
                 ) {
                     Text("Got it")
+                }
+            }
+        }
+    }
+
+    if (showWeatherSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showWeatherSheet = false },
+            containerColor = NotelSurface
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 32.dp)
+                    .padding(bottom = 64.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                val weather = state.weather
+                if (weather != null) {
+                    Text(weather.locationName, color = NotelTextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Black)
+                    Text(weather.condition, color = NotelTextSecondary, fontSize = 14.sp)
+                    
+                    Spacer(Modifier.height(32.dp))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(weather.icon, fontSize = 32.sp)
+                            Text("${weather.temp}°${weather.unit}", color = NotelTextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        }
+                        
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("💧", fontSize = 24.sp)
+                            Text("${weather.humidity}%", color = NotelTextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            Text("Humidity", color = NotelTextSecondary, fontSize = 10.sp)
+                        }
+                        
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("💨", fontSize = 24.sp)
+                            Text("${String.format("%.1f", weather.windSpeed)}", color = NotelTextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            Text(if (weather.unit == "F") "mph" else "km/h", color = NotelTextSecondary, fontSize = 10.sp)
+                        }
+                        
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("☀️", fontSize = 24.sp, color = if (weather.uvIndex > 5) NotelAccent else NotelTextPrimary)
+                            Text("${String.format("%.1f", weather.uvIndex)}", color = if (weather.uvIndex > 5) NotelAccent else NotelTextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            Text("UV Index", color = NotelTextSecondary, fontSize = 10.sp)
+                        }
+                    }
+                    
+                    if (weather.uvIndex > 5) {
+                        Spacer(Modifier.height(24.dp))
+                        Surface(
+                            color = NotelAccent.copy(alpha = 0.1f),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, NotelAccent.copy(alpha = 0.3f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(Icons.Default.Warning, contentDescription = null, tint = NotelAccent, modifier = Modifier.size(16.dp))
+                                Text("High UV levels detected. Consider sun protection.", color = NotelAccent, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                            }
+                        }
+                    }
+                } else {
+                    CircularProgressIndicator(color = NotelPrimary)
+                    Spacer(Modifier.height(16.dp))
+                    Text("Fetching local weather...", color = NotelTextSecondary, fontSize = 14.sp)
                 }
             }
         }
