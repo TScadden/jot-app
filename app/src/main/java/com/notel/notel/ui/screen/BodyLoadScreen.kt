@@ -278,9 +278,12 @@ fun BodyLoadScreen(
         }
     }
 
+    val uvSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
     if (showUvInfo) {
         ModalBottomSheet(
             onDismissRequest = { showUvInfo = false },
+            sheetState = uvSheetState,
             containerColor = NotelBackground, // Dark background like screenshot
             dragHandle = { BottomSheetDefaults.DragHandle(color = Color.White.copy(alpha = 0.2f)) }
         ) {
