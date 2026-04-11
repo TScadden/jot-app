@@ -239,10 +239,15 @@ class BodyLoadViewModel @Inject constructor(
             
             logRepository.getBodyLoad(allCats)
                 .onSuccess { res ->
+                    val finalScore = if (_uiState.value.sleepMinutes == 0) 0 else res.score
+                    val finalAdvice = if (_uiState.value.sleepMinutes == 0) 
+                        listOf("Body Load calculation is awaiting today's sleep data for clinical accuracy.") 
+                    else splitAdvice(res.advice ?: "")
+                    
                     _uiState.update { it.copy(
-                        score = res.score,
+                        score = finalScore,
                         factors = parseFactors(res.factors.joinToString(", ")),
-                        adviceList = splitAdvice(res.advice ?: ""),
+                        adviceList = finalAdvice,
                         isLoading = false
                     ) }
                     preferences.setLastBodyLoadRefresh(now)
