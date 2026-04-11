@@ -177,7 +177,7 @@ fun BodyLoadScreen(
             LaunchedEffect(quickLogState.saveSuccess) {
                 if (quickLogState.saveSuccess) {
                     kotlinx.coroutines.delay(3000)
-                    quickLogViewModel.resetSaveStatus()
+                    quickLogViewModel.resetSaveSuccess()
                 }
             }
 
