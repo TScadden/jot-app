@@ -228,21 +228,24 @@ class LogRepository @Inject constructor(
         val cachedSpikesStr = preferences.historicalHrSpikes.first()
         var spikeCount = 0.0
         var rhr = 70.0
+        var cachedSummaries: List<com.notel.notel.data.healthconnect.DailyHeartRateSummary> = emptyList()
         
         if (cachedSpikesStr.isNotBlank()) {
             try {
-                val spikes = Json { ignoreUnknownKeys = true }
+                cachedSummaries = Json { ignoreUnknownKeys = true }
                     .decodeFromString<List<com.notel.notel.data.healthconnect.DailyHeartRateSummary>>(cachedSpikesStr)
-                val current = spikes.find { it.date == targetDay }
+                val current = cachedSummaries.find { it.date == targetDay }
                 spikeCount = current?.spikeCount?.toDouble() ?: 0.0
                 rhr = current?.baseline?.toDouble() ?: 70.0
             } catch (e: Exception) { }
         }
         
-        // Fallback: If cache is 0/missing for TODAY, we might need a fresh read, 
-        // but for historical days in a loop, we should avoid heavy reads.
-        if (spikeCount == 0.0 && dateStr == null) {
-             val historyHr = if (isAvailable) try { healthConnectManager.readHistoricalHeartRateWithSpikes(7) } catch(e: Exception) { emptyList() } else emptyList()
+        // Fallback: If cache is 0/missing for TODAY, we might need a fresh read
+        val historyHr = if (spikeCount == 0.0 && dateStr == null) {
+             if (isAvailable) try { healthConnectManager.readHistoricalHeartRateWithSpikes(7) } catch(e: Exception) { emptyList() } else emptyList()
+        } else emptyList()
+
+        if (historyHr.isNotEmpty()) {
              val currentHr = historyHr.find { it.date == targetDay }
              spikeCount = currentHr?.spikeCount?.toDouble() ?: 0.0
              rhr = currentHr?.baseline?.toDouble() ?: 70.0
@@ -255,8 +258,9 @@ class LogRepository @Inject constructor(
         val hrvMean = if (hrvHistory.isNotEmpty()) hrvHistory.map { it.second }.average() else 45.0
         val hrvStd = if (hrvHistory.size > 2) calculateStdDev(hrvHistory.map { it.second }) else 10.0
         
-        val rhrMean = if (historyHr.isNotEmpty()) historyHr.map { it.baseline.toDouble() }.average() else 70.0
-        val rhrStd = if (historyHr.size > 2) calculateStdDev(historyHr.map { it.baseline.toDouble() }) else 5.0
+        val rhrList = if (historyHr.isNotEmpty()) historyHr.map { it.baseline.toDouble() } else cachedSummaries.map { it.baseline.toDouble() }
+        val rhrMean = if (rhrList.isNotEmpty()) rhrList.average() else 70.0
+        val rhrStd = if (rhrList.size > 2) calculateStdDev(rhrList) else 5.0
         
         // Activity TSB / ACWR
         val activityHistory = if (isAvailable) try { healthConnectManager.readHistoricalCalories(42) } catch(e: Exception) { emptyList() } else emptyList()
