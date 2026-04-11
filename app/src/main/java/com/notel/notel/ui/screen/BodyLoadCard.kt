@@ -107,11 +107,31 @@ fun BodyLoadCard(
             last7Days.forEach { (dateStr, dayLabel) ->
                 val historicalScore = state.historyScores.find { it.date == dateStr }?.score ?: 0
                 val isSelected = state.selectedDate == dateStr
+                val isTodayActual = state.selectedDate == java.time.LocalDate.now().toString()
                 
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.width(38.dp).clickable { onDaySelected(dateStr) }
                 ) {
+                    // "Back to Today" indicator above Friday if we are not on Today
+                    if (dayLabel == "Fri" && !isTodayActual) {
+                        Box(modifier = Modifier.height(20.dp), contentAlignment = Alignment.BottomCenter) {
+                            IconButton(
+                                onClick = onBackToToday,
+                                modifier = Modifier.size(18.dp).offset(y = (-4).dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.DateRange,
+                                    contentDescription = "Back to Today",
+                                    tint = NotelPrimary,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+                        }
+                    } else {
+                        Spacer(Modifier.height(20.dp))
+                    }
+
                     Text(dayLabel, color = NotelTextSecondary, fontSize = 12.sp, modifier = Modifier.padding(bottom = 6.dp))
                     Box(
                         modifier = Modifier
@@ -264,17 +284,17 @@ fun BodyLoadCard(
             }
 
             // Small Sync Button in bottom right corner of the rectangle
-            val isToday = state.selectedDate == java.time.LocalDate.now().toString()
+            // Small Sync Button ALWAYS visible
             IconButton(
-                onClick = { if (isToday) onRefresh() else onBackToToday() },
+                onClick = onRefresh,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = 10.dp) // Elevated position
+                    .padding(end = 16.dp, bottom = 10.dp)
                     .size(28.dp),
                 enabled = !isLoading
             ) {
                 Icon(
-                    imageVector = if (isToday) Icons.Default.Refresh else Icons.Default.DateRange,
+                    imageVector = Icons.Default.Refresh,
                     contentDescription = "Sync",
                     tint = NotelPrimary.copy(alpha = 0.7f),
                     modifier = Modifier.size(16.dp)
