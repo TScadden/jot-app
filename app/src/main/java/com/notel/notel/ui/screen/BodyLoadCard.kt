@@ -74,7 +74,7 @@ fun BodyLoadCard(
                 
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.clickable { onDaySelected(dateStr) }
+                    modifier = Modifier.width(38.dp).clickable { onDaySelected(dateStr) }
                 ) {
                     Text(dayLabel, color = NotelTextSecondary, fontSize = 12.sp, modifier = Modifier.padding(bottom = 6.dp))
                     Box(
@@ -256,7 +256,7 @@ fun SmallPillarNode(
     progress: Float,
     color: Color
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(58.dp)) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(38.dp)) {
         Box(
             modifier = Modifier
                 .size(38.dp)
