@@ -229,10 +229,16 @@ class QuickLogViewModel @Inject constructor(
                           .replace("\\s+".toRegex(), " ")
                         
                         val words = cleaned.split(" ")
-                        if (words.size > 3) {
+                        val truncated = if (words.size > 3) {
                             words.take(3).joinToString(" ")
                         } else {
                             cleaned
+                        }
+                        
+                        if (truncated.length > 20) {
+                            truncated.take(20).trim()
+                        } else {
+                            truncated
                         }
                     }.filter { it.isNotBlank() }
                     
