@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.*
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -106,7 +107,7 @@ fun BodyLoadCard(
             contentAlignment = Alignment.Center
         ) {
             val radius = 130.dp
-            val radPx = with(LocalDensity.current) { radius.toPx() }
+            val radPx: Float = with(LocalDensity.current) { radius.toPx() }
             
             // Generative Connection Lines (Equilateral Triangle Vertices)
             Canvas(modifier = Modifier.fillMaxSize()) {
