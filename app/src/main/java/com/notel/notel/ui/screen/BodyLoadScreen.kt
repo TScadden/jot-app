@@ -55,12 +55,27 @@ fun BodyLoadScreen(
                 },
                 navigationIcon = {},
                 actions = {
-                    IconButton(onClick = { showWeatherSheet = true }) {
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { showWeatherSheet = true }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        state.weather?.let { w ->
+                            Text(
+                                text = "${w.temp}°",
+                                color = NotelTextPrimary.copy(alpha = 0.8f),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                         Icon(
                             imageVector = Icons.Default.Cloud,
                             contentDescription = "Weather",
                             tint = NotelPrimary.copy(alpha = 0.7f),
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                     IconButton(onClick = onNavigateToConnections) {
