@@ -177,6 +177,43 @@ fun BodyLoadCard(
                             )
                         }
                     }
+
+                    // Sleep Debt Badge Moved to Ring Corner
+                    val debtMins = state.sleepDebtMins
+                    if (!isLoading) {
+                        val isSurplus = debtMins > 0
+                        val isDeficit = debtMins < 0
+                        val isZero = debtMins == 0
+                        val dDebt = if (isDeficit) -debtMins else debtMins
+                        val h = dDebt / 60
+                        val m = dDebt % 60
+                        val dStr = if (h > 0) "${h}h ${m}m" else "${m}m"
+                        val lbl = if (isSurplus) "surplus" else if (isDeficit) "deficit" else "balanced"
+                        
+                        val bColor = when {
+                            isSurplus -> Color(0xFF66BB6A)
+                            isDeficit && dDebt > 600 -> Color(0xFFFF5252)
+                            isDeficit && dDebt > 120 -> Color(0xFFFFB74D) 
+                            else -> Color(0xFFE0E0E0).copy(alpha = 0.7f)
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .offset(x = 12.dp, y = 12.dp)
+                                .liquidGlass(shape = RoundedCornerShape(8.dp), color = NotelBackground, alpha = if(isZero) 0.3f else 0.8f)
+                                .clickable { showDebtHistory = true }
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "$dStr $lbl",
+                                color = bColor,
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                 } // End ring Box
 
             } // End Box wrapping Ring + Badge
@@ -223,47 +260,10 @@ fun BodyLoadCard(
                         color = Color(0xFF42A5F5) // Blue
                     )
                     
-                    val debtMins = state.sleepDebtMins
-                    if (!isLoading) {
-                        val isZero = debtMins <= 0
-                        val dH = debtMins / 60
-                        val dM = debtMins % 60
-                        val debtStr = if (isZero) "0m" else if (dH > 0) "${dH}h ${dM}m" else "${dM}m"
-                        val debtColor = if (isZero) Color(0xFF66BB6A) else if (debtMins > 120) Color(0xFFFF5252) else Color(0xFFFFB74D)
-                        val sign = if (isZero) "" else "-"
-                        
-                        Row(
-                            modifier = Modifier
-                                .align(Alignment.CenterEnd)
-                                .offset(x = 42.dp, y = 14.dp)
-                                .liquidGlass(shape = RoundedCornerShape(8.dp), color = NotelBackground, alpha = if(isZero) 0.3f else 0.8f)
-                                .clickable { showDebtHistory = true }
-                                .padding(horizontal = 4.dp, vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            val isSurplus = debtMins > 0
-                            val isDeficit = debtMins < 0
-                            val displayDebt = if (isDeficit) -debtMins else debtMins
-                            val h = displayDebt / 60
-                            val m = displayDebt % 60
-                            val displayStr = if (h > 0) "${h}h ${m}m" else "${m}m"
-                            val label = if (isSurplus) "surplus" else if (isDeficit) "deficit" else "balanced"
-                            // Red for >10h deficit, Orange for >2h, Green for surplus
-                            val color = when {
-                                isSurplus -> Color(0xFF66BB6A)
-                                isDeficit && displayDebt > 600 -> Color(0xFFFF5252)
-                                isDeficit && displayDebt > 120 -> Color(0xFFFFB74D) 
-                                else -> Color(0xFFE0E0E0).copy(alpha = 0.7f)
-                            }
-                            
-                            Text(
-                                text = "$displayStr $label",
-                                color = color,
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
+
+
+
+
                 }
                 
                 // Jots Pillar
