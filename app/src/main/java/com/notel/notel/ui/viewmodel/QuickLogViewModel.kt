@@ -226,6 +226,11 @@ class QuickLogViewModel @Inject constructor(
             }
         }
 
+        // 3. Fallback: If not cached and NO auto-AI preference, don't start a background fetch
+        if (!forceRefresh && !_uiState.value.autoAiSuggestions) {
+             return
+        }
+
         fetchJob?.cancel()
         fetchJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoadingChips = true, chipsError = null, retryAfterSeconds = 0) }

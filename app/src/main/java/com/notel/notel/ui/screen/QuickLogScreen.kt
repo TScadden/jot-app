@@ -52,7 +52,7 @@ fun QuickLogScreen(
     // Auto-fetch chips once: when category is selected, user has credits/access, and no chips loaded yet
     LaunchedEffect(state.selectedCategory, state.userBalance, state.isUnlimited, state.autoAiSuggestions) {
         val hasAccess = state.isUnlimited || state.userBalance >= 0.01f
-        if (state.autoAiSuggestions && state.selectedCategory != null && hasAccess &&
+        if (state.selectedCategory != null && hasAccess &&
             state.chips.isEmpty() && !state.isLoadingChips && state.chipsError == null
         ) {
             viewModel.fetchSuggestions()
