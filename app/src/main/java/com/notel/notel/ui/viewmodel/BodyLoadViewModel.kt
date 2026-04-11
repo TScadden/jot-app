@@ -242,6 +242,10 @@ class BodyLoadViewModel @Inject constructor(
             val sortedHistory = finalHistory.sortedByDescending { it.date }
             val todaySnapshot = sortedHistory.find { it.date == todayStr }
             
+            val cStreak = preferences.currentStreak.first()
+            val bStreak = preferences.bestStreak.first()
+            val theorySeen = preferences.cupTheorySeen.first()
+
             _uiState.update { it.copy(
                 activeCalories = stats["calories"] as? Int ?: (stats["calories"] as? Double)?.toInt() ?: 0,
                 sleepMinutes = stats["sleepMins"] as? Int ?: (stats["sleepMins"] as? Double)?.toInt() ?: 0,
@@ -250,14 +254,14 @@ class BodyLoadViewModel @Inject constructor(
                 spikeCount = stats["spikeCount"] as? Int ?: (stats["spikeCount"] as? Double)?.toInt() ?: 0,
                 jotCount7Days = stats["jotCount"] as? Int ?: (stats["jotCount"] as? Double)?.toInt() ?: 0,
                 jotCountDaily = stats["jotCountDaily"] as? Int ?: (stats["jotCountDaily"] as? Double)?.toInt() ?: 0,
-                currentStreak = preferences.currentStreak.first(),
-                bestStreak = preferences.bestStreak.first(),
+                currentStreak = cStreak,
+                bestStreak = bStreak,
                 historyScores = sortedHistory,
                 selectedDate = todayStr,
                 score = todaySnapshot?.score ?: 0,
                 factors = todaySnapshot?.factors ?: emptyList(),
                 adviceList = todaySnapshot?.adviceList ?: emptyList(),
-                cupTheorySeen = preferences.cupTheorySeen.first()
+                cupTheorySeen = theorySeen
             ) }
 
             if (!force && !shouldAutoRefresh) {
@@ -291,8 +295,9 @@ class BodyLoadViewModel @Inject constructor(
                 _uiState.update { it.copy(isLoading = false, error = null) }
             }
 
-            // Refresh history after new result (suspend call out of non-suspend lambda)
-            _uiState.update { it.copy(historyScores = getHistoricalScores().sortedByDescending { h -> h.date }) }
+            // Refresh history after new result
+            val finalHistoryList = getHistoricalScores().sortedByDescending { h -> h.date }
+            _uiState.update { it.copy(historyScores = finalHistoryList) }
         }
     }
 
