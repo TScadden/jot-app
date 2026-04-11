@@ -49,7 +49,7 @@ fun DataConnectionsScreen(
         listOf(
             AppInfo(
                 id = "health_connect",
-                name = "Health Connect",
+                name = "Android Health (Google Fit, Samsung)",
                 logo = { HealthConnectLogo() },
                 isConnected = state.isConnected,
                 onConnect = { healthConnectLauncher.launch(fitbitViewModel.healthConnectManager.permissions) },
@@ -57,24 +57,11 @@ fun DataConnectionsScreen(
             ),
             AppInfo(
                 id = "fitbit",
-                name = "Fitbit",
+                name = "Fitbit (Direct Sync)",
                 logo = { FitbitLogo() },
                 isConnected = state.isFitbitConnected,
                 onConnect = { fitbitViewModel.connectFitbit(context) },
                 onDisconnect = { fitbitViewModel.disconnectFitbit() }
-            ),
-            AppInfo(
-                id = "google_fit",
-                name = "Google Fit",
-                logo = { GoogleFitLogo() },
-                isConnected = false,
-                onConnect = { 
-                    try {
-                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("market://details?id=com.google.android.apps.fitness"))
-                        context.startActivity(intent)
-                    } catch(e: Exception) {}
-                },
-                onDisconnect = { }
             )
         )
     }
@@ -193,14 +180,14 @@ fun DataConnectionsScreen(
                 )
                 
                 Text(
-                    "Most trackers (Fitbit, Garmin, Samsung) sync their data to a central hub like Health Connect. \n\nWhat is the difference between Google Fit and Health Connect? \nGoogle Fit is an app that tracks your activity directly. Health Connect is the core Android system that allows Google Fit, Fitbit, and Jot to share data securely in one place.",
+                    "Most trackers (Fitbit, Garmin, Samsung) sync their data to a central hub like Health Connect. \n\nWe recommend using Android Health (Health Connect) as it acts as a universal bridge for Google Fit, Samsung Health, Oura, and more. This ensures Jot always has your latest heart rate, sleep phases, and activity patterns.",
                     color = NotelTextSecondary,
                     fontSize = 14.sp,
                     lineHeight = 20.sp
                 )
 
                 Text(
-                    "Connect Jot to Health Connect to automatically pull in your latest heart rate, sleep phases, and activity patterns from any other health app you use.",
+                    "If you use a Fitbit, you can also link it directly for faster, cloud-to-cloud syncing of your historical biomarker data.",
                     color = NotelTextSecondary,
                     fontSize = 14.sp,
                     lineHeight = 20.sp
@@ -235,8 +222,9 @@ fun DataConnectionsScreen(
                 Text(
                     app.name,
                     color = NotelTextPrimary,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Black
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Black,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
                 Text(
                     "Connected",
@@ -263,7 +251,7 @@ fun DataConnectionsScreen(
                 Spacer(Modifier.height(32.dp))
                 
                 Text(
-                    "Disconnecting stops Jot from pulling new data from ${app.name}. You can reconnect at any time.",
+                    "Disconnecting stops Jot from pulling new data from this source. You can reconnect at any time.",
                     color = NotelTextSecondary,
                     fontSize = 12.sp,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -316,7 +304,7 @@ fun ConnectionItem(
                 Text(
                     text = name,
                     color = NotelTextPrimary,
-                    fontSize = 16.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
