@@ -251,8 +251,10 @@ class LogRepository @Inject constructor(
         val chronicCalories = activityHistory.map { it.second }.average()
         val acwr = if (chronicCalories > 100) acuteCalories / chronicCalories else 1.0
         
-        // Sleep Debt (Fixed 730-day chronic sum, acts as a stable lifetime accumulator with 8h target)
-        val sleepHistory = if (isAvailable) try { healthConnectManager.readHistoricalSleep(730, targetDay) } catch(e: Exception) { emptyList() } else emptyList()
+        // Sleep Debt (Absolute Chronic Ledger starting from Jan 1, 2024 - no sliding, no data retirement)
+        val fixedStartDate = java.time.ZonedDateTime.of(2024, 1, 1, 0, 0, 0, 0, java.time.ZoneId.systemDefault())
+        val daysSinceFixedStart = java.time.Duration.between(fixedStartDate.toInstant(), dateObj.atTime(23,59).atZone(java.time.ZoneId.systemDefault()).toInstant()).toDays().toInt().coerceAtLeast(1)
+        val sleepHistory = if (isAvailable) try { healthConnectManager.readHistoricalSleep(daysSinceFixedStart, targetDay) } catch(e: Exception) { emptyList() } else emptyList()
         val sleepDebt = sleepHistory.sumOf { 8.0 - (it.second / 60.0) }
         
         // Jots for the 7 days

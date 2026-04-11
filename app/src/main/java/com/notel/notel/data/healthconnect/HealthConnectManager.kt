@@ -451,23 +451,40 @@ class HealthConnectManager(private val context: Context) {
             mergedIntervals.forEach { (start, end) ->
                 val dateStr = formatter.format(java.util.Date(end.toEpochMilli()))
                 
-                // Subtract 'awake' time from the underlying records for this range
-                var totalAwakeForRange = 0L
+                // Correctly handle awake stages by taking their union as well
+                val awakeIntervals = mutableListOf<Pair<Instant, Instant>>()
                 response.records.forEach { record ->
                     if (record.startTime.isBefore(end) && record.endTime.isAfter(start)) {
                         record.stages.forEach { stage ->
                             if (stage.stage in listOf(SleepSessionRecord.STAGE_TYPE_AWAKE, SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED, SleepSessionRecord.STAGE_TYPE_OUT_OF_BED)) {
-                                val overlapStart = if (stage.startTime.isAfter(start)) stage.startTime else start
-                                val overlapEnd = if (stage.endTime.isBefore(end)) stage.endTime else end
-                                if (overlapEnd.isAfter(overlapStart)) {
-                                    totalAwakeForRange += Duration.between(overlapStart, overlapEnd).toMinutes()
-                                }
+                                val s = if (stage.startTime.isAfter(start)) stage.startTime else start
+                                val e = if (stage.endTime.isBefore(end)) stage.endTime else end
+                                if (e.isAfter(s)) awakeIntervals.add(s to e)
                             }
                         }
                     }
                 }
                 
-                val duration = Duration.between(start, end).toMinutes() - totalAwakeForRange
+                // Merge awake intervals
+                val sortedAwake = awakeIntervals.sortedBy { it.first }
+                var netAwake = 0L
+                if (sortedAwake.isNotEmpty()) {
+                    var aStart = sortedAwake[0].first
+                    var aEnd = sortedAwake[0].second
+                    for (j in 1 until sortedAwake.size) {
+                        val n = sortedAwake[j]
+                        if (n.first.isBefore(aEnd) || n.first == aEnd) {
+                            if (n.second.isAfter(aEnd)) aEnd = n.second
+                        } else {
+                            netAwake += Duration.between(aStart, aEnd).toMinutes()
+                            aStart = n.first
+                            aEnd = n.second
+                        }
+                    }
+                    netAwake += Duration.between(aStart, aEnd).toMinutes()
+                }
+                
+                val duration = Duration.between(start, end).toMinutes() - netAwake
                 dailySessions[dateStr] = (dailySessions[dateStr] ?: 0) + duration.toInt()
             }
             
