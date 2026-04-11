@@ -65,6 +65,17 @@ class LogRepository @Inject constructor(
     private val _processError = MutableStateFlow<String?>(null)
     val processError = _processError.asStateFlow()
 
+    // Session-level cache for AI suggestions to prevent re-fetching on tab switches
+    private val suggestionCache = mutableMapOf<Int, List<String>>()
+
+    fun getCachedSuggestions(catId: Int): List<String>? {
+        return suggestionCache[catId]
+    }
+
+    fun clearSuggestionCache() {
+        suggestionCache.clear()
+    }
+
     fun resetGeneratedReport() {
         _generatedReport.value = null
     }
@@ -308,7 +319,11 @@ class LogRepository @Inject constructor(
      * Fetches AI chip suggestions for the given [category].
      * Pulls recent history from Room for context, then calls Gemini.
      */
-    suspend fun getChipSuggestions(category: Category): Result<List<String>> {
+    suspend fun getChipSuggestions(category: Category, forceRefresh: Boolean = false): Result<List<String>> {
+        if (!forceRefresh && suggestionCache.containsKey(category.id)) {
+            return Result.success(suggestionCache[category.id]!!)
+        }
+
         val isUnlimited = preferences.isUnlimited.first()
         val balance = preferences.userBalance.first()
         if (!isUnlimited && balance < 0.01f) return Result.failure(IllegalStateException("Insufficient credits. Please top up in Settings."))
@@ -327,7 +342,8 @@ class LogRepository @Inject constructor(
         
         val kb = getEnrichedKnowledgeBase()
         
-        return geminiService.getSuggestions(category, recent, userContext = context, knowledgeBase = kb).onSuccess {
+        return geminiService.getSuggestions(category, recent, userContext = context, knowledgeBase = kb).onSuccess { list ->
+            suggestionCache[category.id] = list
             preferences.deductBalance(0.01f)
         }
     }

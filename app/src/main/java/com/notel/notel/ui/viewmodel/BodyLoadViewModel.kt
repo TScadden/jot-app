@@ -264,14 +264,15 @@ class BodyLoadViewModel @Inject constructor(
     }
 
     private fun calculateHeuristicScore(stats: Map<String, Any>): Int {
+        val sleepMins = stats["sleepMins"] as? Int ?: (stats["sleepMins"] as? Double)?.toInt() ?: 0
+        if (sleepMins == 0) return 0 // REQUIRE sleep data for a valid score
+
         val hrv = stats["hrv"] as? Double ?: 0.0
         val hrvMean = stats["hrvMean"] as? Double ?: 50.0
         val sleepDebt = stats["sleepDebt"] as? Double ?: 0.0
         val spikes = stats["spikeCount"] as? Double ?: 0.0
         val acwr = stats["acwr"] as? Double ?: 1.0
         val jots = stats["jotCountDaily"] as? Double ?: 0.0
-
-        if (hrv == 0.0 && sleepDebt == 0.0 && spikes == 0.0 && jots == 0.0) return 0
 
         // Start with a base load
         var cupScore = 15.0 // Calm baseline

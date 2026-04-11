@@ -208,11 +208,20 @@ class QuickLogViewModel @Inject constructor(
     ) {
         val cat = category ?: return
 
-        // Serve from cache unless forcing a refresh
+        // 1. Check local VM cache (already cleaned/truncated)
         if (!forceRefresh) {
             val cached = chipCache[cat.id]
             if (cached != null) {
                 _uiState.update { it.copy(chips = cached, isLoadingChips = false, chipsError = null) }
+                return
+            }
+            
+            // 2. Check Repository-level session cache (survives tab switches)
+            val repoCached = logRepository.getCachedSuggestions(cat.id)
+            if (repoCached != null) {
+                val cleaned = processRawChips(repoCached)
+                chipCache[cat.id] = cleaned
+                _uiState.update { it.copy(chips = cleaned, isLoadingChips = false, chipsError = null) }
                 return
             }
         }
