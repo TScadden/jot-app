@@ -200,7 +200,7 @@ fun BodyLoadCard(
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
-                                .offset(x = 12.dp, y = 12.dp)
+                                .offset(x = 12.dp, y = 38.dp)
                                 .liquidGlass(shape = RoundedCornerShape(8.dp), color = NotelBackground, alpha = if(isZero) 0.3f else 0.8f)
                                 .clickable { showDebtHistory = true }
                                 .padding(horizontal = 6.dp, vertical = 2.dp),
