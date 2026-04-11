@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
 
@@ -167,7 +168,7 @@ class BodyLoadViewModel @Inject constructor(
             val json = Json { ignoreUnknownKeys = true }
             val cachedStats: Map<String, Double> = try {
                 if (cachedStatsJson.isNotBlank() && cachedStatsJson != "{}") {
-                    json.decodeFromString(cachedStatsJson)
+                    json.decodeFromString<Map<String, Double>>(cachedStatsJson)
                 } else emptyMap()
             } catch (e: Exception) { emptyMap() }
 
@@ -285,8 +286,6 @@ class BodyLoadViewModel @Inject constructor(
                         res.factors.joinToString(", "),
                         res.advice ?: ""
                     )
-                    // Refresh history after new result
-                    _uiState.update { it.copy(historyScores = getHistoricalScores().sortedByDescending { h -> h.date }) }
                 }
                 .onFailure { e ->
                     _uiState.update { it.copy(
@@ -294,6 +293,9 @@ class BodyLoadViewModel @Inject constructor(
                         error = null // Fail silently
                     ) }
                 }
+
+            // Refresh history after new result (suspend call out of non-suspend lambda)
+            _uiState.update { it.copy(historyScores = getHistoricalScores().sortedByDescending { h -> h.date }) }
         }
     }
 
