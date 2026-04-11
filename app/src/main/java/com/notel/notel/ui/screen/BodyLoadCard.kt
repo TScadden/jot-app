@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -134,55 +135,54 @@ fun BodyLoadCard(
                 color = Color(0xFF42A5F5)
             )
 
-            // Slot 4: Sleep Debt Rectangle
+            // Slot 4-5: Sleep Debt Long Rectangle (Beveled)
             val debtMins = state.sleepDebtMins
             if (!isLoading) {
                 val isDeficit = debtMins < 0
                 val h = Math.abs(debtMins) / 60
-                val dStr = if (isDeficit) "-${h}h" else "+${h}h"
+                val m = Math.abs(debtMins) % 60
+                val dStr = if (isDeficit) "-${h}h ${m}m" else "+${h}h ${m}m"
                 val bColor = if (!isDeficit) Color(0xFF66BB6A) else if (Math.abs(debtMins) > 600) Color(0xFFFF5252) else Color(0xFFFFB74D)
 
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(38.dp)) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(88.dp)) { // Approx 2 slots + gap
                     Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = bColor.copy(alpha = 0.1f),
-                        border = BorderStroke(1.dp, bColor.copy(alpha = 0.4f)),
+                        shape = CutCornerShape(4.dp), // Beveled edge
+                        color = bColor.copy(alpha = 0.08f),
+                        border = BorderStroke(1.dp, bColor.copy(alpha = 0.3f)),
                         modifier = Modifier
-                            .size(38.dp)
+                            .fillMaxWidth()
+                            .height(38.dp)
                             .clickable { showDebtHistory = true },
                         contentColor = bColor
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Text(dStr, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Text(dStr, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
-                    Text("BANK", fontSize = 7.sp, color = NotelTextSecondary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
+                    Text("Sleep Debt", fontSize = 7.sp, color = NotelTextSecondary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
                 }
             } else {
-                Spacer(Modifier.size(38.dp))
+                Spacer(Modifier.width(88.dp))
             }
-
-            // Slot 5: Empty
-            Spacer(Modifier.size(38.dp))
 
             // Slot 6: Empty
             Spacer(Modifier.size(38.dp))
 
-            // Slot 7 (Fri): Main Score (38dp)
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(38.dp)) {
+            // Slot 7 (Fri): Main Score (48dp)
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(48.dp)) {
                 Box(
                     modifier = Modifier
-                        .size(38.dp)
+                        .size(48.dp) // A little bigger
                         .background(NotelSurfaceHigh.copy(alpha = 0.1f), CircleShape)
-                        .border(2.dp, Brush.sweepGradient(listOf(Color(0xFFFF5252), Color(0xFF42A5F5), Color(0xFF7C6EFF), Color(0xFFFF5252))), CircleShape),
+                        .border(3.dp, Brush.sweepGradient(listOf(Color(0xFFFF5252), Color(0xFF42A5F5), Color(0xFF7C6EFF), Color(0xFFFF5252))), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     if (isLoading) {
-                        CircularProgressIndicator(color = NotelPrimary, strokeWidth = 1.dp, modifier = Modifier.size(16.dp))
+                        CircularProgressIndicator(color = NotelPrimary, strokeWidth = 1.dp, modifier = Modifier.size(20.dp))
                     } else {
                         Text(
                             text = score.toString(),
-                            fontSize = 14.sp,
+                            fontSize = 18.sp,
                             fontWeight = FontWeight.Black,
                             color = NotelTextPrimary
                         )
