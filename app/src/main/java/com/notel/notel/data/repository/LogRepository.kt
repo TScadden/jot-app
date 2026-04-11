@@ -251,10 +251,8 @@ class LogRepository @Inject constructor(
         val chronicCalories = activityHistory.map { it.second }.average()
         val acwr = if (chronicCalories > 100) acuteCalories / chronicCalories else 1.0
         
-        // Sleep Debt Bank (Sequential walk from oldest history available)
-        val fixedStartDate = java.time.ZonedDateTime.of(2024, 1, 1, 0, 0, 0, 0, java.time.ZoneId.systemDefault())
-        val daysSinceFixedStart = java.time.Duration.between(fixedStartDate.toInstant(), dateObj.atTime(23,59).atZone(java.time.ZoneId.systemDefault()).toInstant()).toDays().toInt().coerceAtLeast(1)
-        val sleepHistoryRecords = if (isAvailable) try { healthConnectManager.readHistoricalSleep(daysSinceFixedStart, targetDay) } catch(e: Exception) { emptyList() } else emptyList()
+        // Sleep Debt Bank (Sequential walk from very oldest history available)
+        val sleepHistoryRecords = if (isAvailable) try { healthConnectManager.readHistoricalSleep(3650, targetDay) } catch(e: Exception) { emptyList() } else emptyList()
         
         var runningBank = 0.0
         val bankHistory = mutableListOf<Pair<String, Double>>()
