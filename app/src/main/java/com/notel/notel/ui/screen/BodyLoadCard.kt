@@ -22,10 +22,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.*
-import androidx.compose.ui.graphics.ClipOp
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.*
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -233,58 +230,41 @@ fun BodyLoadCard(
                 }
             }
         }
-            
-        Spacer(Modifier.height(24.dp))
+        
+        // Streak Tiles (Left-Aligned under Main Score)
         Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp) // Aligned with the left-most score box essentially
+                .offset(y = (-4).dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Current Streak Square
+            Surface(
+                modifier = Modifier.size(34.dp),
+                shape = RoundedCornerShape(8.dp),
+                color = NotelSurfaceHigh.copy(alpha = 0.1f),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
             ) {
-                // Current Streak
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .liquidGlass(shape = RoundedCornerShape(16.dp), color = NotelBackground, alpha = 0.6f)
-                        .padding(vertical = 12.dp, horizontal = 12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "🔥 ${state.currentStreak}",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = NotelTextPrimary
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        text = "Current Streak",
-                        fontSize = 11.sp,
-                        color = NotelTextSecondary,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-
-                // Best Streak
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .liquidGlass(shape = RoundedCornerShape(16.dp), color = NotelBackground, alpha = 0.6f)
-                        .padding(vertical = 12.dp, horizontal = 12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "🏆 ${state.bestStreak}",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = NotelTextPrimary
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        text = "Best Streak",
-                        fontSize = 11.sp,
-                        color = NotelTextSecondary,
-                        fontWeight = FontWeight.Medium
-                    )
+                Box(contentAlignment = Alignment.Center) {
+                    Text("🔥${state.currentStreak}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFB74D))
                 }
             }
+
+            // Best Streak Square
+            Surface(
+                modifier = Modifier.size(34.dp),
+                shape = RoundedCornerShape(8.dp),
+                color = NotelSurfaceHigh.copy(alpha = 0.1f),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text("🏆${state.bestStreak}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD700))
+                }
+            }
+        }
+            
+
         
 
     }
