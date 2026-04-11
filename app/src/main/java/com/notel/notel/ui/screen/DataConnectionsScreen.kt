@@ -52,21 +52,29 @@ fun DataConnectionsScreen(
                 name = "Health Connect",
                 logo = { HealthConnectLogo() },
                 isConnected = state.isConnected,
-                onConnect = { healthConnectLauncher.launch(fitbitViewModel.healthConnectManager.permissions) }
+                onConnect = { healthConnectLauncher.launch(fitbitViewModel.healthConnectManager.permissions) },
+                onDisconnect = { fitbitViewModel.disconnect() }
             ),
             AppInfo(
                 id = "fitbit",
                 name = "Fitbit",
                 logo = { FitbitLogo() },
                 isConnected = state.isFitbitConnected,
-                onConnect = { fitbitViewModel.connectFitbit(context) }
+                onConnect = { fitbitViewModel.connectFitbit(context) },
+                onDisconnect = { fitbitViewModel.disconnect() } // Fitbit specific disconnect logic could be added
             ),
             AppInfo(
                 id = "google_fit",
                 name = "Google Fit",
                 logo = { GoogleFitLogo() },
                 isConnected = false,
-                onConnect = { /* Future */ }
+                onConnect = { 
+                    try {
+                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("market://details?id=com.google.android.apps.fitness"))
+                        context.startActivity(intent)
+                    } catch(e: Exception) {}
+                },
+                onDisconnect = { }
             )
         )
     }
@@ -124,7 +132,7 @@ fun DataConnectionsScreen(
                             name = app.name,
                             logo = app.logo,
                             status = "Connected",
-                            onClick = { /* Manage */ }
+                            onClick = { app.onDisconnect() }
                         )
                     }
                 } else {
@@ -185,7 +193,14 @@ fun DataConnectionsScreen(
                 )
                 
                 Text(
-                    "Most trackers (Fitbit, Garmin, Samsung) don't talk to Jot directly. They sync their data to a central hub like Health Connect. \n\nWhen you click 'Add connections', Jot will request permission to read Heart Rate, Sleep, and Calories from your hub. Ensure your tracker app is set up to share data with your hub to begin syncing.",
+                    "Most trackers (Fitbit, Garmin, Samsung) sync their data to a central hub like Health Connect. \n\nWhat is the difference between Google Fit and Health Connect? \nGoogle Fit is an app that tracks your activity directly. Health Connect is the core Android system that allows Google Fit, Fitbit, and Jot to share data securely in one place.",
+                    color = NotelTextSecondary,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
+
+                Text(
+                    "Connect Jot to Health Connect to automatically pull in your latest heart rate, sleep phases, and activity patterns from any other health app you use.",
                     color = NotelTextSecondary,
                     fontSize = 14.sp,
                     lineHeight = 20.sp
@@ -200,7 +215,8 @@ data class AppInfo(
     val name: String,
     val logo: @Composable () -> Unit,
     val isConnected: Boolean,
-    val onConnect: () -> Unit
+    val onConnect: () -> Unit,
+    val onDisconnect: () -> Unit
 )
 
 @Composable
@@ -249,7 +265,7 @@ fun ConnectionItem(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
-                tint = NotelTextSecondary.copy(alpha = 0.5f),
+                tint = if (status == "Connected") Color(0xFFEF5350) else NotelTextSecondary.copy(alpha = 0.5f),
                 modifier = Modifier.size(20.dp)
             )
         }
