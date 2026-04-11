@@ -595,7 +595,7 @@ fun BodyLoadScreen(
                                 Text("SLEEP", color = NotelTextSecondary, fontSize = 8.sp, fontWeight = FontWeight.Bold)
                             }
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("${String.format("%.1f", debt)}h", color = if (debt < 0) NotelError else NotelPrimary, fontSize = 15.sp, fontWeight = FontWeight.Black)
+                                Text("${String.format("%.1f", debt)}h", color = if (debt < 0) Color(0xFFFF5252) else NotelPrimary, fontSize = 15.sp, fontWeight = FontWeight.Black)
                                 Text("DEBT", color = NotelTextSecondary, fontSize = 8.sp, fontWeight = FontWeight.Bold)
                             }
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
