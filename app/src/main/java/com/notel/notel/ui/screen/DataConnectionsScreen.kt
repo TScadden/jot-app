@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -156,7 +157,7 @@ fun DataConnectionsScreen(
                         "You've connected every supported tracker.",
                         color = NotelTextSecondary.copy(alpha = 0.5f),
                         fontSize = 14.sp,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        textAlign = TextAlign.Center,
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 16.dp)
@@ -224,7 +225,7 @@ fun DataConnectionsScreen(
                     color = NotelTextPrimary,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Black,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    textAlign = TextAlign.Center
                 )
                 Text(
                     "Connected",
@@ -235,6 +236,7 @@ fun DataConnectionsScreen(
                 
                 Spacer(Modifier.height(48.dp))
                 
+                // Disconnect from app logic
                 Button(
                     onClick = {
                         app.onDisconnect()
@@ -245,16 +247,38 @@ fun DataConnectionsScreen(
                     shape = RoundedCornerShape(12.dp),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.3f))
                 ) {
-                    Text("Disconnect from Jot", color = Color(0xFFEF5350), fontWeight = FontWeight.Bold)
+                    Text("Deactivate in Jot", color = Color(0xFFEF5350), fontWeight = FontWeight.Bold)
+                }
+                
+                Spacer(Modifier.height(12.dp))
+                
+                // System Settings Link
+                TextButton(
+                    onClick = {
+                        try {
+                            if (app.id == "health_connect") {
+                                val intent = android.content.Intent("android.health.connect.action.HEALTH_HOME_SETTINGS")
+                                context.startActivity(intent)
+                            } else if (app.id == "fitbit") {
+                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.fitbit.com/settings/profile/apps"))
+                                context.startActivity(intent)
+                            }
+                        } catch(e: Exception) {
+                            // Fallback to settings
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Manage system permissions", color = NotelTextSecondary, fontSize = 14.sp)
                 }
                 
                 Spacer(Modifier.height(32.dp))
                 
                 Text(
-                    "Disconnecting stops Jot from pulling new data from this source. You can reconnect at any time.",
-                    color = NotelTextSecondary,
+                    "Deactivating stops Jot from pulling new data. To completely revoke access, use the 'Manage system permissions' button above.",
+                    color = NotelTextSecondary.copy(alpha = 0.7f),
                     fontSize = 12.sp,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    textAlign = TextAlign.Center
                 )
             }
         }
