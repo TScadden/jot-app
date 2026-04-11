@@ -135,10 +135,12 @@ fun BodyLoadCard(
                         )
                     }
                 }
+                
+                VerticalDivider(modifier = Modifier.height(32.dp).padding(horizontal = 4.dp), color = Color.White.copy(alpha = 0.1f))
 
-                // Center Metrics
+                // Center Metrics Group
                 Row(
-                    modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+                    modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -149,47 +151,44 @@ fun BodyLoadCard(
                         color = Color(0xFFFF5252)
                     )
 
-                    // Jots (represented similarly to steps icon in the UI image)
+                    VerticalDivider(modifier = Modifier.height(20.dp), color = Color.White.copy(alpha = 0.1f))
+
+                    // Jots
                     MetricItem(
                         icon = Icons.Default.Edit,
                         value = "${state.jotCountDaily}",
                         color = Color(0xFF66BB6A)
                     )
 
-                    // Sleep
-                    MetricItem(
-                        icon = Icons.Default.Nightlight,
-                        value = formatSleep(state.sleepMinutes),
-                        color = Color(0xFF42A5F5)
-                    )
-                }
+                    VerticalDivider(modifier = Modifier.height(20.dp), color = Color.White.copy(alpha = 0.1f))
 
-                // Right: Sleep Debt (Replaces Clock)
-                val debtMins = state.sleepDebtMins
-                if (!isLoading) {
-                    val isDeficit = debtMins < 0
-                    val h = Math.abs(debtMins) / 60
-                    val m = Math.abs(debtMins) % 60
-                    val dStr = if (isDeficit) "-${h}h ${m}m" else "+${h}h ${m}m"
-                    val bColor = if (!isDeficit) Color(0xFF66BB6A) else if (Math.abs(debtMins) > 600) Color(0xFFFF5252) else Color(0xFFFFB74D)
-
-                    Row(
-                        modifier = Modifier.clickable { showDebtHistory = true },
-                        verticalAlignment = Alignment.CenterVertically
+                    // Sleep + Debt Unified Group
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.clickable { showDebtHistory = true }
                     ) {
-                        Icon(
-                            Icons.Default.AccessTime,
-                            null,
-                            tint = Color.Gray,
-                            modifier = Modifier.size(16.dp)
+                        MetricItem(
+                            icon = Icons.Default.Nightlight,
+                            value = formatSleep(state.sleepMinutes),
+                            color = Color(0xFF42A5F5)
                         )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            text = dStr,
-                            color = bColor,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        
+                        val debtMins = state.sleepDebtMins
+                        if (!isLoading) {
+                            val isDeficit = debtMins < 0
+                            val h = Math.abs(debtMins) / 60
+                            val m = Math.abs(debtMins) % 60
+                            val dStr = if (isDeficit) "-${h}h ${m}m" else "+${h}h ${m}m"
+                            val bColor = if (!isDeficit) Color(0xFF66BB6A) else if (Math.abs(debtMins) > 600) Color(0xFFFF5252) else Color(0xFFFFB74D)
+
+                            Text(
+                                text = dStr,
+                                color = bColor,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.offset(y = (-2).dp)
+                            )
+                        }
                     }
                 }
             }
