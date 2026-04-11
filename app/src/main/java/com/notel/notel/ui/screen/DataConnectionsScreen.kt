@@ -1,6 +1,7 @@
 package com.notel.notel.ui.screen
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -15,19 +16,18 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.notel.notel.R
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.FitbitViewModel
 
@@ -55,7 +55,13 @@ fun DataConnectionsScreen(
             AppInfo(
                 id = "health_connect",
                 name = "Android Health (Google Fit, Samsung)",
-                logo = { HealthConnectLogo() },
+                logo = { 
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_health_connect),
+                        contentDescription = "Health Connect",
+                        modifier = Modifier.size(28.dp)
+                    )
+                },
                 isConnected = state.isConnected,
                 onConnect = { healthConnectLauncher.launch(fitbitViewModel.healthConnectManager.permissions) },
                 onDisconnect = { fitbitViewModel.disconnectHealthConnect() }
@@ -369,59 +375,6 @@ fun FitbitLogo() {
         
         drawCircle(color, dotRadius, center = center.copy(y = center.y - spacing * 2))
         drawCircle(color, dotRadius, center = center.copy(y = center.y + spacing * 2))
-    }
-}
-
-@Composable
-fun HealthConnectLogo() {
-    Canvas(modifier = Modifier.size(28.dp)) {
-        val darkColor = Color(0xFF00222D)
-        val lightColor = Color(0xFF4285F4)
-        
-        val strokeWidth = 5.5.dp.toPx()
-        
-        // Draw the dark link (left)
-        val leftPath = Path().apply {
-            // This forms the left half of the heart
-            arcTo(
-                rect = Rect(Offset(0f, 4.dp.toPx()), Size(18.dp.toPx(), 18.dp.toPx())),
-                startAngleDegrees = 135f,
-                sweepAngleDegrees = 180f,
-                forceMoveTo = false
-            )
-            lineTo(14.dp.toPx(), 24.dp.toPx())
-        }
-        
-        // Draw the light link (right) - overlapping
-        val rightPath = Path().apply {
-            // This forms the right half of the heart
-            arcTo(
-                rect = Rect(Offset(10.dp.toPx(), 4.dp.toPx()), Size(18.dp.toPx(), 18.dp.toPx())),
-                startAngleDegrees = -135f,
-                sweepAngleDegrees = 180f,
-                forceMoveTo = false
-            )
-            lineTo(14.dp.toPx(), 24.dp.toPx())
-        }
-
-        drawPath(
-            path = leftPath,
-            color = darkColor,
-            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-        )
-        
-        drawPath(
-            path = rightPath,
-            color = lightColor,
-            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-        )
-        
-        // Draw the small dot inside the right link
-        drawCircle(
-            color = lightColor,
-            radius = 3.dp.toPx(),
-            center = Offset(21.dp.toPx(), 11.dp.toPx())
-        )
     }
 }
 
