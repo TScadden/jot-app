@@ -62,33 +62,64 @@ fun BodyLoadCard(
             .padding(vertical = 16.dp),
     ) {
         // ── Top Accent Divider / Weather Bar ──────────────────────────
+        var isWeatherExpanded by remember { mutableStateOf(false) }
+        val animatedHeight by androidx.compose.animation.core.animateDpAsState(
+            targetValue = if (isWeatherExpanded) 72.dp else 28.dp,
+            label = "WeatherExpansion"
+        )
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(28.dp)
+                .height(animatedHeight)
                 .padding(horizontal = 16.dp)
                 .background(
                     color = NotelSurfaceHigh.copy(alpha = 0.3f),
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(percent = 50)
-                ),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(if (isWeatherExpanded) 16.dp else 50.dp)
+                )
+                .clickable { isWeatherExpanded = !isWeatherExpanded },
             contentAlignment = Alignment.Center
         ) {
             val weather = state.weather
             if (weather != null) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(weather.icon, fontSize = 14.sp)
-                        Text("${weather.temp}°", color = NotelTextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                if (isWeatherExpanded) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    ) {
+                        Text(
+                            text = weather.locationName,
+                            color = NotelTextPrimary,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Text("${weather.icon} ${weather.temp}°${weather.unit}", color = NotelTextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("💧 ${weather.humidity}%", color = NotelTextSecondary, fontSize = 11.sp)
+                            Text("💨 ${String.format("%.1f", weather.windSpeed)} ${if (weather.unit == "F") "mph" else "km/h"}", color = NotelTextSecondary, fontSize = 11.sp)
+                        }
                     }
-                    
-                    Text(weather.condition, color = NotelTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                    
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Icon(Icons.Default.Warning,null, tint = if (weather.uvIndex > 5) NotelAccent else NotelTextSecondary.copy(alpha = 0.5f), modifier = Modifier.size(10.dp))
-                        Text("UV ${String.format("%.1f", weather.uvIndex)}", color = if (weather.uvIndex > 5) NotelAccent else NotelTextSecondary, fontSize = 11.sp)
+                } else {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(weather.icon, fontSize = 14.sp)
+                            Text("${weather.temp}°${weather.unit}", color = NotelTextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                        
+                        Text(weather.condition, color = NotelTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                        
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(Icons.Default.Warning, null, tint = if (weather.uvIndex > 5) NotelAccent else NotelTextSecondary.copy(alpha = 0.5f), modifier = Modifier.size(10.dp))
+                            Text("UV ${String.format("%.1f", weather.uvIndex)}", color = if (weather.uvIndex > 5) NotelAccent else NotelTextSecondary, fontSize = 11.sp)
+                        }
                     }
                 }
             } else {

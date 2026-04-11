@@ -23,7 +23,11 @@ data class WeatherState(
     val temp: Int = 0,
     val condition: String = "Clear",
     val uvIndex: Double = 0.0,
-    val icon: String = "☀️"
+    val icon: String = "☀️",
+    val locationName: String = "Unknown",
+    val unit: String = "F",
+    val humidity: Int = 0,
+    val windSpeed: Double = 0.0
 )
 
 data class BodyLoadState(
@@ -78,13 +82,17 @@ class BodyLoadViewModel @Inject constructor(
 
     private fun fetchWeather() {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            weatherApi.getLocalWeather()?.let { info ->
+            weatherApi.getDetailedWeather()?.let { info ->
                 _uiState.update { it.copy(
                     weather = WeatherState(
                         temp = info.temp,
                         condition = info.condition,
                         uvIndex = info.uvIndex,
-                        icon = info.icon
+                        icon = info.icon,
+                        locationName = info.locationName,
+                        unit = info.unit,
+                        humidity = info.humidity,
+                        windSpeed = info.windSpeed
                     )
                 ) }
             }
