@@ -33,7 +33,6 @@ import java.util.*
 @Composable
 fun HistoryScreen(
     viewModel: HistoryViewModel = hiltViewModel(),
-    habitViewModel: HabitViewModel = hiltViewModel(),
     onBack: () -> Unit,
     onEntryClick: (Long) -> Unit
 ) {
@@ -41,24 +40,7 @@ fun HistoryScreen(
     val categories by viewModel.categories.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val categoryFilter by viewModel.categoryFilter.collectAsState()
-    var isRoutineTab by remember { mutableStateOf(false) }
-
-    val habits by habitViewModel.habits.collectAsState()
-    val isHabitsLoading by habitViewModel.isLoading.collectAsState()
-    val habitError by habitViewModel.error.collectAsState()
-    var newHabitText by remember { mutableStateOf("") }
-    var showClearLogsConfirm by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
-
-    LaunchedEffect(habitError) {
-        if (!habitError.isNullOrBlank()) {
-            snackbarHostState.showSnackbar(habitError!!)
-        }
-    }
-
-    val checkedCount = habits.count { habitViewModel.isCheckedToday(it) }
-    val totalCount = habits.size.coerceAtLeast(1)
-    val progressRatio = checkedCount.toFloat() / totalCount.toFloat()
 
     Scaffold(
         containerColor = NotelBackground,
@@ -80,162 +62,6 @@ fun HistoryScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // ── Two-Tab Toggle ─────────────────────────────────────────────
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(NotelSurfaceHigh),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                TextButton(
-                    onClick = { isRoutineTab = false },
-                    modifier = Modifier.weight(1f).background(if (!isRoutineTab) NotelPrimary else Color.Transparent),
-                    colors = ButtonDefaults.textButtonColors(contentColor = if (!isRoutineTab) Color.White else NotelTextSecondary)
-                ) {
-                    Text("📝 Notes", fontWeight = FontWeight.Bold)
-                }
-                TextButton(
-                    onClick = { isRoutineTab = true },
-                    modifier = Modifier.weight(1f).background(if (isRoutineTab) NotelPrimary else Color.Transparent),
-                    colors = ButtonDefaults.textButtonColors(contentColor = if (isRoutineTab) Color.White else NotelTextSecondary)
-                ) {
-                    Text("🗓️ Routine", fontWeight = FontWeight.Bold)
-                }
-            }
-
-            if (isRoutineTab) {
-                // ── Routine Tab (Live Data) ─────────────────────────────────
-                Column(Modifier.fillMaxSize().padding(16.dp)) {
-                    Text("Daily Progress", color = NotelTextSecondary, fontSize = 14.sp)
-                    Spacer(Modifier.height(8.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(progress = progressRatio, color = NotelPrimary, modifier = Modifier.size(48.dp))
-                        Spacer(Modifier.width(16.dp))
-                        Text("$checkedCount of ${habits.size} Habits Completed 🔥", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(Modifier.height(24.dp))
-                    Text("Your Daily Routine", color = NotelTextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Spacer(Modifier.height(6.dp))
-                    Text("Tracking actions here explicitly trains your Jot AI context window to actively cross-reference patterns in your daily unstructured Notes against your physical streaks.", color = NotelTextSecondary, fontSize = 12.sp, lineHeight = 16.sp)
-                    Spacer(Modifier.height(16.dp))
-
-                    if (isHabitsLoading && habits.isEmpty()) {
-                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = NotelPrimary, modifier = Modifier.size(32.dp))
-                        }
-                    } else {
-                        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            items(habits, key = { it.id }) { habit ->
-                                val isCheckedToday = habitViewModel.isCheckedToday(habit)
-                                val streak = habitViewModel.getStreak(habit)
-                                GlassyCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = NotelSurface) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        // 🔥 Streak — left of checkbox
-                                        Text(
-                                            "🔥 $streak",
-                                            color = if (streak > 0) Color(0xFFE2A123) else NotelTextSecondary,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                        Spacer(Modifier.width(4.dp))
-                                        Checkbox(
-                                            checked = isCheckedToday,
-                                            onCheckedChange = { checked ->
-                                                habitViewModel.toggleHabit(habit.id, checked)
-                                            },
-                                            colors = CheckboxDefaults.colors(checkedColor = NotelPrimary, uncheckedColor = NotelTextSecondary)
-                                        )
-                                        Spacer(Modifier.width(8.dp))
-                                        // Title + time — fills remaining space, wraps naturally
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                habit.title,
-                                                color = NotelTextPrimary,
-                                                fontWeight = FontWeight.Bold,
-                                                softWrap = true,
-                                                fontSize = 15.sp,
-                                                lineHeight = 19.sp
-                                            )
-                                            Text(habit.target_time ?: "Anytime", color = NotelTextSecondary, fontSize = 12.sp)
-                                        }
-                                        Spacer(Modifier.width(8.dp))
-                                        // Trash — pinned to far right
-                                        IconButton(onClick = { habitViewModel.deleteHabit(habit.id) }, modifier = Modifier.size(24.dp)) {
-                                            Icon(Icons.Default.Delete, "Delete", tint = NotelTextSecondary, modifier = Modifier.size(18.dp))
-                                        }
-                                    }
-                                }
-                            }
-
-                            item {
-                                Spacer(Modifier.height(8.dp))
-                                OutlinedTextField(
-                                    value = newHabitText,
-                                    onValueChange = { newHabitText = it },
-                                    placeholder = { Text("Add new habit...", color = NotelTextSecondary) },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    trailingIcon = {
-                                        if (newHabitText.isNotBlank()) {
-                                            IconButton(onClick = {
-                                                habitViewModel.addHabit(newHabitText)
-                                                newHabitText = ""
-                                            }) {
-                                                Icon(Icons.Default.Add, "Add", tint = NotelPrimary)
-                                            }
-                                        }
-                                    },
-                                    shape = RoundedCornerShape(16.dp),
-                                    singleLine = true,
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = NotelPrimary,
-                                        unfocusedBorderColor = NotelSurfaceHigh,
-                                        focusedTextColor = NotelTextPrimary,
-                                        unfocusedTextColor = NotelTextPrimary,
-                                        cursorColor = NotelPrimary
-                                    )
-                                )
-                            }
-                            
-                            if (habits.isNotEmpty()) {
-                                item {
-                                    Spacer(Modifier.height(32.dp))
-                                    TextButton(
-                                        onClick = { showClearLogsConfirm = true },
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text("Clear All Habit Data", color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f), fontSize = 13.sp)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                if (showClearLogsConfirm) {
-                    AlertDialog(
-                        onDismissRequest = { showClearLogsConfirm = false },
-                        containerColor = NotelSurface,
-                        title = { Text("Clear All Habit Data?", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
-                        text = { Text("This will wipe all historical completion streaks and logs from the server. Your habits themselves will remain. This cannot be undone.", color = NotelTextSecondary) },
-                        confirmButton = {
-                            TextButton(onClick = { 
-                                habitViewModel.clearHabitData()
-                                showClearLogsConfirm = false 
-                            }) {
-                                Text("Clear Data", color = MaterialTheme.colorScheme.error)
-                            }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = { showClearLogsConfirm = false }) { Text("Cancel", color = NotelTextSecondary) }
-                        }
-                    )
-                }
-            } else {
             // ── Search Bar ───────────────────────────────────────────────
             OutlinedTextField(
                 value = searchQuery,
@@ -343,7 +169,6 @@ fun HistoryScreen(
                     }
                 }
             }
-            } // Close else block for isRoutineTab
         }
     }
 }

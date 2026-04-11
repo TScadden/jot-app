@@ -25,6 +25,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.BodyLoadViewModel
 import com.notel.notel.ui.viewmodel.QuickLogViewModel
+import com.notel.notel.ui.viewmodel.HabitViewModel
+import com.notel.notel.data.remote.HabitDtoModel
 import com.notel.notel.ui.viewmodel.EventCounterDto
 import com.notel.notel.data.local.entity.Category
 import java.time.LocalDate
@@ -36,10 +38,12 @@ fun BodyLoadScreen(
     viewModel: BodyLoadViewModel = hiltViewModel(),
     onBack: () -> Unit,
     onNavigateToConnections: () -> Unit = {},
-    quickLogViewModel: QuickLogViewModel = hiltViewModel()
+    quickLogViewModel: QuickLogViewModel = hiltViewModel(),
+    habitViewModel: HabitViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
     val quickLogState by quickLogViewModel.uiState.collectAsState()
+    val habits by habitViewModel.habits.collectAsState()
 
     // Auto-fetch suggestions if category is selected and auto is on
     LaunchedEffect(quickLogState.selectedCategory, quickLogState.autoAiSuggestions) {
@@ -272,6 +276,117 @@ fun BodyLoadScreen(
                                         fontSize = 13.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                                     )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Daily Routine Section ─────────────────────────────
+            Spacer(Modifier.height(24.dp))
+            HorizontalDivider(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                color = Color.White.copy(alpha = 0.05f)
+            )
+            Spacer(Modifier.height(24.dp))
+
+            if (habits.isNotEmpty()) {
+                val checkedCount = habits.count { habitViewModel.isCheckedToday(it) }
+                val progressRatio = if (habits.isEmpty()) 0f else checkedCount.toFloat() / habits.size.toFloat()
+
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Daily Routine",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = NotelTextPrimary
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = NotelPrimary.copy(alpha = 0.1f),
+                            border = BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.2f))
+                        ) {
+                            Text(
+                                "$checkedCount/${habits.size} DONE",
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                color = NotelPrimary,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 1.sp
+                            )
+                        }
+                    }
+                    
+                    Spacer(Modifier.height(8.dp))
+                    
+                    // Glassy Progress Bar
+                    Box(modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(NotelSurfaceHigh.copy(alpha = 0.1f))) {
+                        Box(modifier = Modifier.fillMaxWidth(progressRatio).fillMaxHeight().background(NotelPrimary))
+                    }
+                    
+                    Spacer(Modifier.height(16.dp))
+                    
+                    // Horizontal scrolling habits
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth().offset(x = (-24).dp),
+                        contentPadding = PaddingValues(horizontal = 24.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(habits) { habit ->
+                            val isChecked = habitViewModel.isCheckedToday(habit)
+                            val streak = habitViewModel.getStreak(habit)
+                            
+                            Surface(
+                                onClick = { habitViewModel.toggleHabit(habit.id, !isChecked) },
+                                modifier = Modifier
+                                    .width(140.dp)
+                                    .height(100.dp),
+                                shape = RoundedCornerShape(20.dp),
+                                color = if (isChecked) NotelPrimary.copy(alpha = 0.15f) else NotelSurfaceHigh.copy(alpha = 0.1f),
+                                border = BorderStroke(1.dp, if (isChecked) NotelPrimary.copy(alpha = 0.3f) else Color.White.copy(alpha = 0.05f))
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.Top
+                                    ) {
+                                        Text(
+                                            if (isChecked) "✅" else "🔥 $streak",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (streak > 0) Color(0xFFE2A123) else NotelTextSecondary
+                                        )
+                                        if (isChecked) {
+                                            Icon(Icons.Default.CheckCircle, null, tint = NotelPrimary, modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                    
+                                    Column {
+                                        Text(
+                                            habit.title,
+                                            color = NotelTextPrimary,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                            lineHeight = 16.sp
+                                        )
+                                        Text(
+                                            habit.target_time ?: "Anytime",
+                                            color = NotelTextSecondary,
+                                            fontSize = 10.sp
+                                        )
+                                    }
                                 }
                             }
                         }
