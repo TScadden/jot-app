@@ -272,7 +272,7 @@ fun BodyLoadScreen(
                                     Surface(
                                         onClick = { quickLogViewModel.toggleChip(chip) },
                                         modifier = Modifier
-                                            .weight(1f) // Balanced width in FlowRow
+                                            .weight(1f)
                                             .animateContentSize()
                                             .clip(RoundedCornerShape(14.dp))
                                             .background(if (isSelected) NotelPrimary.copy(alpha = 0.8f) else NotelSurfaceHigh.copy(alpha = 0.2f))
@@ -283,20 +283,15 @@ fun BodyLoadScreen(
                                             ),
                                         color = Color.Transparent
                                     ) {
-                                        Box(
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = chip,
-                                                color = if (isSelected) Color.White else NotelTextPrimary,
-                                                fontSize = 12.sp,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                                textAlign = TextAlign.Center,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
+                                        Text(
+                                            text = chip,
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                            color = if (isSelected) Color.White else NotelTextPrimary,
+                                            fontSize = 13.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
                                     }
                                 }
                                 
