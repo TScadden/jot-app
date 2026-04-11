@@ -220,9 +220,10 @@ class BodyLoadViewModel @Inject constructor(
             val stats = logRepository.getDailyStatsSummary(todayStr)
             val sleepMins = stats["sleepMins"] as? Int ?: (stats["sleepMins"] as? Double)?.toInt() ?: 0
 
-            // Save stats for next startup
+            // Save stats and timestamp for next startup immediately after biometric fetch
             val statsToSave = stats.filterValues { it is Number }.mapValues { (it.value as Number).toDouble() }
             preferences.setLastKnownStats(json.encodeToString(statsToSave))
+            preferences.setLastBodyLoadRefresh(now)
             
             val history = getHistoricalScores().toMutableList()
             
@@ -301,7 +302,6 @@ class BodyLoadViewModel @Inject constructor(
                     adviceList = finalAdvice,
                     isLoading = false
                 ) }
-                preferences.setLastBodyLoadRefresh(now)
                 preferences.setLastBodyLoadData(
                     res.score,
                     res.factors.joinToString(", "),
