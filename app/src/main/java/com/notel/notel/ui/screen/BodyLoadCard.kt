@@ -132,7 +132,7 @@ fun BodyLoadCard(
                 )
             }
         }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
 
         // ── Top Row: Days of the Week ──────────────────────────────────
         Row(
@@ -180,7 +180,7 @@ fun BodyLoadCard(
             }
         }
         
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(2.dp))
 
         Row(
             modifier = Modifier
@@ -203,7 +203,6 @@ fun BodyLoadCard(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.width(38.dp).clickable { onDaySelected(dateStr) }
                 ) {
-                    Spacer(Modifier.height(20.dp))
                     Text(dayLabel, color = NotelTextSecondary, fontSize = 12.sp, modifier = Modifier.padding(bottom = 6.dp))
                     Box(
                         modifier = Modifier
