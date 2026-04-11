@@ -186,7 +186,16 @@ fun BodyLoadCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 10.dp),
+                    .padding(bottom = 10.dp)
+                    .drawBehind {
+                        val spacing = size.width / 3.0f
+                        val centerY = 27.dp.toPx()
+                        val bridgeBrush = Brush.linearGradient(
+                            colors = listOf(NotelSurfaceHigh.copy(alpha=0.1f), NotelSurfaceHigh.copy(alpha=0.3f), NotelSurfaceHigh.copy(alpha=0.1f))
+                        )
+                        drawLine(brush = bridgeBrush, start = Offset(spacing * 0.6f, centerY), end = Offset(spacing * 1.4f, centerY), strokeWidth = 1.dp.toPx())
+                        drawLine(brush = bridgeBrush, start = Offset(spacing * 1.6f, centerY), end = Offset(spacing * 2.4f, centerY), strokeWidth = 1.dp.toPx())
+                    },
                 horizontalArrangement = Arrangement.SpaceAround,
                 verticalAlignment = Alignment.Top
             ) {
@@ -226,7 +235,7 @@ fun BodyLoadCard(
                         Row(
                             modifier = Modifier
                                 .align(Alignment.CenterEnd)
-                                .offset(x = 24.dp, y = (-12).dp)
+                                .offset(x = 42.dp, y = 14.dp)
                                 .liquidGlass(shape = RoundedCornerShape(8.dp), color = NotelBackground, alpha = if(isZero) 0.3f else 0.8f)
                                 .clickable { showDebtHistory = true }
                                 .padding(horizontal = 4.dp, vertical = 2.dp),
