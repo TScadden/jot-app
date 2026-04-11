@@ -34,7 +34,6 @@ fun DataConnectionsScreen(
     fitbitViewModel: FitbitViewModel = hiltViewModel()
 ) {
     val state by fitbitViewModel.state.collectAsState()
-    var showHowToSheet by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     val healthConnectLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -66,8 +65,8 @@ fun DataConnectionsScreen(
                 id = "google_fit",
                 name = "Google Fit",
                 logo = { GoogleFitLogo() },
-                isConnected = false, // Integrated into HC mainly for Android
-                onConnect = { /* Future or link to Fit */ }
+                isConnected = false,
+                onConnect = { /* Future */ }
             )
         )
     }
@@ -125,7 +124,7 @@ fun DataConnectionsScreen(
                             name = app.name,
                             logo = app.logo,
                             status = "Connected",
-                            onClick = { /* Could open manage UI */ }
+                            onClick = { /* Manage */ }
                         )
                     }
                 } else {
@@ -170,87 +169,28 @@ fun DataConnectionsScreen(
                 }
             }
 
-            // Help Section
-            ConnectionSection(
-                title = "How to connect a tracker",
-                icon = Icons.Default.HelpOutline,
-                onClick = { showHowToSheet = true }
-            )
-        }
-    }
-
-    if (showHowToSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showHowToSheet = false },
-            containerColor = NotelSurface,
-            dragHandle = { BottomSheetDefaults.DragHandle(color = NotelTextSecondary.copy(alpha = 0.3f)) }
-        ) {
+            // Help Section (Plain Text)
+            Spacer(modifier = Modifier.height(8.dp))
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 32.dp)
-                    .padding(bottom = 64.dp)
+                    .padding(horizontal = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Text(
-                    "How to connect",
-                    color = NotelTextPrimary,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Black
-                )
-                Spacer(Modifier.height(24.dp))
-                
-                HowToStep(
-                    number = "1",
-                    title = "External Hubs",
-                    description = "Most trackers (Fitbit, Garmin, Samsung) don't talk to Jot directly. They sync their data to a central hub like Health Connect."
+                    "How to connect a tracker",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
                 )
                 
-                HowToStep(
-                    number = "2",
-                    title = "Grant Permissions",
-                    description = "When you click 'Add connections', Jot will request permission to read Heart Rate, Sleep, and Calories from your hub."
+                Text(
+                    "Most trackers (Fitbit, Garmin, Samsung) don't talk to Jot directly. They sync their data to a central hub like Health Connect. \n\nWhen you click 'Add connections', Jot will request permission to read Heart Rate, Sleep, and Calories from your hub. Ensure your tracker app is set up to share data with your hub to begin syncing.",
+                    color = NotelTextSecondary,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
                 )
-                
-                HowToStep(
-                    number = "3",
-                    title = "Ensure Sync is Active",
-                    description = "Check that your tracker app (e.g., the Fitbit app) is set up to share data with Health Connect. Jot will then automatically pick it up!"
-                )
-                
-                Spacer(Modifier.height(32.dp))
-                
-                Button(
-                    onClick = { showHowToSheet = false },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("Got it", fontWeight = FontWeight.Bold)
-                }
             }
-        }
-    }
-}
-
-@Composable
-fun HowToStep(
-    number: String,
-    title: String,
-    description: String
-) {
-    Row(modifier = Modifier.padding(vertical = 12.dp)) {
-        Box(
-            modifier = Modifier
-                .size(28.dp)
-                .background(NotelPrimary.copy(alpha = 0.15f), CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(number, color = NotelPrimary, fontWeight = FontWeight.Black, fontSize = 12.sp)
-        }
-        Spacer(Modifier.width(16.dp))
-        Column {
-            Text(title, color = NotelTextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            Text(description, color = NotelTextSecondary, fontSize = 14.sp)
         }
     }
 }
@@ -362,49 +302,5 @@ fun GoogleFitLogo() {
             lineTo(size.width * 0.8f, size.height * 0.2f)
         }
         drawPath(path, color = Color(0xFFEA4335), style = androidx.compose.ui.graphics.drawscope.Stroke(strokeWidth, cap = androidx.compose.ui.graphics.StrokeCap.Round))
-    }
-}
-
-@Composable
-fun ConnectionSection(
-    title: String,
-    icon: ImageVector,
-    onClick: () -> Unit
-) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() },
-        shape = RoundedCornerShape(20.dp),
-        color = NotelSurface,
-        border = androidx.compose.foundation.BorderStroke(1.dp, NotelSurfaceHigh.copy(alpha = 0.3f))
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = NotelPrimary,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(Modifier.width(16.dp))
-            Text(
-                text = title,
-                color = NotelTextPrimary,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.weight(1f)
-            )
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = NotelTextSecondary.copy(alpha = 0.5f),
-                modifier = Modifier.size(16.dp)
-            )
-        }
     }
 }
