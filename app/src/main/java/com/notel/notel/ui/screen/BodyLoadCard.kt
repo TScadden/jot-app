@@ -232,14 +232,20 @@ fun BodyLoadCard(
                                 .padding(horizontal = 4.dp, vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            val isSurplus = debtMins < 0
-                            val displayDebt = if (isSurplus) -debtMins else debtMins
+                            val isSurplus = debtMins > 0
+                            val isDeficit = debtMins < 0
+                            val displayDebt = if (isDeficit) -debtMins else debtMins
                             val h = displayDebt / 60
                             val m = displayDebt % 60
                             val displayStr = if (h > 0) "${h}h ${m}m" else "${m}m"
-                            val label = if (isSurplus) "surplus" else "deficit"
+                            val label = if (isSurplus) "surplus" else if (isDeficit) "deficit" else "balanced"
                             // Red for >10h deficit, Orange for >2h, Green for surplus
-                            val color = if (isSurplus) Color(0xFF66BB6A) else if (displayDebt > 600) Color(0xFFFF5252) else if (displayDebt > 120) Color(0xFFFFB74D) else Color(0xFFE0E0E0).copy(alpha = 0.7f)
+                            val color = when {
+                                isSurplus -> Color(0xFF66BB6A)
+                                isDeficit && displayDebt > 600 -> Color(0xFFFF5252)
+                                isDeficit && displayDebt > 120 -> Color(0xFFFFB74D) 
+                                else -> Color(0xFFE0E0E0).copy(alpha = 0.7f)
+                            }
                             
                             Text(
                                 text = "$displayStr $label",
