@@ -28,7 +28,7 @@ import com.notel.notel.ui.theme.NotelSurfaceHigh
 import com.notel.notel.ui.theme.NotelTextPrimary
 import com.notel.notel.ui.theme.NotelTextSecondary
 import com.notel.notel.ui.theme.liquidGlass
-import com.notel.notel.ui.viewmodel.BodyLoadUiState
+import com.notel.notel.ui.viewmodel.BodyLoadState
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -37,7 +37,7 @@ import java.util.Locale
 
 @Composable
 fun BodyLoadMonthView(
-    state: BodyLoadUiState,
+    state: BodyLoadState,
     onDaySelected: (String) -> Unit
 ) {
     var currentMonth by remember { mutableStateOf(YearMonth.now()) }
