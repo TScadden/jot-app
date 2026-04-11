@@ -14,6 +14,11 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+data class FactorWeight(
+    val name: String,
+    val weight: Float
+)
+
 data class WeatherState(
     val temp: Int = 0,
     val condition: String = "Clear",
