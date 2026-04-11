@@ -5,6 +5,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -51,13 +52,16 @@ fun BodyLoadCard(
     val isLoading = state.isLoading
     val todayStr = java.time.LocalDate.now().toString()
     var showDebtHistory by remember { mutableStateOf(false) }
-    var currentCounterIndex by remember { mutableStateOf(0) }
     
+    val pagerState = rememberPagerState(pageCount = { counters.size })
+    
+    // Auto-scroll logic with reset capability
     LaunchedEffect(counters.size) {
         if (counters.size > 1) {
             while (true) {
                 kotlinx.coroutines.delay(15000)
-                currentCounterIndex = (currentCounterIndex + 1) % counters.size
+                val next = (pagerState.currentPage + 1) % counters.size
+                pagerState.animateScrollToPage(next)
             }
         }
     }
@@ -395,75 +399,94 @@ fun BodyLoadCard(
                 }
             }
 
-            // Right side: Active Counter Carousel
             if (counters.isNotEmpty()) {
-                val safeIndex = currentCounterIndex.coerceIn(0, counters.size - 1)
-                val activeCounter = counters[safeIndex]
-                
-                // Logic to calculate days remaining/since
-                val todayStart = java.util.Calendar.getInstance().apply {
-                    set(java.util.Calendar.HOUR_OF_DAY, 0)
-                    set(java.util.Calendar.MINUTE, 0)
-                    set(java.util.Calendar.SECOND, 0)
-                    set(java.util.Calendar.MILLISECOND, 0)
-                }.timeInMillis
-                
-                val diffMillis = activeCounter.targetDate - todayStart
-                var isUp = activeCounter.isUp
-                var finalDiffMillis = diffMillis
-                
-                if (!isUp && diffMillis < 0 && activeCounter.autoUp) {
-                    isUp = true
-                    finalDiffMillis = todayStart - activeCounter.targetDate
-                } else if (isUp) {
-                    finalDiffMillis = todayStart - activeCounter.targetDate
-                }
-                
-                val daysCount = Math.max(0L, finalDiffMillis / 86400000L).toString()
-                val icon = if (isUp) "⬆️" else "⏳"
-
-                AnimatedContent(
-                    targetState = activeCounter,
-                    transitionSpec = {
-                        (fadeIn(animationSpec = tween(1200, easing = EaseInOutCubic)) + 
-                         slideInHorizontally(animationSpec = tween(1200)) { it / 2 })
-                        .togetherWith(fadeOut(animationSpec = tween(800)) + slideOutHorizontally { -it / 2 })
-                    },
-                    label = "counter_marquee",
-                    modifier = Modifier.weight(1f).padding(start = 16.dp)
-                ) { counter ->
-                    Row(
+                Column(
+                    modifier = Modifier.weight(1f).padding(start = 16.dp),
+                    horizontalAlignment = Alignment.End
+                ) {
+                    HorizontalPager(
+                        state = pagerState,
                         modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        Text(
-                            text = if (isUp) "SINCE ${counter.name.uppercase()}" else "UNTIL ${counter.name.uppercase()}",
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.Black,
-                            color = NotelPrimary.copy(alpha = 0.6f),
-                            letterSpacing = 0.5.sp,
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f).padding(end = 6.dp),
-                            textAlign = TextAlign.End
-                        )
+                        verticalAlignment = Alignment.CenterVertically
+                    ) { page ->
+                        val counter = counters[page]
                         
-                        Text(
-                            text = daysCount,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Black,
-                            color = NotelTextPrimary,
-                            modifier = Modifier.padding(end = 2.dp)
-                        )
+                        // Logic to calculate days remaining/since
+                        val todayStart = java.util.Calendar.getInstance().apply {
+                            set(java.util.Calendar.HOUR_OF_DAY, 0)
+                            set(java.util.Calendar.MINUTE, 0)
+                            set(java.util.Calendar.SECOND, 0)
+                            set(java.util.Calendar.MILLISECOND, 0)
+                        }.timeInMillis
                         
-                        Text(
-                            text = "DAYS",
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = NotelTextSecondary,
-                            letterSpacing = 0.5.sp
-                        )
+                        val diffMillis = counter.targetDate - todayStart
+                        var isCalculatedUp = counter.isUp
+                        var finalDiffMillis = diffMillis
+                        
+                        if (!isCalculatedUp && diffMillis < 0 && counter.autoUp) {
+                            isCalculatedUp = true
+                            finalDiffMillis = todayStart - counter.targetDate
+                        } else if (isCalculatedUp) {
+                            finalDiffMillis = todayStart - counter.targetDate
+                        }
+                        
+                        val daysCount = Math.max(0L, finalDiffMillis / 86400000L).toString()
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            Text(
+                                text = if (isCalculatedUp) "SINCE ${counter.name.uppercase()}" else "UNTIL ${counter.name.uppercase()}",
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Black,
+                                color = NotelPrimary.copy(alpha = 0.6f),
+                                letterSpacing = 0.5.sp,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f).padding(end = 6.dp),
+                                textAlign = TextAlign.End
+                            )
+                            
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = daysCount,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = NotelTextPrimary,
+                                        modifier = Modifier.padding(end = 2.dp)
+                                    )
+                                    
+                                    Text(
+                                        text = "DAYS",
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = NotelTextSecondary,
+                                        letterSpacing = 0.5.sp
+                                    )
+                                }
+                                
+                                // Indicator Dots under the number
+                                if (counters.size > 1) {
+                                    Row(
+                                        modifier = Modifier.padding(top = 2.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        repeat(counters.size) { iteration ->
+                                            val color = if (pagerState.currentPage == iteration) NotelPrimary else NotelSurfaceHigh.copy(alpha = 0.3f)
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(if (pagerState.currentPage == iteration) 4.dp else 3.dp)
+                                                    .background(color, CircleShape)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             } else {
