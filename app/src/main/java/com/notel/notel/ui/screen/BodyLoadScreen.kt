@@ -474,15 +474,16 @@ fun BodyLoadScreen(
                         )
                     )
                 }
-                item {
-                    BodyLoadMonthView(
-                        state = state,
-                        onDaySelected = { viewModel.selectDay(it) }
-                    )
-                }
-
-                item { Spacer(Modifier.height(110.dp)) }
             }
+
+            item {
+                BodyLoadMonthView(
+                    state = state,
+                    onDaySelected = { viewModel.selectDay(it) }
+                )
+            }
+
+            item { Spacer(Modifier.height(110.dp)) }
 
             if (state.error != null) {
                 item {
