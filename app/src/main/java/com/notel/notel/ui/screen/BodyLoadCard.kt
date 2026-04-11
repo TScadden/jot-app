@@ -65,29 +65,47 @@ fun BodyLoadCard(
         // ── Top Row: Days of the Week ──────────────────────────────────
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.Bottom
+            verticalAlignment = Alignment.CenterVertically, // Changed to center for better icon alignment
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            val infiniteTransition = rememberInfiniteTransition()
-            val pulseColor by if (!state.cupTheorySeen) {
-                infiniteTransition.animateColor(
-                    initialValue = NotelTextPrimary,
-                    targetValue = Color(0xFFB388FF), // Light Violet/Purple pulse
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(1200, easing = FastOutSlowInEasing),
-                        repeatMode = RepeatMode.Reverse
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val infiniteTransition = rememberInfiniteTransition()
+                val pulseColor by if (!state.cupTheorySeen) {
+                    infiniteTransition.animateColor(
+                        initialValue = NotelTextPrimary,
+                        targetValue = Color(0xFFB388FF), // Light Violet/Purple pulse
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(1200, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse
+                        )
                     )
-                )
-            } else {
-                remember { mutableStateOf(NotelTextPrimary) }
-            }
+                } else {
+                    remember { mutableStateOf(NotelTextPrimary) }
+                }
 
-            Text(
-                "Score",
-                fontWeight = FontWeight.Black,
-                fontSize = 14.sp,
-                color = pulseColor,
-                modifier = Modifier.clickable { onShowTheory() }
-            )
+                Text(
+                    "Score",
+                    fontWeight = FontWeight.Black,
+                    fontSize = 14.sp,
+                    color = pulseColor,
+                    modifier = Modifier.clickable { onShowTheory() }
+                )
+            }
+            
+            val isTodayActual = state.selectedDate == java.time.LocalDate.now().toString()
+            if (!isTodayActual) {
+                IconButton(
+                    onClick = onBackToToday,
+                    modifier = Modifier.size(32.dp) // Made it bigger
+                ) {
+                    Icon(
+                        Icons.Default.DateRange,
+                        contentDescription = "Back to Today",
+                        tint = NotelPrimary,
+                        modifier = Modifier.size(20.dp) // Icon itself is bigger
+                    )
+                }
+            }
         }
         
         Spacer(Modifier.height(8.dp))
@@ -113,25 +131,7 @@ fun BodyLoadCard(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.width(38.dp).clickable { onDaySelected(dateStr) }
                 ) {
-                    // "Back to Today" indicator above Friday if we are not on Today
-                    if (dayLabel == "Fri" && !isTodayActual) {
-                        Box(modifier = Modifier.height(20.dp), contentAlignment = Alignment.BottomCenter) {
-                            IconButton(
-                                onClick = onBackToToday,
-                                modifier = Modifier.size(18.dp).offset(y = (-4).dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.DateRange,
-                                    contentDescription = "Back to Today",
-                                    tint = NotelPrimary,
-                                    modifier = Modifier.size(12.dp)
-                                )
-                            }
-                        }
-                    } else {
-                        Spacer(Modifier.height(20.dp))
-                    }
-
+                    Spacer(Modifier.height(20.dp))
                     Text(dayLabel, color = NotelTextSecondary, fontSize = 12.sp, modifier = Modifier.padding(bottom = 6.dp))
                     Box(
                         modifier = Modifier
