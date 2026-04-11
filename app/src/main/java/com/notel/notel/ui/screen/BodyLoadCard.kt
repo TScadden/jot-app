@@ -388,7 +388,7 @@ private fun getFactorColor(name: String): Color {
 }
 @Composable
 fun SleepDebtHistoryDialog(
-    history: List<Pair<String, Double>>,
+    history: List<Triple<String, Double, Double>>,
     onDismiss: () -> Unit
 ) {
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
