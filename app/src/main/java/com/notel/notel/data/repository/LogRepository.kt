@@ -960,13 +960,16 @@ class LogRepository @Inject constructor(
             val subjectiveScore = 100.0 - subjectiveImpact // High is good
             
             // Spike Hinderance: 0 spikes = 0 hinder, 10+ spikes = 100 hinder.
-            val spikeCount = stats["spikeCount"] ?: 0.0
-            val spikeHinderance = (spikeCount * 10.0).coerceIn(0.0, 100.0)
+            val spikeCountVal = stats["spikeCount"] as? Double ?: 0.0
+            val spikeHinderance = (spikeCountVal * 10.0).coerceIn(0.0, 100.0)
             val spikeScore = 100.0 - spikeHinderance
 
             // Cardio Hinderance (Merge RHR and Spikes)
-            val rhrZ = if (stats["rhrStd"]!! > 0) (stats["rhr"]!! - stats["rhrMean"]!!) / stats["rhrStd"]!! else 0.0
-            val rhrHinderance = (100.0 - sigmoidScore(-rhrZ, k = 1.5)).coerceIn(0.0, 100.0)
+            val rhrVal = stats["rhr"] as? Double ?: 70.0
+            val rhrMeanVal = stats["rhrMean"] as? Double ?: 70.0
+            val rhrStdVal = stats["rhrStd"] as? Double ?: 0.0
+            val rhrZVal = if (rhrStdVal > 0) (rhrVal - rhrMeanVal) / rhrStdVal else 0.0
+            val rhrHinderance = (100.0 - sigmoidScore(-rhrZVal, k = 1.5)).coerceIn(0.0, 100.0)
             val cardioHinderance = (rhrHinderance * 0.5 + spikeHinderance * 0.5).coerceIn(0.0, 100.0)
             val cardioScore = 100.0 - cardioHinderance
 
