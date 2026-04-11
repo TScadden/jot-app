@@ -61,23 +61,46 @@ fun BodyLoadCard(
             .fillMaxWidth()
             .padding(vertical = 16.dp),
     ) {
-        // ── Top Accent Divider ──────────────────────────────────────────
+        // ── Top Accent Divider / Weather Bar ──────────────────────────
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(3.dp)
-                .padding(horizontal = 2.dp)
+                .height(28.dp)
+                .padding(horizontal = 16.dp)
                 .background(
-                    brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
-                        listOf(
-                            NotelPrimary.copy(alpha = 0f),
-                            NotelSurfaceHigh,
-                            NotelPrimary.copy(alpha = 0f)
-                        )
-                    ),
+                    color = NotelSurfaceHigh.copy(alpha = 0.3f),
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(percent = 50)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            val weather = state.weather
+            if (weather != null) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(weather.icon, fontSize = 14.sp)
+                        Text("${weather.temp}°", color = NotelTextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                    
+                    Text(weather.condition, color = NotelTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Icon(Icons.Default.Warning,null, tint = if (weather.uvIndex > 5) NotelAccent else NotelTextSecondary.copy(alpha = 0.5f), modifier = Modifier.size(10.dp))
+                        Text("UV ${String.format("%.1f", weather.uvIndex)}", color = if (weather.uvIndex > 5) NotelAccent else NotelTextSecondary, fontSize = 11.sp)
+                    }
+                }
+            } else {
+                // Loading / Fallback state
+                Box(
+                    modifier = Modifier
+                        .width(40.dp)
+                        .height(2.dp)
+                        .background(NotelSurfaceHigh.copy(alpha = 0.5f), androidx.compose.foundation.shape.RoundedCornerShape(percent = 50))
                 )
-        )
+            }
+        }
         Spacer(Modifier.height(16.dp))
 
         // ── Top Row: Days of the Week ──────────────────────────────────

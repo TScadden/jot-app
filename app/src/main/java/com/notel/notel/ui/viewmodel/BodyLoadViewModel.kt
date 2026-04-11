@@ -10,12 +10,15 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-data class FactorWeight(
-    val name: String,
-    val weight: Float
+data class WeatherState(
+    val temp: Int = 0,
+    val condition: String = "Clear",
+    val uvIndex: Double = 0.0,
+    val icon: String = "☀️"
 )
 
 data class BodyLoadState(
@@ -40,7 +43,8 @@ data class BodyLoadState(
     val selectedDate: String = java.time.LocalDate.now().toString(), // "yyyy-MM-dd"
     val selectedFactor: String? = null,
     val sleepDebtHistory: List<Triple<String, Double, Double>> = emptyList(),
-    val cupTheorySeen: Boolean = false
+    val cupTheorySeen: Boolean = false,
+    val weather: WeatherState? = null
 )
 
 data class BodyLoadSnapshot(
@@ -60,9 +64,26 @@ class BodyLoadViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(BodyLoadState())
     val uiState = _uiState.asStateFlow()
+    private val weatherApi = com.notel.notel.data.remote.WeatherApi()
 
     init {
         refresh(force = false)
+        fetchWeather()
+    }
+
+    private fun fetchWeather() {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            weatherApi.getLocalWeather()?.let { info ->
+                _uiState.update { it.copy(
+                    weather = WeatherState(
+                        temp = info.temp,
+                        condition = info.condition,
+                        uvIndex = info.uvIndex,
+                        icon = info.icon
+                    )
+                ) }
+            }
+        }
     }
 
     fun selectFactor(name: String?) {
