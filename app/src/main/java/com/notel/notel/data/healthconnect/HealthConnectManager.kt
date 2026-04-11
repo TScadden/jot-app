@@ -422,32 +422,54 @@ class HealthConnectManager(private val context: Context) {
                 sessionIntervals.add(Triple(session.startTime, session.endTime, asleep.toInt()))
             }
             
-            // Sort by start time and filter overlaps to prevent double-counting
-            val sortedSessions = sessionIntervals.sortedBy { it.first }
-            val uniqueSessions = mutableListOf<Triple<Instant, Instant, Int>>()
-            
-            sortedSessions.forEach { current ->
-                val overlap = uniqueSessions.find { 
-                    val overlapStart = if (current.first.isAfter(it.first)) current.first else it.first
-                    val overlapEnd = if (current.second.isBefore(it.second)) current.second else it.second
-                    val overlapMins = if (overlapEnd.isAfter(overlapStart)) java.time.Duration.between(overlapStart, overlapEnd).toMinutes() else 0L
-                    overlapMins > 15
-                }
+            // Logic: Merge overlapping intervals into unique non-overlapping blocks
+            val mergedIntervals = mutableListOf<Pair<Instant, Instant>>()
+            if (sortedSessions.isNotEmpty()) {
+                var currentStart = sortedSessions[0].first
+                var currentEnd = sortedSessions[0].second
                 
-                if (overlap == null) {
-                    uniqueSessions.add(current)
-                } else {
-                    if (current.third > overlap.third) {
-                        uniqueSessions.remove(overlap)
-                        uniqueSessions.add(current)
+                for (i in 1 until sortedSessions.size) {
+                    val next = sortedSessions[i]
+                    if (next.first.isBefore(currentEnd) || next.first == currentEnd) {
+                        // Overlap! Extend global end
+                        if (next.second.isAfter(currentEnd)) {
+                            currentEnd = next.second
+                        }
+                    } else {
+                        // Gap! Push previous and start new
+                        mergedIntervals.add(currentStart to currentEnd)
+                        currentStart = next.first
+                        currentEnd = next.second
                     }
                 }
+                mergedIntervals.add(currentStart to currentEnd)
             }
             
-            uniqueSessions.forEach { session ->
-                val dateStr = formatter.format(java.util.Date(session.second.toEpochMilli()))
-                dailySessions[dateStr] = (dailySessions[dateStr] ?: 0) + session.third
+            // Now distribute the merged duration to the appropriate days
+            mergedIntervals.forEach { (start, end) ->
+                val dateStr = formatter.format(java.util.Date(end.toEpochMilli()))
+                
+                // Subtract 'awake' time from the underlying records for this range
+                var totalAwakeForRange = 0L
+                response.records.forEach { record ->
+                    if (record.startTime.isBefore(end) && record.endTime.isAfter(start)) {
+                        record.stages.forEach { stage ->
+                            if (stage.stage in listOf(SleepSessionRecord.STAGE_TYPE_AWAKE, SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED, SleepSessionRecord.STAGE_TYPE_OUT_OF_BED)) {
+                                val overlapStart = if (stage.startTime.isAfter(start)) stage.startTime else start
+                                val overlapEnd = if (stage.endTime.isBefore(end)) stage.endTime else end
+                                if (overlapEnd.isAfter(overlapStart)) {
+                                    totalAwakeForRange += Duration.between(overlapStart, overlapEnd).toMinutes()
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                val duration = Duration.between(start, end).toMinutes() - totalAwakeForRange
+                dailySessions[dateStr] = (dailySessions[dateStr] ?: 0) + duration.toInt()
             }
+            
+
             
             return dailySessions.entries.map { it.key to it.value }.sortedBy { it.first }
         } catch(e: Exception) {
