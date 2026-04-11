@@ -15,9 +15,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -51,7 +55,7 @@ fun DataConnectionsScreen(
             AppInfo(
                 id = "health_connect",
                 name = "Android Health (Google Fit, Samsung)",
-                logo = { GoogleFitLogo() },
+                logo = { HealthConnectLogo() },
                 isConnected = state.isConnected,
                 onConnect = { healthConnectLauncher.launch(fitbitViewModel.healthConnectManager.permissions) },
                 onDisconnect = { fitbitViewModel.disconnectHealthConnect() }
@@ -236,7 +240,6 @@ fun DataConnectionsScreen(
                 
                 Spacer(Modifier.height(48.dp))
                 
-                // Disconnect from app logic
                 Button(
                     onClick = {
                         app.onDisconnect()
@@ -252,7 +255,6 @@ fun DataConnectionsScreen(
                 
                 Spacer(Modifier.height(12.dp))
                 
-                // System Settings Link
                 TextButton(
                     onClick = {
                         try {
@@ -263,9 +265,7 @@ fun DataConnectionsScreen(
                                 val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.fitbit.com/settings/profile/apps"))
                                 context.startActivity(intent)
                             }
-                        } catch(e: Exception) {
-                            // Fallback to settings
-                        }
+                        } catch(e: Exception) {}
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -374,12 +374,54 @@ fun FitbitLogo() {
 
 @Composable
 fun HealthConnectLogo() {
-    Canvas(modifier = Modifier.size(24.dp)) {
-        val color = Color(0xFF4285F4)
-        val strokeWidth = 3.dp.toPx()
+    Canvas(modifier = Modifier.size(28.dp)) {
+        val darkColor = Color(0xFF00222D)
+        val lightColor = Color(0xFF4285F4)
         
-        drawCircle(color.copy(alpha = 0.8f), size.width / 4, center = center.copy(x = center.x - 4.dp.toPx()), style = androidx.compose.ui.graphics.drawscope.Stroke(strokeWidth))
-        drawCircle(NotelPrimary.copy(alpha = 0.8f), size.width / 4, center = center.copy(x = center.x + 4.dp.toPx()), style = androidx.compose.ui.graphics.drawscope.Stroke(strokeWidth))
+        val strokeWidth = 5.5.dp.toPx()
+        
+        // Draw the dark link (left)
+        val leftPath = Path().apply {
+            // This forms the left half of the heart
+            arcTo(
+                rect = Rect(Offset(0f, 4.dp.toPx()), Size(18.dp.toPx(), 18.dp.toPx())),
+                startAngleDegrees = 135f,
+                sweepAngleDegrees = 180f,
+                forceMoveTo = false
+            )
+            lineTo(14.dp.toPx(), 24.dp.toPx())
+        }
+        
+        // Draw the light link (right) - overlapping
+        val rightPath = Path().apply {
+            // This forms the right half of the heart
+            arcTo(
+                rect = Rect(Offset(10.dp.toPx(), 4.dp.toPx()), Size(18.dp.toPx(), 18.dp.toPx())),
+                startAngleDegrees = -135f,
+                sweepAngleDegrees = 180f,
+                forceMoveTo = false
+            )
+            lineTo(14.dp.toPx(), 24.dp.toPx())
+        }
+
+        drawPath(
+            path = leftPath,
+            color = darkColor,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+        )
+        
+        drawPath(
+            path = rightPath,
+            color = lightColor,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+        )
+        
+        // Draw the small dot inside the right link
+        drawCircle(
+            color = lightColor,
+            radius = 3.dp.toPx(),
+            center = Offset(21.dp.toPx(), 11.dp.toPx())
+        )
     }
 }
 
@@ -392,6 +434,6 @@ fun GoogleFitLogo() {
             lineTo(size.width * 0.5f, size.height * 0.8f)
             lineTo(size.width * 0.8f, size.height * 0.2f)
         }
-        drawPath(path, color = Color(0xFFEA4335), style = androidx.compose.ui.graphics.drawscope.Stroke(strokeWidth, cap = androidx.compose.ui.graphics.StrokeCap.Round))
+        drawPath(path, color = Color(0xFFEA4335), style = Stroke(strokeWidth, cap = StrokeCap.Round))
     }
 }
