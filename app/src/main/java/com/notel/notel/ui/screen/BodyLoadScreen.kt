@@ -261,14 +261,16 @@ fun BodyLoadScreen(
                         else -> {
                             FlowRow(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                                maxItemsInEachRow = 2
                             ) {
                                 quickLogState.chips.forEach { chip ->
                                     val isSelected = chip in quickLogState.selectedChips
                                     Surface(
                                         onClick = { quickLogViewModel.toggleChip(chip) },
                                         modifier = Modifier
+                                            .weight(1f) // Balanced width in FlowRow
                                             .animateContentSize()
                                             .clip(RoundedCornerShape(14.dp))
                                             .background(if (isSelected) NotelPrimary.copy(alpha = 0.8f) else NotelSurfaceHigh.copy(alpha = 0.2f))
@@ -279,14 +281,26 @@ fun BodyLoadScreen(
                                             ),
                                         color = Color.Transparent
                                     ) {
-                                        Text(
-                                            chip,
-                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                            color = if (isSelected) Color.White else NotelTextPrimary,
-                                            fontSize = 13.sp,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                        )
+                                        Box(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = chip,
+                                                color = if (isSelected) Color.White else NotelTextPrimary,
+                                                fontSize = 12.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                textAlign = TextAlign.Center,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
                                     }
+                                }
+                                
+                                // Spacer if odd number of chips to maintain grid alignment
+                                if (quickLogState.chips.size % 2 != 0) {
+                                    Spacer(Modifier.weight(1f))
                                 }
                             }
                         }
