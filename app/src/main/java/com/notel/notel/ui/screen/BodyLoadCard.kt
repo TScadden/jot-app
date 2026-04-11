@@ -18,6 +18,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.*
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -117,13 +120,43 @@ fun BodyLoadCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Left: Main Score (Replaces Fitbit Logo)
+                val infiniteTransition = rememberInfiniteTransition()
+                val rotation by infiniteTransition.animateFloat(
+                    initialValue = 0f,
+                    targetValue = 360f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(15000, easing = LinearEasing),
+                        repeatMode = RepeatMode.Restart
+                    )
+                )
+
                 Box(
                     modifier = Modifier
                         .size(48.dp)
-                        .background(NotelSurfaceHigh.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
-                        .border(2.dp, Brush.sweepGradient(listOf(Color(0xFFFF5252), Color(0xFF42A5F5), Color(0xFF7C6EFF), Color(0xFFFF5252))), RoundedCornerShape(8.dp)),
+                        .background(NotelSurfaceHigh.copy(alpha = 0.1f), RoundedCornerShape(8.dp)),
                     contentAlignment = Alignment.Center
                 ) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val strokeWidth = 2.dp.toPx()
+                        val colors = listOf(Color(0xFFFF5252), Color(0xFF42A5F5), Color(0xFF7C6EFF), Color(0xFFFF5252))
+                        rotate(rotation) {
+                            // Using a rounded rect path for the animated border
+                            val path = Path().apply {
+                                addRoundRect(
+                                    RoundRect(
+                                        rect = Rect(Offset.Zero, size),
+                                        cornerRadius = CornerRadius(8.dp.toPx(), 8.dp.toPx())
+                                    )
+                                )
+                            }
+                            drawPath(
+                                path = path,
+                                brush = Brush.sweepGradient(colors),
+                                style = Stroke(width = strokeWidth)
+                            )
+                        }
+                    }
+
                     if (isLoading) {
                         CircularProgressIndicator(color = NotelPrimary, strokeWidth = 1.dp, modifier = Modifier.size(20.dp))
                     } else {
