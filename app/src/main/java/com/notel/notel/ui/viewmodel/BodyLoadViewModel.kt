@@ -231,26 +231,35 @@ class BodyLoadViewModel @Inject constructor(
             val sdfDay = java.text.SimpleDateFormat("EEE", java.util.Locale.US)
             val last7Days = (0..6).map { java.time.LocalDate.now().minusDays(it.toLong()) }
             
+            // Fetch necessary history once to avoid loop-based rate limiting
+            val allSleepHistory = if (logRepository.healthConnectManager.checkAvailability() == androidx.health.connect.client.HealthConnectClient.SDK_AVAILABLE) {
+                try { logRepository.healthConnectManager.readHistoricalSleep(14, todayStr) } catch(e: Exception) { emptyList() }
+            } else emptyList()
+
             val finalHistory = mutableListOf<BodyLoadSnapshot>()
             last7Days.forEach { dateObj ->
                 val dStr = dateObj.toString()
                 val existing = history.find { it.date == dStr }
-                val dStats = logRepository.getDailyStatsSummary(dStr)
-                val dSleep = dStats["sleepMins"] as? Int ?: (dStats["sleepMins"] as? Double)?.toInt() ?: 0
+                
+                // Use the fetched history instead of a nested repo call
+                val dSleep = allSleepHistory.find { it.first == dStr }?.second ?: 0
                 
                 if (existing != null) {
                     val maskedScore = if (dSleep == 0) 0 else existing.score
                     finalHistory.add(existing.copy(score = maskedScore))
                 } else {
-                    val hScore = calculateHeuristicScore(dStats)
-                    val displayDayStr = sdfDay.format(java.util.Date.from(dateObj.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant()))
-                    if (hScore > 0) {
+                    // Fallback to heuristic ONLY if we have sleep data
+                    if (dSleep > 0) {
+                        val dStats = logRepository.getDailyStatsSummary(dStr)
+                        val hScore = calculateHeuristicScore(dStats)
+                        val displayDayStr = sdfDay.format(java.util.Date.from(dateObj.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant()))
                         finalHistory.add(BodyLoadSnapshot(
                             date = dStr, displayDay = displayDayStr, score = hScore,
                             factors = listOf(FactorWeight("Biometric Heuristic", 0.5f)),
                             adviceList = listOf("Heuristic analysis based on raw sensor data.")
                         ))
                     } else {
+                        val displayDayStr = sdfDay.format(java.util.Date.from(dateObj.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant()))
                         finalHistory.add(BodyLoadSnapshot(dStr, displayDayStr, 0, emptyList(), emptyList()))
                     }
                 }

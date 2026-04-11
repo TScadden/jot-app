@@ -36,7 +36,7 @@ class LogRepository @Inject constructor(
     private val logEntryDao: LogEntryDao,
     private val geminiService: GeminiService,
     private val preferences: NotelPreferences,
-    private val healthConnectManager: HealthConnectManager,
+    val healthConnectManager: HealthConnectManager,
     private val syncManager: SyncManager,
     private val categoryRepository: CategoryRepository,
     private val habitRepository: HabitRepository,
@@ -219,23 +219,24 @@ class LogRepository @Inject constructor(
         val targetDay = dateStr ?: java.time.LocalDate.now().toString()
         val isAvailable = healthConnectManager.checkAvailability() == androidx.health.connect.client.HealthConnectClient.SDK_AVAILABLE
         
-        // 1. Fetch Current Day Numbers - Attempt each one individually to be resilient
-        val calories = if (isAvailable) try { healthConnectManager.readActiveCalories(targetDay) } catch(e: Exception) { 0 } else 0
-        val sleepData = if (isAvailable) try { healthConnectManager.readSleepSession(targetDay) } catch(e: Exception) { null } else null
-        val sleepMins = sleepData?.minutesAsleep?.toDouble() ?: 0.0
-        
-        // Fetch HRV and RHR
-        val historyHr = if (isAvailable) try { healthConnectManager.readHistoricalHeartRateWithSpikes(30) } catch(e: Exception) { emptyList() } else emptyList()
-        val currentHr = historyHr.find { it.date == targetDay }
-        val rhr = currentHr?.baseline?.toDouble() ?: 70.0 // Default 70 if missing
-        
+        // 1. Fetch Historical Aggregates (Efficiently)
         val hrvHistory = if (isAvailable) try { healthConnectManager.readHeartRateVariability(30) } catch(e: Exception) { emptyList() } else emptyList()
-        val hrv = hrvHistory.find { it.first == targetDay }?.second ?: 0.0 // 0 means missing
+        val historyHr = if (isAvailable) try { healthConnectManager.readHistoricalHeartRateWithSpikes(30) } catch(e: Exception) { emptyList() } else emptyList()
+        val sleepHistoryRecords = if (isAvailable) try { healthConnectManager.readHistoricalSleep(30, targetDay) } catch(e: Exception) { emptyList() } else emptyList()
+        
+        // 2. Extract Target Day Biometrics
+        val calories = if (isAvailable) try { healthConnectManager.readActiveCalories(targetDay) } catch(e: Exception) { 0 } else 0
+        
+        // Use aggregated records for a more robust sleep duration (naps etc.)
+        val sleepMins = sleepHistoryRecords.find { it.first == targetDay }?.second?.toDouble() ?: 0.0
+        
+        val currentHr = historyHr.find { it.date == targetDay }
+        val rhr = currentHr?.baseline?.toDouble() ?: 70.0
+        val hrv = hrvHistory.find { it.first == targetDay }?.second ?: 0.0
         
         // Match what is shown in the heart rate tab by using cached spikes
         val cachedSpikesStr = preferences.historicalHrSpikes.first()
         var spikeCount = 0.0
-        
         if (cachedSpikesStr.isNotBlank()) {
             try {
                 val spikes = Json { ignoreUnknownKeys = true }
@@ -243,45 +244,37 @@ class LogRepository @Inject constructor(
                 spikeCount = spikes.find { it.date == targetDay }?.spikeCount?.toDouble() ?: 0.0
             } catch (e: Exception) { }
         }
-        
-        // Fallback: If cache is 0/missing, use the currentHr results 
         if (spikeCount == 0.0) {
             spikeCount = currentHr?.spikeCount?.toDouble() ?: 0.0
         }
         
-        // 2. Calculate Baselines (Means and StdDevs)
+        // 3. Baselines & Trends
         val hrvMean = if (hrvHistory.isNotEmpty()) hrvHistory.map { it.second }.average() else 45.0
         val hrvStd = if (hrvHistory.size > 2) calculateStdDev(hrvHistory.map { it.second }) else 10.0
-        
         val rhrMean = if (historyHr.isNotEmpty()) historyHr.map { it.baseline.toDouble() }.average() else 70.0
         val rhrStd = if (historyHr.size > 2) calculateStdDev(historyHr.map { it.baseline.toDouble() }) else 5.0
         
-        // Activity TSB / ACWR
+        // 4. Activity Trends (ACWR)
         val activityHistory = if (isAvailable) try { healthConnectManager.readHistoricalCalories(42) } catch(e: Exception) { emptyList() } else emptyList()
         val acuteCalories = activityHistory.takeLast(7).map { it.second }.average()
         val chronicCalories = activityHistory.map { it.second }.average()
         val acwr = if (chronicCalories > 100) acuteCalories / chronicCalories else 1.0
         
-        // Sleep Debt Bank (Sequential walk from very oldest history available)
-        val sleepHistoryRecords = if (isAvailable) try { healthConnectManager.readHistoricalSleep(3650, targetDay) } catch(e: Exception) { emptyList() } else emptyList()
-        
+        // 5. Sleep Debt Bank calculation
         var runningBank = 0.0
-        val bankHistory = mutableListOf<Triple<String, Double, Double>>() // Date, DailyDelta, RunningBank
-        
-        // Sequential walk through the history in order of date (Oldest to Newest)
-        // We filter <= targetDay to ensure we don't show "future" data when viewing a past day
+        val bankHistory = mutableListOf<Triple<String, Double, Double>>()
         sleepHistoryRecords
             .filter { it.first <= targetDay }
             .sortedBy { it.first }
             .forEach { (day, minutes) ->
             val actualHours = minutes / 60.0
-            val delta = actualHours - 8.0 // 8h target balance logic
+            val delta = actualHours - 8.0 
             runningBank += delta
             bankHistory.add(Triple(day, delta, runningBank))
         }
         
-        val sleepDebt = runningBank // Total bank balance as of targetDay
-        val sleepDebtHistory = bankHistory // Full list of daily bank states for UI inspection
+        val sleepDebt = runningBank
+        val sleepDebtHistory = bankHistory
         
         // Jots for the 7 days
         val dateObj = if (dateStr != null) try { java.time.LocalDate.parse(dateStr) } catch(e: Exception) { java.time.LocalDate.now() } else java.time.LocalDate.now()
