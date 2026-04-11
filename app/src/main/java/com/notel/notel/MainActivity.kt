@@ -157,8 +157,12 @@ class MainActivity : ComponentActivity() {
                         composable("body_load") {
                             BodyLoadScreen(
                                 viewModel = bodyLoadViewModel,
-                                onBack = { /* Root */ }
+                                onBack = { /* Root */ },
+                                onNavigateToConnections = { navController.navigate("data_connections") }
                             )
+                        }
+                        composable("data_connections") {
+                            DataConnectionsScreen(onBack = { navController.popBackStack() })
                         }
                         composable("history") {
                             HistoryScreen(

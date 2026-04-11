@@ -40,7 +40,9 @@ fun BodyLoadCard(
     onDaySelected: (String) -> Unit = {},
     onFactorSelected: (String?) -> Unit = {},
     onResetSelection: () -> Unit = {},
-    onShowTheory: () -> Unit = {}
+    onShowTheory: () -> Unit = {},
+    onRefresh: () -> Unit = {},
+    onBackToToday: () -> Unit = {}
 ) {
     val score = state.score
     val isLoading = state.isLoading
@@ -134,131 +136,149 @@ fun BodyLoadCard(
 
         Spacer(Modifier.height(16.dp))
 
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            shape = RoundedCornerShape(12.dp),
-            color = Color.Black.copy(alpha = 0.3f),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
-        ) {
-            Row(
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = Color.Black.copy(alpha = 0.3f),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
             ) {
-                // Left: Main Score (Replaces Fitbit Logo)
-                val infiniteTransition = rememberInfiniteTransition()
-                val rotation by infiniteTransition.animateFloat(
-                    initialValue = 0f,
-                    targetValue = 360f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(15000, easing = LinearEasing),
-                        repeatMode = RepeatMode.Restart
-                    )
-                )
-
-                Box(
+                Row(
                     modifier = Modifier
-                        .size(48.dp)
-                        .background(NotelSurfaceHigh.copy(alpha = 0.1f), RoundedCornerShape(8.dp)),
-                    contentAlignment = Alignment.Center
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        val strokeWidth = 2.dp.toPx()
-                        val colors = listOf(Color(0xFFFF5252), Color(0xFF42A5F5), Color(0xFF7C6EFF), Color(0xFFFF5252))
-                        
-                        // We want the square to stay still, but the colors to rotate.
-                        // We clip to the border shape and draw a rotating gradient background.
-                        val outerPath = Path().apply {
-                            addRoundRect(RoundRect(Rect(Offset.Zero, size), CornerRadius(8.dp.toPx())))
-                        }
-                        val innerPath = Path().apply {
-                            addRoundRect(RoundRect(Rect(strokeWidth, strokeWidth, size.width - strokeWidth, size.height - strokeWidth), CornerRadius((8.dp.toPx() - strokeWidth).coerceAtLeast(0f))))
-                        }
+                    // Left: Main Score (Replaces Fitbit Logo)
+                    val infiniteTransition = rememberInfiniteTransition()
+                    val rotation by infiniteTransition.animateFloat(
+                        initialValue = 0f,
+                        targetValue = 360f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(15000, easing = LinearEasing),
+                            repeatMode = RepeatMode.Restart
+                        )
+                    )
 
-                        clipPath(outerPath) {
-                            clipPath(innerPath, clipOp = ClipOp.Difference) {
-                                rotate(rotation) {
-                                    drawRect(
-                                        brush = Brush.sweepGradient(colors),
-                                        size = size * 2f,
-                                        topLeft = Offset(-size.width / 2f, -size.height / 2f)
-                                    )
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .background(NotelSurfaceHigh.copy(alpha = 0.1f), RoundedCornerShape(8.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            val strokeWidth = 2.dp.toPx()
+                            val colors = listOf(Color(0xFFFF5252), Color(0xFF42A5F5), Color(0xFF7C6EFF), Color(0xFFFF5252))
+                            
+                            val outerPath = Path().apply {
+                                addRoundRect(RoundRect(Rect(Offset.Zero, size), CornerRadius(8.dp.toPx())))
+                            }
+                            val innerPath = Path().apply {
+                                addRoundRect(RoundRect(Rect(strokeWidth, strokeWidth, size.width - strokeWidth, size.height - strokeWidth), CornerRadius((8.dp.toPx() - strokeWidth).coerceAtLeast(0f))))
+                            }
+
+                            clipPath(outerPath) {
+                                clipPath(innerPath, clipOp = ClipOp.Difference) {
+                                    rotate(rotation) {
+                                        drawRect(
+                                            brush = Brush.sweepGradient(colors),
+                                            size = size * 2f,
+                                            topLeft = Offset(-size.width / 2f, -size.height / 2f)
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    if (isLoading) {
-                        CircularProgressIndicator(color = NotelPrimary, strokeWidth = 1.dp, modifier = Modifier.size(20.dp))
-                    } else {
-                        Text(
-                            text = score.toString(),
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Black,
-                            color = NotelTextPrimary
-                        )
-                    }
-                }
-                
-                VerticalDivider(modifier = Modifier.height(32.dp).padding(horizontal = 4.dp), color = Color.White.copy(alpha = 0.1f))
-
-                // Center Metrics Group
-                Row(
-                    modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Calories
-                    MetricItem(
-                        icon = Icons.Default.Whatshot,
-                        value = "${state.activeCalories}",
-                        color = Color(0xFFFF5252)
-                    )
-
-                    VerticalDivider(modifier = Modifier.height(20.dp), color = Color.White.copy(alpha = 0.1f))
-
-                    // Jots
-                    MetricItem(
-                        icon = Icons.Default.Edit,
-                        value = "${state.jotCountDaily}",
-                        color = Color(0xFF66BB6A)
-                    )
-
-                    VerticalDivider(modifier = Modifier.height(20.dp), color = Color.White.copy(alpha = 0.1f))
-
-                    // Sleep + Debt Unified Group
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.clickable { showDebtHistory = true }
-                    ) {
-                        MetricItem(
-                            icon = Icons.Default.Nightlight,
-                            value = formatSleep(state.sleepMinutes),
-                            color = Color(0xFF42A5F5)
-                        )
-                        
-                        val debtMins = state.sleepDebtMins
-                        if (!isLoading) {
-                            val isDeficit = debtMins < 0
-                            val h = Math.abs(debtMins) / 60
-                            val m = Math.abs(debtMins) % 60
-                            val dStr = if (isDeficit) "-${h}h ${m}m" else "+${h}h ${m}m"
-                            val bColor = if (!isDeficit) Color(0xFF66BB6A) else if (Math.abs(debtMins) > 600) Color(0xFFFF5252) else Color(0xFFFFB74D)
-
+                        if (isLoading) {
+                            CircularProgressIndicator(color = NotelPrimary, strokeWidth = 1.dp, modifier = Modifier.size(20.dp))
+                        } else {
                             Text(
-                                text = dStr,
-                                color = bColor,
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.offset(y = (-2).dp)
+                                text = score.toString(),
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Black,
+                                color = NotelTextPrimary
                             )
                         }
                     }
+                    
+                    VerticalDivider(modifier = Modifier.height(32.dp).padding(horizontal = 4.dp), color = Color.White.copy(alpha = 0.1f))
+
+                    // Center Metrics Group
+                    Row(
+                        modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Calories
+                        MetricItem(
+                            icon = Icons.Default.Whatshot,
+                            value = "${state.activeCalories}",
+                            color = Color(0xFFFF5252)
+                        )
+
+                        VerticalDivider(modifier = Modifier.height(20.dp), color = Color.White.copy(alpha = 0.1f))
+
+                        // Jots
+                        MetricItem(
+                            icon = Icons.Default.Edit,
+                            value = "${state.jotCountDaily}",
+                            color = Color(0xFF66BB6A)
+                        )
+
+                        VerticalDivider(modifier = Modifier.height(20.dp), color = Color.White.copy(alpha = 0.1f))
+
+                        // Sleep + Debt Unified Group
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.clickable { showDebtHistory = true }
+                        ) {
+                            MetricItem(
+                                icon = Icons.Default.Nightlight,
+                                value = formatSleep(state.sleepMinutes),
+                                color = Color(0xFF42A5F5)
+                            )
+                            
+                            val debtMins = state.sleepDebtMins
+                            if (!isLoading) {
+                                val isDeficit = debtMins < 0
+                                val h = Math.abs(debtMins) / 60
+                                val m = Math.abs(debtMins) % 60
+                                val dStr = if (isDeficit) "-${h}h ${m}m" else "+${h}h ${m}m"
+                                val bColor = if (!isDeficit) Color(0xFF66BB6A) else if (Math.abs(debtMins) > 600) Color(0xFFFF5252) else Color(0xFFFFB74D)
+
+                                Text(
+                                    text = dStr,
+                                    color = bColor,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.offset(y = (-2).dp)
+                                )
+                            }
+                        }
+                    }
                 }
+            }
+
+            // Small Sync Button in bottom right corner of the rectangle
+            val isToday = state.selectedDate == java.time.LocalDate.now().toString()
+            IconButton(
+                onClick = { if (isToday) onRefresh() else onBackToToday() },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 18.dp, bottom = 2.dp) // Positioned slightly overlapping bottom right
+                    .size(28.dp),
+                enabled = !isLoading
+            ) {
+                Icon(
+                    imageVector = if (isToday) Icons.Default.Refresh else Icons.Default.DateRange,
+                    contentDescription = "Sync",
+                    tint = NotelPrimary.copy(alpha = 0.7f),
+                    modifier = Modifier.size(16.dp)
+                )
             }
         }
         

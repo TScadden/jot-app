@@ -29,7 +29,8 @@ import com.notel.notel.ui.viewmodel.BodyLoadViewModel
 @Composable
 fun BodyLoadScreen(
     viewModel: BodyLoadViewModel = hiltViewModel(),
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onNavigateToConnections: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsState()
 
@@ -52,14 +53,13 @@ fun BodyLoadScreen(
                 },
                 navigationIcon = {},
                 actions = {
-                    if (isToday) {
-                        IconButton(onClick = { viewModel.refresh() }, enabled = !state.isLoading) {
-                            Icon(Icons.Default.Refresh, "Refresh", tint = NotelPrimary)
-                        }
-                    } else {
-                        IconButton(onClick = { viewModel.selectDay(todayStr) }) {
-                            Icon(Icons.Default.DateRange, "Back to Today", tint = NotelPrimary)
-                        }
+                    IconButton(onClick = onNavigateToConnections) {
+                        Icon(
+                            Icons.Default.Watch,
+                            contentDescription = "Connections",
+                            tint = NotelPrimary,
+                            modifier = Modifier.size(24.dp)
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = NotelBackground)
@@ -82,7 +82,9 @@ fun BodyLoadScreen(
                 onShowTheory = { 
                     viewModel.markTheorySeen()
                     showTheorySheet = true 
-                }
+                },
+                onRefresh = { viewModel.refresh() },
+                onBackToToday = { viewModel.selectDay(todayStr) }
             )
 
             if (state.error != null) {
