@@ -4,32 +4,49 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.rounded.*
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.BodyLoadViewModel
+import com.notel.notel.ui.viewmodel.QuickLogViewModel
+import com.notel.notel.ui.viewmodel.EventCounterDto
+import com.notel.notel.data.local.entity.Category
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BodyLoadScreen(
     viewModel: BodyLoadViewModel = hiltViewModel(),
     onBack: () -> Unit,
-    onNavigateToConnections: () -> Unit = {}
+    onNavigateToConnections: () -> Unit = {},
+    quickLogViewModel: QuickLogViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
+    val quickLogState by quickLogViewModel.uiState.collectAsState()
+
+    // Auto-fetch suggestions if category is selected and auto is on
+    LaunchedEffect(quickLogState.selectedCategory, quickLogState.autoAiSuggestions) {
+        if (quickLogState.autoAiSuggestions && quickLogState.selectedCategory != null && quickLogState.chips.isEmpty()) {
+            quickLogViewModel.fetchSuggestions()
+        }
+    }
 
     val sheetState = rememberModalBottomSheetState()
     var showTheorySheet by remember { mutableStateOf(false) }
@@ -101,6 +118,7 @@ fun BodyLoadScreen(
         ) {
             BodyLoadCard(
                 state = state,
+                counters = quickLogState.eventCounters,
                 onDaySelected = { viewModel.selectDay(it) },
                 onFactorSelected = { viewModel.selectFactor(it) },
                 onResetSelection = { viewModel.selectFactor(null) },
@@ -114,6 +132,97 @@ fun BodyLoadScreen(
                     viewModel.updateLocation(lat, lon, city)
                 }
             )
+
+            // Divider under streak area
+            HorizontalDivider(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                color = Color.White.copy(alpha = 0.05f)
+            )
+            
+            Spacer(Modifier.height(16.dp))
+
+            // ── Recommended for You Layer ─────────────────────────────
+            if (quickLogState.smartCategories.isNotEmpty()) {
+                Text(
+                    "Recommended for You",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = NotelPrimary,
+                    modifier = Modifier.fillMaxWidth().padding(start = 24.dp, top = 8.dp),
+                    textAlign = TextAlign.Start
+                )
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(quickLogState.smartCategories) { cat ->
+                        CategoryChipSmall(
+                            category = cat,
+                            isSelected = cat.id == quickLogState.selectedCategory?.id,
+                            onClick = { quickLogViewModel.selectCategory(cat) }
+                        )
+                    }
+                }
+            }
+            
+            Spacer(Modifier.height(8.dp))
+            
+            // ── AI Suggestions Grid ─────────────────────────────
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .heightIn(min = 100.dp)
+            ) {
+                when {
+                    quickLogState.isLoadingChips -> Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = NotelPrimary, modifier = Modifier.size(24.dp))
+                    }
+                    quickLogState.chips.isEmpty() && !quickLogState.autoAiSuggestions -> {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("No suggestions loaded", color = NotelTextSecondary, fontSize = 12.sp)
+                            Spacer(Modifier.height(8.dp))
+                            TextButton(onClick = { quickLogViewModel.fetchSuggestions() }) {
+                                Text("Load Suggestions", color = NotelPrimary, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                    else -> {
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            quickLogState.chips.forEach { chip ->
+                                val isSelected = chip in quickLogState.selectedChips
+                                Surface(
+                                    onClick = { quickLogViewModel.toggleChip(chip) },
+                                    modifier = Modifier
+                                        .animateContentSize()
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(if (isSelected) NotelPrimary.copy(alpha = 0.8f) else NotelSurfaceHigh.copy(alpha = 0.2f))
+                                        .border(
+                                            width = 1.dp,
+                                            color = if (isSelected) Color.Transparent else Color.White.copy(alpha = 0.05f),
+                                            shape = RoundedCornerShape(14.dp)
+                                        ),
+                                    color = Color.Transparent
+                                ) {
+                                    Text(
+                                        chip,
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                        color = if (isSelected) Color.White else NotelTextPrimary,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             if (state.error != null) {
                 Spacer(Modifier.height(16.dp))
@@ -541,6 +650,36 @@ fun WeatherMetricBox(
                 }
             }
             Text(label, color = NotelTextSecondary, fontSize = 11.sp)
+        }
+    }
+}
+
+@Composable
+private fun CategoryChipSmall(category: Category, isSelected: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier
+            .animateContentSize()
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (isSelected) NotelPrimary else NotelSurfaceHigh.copy(alpha = 0.2f))
+            .border(
+                width = 1.dp,
+                color = if (isSelected) Color.Transparent else Color.White.copy(alpha = 0.05f),
+                shape = RoundedCornerShape(12.dp)
+            ),
+        color = Color.Transparent
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Text(
+                category.name,
+                color = if (isSelected) Color.White else NotelTextSecondary,
+                fontSize = 12.sp,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+            )
         }
     }
 }

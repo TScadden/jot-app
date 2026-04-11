@@ -31,12 +31,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.BodyLoadState
+import com.notel.notel.ui.viewmodel.EventCounterDto
 import kotlin.math.PI
 import kotlin.math.sin
 
 @Composable
 fun BodyLoadCard(
     state: BodyLoadState,
+    counters: List<EventCounterDto> = emptyList(),
     onDaySelected: (String) -> Unit = {},
     onFactorSelected: (String?) -> Unit = {},
     onResetSelection: () -> Unit = {},
@@ -49,6 +51,17 @@ fun BodyLoadCard(
     val isLoading = state.isLoading
     val todayStr = java.time.LocalDate.now().toString()
     var showDebtHistory by remember { mutableStateOf(false) }
+    var currentCounterIndex by remember { mutableStateOf(0) }
+    
+    LaunchedEffect(counters.size) {
+        if (counters.size > 1) {
+            while (true) {
+                kotlinx.coroutines.delay(4000)
+                currentCounterIndex = (currentCounterIndex + 1) % counters.size
+            }
+        }
+    }
+    
     val context = androidx.compose.ui.platform.LocalContext.current
 
     // ── Location Precision Logic ──────────────────────────────────────
@@ -347,34 +360,109 @@ fun BodyLoadCard(
         }
         
         // Streak Tiles (Left-Aligned under Main Score)
+        // Streak Tiles & Counters Hub
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp) // Aligned with the left-most score box essentially
+                .padding(horizontal = 24.dp)
                 .offset(y = (-4).dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Current Streak Square
-            Surface(
-                modifier = Modifier.size(34.dp),
-                shape = RoundedCornerShape(8.dp),
-                color = NotelSurfaceHigh.copy(alpha = 0.1f),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text("🔥${state.currentStreak}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFB74D))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Current Streak Square
+                Surface(
+                    modifier = Modifier.size(34.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    color = NotelSurfaceHigh.copy(alpha = 0.1f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("🔥${state.currentStreak}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFB74D))
+                    }
+                }
+
+                // Best Streak Square
+                Surface(
+                    modifier = Modifier.size(34.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    color = NotelSurfaceHigh.copy(alpha = 0.1f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("🏆${state.bestStreak}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD700))
+                    }
                 }
             }
 
-            // Best Streak Square
-            Surface(
-                modifier = Modifier.size(34.dp),
-                shape = RoundedCornerShape(8.dp),
-                color = NotelSurfaceHigh.copy(alpha = 0.1f),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text("🏆${state.bestStreak}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD700))
+            // Right side: Active Counter Carousel
+            if (counters.isNotEmpty()) {
+                val safeIndex = currentCounterIndex.coerceIn(0, counters.size - 1)
+                val activeCounter = counters[safeIndex]
+                
+                // Logic to calculate days remaining/since
+                val todayStart = java.util.Calendar.getInstance().apply {
+                    set(java.util.Calendar.HOUR_OF_DAY, 0)
+                    set(java.util.Calendar.MINUTE, 0)
+                    set(java.util.Calendar.SECOND, 0)
+                    set(java.util.Calendar.MILLISECOND, 0)
+                }.timeInMillis
+                
+                val diffMillis = activeCounter.targetDate - todayStart
+                var isUp = activeCounter.isUp
+                var finalDiffMillis = diffMillis
+                
+                if (!isUp && diffMillis < 0 && activeCounter.autoUp) {
+                    isUp = true
+                    finalDiffMillis = todayStart - activeCounter.targetDate
+                } else if (isUp) {
+                    finalDiffMillis = todayStart - activeCounter.targetDate
+                }
+                
+                val daysCount = Math.max(0L, finalDiffMillis / 86400000L).toString()
+                val icon = if (isUp) "⬆️" else "⏳"
+
+                AnimatedContent(
+                    targetState = activeCounter,
+                    transitionSpec = {
+                        (fadeIn(animationSpec = tween(1000, easing = LinearEasing)) + 
+                         scaleIn(initialScale = 0.92f, animationSpec = tween(1000)))
+                        .togetherWith(fadeOut(animationSpec = tween(1000)))
+                    },
+                    label = "counter_carousel"
+                ) { counter ->
+                    Surface(
+                        modifier = Modifier.height(34.dp).widthIn(min = 64.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        color = NotelSurfaceHigh.copy(alpha = 0.1f),
+                        border = BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.2f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Text(icon, fontSize = 10.sp)
+                            Spacer(Modifier.width(4.dp))
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = daysCount,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = NotelTextPrimary,
+                                    lineHeight = 12.sp
+                                )
+                                Text(
+                                    text = counter.name.uppercase(),
+                                    fontSize = 7.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = NotelTextSecondary,
+                                    maxLines = 1,
+                                    lineHeight = 8.sp
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
