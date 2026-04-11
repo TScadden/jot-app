@@ -99,34 +99,33 @@ fun BodyLoadCard(
 
         Spacer(Modifier.height(16.dp))
 
-        // ── Main Tree Section ──────────────────────────────────────────
-        Box(
+            Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(320.dp),
-            contentAlignment = Alignment.TopCenter
+                .height(340.dp),
+            contentAlignment = Alignment.Center
         ) {
-            // ... (Canvas and Node tree remains the same logic)
+            // Generative Connection Lines
             Canvas(modifier = Modifier.fillMaxSize()) {
-                val centerTop = Offset(size.width / 2, 70.dp.toPx())
-                val splitY = 160.dp.toPx()
-                val bottomY = 240.dp.toPx()
-                val itemWidth = size.width / 3
-                val p1 = Offset(itemWidth * 0.5f, bottomY)
-                val p2 = Offset(itemWidth * 1.5f, bottomY)
-                val p3 = Offset(itemWidth * 2.5f, bottomY)
-                val lineStyle = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round)
-                val lineColor = NotelSurfaceHigh.copy(alpha = 0.6f)
-                drawLine(lineColor, centerTop.copy(y = centerTop.y + 50.dp.toPx()), Offset(size.width / 2, splitY), strokeWidth = lineStyle.width)
-                drawLine(lineColor, Offset(p1.x, splitY), Offset(p3.x, splitY), strokeWidth = lineStyle.width)
-                drawLine(lineColor, Offset(p1.x, splitY), p1, strokeWidth = lineStyle.width)
-                drawLine(lineColor, Offset(p2.x, splitY), p2, strokeWidth = lineStyle.width)
-                drawLine(lineColor, Offset(p3.x, splitY), p3, strokeWidth = lineStyle.width)
+                val hub = Offset(size.width / 2, size.height / 2)
+                val lineStyle = Stroke(width = 1.dp.toPx(), cap = StrokeCap.Round)
+                val lineColor = NotelSurfaceHigh.copy(alpha = 0.3f)
+                
+                // Orbiter target positions
+                val calY = 40.dp.toPx() + 40.dp.toPx() 
+                val sleepX = 80.dp.toPx()
+                val sleepY = size.height - 70.dp.toPx()
+                val jotsX = size.width - 80.dp.toPx()
+                val jotsY = size.height - 70.dp.toPx()
+                
+                drawLine(lineColor, hub, Offset(hub.x, calY), strokeWidth = lineStyle.width)
+                drawLine(lineColor, hub, Offset(sleepX, sleepY), strokeWidth = lineStyle.width)
+                drawLine(lineColor, hub, Offset(jotsX, jotsY), strokeWidth = lineStyle.width)
             }
 
-            // Central Big Node (The Score)
+            // Central Score Hub
             Column(
-                modifier = Modifier.align(Alignment.TopCenter),
+                modifier = Modifier.align(Alignment.Center),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 val infiniteTransition = rememberInfiniteTransition()
@@ -140,20 +139,12 @@ fun BodyLoadCard(
                 )
 
                 Box(
-                    modifier = Modifier.size(100.dp),
+                    modifier = Modifier.size(110.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    // Smooth sweep gradient ring
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         val strokeWidth = 5.dp.toPx()
-                        
-                        val gradientColors = listOf(
-                            Color(0xFFFF5252), // Red
-                            Color(0xFF42A5F5), // Blue
-                            Color(0xFF7C6EFF), // Purple
-                            Color(0xFFFF5252)  // Close loop
-                        )
-                        
+                        val gradientColors = listOf(Color(0xFFFF5252), Color(0xFF42A5F5), Color(0xFF7C6EFF), Color(0xFFFF5252))
                         rotate(rotation) {
                             drawArc(
                                 brush = Brush.sweepGradient(gradientColors),
@@ -168,114 +159,79 @@ fun BodyLoadCard(
                     if (isLoading) {
                         CircularProgressIndicator(color = NotelPrimary, modifier = Modifier.size(24.dp))
                     } else {
-                        Row(verticalAlignment = Alignment.Bottom) {
-                            Text(
-                                text = score.toString(),
-                                fontSize = 42.sp,
-                                fontWeight = FontWeight.Black,
-                                color = NotelTextPrimary
-                            )
-                        }
+                        Text(
+                            text = score.toString(),
+                            fontSize = 44.sp,
+                            fontWeight = FontWeight.Black,
+                            color = NotelTextPrimary
+                        )
                     }
+                }
+                Text("SUMMARY", fontSize = 10.sp, color = NotelTextSecondary, fontWeight = FontWeight.Bold)
+            }
 
-                    // Sleep Debt Badge Moved to Ring Corner
+            // Mind Map Orbiters
+            
+            // 1. Calories (Top Center)
+            Box(modifier = Modifier.align(Alignment.TopCenter).padding(top = 40.dp)) {
+                PillarNode(
+                    icon = Icons.Default.Whatshot,
+                    value = "${state.activeCalories}",
+                    target = "",
+                    label = "CALORIES",
+                    progress = (state.activeCalories / 2500f).coerceIn(0f, 1f),
+                    color = Color(0xFFFF5252)
+                )
+            }
+
+            // 2. Sleep (Bottom Left)
+            Box(modifier = Modifier.align(Alignment.BottomStart).padding(start = 24.dp, bottom = 40.dp)) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    PillarNode(
+                        icon = Icons.Default.Nightlight,
+                        value = formatSleep(state.sleepMinutes),
+                        target = "8h",
+                        label = "SLEEP",
+                        progress = (state.sleepMinutes / 480f).coerceIn(0f, 1f),
+                        color = Color(0xFF42A5F5)
+                    )
+                    
+                    // Sleep Debt: Now anchored to Sleep Node
                     val debtMins = state.sleepDebtMins
                     if (!isLoading) {
                         val isSurplus = debtMins > 0
                         val isDeficit = debtMins < 0
-                        val isZero = debtMins == 0
                         val dDebt = if (isDeficit) -debtMins else debtMins
                         val h = dDebt / 60
                         val m = dDebt % 60
                         val dStr = if (h > 0) "${h}h ${m}m" else "${m}m"
                         val lbl = if (isSurplus) "surplus" else if (isDeficit) "deficit" else "balanced"
-                        
-                        val bColor = when {
-                            isSurplus -> Color(0xFF66BB6A)
-                            isDeficit && dDebt > 600 -> Color(0xFFFF5252)
-                            isDeficit && dDebt > 120 -> Color(0xFFFFB74D) 
-                            else -> Color(0xFFE0E0E0).copy(alpha = 0.7f)
-                        }
+                        val bColor = if (isSurplus) Color(0xFF66BB6A) else if (isDeficit && dDebt > 600) Color(0xFFFF5252) else Color(0xFFFFB74D)
 
-                        Box(
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = NotelSurface.copy(alpha = 0.8f),
                             modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .offset(x = 12.dp, y = 38.dp)
-                                .liquidGlass(shape = RoundedCornerShape(8.dp), color = NotelBackground, alpha = if(isZero) 0.3f else 0.8f)
+                                .offset(y = (-4).dp)
                                 .clickable { showDebtHistory = true }
-                                .padding(horizontal = 6.dp, vertical = 2.dp),
-                            contentAlignment = Alignment.Center
+                                .border(1.dp, bColor.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
-                            Text(
-                                text = "$dStr $lbl",
-                                color = bColor,
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Text("$dStr $lbl", color = bColor, fontSize = 8.sp, fontWeight = FontWeight.Bold)
                         }
                     }
-                } // End ring Box
-
-            } // End Box wrapping Ring + Badge
-
-            // Sub-Pillars Bottom Row
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 10.dp)
-                    .drawBehind {
-                        val spacing = size.width / 3.0f
-                        val centerY = 27.dp.toPx()
-                        val bridgeBrush = Brush.linearGradient(
-                            colors = listOf(NotelSurfaceHigh.copy(alpha=0.1f), NotelSurfaceHigh.copy(alpha=0.3f), NotelSurfaceHigh.copy(alpha=0.1f))
-                        )
-                        drawLine(brush = bridgeBrush, start = Offset(spacing * 0.6f, centerY), end = Offset(spacing * 1.4f, centerY), strokeWidth = 1.dp.toPx())
-                        drawLine(brush = bridgeBrush, start = Offset(spacing * 1.6f, centerY), end = Offset(spacing * 2.4f, centerY), strokeWidth = 1.dp.toPx())
-                    },
-                horizontalArrangement = Arrangement.SpaceAround,
-                verticalAlignment = Alignment.Top
-            ) {
-                // Calories Pillar
-                PillarNode(
-                    modifier = Modifier,
-                    icon = Icons.Default.Whatshot,
-                    value = "${state.activeCalories}",
-                    target = "",
-                    label = "CALORIES",
-                    progress = state.factors.find { it.name.lowercase().contains("cal") || it.name.lowercase().contains("activity") }?.weight?.times(3.0f)?.coerceIn(0f, 1f)
-                                ?: (state.activeCalories / 2500f).coerceIn(0f, 1f),
-                    color = Color(0xFFFF5252) // Red
-                )
-                
-                // Sleep Pillar Box block
-                Box(contentAlignment = Alignment.TopCenter) {
-                    PillarNode(
-                        modifier = Modifier,
-                        icon = Icons.Default.Nightlight,
-                        value = formatSleep(state.sleepMinutes),
-                        target = "8h",
-                        label = "HOURS SLEPT",
-                        progress = (state.sleepMinutes / 480f).coerceIn(0f, 1f),
-                        color = Color(0xFF42A5F5) // Blue
-                    )
-                    
-
-
-
-
                 }
-                
-                // Jots Pillar
+            }
+
+            // 3. Jots (Bottom Right)
+            Box(modifier = Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 40.dp)) {
                 PillarNode(
-                    modifier = Modifier,
                     icon = Icons.Default.Edit,
                     value = "${state.jotCountDaily}",
                     target = "",
                     label = "JOTS",
-                    progress = state.factors.find { it.name.lowercase().contains("jot") || it.name.lowercase().contains("note") }?.weight?.times(3.0f)?.coerceIn(0f, 1f) 
-                                ?: (state.jotCount7Days / 20f).coerceIn(0f, 1f),
-                    color = Color(0xFF7C6EFF) // Purple
+                    progress = (state.jotCount7Days / 20f).coerceIn(0f, 1f),
+                    color = Color(0xFF7C6EFF)
                 )
             }
         }
