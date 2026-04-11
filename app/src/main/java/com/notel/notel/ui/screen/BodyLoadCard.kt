@@ -289,7 +289,7 @@ fun BodyLoadCard(
                 onClick = onRefresh,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = 10.dp)
+                    .padding(end = 16.dp, bottom = 9.dp)
                     .size(28.dp),
                 enabled = !isLoading
             ) {
