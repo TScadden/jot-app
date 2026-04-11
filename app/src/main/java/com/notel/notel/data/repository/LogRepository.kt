@@ -224,30 +224,32 @@ class LogRepository @Inject constructor(
         val sleepData = if (isAvailable) try { healthConnectManager.readSleepSession(targetDay) } catch(e: Exception) { null } else null
         val sleepMins = sleepData?.minutesAsleep?.toDouble() ?: 0.0
         
-        // Fetch HRV and RHR
-        val historyHr = if (isAvailable) try { healthConnectManager.readHistoricalHeartRateWithSpikes(30) } catch(e: Exception) { emptyList() } else emptyList()
-        val currentHr = historyHr.find { it.date == targetDay }
-        val rhr = currentHr?.baseline?.toDouble() ?: 70.0 // Default 70 if missing
-        
-        val hrvHistory = if (isAvailable) try { healthConnectManager.readHeartRateVariability(30) } catch(e: Exception) { emptyList() } else emptyList()
-        val hrv = hrvHistory.find { it.first == targetDay }?.second ?: 0.0 // 0 means missing
-        
         // Match what is shown in the heart rate tab by using cached spikes
         val cachedSpikesStr = preferences.historicalHrSpikes.first()
         var spikeCount = 0.0
+        var rhr = 70.0
         
         if (cachedSpikesStr.isNotBlank()) {
             try {
                 val spikes = Json { ignoreUnknownKeys = true }
                     .decodeFromString<List<com.notel.notel.data.healthconnect.DailyHeartRateSummary>>(cachedSpikesStr)
-                spikeCount = spikes.find { it.date == targetDay }?.spikeCount?.toDouble() ?: 0.0
+                val current = spikes.find { it.date == targetDay }
+                spikeCount = current?.spikeCount?.toDouble() ?: 0.0
+                rhr = current?.baseline?.toDouble() ?: 70.0
             } catch (e: Exception) { }
         }
         
-        // Fallback: If cache is 0/missing, use the currentHr results 
-        if (spikeCount == 0.0) {
-            spikeCount = currentHr?.spikeCount?.toDouble() ?: 0.0
+        // Fallback: If cache is 0/missing for TODAY, we might need a fresh read, 
+        // but for historical days in a loop, we should avoid heavy reads.
+        if (spikeCount == 0.0 && dateStr == null) {
+             val historyHr = if (isAvailable) try { healthConnectManager.readHistoricalHeartRateWithSpikes(7) } catch(e: Exception) { emptyList() } else emptyList()
+             val currentHr = historyHr.find { it.date == targetDay }
+             spikeCount = currentHr?.spikeCount?.toDouble() ?: 0.0
+             rhr = currentHr?.baseline?.toDouble() ?: 70.0
         }
+        
+        val hrvHistory = if (isAvailable) try { healthConnectManager.readHeartRateVariability(30) } catch(e: Exception) { emptyList() } else emptyList()
+        val hrv = hrvHistory.find { it.first == targetDay }?.second ?: 0.0 // 0 means missing
         
         // 2. Calculate Baselines (Means and StdDevs)
         val hrvMean = if (hrvHistory.isNotEmpty()) hrvHistory.map { it.second }.average() else 45.0
