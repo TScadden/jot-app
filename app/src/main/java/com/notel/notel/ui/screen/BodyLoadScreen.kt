@@ -260,45 +260,54 @@ fun BodyLoadScreen(
                                 }
                             }
                         }
-                        else -> {
-                            FlowRow(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp),
-                                maxItemsInEachRow = 2
-                            ) {
-                                quickLogState.chips.forEach { chip ->
-                                    val isSelected = chip in quickLogState.selectedChips
-                                    Surface(
-                                        onClick = { quickLogViewModel.toggleChip(chip) },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .animateContentSize()
-                                            .clip(RoundedCornerShape(14.dp))
-                                            .background(if (isSelected) NotelPrimary.copy(alpha = 0.8f) else NotelSurfaceHigh.copy(alpha = 0.2f))
-                                            .border(
-                                                width = 1.dp,
-                                                color = if (isSelected) Color.Transparent else Color.White.copy(alpha = 0.05f),
-                                                shape = RoundedCornerShape(14.dp)
-                                            ),
-                                        color = Color.Transparent
-                                    ) {
-                                        Text(
-                                            text = chip,
-                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                            color = if (isSelected) Color.White else NotelTextPrimary,
-                                            fontSize = 13.sp,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
+                            Column {
+                                FlowRow(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                                    maxItemsInEachRow = 2
+                                ) {
+                                    quickLogState.chips.forEach { chip ->
+                                        val isSelected = chip in quickLogState.selectedChips
+                                        Surface(
+                                            onClick = { quickLogViewModel.toggleChip(chip) },
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .animateContentSize()
+                                                .clip(RoundedCornerShape(14.dp))
+                                                .background(if (isSelected) NotelPrimary.copy(alpha = 0.8f) else NotelSurfaceHigh.copy(alpha = 0.2f))
+                                                .border(
+                                                    width = 1.dp,
+                                                    color = if (isSelected) Color.Transparent else Color.White.copy(alpha = 0.05f),
+                                                    shape = RoundedCornerShape(14.dp)
+                                                ),
+                                            color = Color.Transparent
+                                        ) {
+                                            Text(
+                                                text = chip,
+                                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                                color = if (isSelected) Color.White else NotelTextPrimary,
+                                                fontSize = 13.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                    
+                                    // Spacer if odd number of chips to maintain grid alignment
+                                    if (quickLogState.chips.size % 2 != 0) {
+                                        Spacer(Modifier.weight(1f))
                                     }
                                 }
-                                
-                                // Spacer if odd number of chips to maintain grid alignment
-                                if (quickLogState.chips.size % 2 != 0) {
-                                    Spacer(Modifier.weight(1f))
-                                }
+
+                                Text(
+                                    text = "Quick notes are generated with AI using your data, so they may not always represent exactly what you are looking for.",
+                                    color = NotelTextSecondary.copy(alpha = 0.6f),
+                                    fontSize = 10.sp,
+                                    lineHeight = 14.sp,
+                                    modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
+                                )
                             }
                         }
                     }
