@@ -424,6 +424,8 @@ class HealthConnectManager(private val context: Context) {
             
             // Logic: Merge overlapping intervals into unique non-overlapping blocks
             val mergedIntervals = mutableListOf<Pair<Instant, Instant>>()
+            val sortedSessions = sessionIntervals.sortedBy { it.first }
+            
             if (sortedSessions.isNotEmpty()) {
                 var currentStart = sortedSessions[0].first
                 var currentEnd = sortedSessions[0].second
