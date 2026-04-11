@@ -36,6 +36,7 @@ fun BodyLoadScreen(
     val sheetState = rememberModalBottomSheetState()
     var showTheorySheet by remember { mutableStateOf(false) }
     var showWeatherSheet by remember { mutableStateOf(false) }
+    var showUvInfo by remember { mutableStateOf(false) }
     val todayStr = java.time.LocalDate.now().toString()
     val isToday = state.selectedDate == todayStr
 
@@ -192,32 +193,64 @@ fun BodyLoadScreen(
                     
                     Spacer(Modifier.height(32.dp))
                     
-                    Row(
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
+                        maxItemsInEachRow = 2,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(weather.icon, fontSize = 32.sp)
-                            Text("${weather.temp}°${weather.unit}", color = NotelTextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        }
+                        // Temp Box
+                        WeatherMetricBox(
+                            icon = weather.icon,
+                            value = "${weather.temp}°${weather.unit}",
+                            label = "Temperature",
+                            modifier = Modifier.weight(1f)
+                        )
                         
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("💧", fontSize = 24.sp)
-                            Text("${weather.humidity}%", color = NotelTextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            Text("Humidity", color = NotelTextSecondary, fontSize = 10.sp)
-                        }
+                        // Humidity Box
+                        WeatherMetricBox(
+                            icon = "💧",
+                            value = "${weather.humidity}%",
+                            label = "Humidity",
+                            modifier = Modifier.weight(1f)
+                        )
                         
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("💨", fontSize = 24.sp)
-                            Text("${String.format("%.1f", weather.windSpeed)}", color = NotelTextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            Text(if (weather.unit == "F") "mph" else "km/h", color = NotelTextSecondary, fontSize = 10.sp)
-                        }
+                        // Wind Box
+                        WeatherMetricBox(
+                            icon = "💨",
+                            value = String.format("%.1f", weather.windSpeed),
+                            subLabel = if (weather.unit == "F") "mph" else "km/h",
+                            label = "Wind Velocity",
+                            modifier = Modifier.weight(1f)
+                        )
                         
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("☀️", fontSize = 24.sp, color = if (weather.uvIndex > 5) NotelAccent else NotelTextPrimary)
-                            Text("${String.format("%.1f", weather.uvIndex)}", color = if (weather.uvIndex > 5) NotelAccent else NotelTextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            Text("UV Index", color = NotelTextSecondary, fontSize = 10.sp)
+                        // UV Box (Clickable)
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(20.dp))
+                                .clickable { showUvInfo = true },
+                            color = NotelSurfaceHigh.copy(alpha = 0.1f),
+                            shape = RoundedCornerShape(20.dp),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text("☀️", fontSize = 24.sp, color = if (weather.uvIndex > 5) NotelAccent else NotelTextPrimary)
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = String.format("%.1f", weather.uvIndex),
+                                    color = if (weather.uvIndex > 5) NotelAccent else NotelTextPrimary,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text("UV Index", color = NotelTextSecondary, fontSize = 11.sp)
+                                if (weather.uvIndex > 5) {
+                                    Text("High Risk", color = NotelAccent, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                                }
+                            }
                         }
                     }
                     
@@ -244,6 +277,267 @@ fun BodyLoadScreen(
                     Text("Fetching local weather...", color = NotelTextSecondary, fontSize = 14.sp)
                 }
             }
+        }
+    if (showUvInfo) {
+        ModalBottomSheet(
+            onDismissRequest = { showUvInfo = false },
+            containerColor = NotelBackground, // Dark background like screenshot
+            dragHandle = { BottomSheetDefaults.DragHandle(color = Color.White.copy(alpha = 0.2f)) }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 64.dp)
+            ) {
+                Text(
+                    text = "UV INDEX",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White,
+                    letterSpacing = 2.sp
+                )
+                
+                Spacer(Modifier.height(24.dp))
+                
+                // UV Index Ranges Card
+                Surface(
+                    color = NotelSurface,
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("UV Index Ranges", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Spacer(Modifier.height(16.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(12.dp).background(Color(0xFF66BB6A), CircleShape))
+                            Spacer(Modifier.width(12.dp))
+                            Text("Low", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text("0-2", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
+                        }
+                        HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Color.White.copy(alpha = 0.05f))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(12.dp).background(Color(0xFFFFD54F), CircleShape))
+                            Spacer(Modifier.width(12.dp))
+                            Text("Moderate", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text("3-5", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
+                        }
+                        HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Color.White.copy(alpha = 0.05f))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(12.dp).background(Color(0xFFFFB74D), CircleShape))
+                            Spacer(Modifier.width(12.dp))
+                            Text("High", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text("6-7", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
+                        }
+                        HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Color.White.copy(alpha = 0.05f))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(12.dp).background(Color(0xFFEF9A9A), CircleShape))
+                            Spacer(Modifier.width(12.dp))
+                            Text("Very High", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text("8-10", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
+                        }
+                        HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Color.White.copy(alpha = 0.05f))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(12.dp).background(Color(0xFFCE93D8), CircleShape))
+                            Spacer(Modifier.width(12.dp))
+                            Text("Extreme", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text("11+", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
+                        }
+                    }
+                }
+                
+                Spacer(Modifier.height(32.dp))
+                
+                Text("Why UV Index Matters", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = "The UV Index measures the intensity of ultraviolet radiation from the sun. Excessive UV exposure causes sunburn, premature skin aging, eye damage, and significantly increases the risk of skin cancer including melanoma.\n\nUV radiation is highest between 10am and 4pm, at higher altitudes, near the equator, and during summer months. Reflection from water, sand, and snow can increase exposure.",
+                    color = Color.White.copy(alpha = 0.6f),
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
+                
+                Spacer(Modifier.height(24.dp))
+                
+                // Optimal Threshold Card
+                Surface(
+                    color = Color(0xFF1A1C1E),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.2f))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("🎯", fontSize = 18.sp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Optimal Threshold: UV Index below 3", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "For skin longevity, aim to be outside only when UV is below 3, or before 10am / after 4pm. This is the safest range for unprotected skin exposure.",
+                            color = Color.White.copy(alpha = 0.5f),
+                            fontSize = 12.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+                }
+                
+                Spacer(Modifier.height(16.dp))
+                
+                // Indoor UV Card
+                Surface(
+                    color = Color(0xFF1A1C1E),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Color(0xFFFFB74D).copy(alpha = 0.2f))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFFFB74D), modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Indoor UV Exposure", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Standard windows do NOT block all UV rays. UVA penetrates glass and causes skin aging. Consider UV-blocking window film, or apply sunscreen even when indoors near windows.",
+                            color = Color.White.copy(alpha = 0.5f),
+                            fontSize = 12.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+                }
+                
+                Spacer(Modifier.height(32.dp))
+                
+                Text("Sunscreen Guidance", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Spacer(Modifier.height(12.dp))
+                
+                Surface(
+                    color = NotelSurface,
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("🧴", fontSize = 18.sp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Mineral Sunscreen (Recommended)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Use mineral/physical sunscreen with zinc oxide or titanium dioxide. These sit on skin and reflect UV, avoiding chemical absorption. Look for broad-spectrum (UVA + UVB) protection, SPF 30-50+.",
+                            color = Color.White.copy(alpha = 0.5f),
+                            fontSize = 12.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+                }
+                
+                Spacer(Modifier.height(12.dp))
+                
+                Surface(
+                    color = NotelSurface,
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("🔄", fontSize = 18.sp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Reapplication", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Reapply every 2 hours, or immediately after swimming or sweating. Most people apply only 25-50% of the recommended amount.",
+                            color = Color.White.copy(alpha = 0.5f),
+                            fontSize = 12.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+                }
+                
+                Spacer(Modifier.height(32.dp))
+                
+                Text("Protection by Level", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Spacer(Modifier.height(12.dp))
+                
+                // Risk Levels
+                ProtectionLevelCard(
+                    title = "Low (0-2) ✓ Safe Zone",
+                    description = "Minimal risk. This is the ideal range for outdoor activities. Wear sunglasses on bright days for eye protection.",
+                    color = Color(0xFF66BB6A)
+                )
+                Spacer(Modifier.height(12.dp))
+                ProtectionLevelCard(
+                    title = "Moderate (3-5)",
+                    description = "Apply mineral sunscreen (SPF 30+), wear UV-blocking sunglasses and a hat. Limit midday exposure (10am-4pm).",
+                    color = Color(0xFFFFD54F)
+                )
+                Spacer(Modifier.height(12.dp))
+                ProtectionLevelCard(
+                    title = "High (6-7)",
+                    description = "Protection essential. Use SPF 30-50 mineral sunscreen, wear UPF clothing, wide-brim hat, and wrap-around sunglasses. Seek shade between 10am-4pm.",
+                    color = Color(0xFFFFB74D)
+                )
+                Spacer(Modifier.height(12.dp))
+                ProtectionLevelCard(
+                    title = "Very High (8-10)",
+                    description = "Avoid sun between 10am-4pm. Use SPF 50+ mineral sunscreen, full coverage UPF clothing, hat, and sunglasses are mandatory. Reapply sunscreen every 2 hours.",
+                    color = Color(0xFFEF9A9A)
+                )
+                Spacer(Modifier.height(12.dp))
+                ProtectionLevelCard(
+                    title = "Extreme (11+)",
+                    description = "Stay indoors during peak hours (10am-4pm). If outside, seek shade, wear full protective UPF clothing, SPF 50+ mineral sunscreen, and wrap-around sunglasses. Unprotected skin burns in minutes.",
+                    color = Color(0xFFCE93D8)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ProtectionLevelCard(title: String, description: String, color: Color) {
+    Surface(
+        color = NotelSurface,
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.2f))
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(title, color = color, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Spacer(Modifier.height(8.dp))
+            Text(description, color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp, lineHeight = 18.sp)
+        }
+    }
+}
+
+@Composable
+fun WeatherMetricBox(
+    icon: String,
+    value: String,
+    label: String,
+    subLabel: String? = null,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        color = NotelSurfaceHigh.copy(alpha = 0.1f),
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(icon, fontSize = 24.sp)
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(value, color = NotelTextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                if (subLabel != null) {
+                    Spacer(Modifier.width(2.dp))
+                    Text(subLabel, color = NotelTextSecondary, fontSize = 10.sp, modifier = Modifier.padding(bottom = 2.dp))
+                }
+            }
+            Text(label, color = NotelTextSecondary, fontSize = 11.sp)
         }
     }
 }
