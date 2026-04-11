@@ -151,10 +151,10 @@ class HealthConnectManager(private val context: Context) {
                 )
             )
             
-            val totalKcal = response[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories?.toInt() 
-                ?: response[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories?.toInt() ?: 0
+            val activeKcal = response[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories?.toInt()
             
-            return totalKcal
+            // If active calories are missing, we explicitly return 0 rather than falling back to BMR-heavy 'Total'
+            return activeKcal ?: 0
         } catch(e: Exception) {
             return 0
         }
@@ -364,12 +364,11 @@ class HealthConnectManager(private val context: Context) {
             }
             
             return response.mapNotNull { bucket ->
-                val total = bucket.result[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories 
-                    ?: bucket.result[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories
+                val active = bucket.result[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories ?: 0.0
                 
-                if (total != null && total > 0) {
+                if (active > 0) {
                     val dateStr = formatter.format(java.util.Date(bucket.startTime.toEpochMilli()))
-                    dateStr to total.toInt()
+                    dateStr to active.toInt()
                 } else null
             }.sortedBy { it.first }
         } catch(e: Exception) {
