@@ -373,13 +373,19 @@ fun SleepDebtHistoryDialog(
                     .fillMaxSize()
                     .padding(16.dp)
             ) {
+                val oldestDate = history.firstOrNull()?.first ?: "N/A"
                 Text(
-                    text = "Sleep Bank Ledger",
+                    text = "Sleep Debt",
                     style = MaterialTheme.typography.titleLarge,
                     color = Color.White
                 )
                 Text(
-                    text = "Target: 8h | Walk from oldest history",
+                    text = "Target: 8h",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.Gray
+                )
+                Text(
+                    text = "History from $oldestDate",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.Gray,
                     modifier = Modifier.padding(bottom = 16.dp)
