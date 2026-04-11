@@ -258,9 +258,9 @@ fun MetricItem(
     color: Color
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, tint = color, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(6.dp))
-        Text(value, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Icon(icon, null, tint = color, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(4.dp))
+        Text(value, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
     }
 }
 
