@@ -179,9 +179,9 @@ class BodyLoadViewModel @Inject constructor(
             
             // ── Heuristic Logic: Fill gaps for ALL 7 days ──────────────────
             val sdfDay = java.text.SimpleDateFormat("EEE", java.util.Locale.US)
-            val last30Days = (0..30).map { java.time.LocalDate.now().minusDays(it.toLong()) }
+            val last60Days = (0..60).map { java.time.LocalDate.now().minusDays(it.toLong()) }
             
-            last30Days.forEach { dateObj ->
+            last60Days.forEach { dateObj ->
                 val dStr = dateObj.toString()
                 val existing = history.find { it.date == dStr }
                 if (existing == null) {
