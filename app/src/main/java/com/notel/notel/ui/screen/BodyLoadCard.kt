@@ -53,16 +53,17 @@ fun BodyLoadCard(
     val todayStr = java.time.LocalDate.now().toString()
     var showDebtHistory by remember { mutableStateOf(false) }
     
-    val pagerState = rememberPagerState(pageCount = { counters.size })
+    val infinitePageCount = if (counters.size > 1) 10000 else counters.size
+    val pagerState = rememberPagerState(
+        initialPage = if (counters.size > 1) 5000 else 0,
+        pageCount = { infinitePageCount }
+    )
     
-    // Auto-scroll logic with reset capability
-    LaunchedEffect(counters.size) {
+    // Auto-scroll logic with infinite loop and reset capability
+    LaunchedEffect(pagerState.currentPage, counters.size) {
         if (counters.size > 1) {
-            while (true) {
-                kotlinx.coroutines.delay(15000)
-                val next = (pagerState.currentPage + 1) % counters.size
-                pagerState.animateScrollToPage(next)
-            }
+            kotlinx.coroutines.delay(15000)
+            pagerState.animateScrollToPage(pagerState.currentPage + 1)
         }
     }
     
@@ -409,7 +410,8 @@ fun BodyLoadCard(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) { page ->
-                        val counter = counters[page]
+                        val counterIndex = page % counters.size
+                        val counter = counters[counterIndex]
                         
                         // Logic to calculate days remaining/since
                         val todayStart = java.util.Calendar.getInstance().apply {
@@ -476,10 +478,11 @@ fun BodyLoadCard(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         repeat(counters.size) { iteration ->
-                                            val color = if (pagerState.currentPage == iteration) NotelPrimary else NotelSurfaceHigh.copy(alpha = 0.3f)
+                                            val isCurrent = (pagerState.currentPage % counters.size) == iteration
+                                            val color = if (isCurrent) NotelPrimary else NotelSurfaceHigh.copy(alpha = 0.3f)
                                             Box(
                                                 modifier = Modifier
-                                                    .size(if (pagerState.currentPage == iteration) 4.dp else 3.dp)
+                                                    .size(if (isCurrent) 4.dp else 3.dp)
                                                     .background(color, CircleShape)
                                             )
                                         }
