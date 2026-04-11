@@ -1,10 +1,10 @@
 package com.notel.notel.data.remote
 
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.*
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.Locale
+import java.util.Calendar
 
 @Serializable
 data class IpLocationResponse(
@@ -23,7 +23,8 @@ data class OpenMeteoResponse(
 @Serializable
 data class CurrentWeather(
     val temperature_2m: Double,
-    val weather_code: Int
+    val weather_code: Int,
+    val is_day: Int = 1
 )
 
 @Serializable
@@ -59,21 +60,23 @@ class WeatherApi {
 
     suspend fun getDetailedWeather(): WeatherInfo? {
         return try {
-            // 1. Get Location from IP via ipapi.co
-            val locResponseText = fetchUrl("https://ipapi.co/json/")
-            val loc = json.decodeFromString<IpLocationResponse>(locResponseText)
+            // 1. Get Location from IP via ipinfo.io (another high-precision provider)
+            val locResponseText = fetchUrl("https://ipinfo.io/json")
+            // Note: ipinfo.io uses "loc": "lat,long" instead of separate fields
+            val jsonObject = kotlinx.serialization.json.Json.parseToJsonElement(locResponseText).asJsonObject
+            val city = jsonObject["city"]?.asString ?: "Unknown"
+            val loc = jsonObject["loc"]?.asString?.split(",") ?: listOf("40.7128", "-74.0060")
+            val country = jsonObject["country"]?.asString ?: "US"
             
-            val lat = loc.latitude ?: 40.7128
-            val lon = loc.longitude ?: -74.0060
-            val city = loc.city ?: "Current Location"
-            val country = loc.country_code ?: "US"
+            val lat = loc[0].toDoubleOrNull() ?: 40.7128
+            val lon = loc[1].toDoubleOrNull() ?: -74.0060
             
             // 2. Determine Units
             val units = if (country == "US") "fahrenheit" else "celsius"
             val unitLabel = if (units == "fahrenheit") "F" else "C"
             
-            // 3. Get Weather
-            val weatherUrl = "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,weather_code&hourly=uv_index,relative_humidity_2m,wind_speed_10m&forecast_days=1&temperature_unit=$units"
+            // 3. Get Weather with is_day
+            val weatherUrl = "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,weather_code,is_day&hourly=uv_index,relative_humidity_2m,wind_speed_10m&forecast_days=1&temperature_unit=$units"
             val weatherResponseText = fetchUrl(weatherUrl)
             val data = json.decodeFromString<OpenMeteoResponse>(weatherResponseText)
             
@@ -81,14 +84,13 @@ class WeatherApi {
                 temp = data.current.temperature_2m.toInt(),
                 condition = getWeatherDesc(data.current.weather_code),
                 uvIndex = data.hourly.uv_index.firstOrNull() ?: 0.0,
-                icon = getWeatherIcon(data.current.weather_code),
+                icon = getWeatherIcon(data.current.weather_code, data.current.is_day == 1),
                 locationName = city,
                 unit = unitLabel,
                 humidity = data.hourly.relative_humidity_2m?.firstOrNull()?.toInt() ?: 0,
                 windSpeed = data.hourly.wind_speed_10m?.firstOrNull() ?: 0.0
             )
         } catch (e: Exception) {
-            // Fallback for demo if network fails entirely
             null
         }
     }
@@ -107,17 +109,21 @@ class WeatherApi {
         }
     }
 
-    private fun getWeatherIcon(code: Int): String {
+    private fun getWeatherIcon(code: Int, isDay: Boolean): String {
         return when (code) {
-            0 -> "☀️"
-            1, 2, 3 -> "⛅"
+            0 -> if (isDay) "☀️" else "🌙"
+            1, 2, 3 -> if (isDay) "⛅" else "☁️"
             45, 48 -> "🌫️"
             51, 53, 55 -> "🌦️"
             61, 63, 65 -> "🌧️"
             71, 73, 75 -> "❄️"
             80, 81, 82 -> "⛈️"
             95, 96, 99 -> "⛈️"
-            else -> "❓"
+            else -> if (isDay) "☀️" else "🌙"
         }
     }
+    
+    // Helper to handle raw JSON if needed
+    private val kotlinx.serialization.json.JsonElement.asJsonObject: Map<String, kotlinx.serialization.json.JsonElement> get() = kotlinx.serialization.json.jsonObject
+    private val kotlinx.serialization.json.JsonElement.asString: String? get() = kotlinx.serialization.json.jsonPrimitive.contentOrNull
 }
