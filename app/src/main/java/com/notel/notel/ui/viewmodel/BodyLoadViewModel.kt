@@ -205,9 +205,9 @@ class BodyLoadViewModel @Inject constructor(
             val sortedHistory = history.sortedByDescending { it.date }
             val todaySnapshot = sortedHistory.find { it.date == todayStr }
             
-            val fallBackScore = todaySnapshot?.score ?: _uiState.value.score
-            val fallBackFactors = todaySnapshot?.factors ?: _uiState.value.factors
-            val fallBackAdvice = todaySnapshot?.adviceList ?: _uiState.value.adviceList
+            val fallBackScore = todaySnapshot?.score ?: 0
+            val fallBackFactors = todaySnapshot?.factors ?: emptyList()
+            val fallBackAdvice = todaySnapshot?.adviceList ?: emptyList()
             
             _uiState.update { it.copy(
                 activeCalories = stats["calories"] as? Int ?: (stats["calories"] as? Double)?.toInt() ?: 0,

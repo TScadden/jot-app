@@ -282,7 +282,7 @@ fun BodyLoadCard(
                             CircularProgressIndicator(color = NotelPrimary, strokeWidth = 1.dp, modifier = Modifier.size(20.dp))
                         } else {
                             Text(
-                                text = score.toString(),
+                                text = if (score > 0) score.toString() else "-",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Black,
                                 color = NotelTextPrimary
