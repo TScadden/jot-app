@@ -100,83 +100,19 @@ fun BodyLoadCard(
 
         Spacer(Modifier.height(16.dp))
 
-        Box(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(400.dp),
-            contentAlignment = Alignment.Center
+                .padding(horizontal = 16.dp, vertical = 24.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            val radius = 130.dp
-            val radPx: Float = with(LocalDensity.current) { radius.toPx() }
-            
-            // Generative Connection Lines (Equilateral Triangle Vertices)
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val hub = Offset(size.width / 2, size.height / 2)
-                val lineStyle = Stroke(width = 1.dp.toPx(), cap = StrokeCap.Round)
-                val lineColor = NotelSurfaceHigh.copy(alpha = 0.3f)
-                
-                // Vertices relative to Hub
-                val v1 = Offset(hub.x, hub.y - radPx) // Top
-                val v2 = Offset(hub.x - radPx * 0.866f, hub.y + radPx * 0.5f) // Bottom Left
-                val v3 = Offset(hub.x + radPx * 0.866f, hub.y + radPx * 0.5f) // Bottom Right
-                
-                drawLine(lineColor, hub, v1, strokeWidth = lineStyle.width)
-                drawLine(lineColor, hub, v2, strokeWidth = lineStyle.width)
-                drawLine(lineColor, hub, v3, strokeWidth = lineStyle.width)
-            }
-
-            // Central Score Hub
+            // Left Column: Orbiters Node List
             Column(
-                modifier = Modifier.align(Alignment.Center),
-                horizontalAlignment = Alignment.CenterHorizontally
+                verticalArrangement = Arrangement.spacedBy(24.dp),
+                horizontalAlignment = Alignment.Start
             ) {
-                // ... (Rotation logic remains)
-                val infiniteTransition = rememberInfiniteTransition()
-                val rotation by infiniteTransition.animateFloat(
-                    initialValue = 0f,
-                    targetValue = 360f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(15000, easing = LinearEasing),
-                        repeatMode = RepeatMode.Restart
-                    )
-                )
-
-                Box(
-                    modifier = Modifier.size(110.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        val strokeWidth = 5.dp.toPx()
-                        val gradientColors = listOf(Color(0xFFFF5252), Color(0xFF42A5F5), Color(0xFF7C6EFF), Color(0xFFFF5252))
-                        rotate(rotation) {
-                            drawArc(
-                                brush = Brush.sweepGradient(gradientColors),
-                                startAngle = 0f,
-                                sweepAngle = 360f,
-                                useCenter = false,
-                                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                            )
-                        }
-                    }
-
-                    if (isLoading) {
-                        CircularProgressIndicator(color = NotelPrimary, modifier = Modifier.size(24.dp))
-                    } else {
-                        Text(
-                            text = score.toString(),
-                            fontSize = 44.sp,
-                            fontWeight = FontWeight.Black,
-                            color = NotelTextPrimary
-                        )
-                    }
-                }
-                Text("SUMMARY", fontSize = 10.sp, color = NotelTextSecondary, fontWeight = FontWeight.Bold)
-            }
-
-            // Triangle Vertices (Node Orbiters)
-            
-            // 1. Calories (Top Node)
-            Box(modifier = Modifier.align(Alignment.Center).offset(y = -radius)) {
+                // 1. Calories
                 PillarNode(
                     icon = Icons.Default.Whatshot,
                     value = "${state.activeCalories}",
@@ -185,10 +121,8 @@ fun BodyLoadCard(
                     progress = (state.activeCalories / 2500f).coerceIn(0f, 1f),
                     color = Color(0xFFFF5252)
                 )
-            }
 
-            // 2. Sleep (Bottom Left Node)
-            Box(modifier = Modifier.align(Alignment.Center).offset(x = -radius * 0.866f, y = radius * 0.5f)) {
+                // 2. Sleep
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     PillarNode(
                         icon = Icons.Default.Nightlight,
@@ -224,10 +158,8 @@ fun BodyLoadCard(
                         }
                     }
                 }
-            }
 
-            // 3. Jots (Bottom Right Node)
-            Box(modifier = Modifier.align(Alignment.Center).offset(x = radius * 0.866f, y = radius * 0.5f)) {
+                // 3. Jots
                 PillarNode(
                     icon = Icons.Default.Edit,
                     value = "${state.jotCountDaily}",
@@ -236,6 +168,55 @@ fun BodyLoadCard(
                     progress = (state.jotCount7Days / 20f).coerceIn(0f, 1f),
                     color = Color(0xFF7C6EFF)
                 )
+            }
+
+            // Right Box: Primary Summary Hub
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(end = 8.dp)
+            ) {
+                val infiniteTransition = rememberInfiniteTransition()
+                val rotation by infiniteTransition.animateFloat(
+                    initialValue = 0f,
+                    targetValue = 360f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(15000, easing = LinearEasing),
+                        repeatMode = RepeatMode.Restart
+                    )
+                )
+
+                Box(
+                    modifier = Modifier.size(140.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val strokeWidth = 6.dp.toPx()
+                        val gradientColors = listOf(Color(0xFFFF5252), Color(0xFF42A5F5), Color(0xFF7C6EFF), Color(0xFFFF5252))
+                        rotate(rotation) {
+                            drawArc(
+                                brush = Brush.sweepGradient(gradientColors),
+                                startAngle = 0f,
+                                sweepAngle = 360f,
+                                useCenter = false,
+                                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                            )
+                        }
+                    }
+
+                    if (isLoading) {
+                        CircularProgressIndicator(color = NotelPrimary, modifier = Modifier.size(24.dp))
+                    } else {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = score.toString(),
+                                fontSize = 56.sp,
+                                fontWeight = FontWeight.Black,
+                                color = NotelTextPrimary
+                            )
+                            Text("BODY LOAD", fontSize = 10.sp, color = NotelTextSecondary, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
             }
         }
             
