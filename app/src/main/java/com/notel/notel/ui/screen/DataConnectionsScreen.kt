@@ -50,7 +50,7 @@ fun DataConnectionsScreen(
             AppInfo(
                 id = "health_connect",
                 name = "Android Health (Google Fit, Samsung)",
-                logo = { HealthConnectLogo() },
+                logo = { GoogleFitLogo() },
                 isConnected = state.isConnected,
                 onConnect = { healthConnectLauncher.launch(fitbitViewModel.healthConnectManager.permissions) },
                 onDisconnect = { fitbitViewModel.disconnectHealthConnect() }
