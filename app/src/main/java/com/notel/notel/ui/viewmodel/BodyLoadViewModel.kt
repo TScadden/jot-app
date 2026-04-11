@@ -157,24 +157,31 @@ class BodyLoadViewModel @Inject constructor(
         if (_uiState.value.isLoading) return
         
         viewModelScope.launch {
-            val lastRefresh = preferences.lastBodyLoadRefresh.first()
             val now = System.currentTimeMillis()
             val todayStr = java.time.LocalDate.now().toString()
+            val lastRefresh = preferences.lastBodyLoadRefresh.first()
             
-            // Immediately load cached body load so UI doesn't look empty/loading
+            // 1. Fetch current stats immediately to check sleep status
+            val stats = logRepository.getDailyStatsSummary(todayStr)
+            val sleepMins = stats["sleepMins"] as? Int ?: (stats["sleepMins"] as? Double)?.toInt() ?: 0
+
+            // 2. Immediately load cached data but MASK score if no sleep today
             if (_uiState.value.factors.isEmpty()) {
                 val cachedAdvice = preferences.lastBodyLoadAdvice.first() ?: ""
                 val cachedFactors = preferences.lastBodyLoadFactors.first()
                 val cachedScore = preferences.lastBodyLoadScore.first()
-                _uiState.value = _uiState.value.copy(
-                    score = cachedScore,
-                    factors = parseFactors(cachedFactors),
-                    adviceList = splitAdvice(cachedAdvice)
-                )
-            }
+                
+                // If it's early morning and we lack sleep, the cached score (from yesterday) is misleading
+                val displayedScore = if (sleepMins == 0) 0 else cachedScore
+                val displayedAdvice = if (sleepMins == 0) listOf("Awaiting today's sleep data...") else splitAdvice(cachedAdvice)
 
-            // Always fetch daily stats regardless of whether we run AI
-            val stats = logRepository.getDailyStatsSummary(todayStr)
+                _uiState.update { it.copy(
+                    score = displayedScore,
+                    factors = parseFactors(cachedFactors),
+                    adviceList = displayedAdvice
+                ) }
+            }
+            
             val history = getHistoricalScores().toMutableList()
             
             // ── Heuristic Logic: Fill gaps for ALL 7 days ──────────────────
