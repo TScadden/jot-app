@@ -425,45 +425,49 @@ fun BodyLoadCard(
                 AnimatedContent(
                     targetState = activeCounter,
                     transitionSpec = {
-                        (fadeIn(animationSpec = tween(1000, easing = LinearEasing)) + 
-                         scaleIn(initialScale = 0.92f, animationSpec = tween(1000)))
-                        .togetherWith(fadeOut(animationSpec = tween(1000)))
+                        (fadeIn(animationSpec = tween(1200, easing = EaseInOutCubic)) + 
+                         slideInHorizontally(animationSpec = tween(1200)) { it / 2 })
+                        .togetherWith(fadeOut(animationSpec = tween(800)) + slideOutHorizontally { -it / 2 })
                     },
-                    label = "counter_carousel"
+                    label = "counter_marquee",
+                    modifier = Modifier.weight(1f).padding(start = 16.dp)
                 ) { counter ->
-                    Surface(
-                        modifier = Modifier.height(34.dp).widthIn(min = 64.dp),
-                        shape = RoundedCornerShape(8.dp),
-                        color = NotelSurfaceHigh.copy(alpha = 0.1f),
-                        border = BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.2f))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.End
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Text(icon, fontSize = 10.sp)
-                            Spacer(Modifier.width(4.dp))
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = daysCount,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = NotelTextPrimary,
-                                    lineHeight = 12.sp
-                                )
-                                Text(
-                                    text = counter.name.uppercase(),
-                                    fontSize = 7.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = NotelTextSecondary,
-                                    maxLines = 1,
-                                    lineHeight = 8.sp
-                                )
-                            }
-                        }
+                        Text(
+                            text = if (isUp) "SINCE ${counter.name.uppercase()}" else "UNTIL ${counter.name.uppercase()}",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Black,
+                            color = NotelPrimary.copy(alpha = 0.6f),
+                            letterSpacing = 0.5.sp,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f).padding(end = 6.dp),
+                            textAlign = TextAlign.End
+                        )
+                        
+                        Text(
+                            text = daysCount,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Black,
+                            color = NotelTextPrimary,
+                            modifier = Modifier.padding(end = 2.dp)
+                        )
+                        
+                        Text(
+                            text = "DAYS",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NotelTextSecondary,
+                            letterSpacing = 0.5.sp
+                        )
                     }
                 }
+            } else {
+                Spacer(Modifier.weight(1f))
             }
         }
             
