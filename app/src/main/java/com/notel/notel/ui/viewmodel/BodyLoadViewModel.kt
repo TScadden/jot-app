@@ -191,28 +191,38 @@ class BodyLoadViewModel @Inject constructor(
             val sdfDay = java.text.SimpleDateFormat("EEE", java.util.Locale.US)
             val last7Days = (0..6).map { java.time.LocalDate.now().minusDays(it.toLong()) }
             
+            val finalHistory = mutableListOf<BodyLoadSnapshot>()
             last7Days.forEach { dateObj ->
                 val dStr = dateObj.toString()
                 val existing = history.find { it.date == dStr }
-                if (existing == null) {
-                    // Try to calculate heuristic for this day
-                    val dStats = logRepository.getDailyStatsSummary(dStr)
+                val dStats = logRepository.getDailyStatsSummary(dStr)
+                val dSleep = dStats["sleepMins"] as? Int ?: (dStats["sleepMins"] as? Double)?.toInt() ?: 0
+                
+                if (existing != null) {
+                    // Apply sleep mask to existing AI insights too
+                    val maskedScore = if (dSleep == 0) 0 else existing.score
+                    finalHistory.add(existing.copy(score = maskedScore))
+                } else {
+                    // Try heuristic for gap
                     val hScore = calculateHeuristicScore(dStats)
-                    
                     if (hScore > 0) {
                         val displayDayStr = sdfDay.format(java.util.Date.from(dateObj.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant()))
-                        history.add(BodyLoadSnapshot(
+                        finalHistory.add(BodyLoadSnapshot(
                             date = dStr,
                             displayDay = displayDayStr,
                             score = hScore,
                             factors = listOf(FactorWeight("Biometric Heuristic", 0.5f)),
                             adviceList = listOf("Heuristic analysis based on raw sensor data.")
                         ))
+                    } else {
+                        // Still add a 0-score entry for the UI to show "-"
+                        val displayDayStr = sdfDay.format(java.util.Date.from(dateObj.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant()))
+                        finalHistory.add(BodyLoadSnapshot(dStr, displayDayStr, 0, emptyList(), emptyList()))
                     }
                 }
             }
             
-            val sortedHistory = history.sortedByDescending { it.date }
+            val sortedHistory = finalHistory.sortedByDescending { it.date }
             val todaySnapshot = sortedHistory.find { it.date == todayStr }
             
             val fallBackScore = todaySnapshot?.score ?: 0
