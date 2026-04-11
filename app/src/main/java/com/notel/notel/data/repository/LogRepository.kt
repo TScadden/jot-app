@@ -930,9 +930,9 @@ class LogRepository @Inject constructor(
         
         val technicalContext = """
             TECHNICAL BIOMETRICS:
-            - HRV RMSSD: ${stats["hrv"]} (Baseline: ${stats["hrvMean"]}, Z: ${"%.2f".format(hrvZ)})
-            - RHR: ${stats["rhr"]} bpm (Baseline: ${stats["rhrMean"]}, Z: ${"%.2f".format(rhrZ)})
-            - Orthostatic Spikes: ${stats["spikeCount"]?.toInt() ?: 0} events today
+            - HRV RMSSD: ${stats["hrv"] as? Double ?: 0.0} (Baseline: ${stats["hrvMean"] as? Double ?: 0.0}, Z: ${"%.2f".format(hrvZ)})
+            - RHR: ${stats["rhr"] as? Double ?: 70.0} bpm (Baseline: ${stats["rhrMean"] as? Double ?: 70.0}, Z: ${"%.2f".format(rhrZ)})
+            - Orthostatic Spikes: ${(stats["spikeCount"] as? Double)?.toInt() ?: 0} events today
             - Sleep Debt: ${"%.1f".format(sleepDebt)} hours
             - Activity ACWR: ${"%.2f".format(acwr)}
         """.trimIndent()
