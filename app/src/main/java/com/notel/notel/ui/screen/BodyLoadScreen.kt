@@ -171,10 +171,9 @@ fun BodyLoadScreen(
 
             // ── Recommended for You Layer ─────────────────────────────
             if (quickLogState.smartCategories.isNotEmpty()) {
-                Row(
+                Box(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    contentAlignment = Alignment.CenterStart
                 ) {
                     Text(
                         "Recommended for You",
@@ -182,11 +181,12 @@ fun BodyLoadScreen(
                         color = NotelPrimary
                     )
 
-                    // Compact Inline Log Button
-                    AnimatedVisibility(
+                    // Compact Inline Log Button - Fade only to prevent shifts
+                    androidx.compose.animation.AnimatedVisibility(
                         visible = quickLogState.selectedChips.isNotEmpty(),
-                        enter = fadeIn() + expandHorizontally(),
-                        exit = fadeOut() + shrinkHorizontally()
+                        enter = fadeIn(animationSpec = tween(400)),
+                        exit = fadeOut(animationSpec = tween(400)),
+                        modifier = Modifier.align(Alignment.CenterEnd)
                     ) {
                         Surface(
                             onClick = { quickLogViewModel.saveEntry() },
