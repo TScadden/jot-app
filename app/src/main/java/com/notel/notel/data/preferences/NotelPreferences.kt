@@ -81,6 +81,7 @@ class NotelPreferences @Inject constructor(
         val LAST_OPEN_DATE = stringPreferencesKey("last_open_date")
         val CUP_THEORY_SEEN = booleanPreferencesKey("cup_theory_seen")
         val LAST_DYNAMIC_NOTIFICATION_DATE = stringPreferencesKey("last_dynamic_notification_date")
+        val LAST_KNOWN_STATS = stringPreferencesKey("last_known_stats")
     }
 
     val authToken: Flow<String> = context.dataStore.data.map { prefs ->
@@ -117,6 +118,7 @@ class NotelPreferences @Inject constructor(
     val lastOpenDate: Flow<String> = context.dataStore.data.map { it[LAST_OPEN_DATE] ?: "" }
     val cupTheorySeen: Flow<Boolean> = context.dataStore.data.map { it[CUP_THEORY_SEEN] ?: false }
     val lastDynamicNotificationDate: Flow<String> = context.dataStore.data.map { it[LAST_DYNAMIC_NOTIFICATION_DATE] ?: "" }
+    val lastKnownStats: Flow<String> = context.dataStore.data.map { it[LAST_KNOWN_STATS] ?: "{}" }
 
     val onboardingComplete: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[ONBOARDING_COMPLETE] ?: false
@@ -526,5 +528,9 @@ class NotelPreferences @Inject constructor(
 
     suspend fun setLastDynamicNotificationDate(date: String) {
         context.dataStore.edit { it[LAST_DYNAMIC_NOTIFICATION_DATE] = date }
+    }
+
+    suspend fun setLastKnownStats(json: String) {
+        context.dataStore.edit { it[LAST_KNOWN_STATS] = json }
     }
 }

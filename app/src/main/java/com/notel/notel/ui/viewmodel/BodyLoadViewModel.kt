@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import javax.inject.Inject
 
 data class FactorWeight(
@@ -160,30 +162,50 @@ class BodyLoadViewModel @Inject constructor(
             val now = System.currentTimeMillis()
             val todayStr = java.time.LocalDate.now().toString()
             val lastRefresh = preferences.lastBodyLoadRefresh.first()
+            val cachedStatsJson = preferences.lastKnownStats.first()
             
-            // Update weather alongside other stats
-            fetchWeather()
-            
-            // 1. Fetch current stats immediately to check sleep status
-            val stats = logRepository.getDailyStatsSummary(todayStr)
-            val sleepMins = stats["sleepMins"] as? Int ?: (stats["sleepMins"] as? Double)?.toInt() ?: 0
+            val json = Json { ignoreUnknownKeys = true }
+            val cachedStats: Map<String, Double> = try {
+                if (cachedStatsJson.isNotBlank() && cachedStatsJson != "{}") {
+                    json.decodeFromString(cachedStatsJson)
+                } else emptyMap()
+            } catch (e: Exception) { emptyMap() }
 
-            // 2. Immediately load cached data but MASK score if no sleep today
-            if (_uiState.value.factors.isEmpty()) {
+            // Auto-refresh rule: 3 hours
+            val shouldAutoRefresh = (now - lastRefresh) > (3 * 60 * 60 * 1000L) || lastRefresh == 0L
+
+            if (!force && !shouldAutoRefresh) {
+                // Restore purely from cache including stats to avoid loading times
                 val cachedAdvice = preferences.lastBodyLoadAdvice.first() ?: ""
                 val cachedFactors = preferences.lastBodyLoadFactors.first()
                 val cachedScore = preferences.lastBodyLoadScore.first()
+                val history = getHistoricalScores().sortedByDescending { it.date }
                 
-                // If it's early morning and we lack sleep, the cached score (from yesterday) is misleading
-                val displayedScore = if (sleepMins == 0) 0 else cachedScore
-                val displayedAdvice = if (sleepMins == 0) listOf("Awaiting today's sleep data...") else splitAdvice(cachedAdvice)
-
                 _uiState.update { it.copy(
-                    score = displayedScore,
+                    activeCalories = cachedStats["calories"]?.toInt() ?: 0,
+                    sleepMinutes = cachedStats["sleepMins"]?.toInt() ?: 0,
+                    score = cachedScore,
                     factors = parseFactors(cachedFactors),
-                    adviceList = displayedAdvice
+                    adviceList = splitAdvice(cachedAdvice),
+                    historyScores = history,
+                    selectedDate = todayStr,
+                    isLoading = false
                 ) }
+                return@launch
             }
+
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            
+            // FULL REFRESH (Force or Timer expired)
+            fetchWeather()
+            
+            // 1. Fetch current stats
+            val stats = logRepository.getDailyStatsSummary(todayStr)
+            val sleepMins = stats["sleepMins"] as? Int ?: (stats["sleepMins"] as? Double)?.toInt() ?: 0
+
+            // Save stats for next startup
+            val statsToSave = stats.filterValues { it is Number }.mapValues { (it.value as Number).toDouble() }
+            preferences.setLastKnownStats(json.encodeToString(statsToSave))
             
             val history = getHistoricalScores().toMutableList()
             
@@ -199,24 +221,18 @@ class BodyLoadViewModel @Inject constructor(
                 val dSleep = dStats["sleepMins"] as? Int ?: (dStats["sleepMins"] as? Double)?.toInt() ?: 0
                 
                 if (existing != null) {
-                    // Apply sleep mask to existing AI insights too
                     val maskedScore = if (dSleep == 0) 0 else existing.score
                     finalHistory.add(existing.copy(score = maskedScore))
                 } else {
-                    // Try heuristic for gap
                     val hScore = calculateHeuristicScore(dStats)
+                    val displayDayStr = sdfDay.format(java.util.Date.from(dateObj.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant()))
                     if (hScore > 0) {
-                        val displayDayStr = sdfDay.format(java.util.Date.from(dateObj.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant()))
                         finalHistory.add(BodyLoadSnapshot(
-                            date = dStr,
-                            displayDay = displayDayStr,
-                            score = hScore,
+                            date = dStr, displayDay = displayDayStr, score = hScore,
                             factors = listOf(FactorWeight("Biometric Heuristic", 0.5f)),
                             adviceList = listOf("Heuristic analysis based on raw sensor data.")
                         ))
                     } else {
-                        // Still add a 0-score entry for the UI to show "-"
-                        val displayDayStr = sdfDay.format(java.util.Date.from(dateObj.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant()))
                         finalHistory.add(BodyLoadSnapshot(dStr, displayDayStr, 0, emptyList(), emptyList()))
                     }
                 }
@@ -224,10 +240,6 @@ class BodyLoadViewModel @Inject constructor(
             
             val sortedHistory = finalHistory.sortedByDescending { it.date }
             val todaySnapshot = sortedHistory.find { it.date == todayStr }
-            
-            val fallBackScore = todaySnapshot?.score ?: 0
-            val fallBackFactors = todaySnapshot?.factors ?: emptyList()
-            val fallBackAdvice = todaySnapshot?.adviceList ?: emptyList()
             
             _uiState.update { it.copy(
                 activeCalories = stats["calories"] as? Int ?: (stats["calories"] as? Double)?.toInt() ?: 0,
@@ -241,14 +253,11 @@ class BodyLoadViewModel @Inject constructor(
                 bestStreak = preferences.bestStreak.first(),
                 historyScores = sortedHistory,
                 selectedDate = todayStr,
-                score = fallBackScore,
-                factors = fallBackFactors,
-                adviceList = fallBackAdvice,
+                score = todaySnapshot?.score ?: 0,
+                factors = todaySnapshot?.factors ?: emptyList(),
+                adviceList = todaySnapshot?.adviceList ?: emptyList(),
                 cupTheorySeen = preferences.cupTheorySeen.first()
             ) }
-
-            // Auto-refresh rule: 3 hours (10,800,000 ms)
-            val shouldAutoRefresh = (now - lastRefresh) > (3 * 60 * 60 * 1000L)
 
             if (!force && !shouldAutoRefresh) {
                 return@launch
