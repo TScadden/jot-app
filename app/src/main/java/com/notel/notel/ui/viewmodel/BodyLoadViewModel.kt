@@ -175,20 +175,41 @@ class BodyLoadViewModel @Inject constructor(
 
             // Always fetch daily stats regardless of whether we run AI
             val stats = logRepository.getDailyStatsSummary(todayStr)
-            val history = getHistoricalScores()
-            val todaySnapshot = history.find { it.date == todayStr }
+            val history = getHistoricalScores().toMutableList()
+            
+            // ── Heuristic Logic: Fill gaps for ALL 7 days ──────────────────
+            val sdfDay = java.text.SimpleDateFormat("EEE", java.util.Locale.US)
+            val last7Days = (0..6).map { java.time.LocalDate.now().minusDays(it.toLong()) }
+            
+            last7Days.forEach { dateObj ->
+                val dStr = dateObj.toString()
+                val existing = history.find { it.date == dStr }
+                if (existing == null) {
+                    // Try to calculate heuristic for this day
+                    val dStats = logRepository.getDailyStatsSummary(dStr)
+                    val hScore = calculateHeuristicScore(dStats)
+                    
+                    if (hScore > 0) {
+                        val displayDayStr = sdfDay.format(java.util.Date.from(dateObj.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant()))
+                        history.add(BodyLoadSnapshot(
+                            date = dStr,
+                            displayDay = displayDayStr,
+                            score = hScore,
+                            factors = listOf(FactorWeight("Biometric Heuristic", 0.5f)),
+                            adviceList = listOf("Heuristic analysis based on raw sensor data.")
+                        ))
+                    }
+                }
+            }
+            
+            val sortedHistory = history.sortedByDescending { it.date }
+            val todaySnapshot = sortedHistory.find { it.date == todayStr }
             
             val fallBackScore = todaySnapshot?.score ?: _uiState.value.score
             val fallBackFactors = todaySnapshot?.factors ?: _uiState.value.factors
             val fallBackAdvice = todaySnapshot?.adviceList ?: _uiState.value.adviceList
             
-            val mergedHistory = if (todaySnapshot == null) {
-                val sdfDay = java.text.SimpleDateFormat("EEE", java.util.Locale.US)
-                val displayDayStr = sdfDay.format(java.util.Date())
-                history + BodyLoadSnapshot(todayStr, displayDayStr, fallBackScore, fallBackFactors, fallBackAdvice)
-            } else history
-            
-            _uiState.value = _uiState.value.copy(
+            _uiState.update { it.copy(
                 activeCalories = stats["calories"] as? Int ?: (stats["calories"] as? Double)?.toInt() ?: 0,
                 sleepMinutes = stats["sleepMins"] as? Int ?: (stats["sleepMins"] as? Double)?.toInt() ?: 0,
                 sleepDebtMins = ((stats["sleepDebt"] as? Double ?: 0.0) * 60).toInt(),
@@ -198,13 +219,13 @@ class BodyLoadViewModel @Inject constructor(
                 jotCountDaily = stats["jotCountDaily"] as? Int ?: (stats["jotCountDaily"] as? Double)?.toInt() ?: 0,
                 currentStreak = preferences.currentStreak.first(),
                 bestStreak = preferences.bestStreak.first(),
-                historyScores = mergedHistory,
+                historyScores = sortedHistory,
                 selectedDate = todayStr,
                 score = fallBackScore,
                 factors = fallBackFactors,
                 adviceList = fallBackAdvice,
                 cupTheorySeen = preferences.cupTheorySeen.first()
-            )
+            ) }
 
             // Auto-refresh rule: 1 hour (3,600,000 ms)
             val shouldAutoRefresh = (now - lastRefresh) > (60 * 60 * 1000L)
@@ -213,17 +234,17 @@ class BodyLoadViewModel @Inject constructor(
                 return@launch
             }
 
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            _uiState.update { it.copy(isLoading = true, error = null) }
             val allCats = categoryRepository.getAllCategories().first()
             
             logRepository.getBodyLoad(allCats)
                 .onSuccess { res ->
-                    _uiState.value = _uiState.value.copy(
+                    _uiState.update { it.copy(
                         score = res.score,
                         factors = parseFactors(res.factors.joinToString(", ")),
                         adviceList = splitAdvice(res.advice ?: ""),
                         isLoading = false
-                    )
+                    ) }
                     preferences.setLastBodyLoadRefresh(now)
                     preferences.setLastBodyLoadData(
                         res.score,
@@ -231,15 +252,47 @@ class BodyLoadViewModel @Inject constructor(
                         res.advice ?: ""
                     )
                     // Refresh history after new result
-                    _uiState.value = _uiState.value.copy(historyScores = getHistoricalScores())
+                    _uiState.update { it.copy(historyScores = getHistoricalScores().sortedByDescending { h -> h.date }) }
                 }
                 .onFailure { e ->
-                    _uiState.value = _uiState.value.copy(
+                    _uiState.update { it.copy(
                         isLoading = false,
-                        error = null // Fail silently so we don't display 'api error' on the UI
-                    )
+                        error = null // Fail silently
+                    ) }
                 }
         }
+    }
+
+    private fun calculateHeuristicScore(stats: Map<String, Any>): Int {
+        val hrv = stats["hrv"] as? Double ?: 0.0
+        val hrvMean = stats["hrvMean"] as? Double ?: 50.0
+        val sleepDebt = stats["sleepDebt"] as? Double ?: 0.0
+        val spikes = stats["spikeCount"] as? Double ?: 0.0
+        val acwr = stats["acwr"] as? Double ?: 1.0
+        val jots = stats["jotCountDaily"] as? Double ?: 0.0
+
+        if (hrv == 0.0 && sleepDebt == 0.0 && spikes == 0.0 && jots == 0.0) return 0
+
+        // Start with a base load
+        var cupScore = 15.0 // Calm baseline
+
+        // 1. HRV Impact (30%) - Higher HRV is lower load
+        val hrvDelta = hrvMean - hrv
+        if (hrv > 0) cupScore += (hrvDelta * 0.8).coerceIn(-20.0, 30.0)
+
+        // 2. Sleep Debt (25%) - Negative balance adds load
+        if (sleepDebt < 0) cupScore += (Math.abs(sleepDebt) * 8.0).coerceAtMost(25.0)
+
+        // 3. Spikes (15%) - Each spike adds stress
+        cupScore += (spikes * 4.0).coerceAtMost(15.0)
+
+        // 4. Activity (20%) - ACWR > 1.3 adds load
+        if (acwr > 1.3) cupScore += ((acwr - 1.3) * 15.0).coerceAtMost(20.0)
+
+        // 5. Jots (10%) - Each entry suggests active symptoms
+        cupScore += (jots * 3.0).coerceAtMost(10.0)
+
+        return cupScore.toInt().coerceIn(5, 100)
     }
 
     fun markTheorySeen() {
