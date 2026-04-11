@@ -106,27 +106,7 @@ fun BodyLoadScreen(
                     containerColor = NotelBackground
                 )
             )
-        },
-        floatingActionButton = {
-            AnimatedVisibility(
-                visible = quickLogState.selectedChips.isNotEmpty(),
-                enter = scaleIn() + fadeIn(),
-                exit = scaleOut() + fadeOut()
-            ) {
-                ExtendedFloatingActionButton(
-                    onClick = { quickLogViewModel.saveEntry() },
-                    containerColor = NotelPrimary,
-                    contentColor = Color.White,
-                    shape = RoundedCornerShape(16.dp),
-                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 8.dp)
-                ) {
-                    Icon(Icons.Default.Check, contentDescription = "Save Log")
-                    Spacer(Modifier.width(8.dp))
-                    Text("Log Entry", fontWeight = FontWeight.Bold)
-                }
-            }
-        },
-        floatingActionButtonPosition = FabPosition.Center
+        }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -191,13 +171,40 @@ fun BodyLoadScreen(
 
             // ── Recommended for You Layer ─────────────────────────────
             if (quickLogState.smartCategories.isNotEmpty()) {
-                Text(
-                    "Recommended for You",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = NotelPrimary,
-                    modifier = Modifier.fillMaxWidth().padding(start = 24.dp, top = 8.dp),
-                    textAlign = TextAlign.Start
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Recommended for You",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = NotelPrimary
+                    )
+
+                    // Compact Inline Log Button
+                    AnimatedVisibility(
+                        visible = quickLogState.selectedChips.isNotEmpty(),
+                        enter = fadeIn() + expandHorizontally(),
+                        exit = fadeOut() + shrinkHorizontally()
+                    ) {
+                        Surface(
+                            onClick = { quickLogViewModel.saveEntry() },
+                            color = NotelPrimary.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.3f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Check, "Log", tint = NotelPrimary, modifier = Modifier.size(12.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("LOG ENTRY", color = NotelPrimary, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                            }
+                        }
+                    }
+                }
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
