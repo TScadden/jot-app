@@ -53,7 +53,6 @@ data class BodyLoadState(
     val selectedFactor: String? = null,
     val sleepDebtHistory: List<Triple<String, Double, Double>> = emptyList(),
     val cupTheorySeen: Boolean = false,
-    val selectedDayStats: Map<String, Any> = emptyMap(),
     val weather: WeatherState? = null
 )
 
@@ -111,6 +110,49 @@ class BodyLoadViewModel @Inject constructor(
         }
     }
 
+    fun selectFactor(name: String?) {
+        _uiState.value = _uiState.value.copy(selectedFactor = name)
+    }
+
+    fun selectDay(dateStr: String) {
+        viewModelScope.launch {
+            val history = _uiState.value.historyScores
+            val snapshot = history.find { it.date == dateStr }
+            
+            // 1. Immediately update the UI with AI snapshot / cache data so there is no delay
+            if (snapshot != null) {
+                _uiState.value = _uiState.value.copy(
+                    selectedDate = dateStr,
+                    score = snapshot.score,
+                    factors = snapshot.factors,
+                    adviceList = snapshot.adviceList
+                )
+            } else if (dateStr == java.time.LocalDate.now().toString()) {
+                val currentAdvice = preferences.lastBodyLoadAdvice.first() ?: ""
+                val currentFactors = preferences.lastBodyLoadFactors.first()
+                _uiState.value = _uiState.value.copy(
+                    selectedDate = dateStr,
+                    score = preferences.lastBodyLoadScore.first(),
+                    factors = parseFactors(currentFactors),
+                    adviceList = splitAdvice(currentAdvice)
+                )
+            }
+
+            // 2. Fetch raw stats for this day and merge them in
+            val stats = logRepository.getDailyStatsSummary(dateStr)
+            
+            _uiState.value = _uiState.value.copy(
+                activeCalories = stats["calories"] as? Int ?: (stats["calories"] as? Double)?.toInt() ?: 0,
+                sleepMinutes = stats["sleepMins"] as? Int ?: (stats["sleepMins"] as? Double)?.toInt() ?: 0,
+                sleepDebtMins = ((stats["sleepDebt"] as? Double ?: 0.0) * 60).toInt(),
+                sleepDebtHistory = stats["sleepDebtHistory"] as? List<Triple<String, Double, Double>> ?: emptyList(),
+                spikeCount = stats["spikeCount"] as? Int ?: (stats["spikeCount"] as? Double)?.toInt() ?: 0,
+                jotCount7Days = stats["jotCount"] as? Int ?: (stats["jotCount"] as? Double)?.toInt() ?: 0,
+                jotCountDaily = stats["jotCountDaily"] as? Int ?: (stats["jotCountDaily"] as? Double)?.toInt() ?: 0
+            )
+        }
+    }
+
     fun refresh(force: Boolean = true) {
         if (_uiState.value.isLoading) return
         
@@ -134,13 +176,39 @@ class BodyLoadViewModel @Inject constructor(
             // Always fetch daily stats regardless of whether we run AI
             val stats = logRepository.getDailyStatsSummary(todayStr)
             val history = getHistoricalScores().toMutableList()
+            
+            // ── Heuristic Logic: Fill gaps for ALL 7 days ──────────────────
+            val sdfDay = java.text.SimpleDateFormat("EEE", java.util.Locale.US)
+            val last7Days = (0..6).map { java.time.LocalDate.now().minusDays(it.toLong()) }
+            
+            last7Days.forEach { dateObj ->
+                val dStr = dateObj.toString()
+                val existing = history.find { it.date == dStr }
+                if (existing == null) {
+                    // Try to calculate heuristic for this day
+                    val dStats = logRepository.getDailyStatsSummary(dStr)
+                    val hScore = calculateHeuristicScore(dStats)
+                    
+                    if (hScore > 0) {
+                        val displayDayStr = sdfDay.format(java.util.Date.from(dateObj.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant()))
+                        history.add(BodyLoadSnapshot(
+                            date = dStr,
+                            displayDay = displayDayStr,
+                            score = hScore,
+                            factors = listOf(FactorWeight("Biometric Heuristic", 0.5f)),
+                            adviceList = listOf("Heuristic analysis based on raw sensor data.")
+                        ))
+                    }
+                }
+            }
+            
             val sortedHistory = history.sortedByDescending { it.date }
             val todaySnapshot = sortedHistory.find { it.date == todayStr }
             
             val fallBackScore = todaySnapshot?.score ?: 0
             val fallBackFactors = todaySnapshot?.factors ?: emptyList()
             val fallBackAdvice = todaySnapshot?.adviceList ?: emptyList()
-
+            
             _uiState.update { it.copy(
                 activeCalories = stats["calories"] as? Int ?: (stats["calories"] as? Double)?.toInt() ?: 0,
                 sleepMinutes = stats["sleepMins"] as? Int ?: (stats["sleepMins"] as? Double)?.toInt() ?: 0,
@@ -158,43 +226,6 @@ class BodyLoadViewModel @Inject constructor(
                 adviceList = fallBackAdvice,
                 cupTheorySeen = preferences.cupTheorySeen.first()
             ) }
-
-            // ── Heuristic Logic: Populate gaps in background ──────────────
-            // We only do this on auto-refresh (force=false) to avoid heavy loops on manual refresh
-            if (!force) {
-                viewModelScope.launch {
-                    val updatedHistory = history.toMutableList()
-                    val sdfDay = java.text.SimpleDateFormat("EEE", java.util.Locale.US)
-                    val lookbackRange = (0..14).map { java.time.LocalDate.now().minusDays(it.toLong()) }
-                    
-                    var changed = false
-                    lookbackRange.forEach { dateObj ->
-                        val dStr = dateObj.toString()
-                        val existing = updatedHistory.find { it.date == dStr }
-                        if (existing == null) {
-                            try {
-                                val dStats = logRepository.getDailyStatsSummary(dStr)
-                                val hScore = calculateHeuristicScore(dStats)
-                                if (hScore > 0) {
-                                    val displayDayStr = sdfDay.format(java.util.Date.from(dateObj.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant()))
-                                    updatedHistory.add(BodyLoadSnapshot(
-                                        date = dStr,
-                                        displayDay = displayDayStr,
-                                        score = hScore,
-                                        factors = listOf(FactorWeight("Biometric Heuristic", 0.5f)),
-                                        adviceList = listOf("Heuristic analysis based on raw sensor data.")
-                                    ))
-                                    changed = true
-                                }
-                            } catch (e: Exception) { /* Skip failed day */ }
-                        }
-                    }
-                    
-                    if (changed) {
-                        _uiState.update { it.copy(historyScores = updatedHistory.sortedByDescending { h -> h.date }) }
-                    }
-                }
-            }
 
             // Auto-refresh rule: 1 hour (3,600,000 ms)
             val shouldAutoRefresh = (now - lastRefresh) > (60 * 60 * 1000L)
@@ -265,18 +296,6 @@ class BodyLoadViewModel @Inject constructor(
         return cupScore.toInt().coerceIn(5, 100)
     }
 
-    fun selectDay(date: String) {
-        _uiState.update { it.copy(selectedDate = date) }
-        viewModelScope.launch {
-            val stats = logRepository.getDailyStatsSummary(date)
-            _uiState.update { it.copy(selectedDayStats = stats) }
-        }
-    }
-
-    fun selectFactor(factor: String?) {
-        _uiState.update { it.copy(selectedFactor = factor) }
-    }
-
     fun markTheorySeen() {
         viewModelScope.launch {
             preferences.setCupTheorySeen(true)
@@ -333,7 +352,7 @@ class BodyLoadViewModel @Inject constructor(
         } catch(e: Exception) { return emptyList() }
         
         val bodyLoads = insights.filter { it.type == "BodyLoad" }
-            .filter { (System.currentTimeMillis() - it.timestamp) < (90L * 24 * 60 * 60 * 1000) }
+            .filter { (System.currentTimeMillis() - it.timestamp) < (7L * 24 * 60 * 60 * 1000) }
             .sortedByDescending { it.timestamp }
             
         val sdfDay = java.text.SimpleDateFormat("EEE", java.util.Locale.US)
