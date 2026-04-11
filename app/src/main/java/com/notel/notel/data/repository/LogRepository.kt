@@ -899,15 +899,18 @@ class LogRepository @Inject constructor(
         
         // 2. Compute Z-Scores and Sigmoidal Sub-Scores (0-100 scale)
         // HRV: Higher is better. Z = (Today - Mean) / StdDev. 
-        val hrvZ = if (stats["hrvStd"]!! > 0) (stats["hrv"]!! - stats["hrvMean"]!!) / stats["hrvStd"]!! else 0.0
+        val hrv = stats["hrv"] as? Double ?: 0.0
+        val hrvMean = stats["hrvMean"] as? Double ?: 0.0
+        val hrvStd = stats["hrvStd"] as? Double ?: 0.0
+        val hrvZ = if (hrvStd > 0) (hrv - hrvMean) / hrvStd else 0.0
         val hrvScore = sigmoidScore(hrvZ, k = 1.0) 
         
         // Sleep: Debt is bad. 
-        val sleepDebt = stats["sleepDebt"]!!
+        val sleepDebt = stats["sleepDebt"] as? Double ?: 0.0
         val sleepScore = (100.0 - (sleepDebt * 10.0)).coerceIn(0.0, 100.0)
         
         // Activity (ACWR): Sweet spot is 0.8 to 1.3. Breaching 1.5 is bad.
-        val acwr = stats["acwr"]!!
+        val acwr = stats["acwr"] as? Double ?: 1.0
         val activityScore = when {
             acwr < 1.3 -> 100.0
             acwr < 1.5 -> 70.0
@@ -915,7 +918,10 @@ class LogRepository @Inject constructor(
         }
         
         // RHR: Higher is bad. Z = (Today - Mean) / StdDev.
-        val rhrZ = if (stats["rhrStd"]!! > 0) (stats["rhr"]!! - stats["rhrMean"]!!) / stats["rhrStd"]!! else 0.0
+        val rhr = stats["rhr"] as? Double ?: 70.0
+        val rhrMean = stats["rhrMean"] as? Double ?: 70.0
+        val rhrStd = stats["rhrStd"] as? Double ?: 0.0
+        val rhrZ = if (rhrStd > 0) (rhr - rhrMean) / rhrStd else 0.0
         val rhrScore = sigmoidScore(-rhrZ, k = 1.5) // Negative Z because higher RHR is worse
 
         // 3. Let AI provide the Subjective 5% based on Jots
