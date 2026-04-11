@@ -231,26 +231,7 @@ class QuickLogViewModel @Inject constructor(
             _uiState.update { it.copy(isLoadingChips = true, chipsError = null, retryAfterSeconds = 0) }
             logRepository.getChipSuggestions(cat).fold(
                 onSuccess = { rawChips ->
-                    val chips = rawChips.map { 
-                        val cleaned = it.replace(Regex("\\(.*?\\)"), "") // Remove () and everything inside
-                          .replace("?", "")
-                          .trim()
-                          .replace("\\s+".toRegex(), " ")
-                        
-                        val words = cleaned.split(" ")
-                        val truncated = if (words.size > 3) {
-                            words.take(3).joinToString(" ")
-                        } else {
-                            cleaned
-                        }
-                        
-                        if (truncated.length > 20) {
-                            truncated.take(20).trim()
-                        } else {
-                            truncated
-                        }
-                    }.filter { it.isNotBlank() }
-                    
+                    val chips = processRawChips(rawChips)
                     chipCache[cat.id] = chips  // store in cache
                     _uiState.update { it.copy(chips = chips, isLoadingChips = false) }
                 },
@@ -542,5 +523,27 @@ class QuickLogViewModel @Inject constructor(
             habitRepository.clearHabitData()
             habitRepository.fetchHabits()
         }
+    }
+
+    private fun processRawChips(raw: List<String>): List<String> {
+        return raw.map { 
+            val cleaned = it.replace(Regex("\\(.*?\\)"), "") // Remove () and everything inside
+              .replace("?", "")
+              .trim()
+              .replace("\\s+".toRegex(), " ")
+            
+            val words = cleaned.split(" ")
+            val truncated = if (words.size > 3) {
+                words.take(3).joinToString(" ")
+            } else {
+                cleaned
+            }
+            
+            if (truncated.length > 20) {
+                truncated.take(20).trim()
+            } else {
+                truncated
+            }
+        }.filter { it.isNotBlank() }
     }
 }
