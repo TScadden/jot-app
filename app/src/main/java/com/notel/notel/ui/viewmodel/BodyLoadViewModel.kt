@@ -385,7 +385,7 @@ class BodyLoadViewModel @Inject constructor(
         val insightsStr = preferences.aiInsights.first()
         val insights: List<com.notel.notel.data.local.entity.AiInsight> = try {
             if (insightsStr.isNotBlank()) 
-                kotlinx.serialization.json.Json.decodeFromString<List<com.notel.notel.data.local.entity.AiInsight>>(insightsStr) 
+                Json.decodeFromString<List<com.notel.notel.data.local.entity.AiInsight>>(insightsStr) 
             else emptyList()
         } catch(e: Exception) { return emptyList() }
         
