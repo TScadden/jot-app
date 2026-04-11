@@ -124,9 +124,11 @@ fun BodyLoadScreen(
     ) { padding ->
         LazyColumn(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(bottom = 140.dp),
-            contentPadding = PaddingValues(top = padding.calculateTopPadding()),
+                .fillMaxSize(),
+            contentPadding = PaddingValues(
+                top = padding.calculateTopPadding(),
+                bottom = 160.dp
+            ),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             item {
