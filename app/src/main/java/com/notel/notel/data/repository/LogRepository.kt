@@ -204,7 +204,7 @@ class LogRepository @Inject constructor(
         return logEntryDao.getEntryCountSince(since)
     }
 
-    suspend fun getDailyStatsSummary(dateStr: String? = null): Map<String, Double> {
+    suspend fun getDailyStatsSummary(dateStr: String? = null): Map<String, Any> {
         val targetDay = dateStr ?: java.time.LocalDate.now().toString()
         val isAvailable = healthConnectManager.checkAvailability() == androidx.health.connect.client.HealthConnectClient.SDK_AVAILABLE
         
@@ -251,11 +251,24 @@ class LogRepository @Inject constructor(
         val chronicCalories = activityHistory.map { it.second }.average()
         val acwr = if (chronicCalories > 100) acuteCalories / chronicCalories else 1.0
         
-        // Sleep Debt (Absolute Chronic Ledger starting from Jan 1, 2024 - no sliding, no data retirement)
+        // Sleep Debt Bank (Sequential walk from oldest history available)
         val fixedStartDate = java.time.ZonedDateTime.of(2024, 1, 1, 0, 0, 0, 0, java.time.ZoneId.systemDefault())
         val daysSinceFixedStart = java.time.Duration.between(fixedStartDate.toInstant(), dateObj.atTime(23,59).atZone(java.time.ZoneId.systemDefault()).toInstant()).toDays().toInt().coerceAtLeast(1)
-        val sleepHistory = if (isAvailable) try { healthConnectManager.readHistoricalSleep(daysSinceFixedStart, targetDay) } catch(e: Exception) { emptyList() } else emptyList()
-        val sleepDebt = sleepHistory.sumOf { 8.0 - (it.second / 60.0) }
+        val sleepHistoryRecords = if (isAvailable) try { healthConnectManager.readHistoricalSleep(daysSinceFixedStart, targetDay) } catch(e: Exception) { emptyList() } else emptyList()
+        
+        var runningBank = 0.0
+        val bankHistory = mutableListOf<Pair<String, Double>>()
+        
+        // Sequential walk through the history in order of date (Oldest to Newest)
+        sleepHistoryRecords.sortedBy { it.first }.forEach { (day, minutes) ->
+            val actualHours = minutes / 60.0
+            val delta = actualHours - 8.0 // 8h target balance logic
+            runningBank += delta
+            bankHistory.add(day to runningBank)
+        }
+        
+        val sleepDebt = runningBank // Total bank balance as of targetDay
+        val sleepDebtHistory = bankHistory // Full list of daily bank states for UI inspection
         
         // Jots for the 7 days
         val dateObj = if (dateStr != null) try { java.time.LocalDate.parse(dateStr) } catch(e: Exception) { java.time.LocalDate.now() } else java.time.LocalDate.now()
@@ -278,6 +291,7 @@ class LogRepository @Inject constructor(
             "rhrMean" to rhrMean,
             "rhrStd" to rhrStd,
             "acwr" to acwr,
+            "sleepDebtHistory" to sleepDebtHistory,
             "sleepDebt" to sleepDebt
         )
     }

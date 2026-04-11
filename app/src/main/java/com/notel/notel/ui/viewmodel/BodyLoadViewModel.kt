@@ -38,7 +38,8 @@ data class BodyLoadState(
     // History for the top row (Day score list)
     val historyScores: List<BodyLoadSnapshot> = emptyList(),
     val selectedDate: String = java.time.LocalDate.now().toString(), // "yyyy-MM-dd"
-    val selectedFactor: String? = null
+    val selectedFactor: String? = null,
+    val sleepDebtHistory: List<Pair<String, Double>> = emptyList()
 )
 
 data class BodyLoadSnapshot(
@@ -141,12 +142,13 @@ class BodyLoadViewModel @Inject constructor(
             } else history
             
             _uiState.value = _uiState.value.copy(
-                activeCalories = stats["calories"]?.toInt() ?: 0,
-                sleepMinutes = stats["sleepMins"]?.toInt() ?: 0,
-                sleepDebtMins = ((stats["sleepDebt"] ?: 0.0) * 60).toInt(),
-                spikeCount = stats["spikeCount"]?.toInt() ?: 0,
-                jotCount7Days = stats["jotCount"]?.toInt() ?: 0,
-                jotCountDaily = stats["jotCountDaily"]?.toInt() ?: 0,
+                activeCalories = stats["calories"] as? Int ?: (stats["calories"] as? Double)?.toInt() ?: 0,
+                sleepMinutes = stats["sleepMins"] as? Int ?: (stats["sleepMins"] as? Double)?.toInt() ?: 0,
+                sleepDebtMins = ((stats["sleepDebt"] as? Double ?: 0.0) * 60).toInt(),
+                sleepDebtHistory = stats["sleepDebtHistory"] as? List<Pair<String, Double>> ?: emptyList(),
+                spikeCount = stats["spikeCount"] as? Int ?: (stats["spikeCount"] as? Double)?.toInt() ?: 0,
+                jotCount7Days = stats["jotCount"] as? Int ?: (stats["jotCount"] as? Double)?.toInt() ?: 0,
+                jotCountDaily = stats["jotCountDaily"] as? Int ?: (stats["jotCountDaily"] as? Double)?.toInt() ?: 0,
                 currentStreak = preferences.currentStreak.first(),
                 bestStreak = preferences.bestStreak.first(),
                 historyScores = mergedHistory,
