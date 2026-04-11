@@ -124,6 +124,6 @@ class WeatherApi {
     }
     
     // Helper to handle raw JSON if needed
-    private val kotlinx.serialization.json.JsonElement.asJsonObject: Map<String, kotlinx.serialization.json.JsonElement> get() = kotlinx.serialization.json.jsonObject
-    private val kotlinx.serialization.json.JsonElement.asString: String? get() = kotlinx.serialization.json.jsonPrimitive.contentOrNull
+    private val kotlinx.serialization.json.JsonElement.asJsonObject: Map<String, kotlinx.serialization.json.JsonElement> get() = this.jsonObject
+    private val kotlinx.serialization.json.JsonElement.asString: String? get() = try { this.jsonPrimitive.content } catch(e: Exception) { null }
 }
