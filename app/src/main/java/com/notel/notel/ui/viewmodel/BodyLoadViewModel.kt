@@ -247,8 +247,8 @@ class BodyLoadViewModel @Inject constructor(
                 cupTheorySeen = preferences.cupTheorySeen.first()
             ) }
 
-            // Auto-refresh rule: 1 hour (3,600,000 ms)
-            val shouldAutoRefresh = (now - lastRefresh) > (60 * 60 * 1000L)
+            // Auto-refresh rule: 3 hours (10,800,000 ms)
+            val shouldAutoRefresh = (now - lastRefresh) > (3 * 60 * 60 * 1000L)
 
             if (!force && !shouldAutoRefresh) {
                 return@launch

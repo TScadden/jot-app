@@ -84,6 +84,7 @@ class MainActivity : ComponentActivity() {
             
             LaunchedEffect(Unit) {
                 notelPreferences.updateStreak()
+                com.notel.notel.worker.BodyLoadWorker.schedule(context)
             }
             
             DisposableEffect(activity) {
