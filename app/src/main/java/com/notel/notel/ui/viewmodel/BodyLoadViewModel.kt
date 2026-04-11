@@ -267,32 +267,29 @@ class BodyLoadViewModel @Inject constructor(
             _uiState.update { it.copy(isLoading = true, error = null) }
             val allCats = categoryRepository.getAllCategories().first()
             
-            logRepository.getBodyLoad(allCats)
-                .onSuccess { res ->
-                    val finalScore = if (_uiState.value.sleepMinutes == 0) 0 else res.score
-                    val finalAdvice = if (_uiState.value.sleepMinutes == 0) 
-                        listOf("Body Load calculation is awaiting today's sleep data for clinical accuracy.") 
-                    else splitAdvice(res.advice ?: "")
-                    
-                    _uiState.update { it.copy(
-                        score = finalScore,
-                        factors = parseFactors(res.factors.joinToString(", ")),
-                        adviceList = finalAdvice,
-                        isLoading = false
-                    ) }
-                    preferences.setLastBodyLoadRefresh(now)
-                    preferences.setLastBodyLoadData(
-                        res.score,
-                        res.factors.joinToString(", "),
-                        res.advice ?: ""
-                    )
-                }
-                .onFailure { e ->
-                    _uiState.update { it.copy(
-                        isLoading = false,
-                        error = null // Fail silently
-                    ) }
-                }
+            val loadResult = logRepository.getBodyLoad(allCats)
+            val res = loadResult.getOrNull()
+            if (res != null) {
+                val finalScore = if (_uiState.value.sleepMinutes == 0) 0 else res.score
+                val finalAdvice = if (_uiState.value.sleepMinutes == 0) 
+                    listOf("Body Load calculation is awaiting today's sleep data for clinical accuracy.") 
+                else splitAdvice(res.advice ?: "")
+                
+                _uiState.update { it.copy(
+                    score = finalScore,
+                    factors = parseFactors(res.factors.joinToString(", ")),
+                    adviceList = finalAdvice,
+                    isLoading = false
+                ) }
+                preferences.setLastBodyLoadRefresh(now)
+                preferences.setLastBodyLoadData(
+                    res.score,
+                    res.factors.joinToString(", "),
+                    res.advice ?: ""
+                )
+            } else {
+                _uiState.update { it.copy(isLoading = false, error = null) }
+            }
 
             // Refresh history after new result (suspend call out of non-suspend lambda)
             _uiState.update { it.copy(historyScores = getHistoricalScores().sortedByDescending { h -> h.date }) }
