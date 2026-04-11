@@ -240,9 +240,17 @@ class MainActivity : ComponentActivity() {
                                 ) {
                                     NavIcon(
                                         icon = Icons.Default.Home,
-                                        label = "Cup",
+                                        label = "Home",
                                         isSelected = currentRoute == "body_load",
-                                        onClick = { navController.navigate("body_load") }
+                                        onClick = { 
+                                            if (currentRoute != "body_load") {
+                                                navController.navigate("body_load") {
+                                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                                    launchSingleTop = true
+                                                    restoreState = true
+                                                }
+                                            }
+                                        }
                                     )
                                     NavIcon(
                                         icon = Icons.Default.List,

@@ -75,7 +75,7 @@ fun BodyLoadScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "Jot",
+                        text = "Home",
                         fontWeight = FontWeight.Black,
                         color = NotelTextPrimary,
                         fontSize = 22.sp
@@ -304,23 +304,24 @@ fun BodyLoadScreen(
                 Spacer(Modifier.height(24.dp))
             }
 
-            if (habits.isNotEmpty()) {
-                item {
-                    val checkedCount = habits.count { habitViewModel.isCheckedToday(it) }
-                    val progressRatio = if (habits.isEmpty()) 0f else checkedCount.toFloat() / habits.size.toFloat()
+            item {
+                val checkedCount = habits.count { habitViewModel.isCheckedToday(it) }
+                val progressRatio = if (habits.isEmpty()) 0f else checkedCount.toFloat() / habits.size.toFloat()
+                var newHabitText by remember { mutableStateOf("") }
 
-                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                "Daily Routine",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = NotelTextPrimary
-                            )
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Daily Routine",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = NotelTextPrimary
+                        )
+                        if (habits.isNotEmpty()) {
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = NotelPrimary.copy(alpha = 0.1f),
@@ -336,17 +337,30 @@ fun BodyLoadScreen(
                                 )
                             }
                         }
-                        
-                        Spacer(Modifier.height(8.dp))
-                        
-                        // Glassy Progress Bar
-                        Box(modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(NotelSurfaceHigh.copy(alpha = 0.1f))) {
-                            Box(modifier = Modifier.fillMaxWidth(progressRatio).fillMaxHeight().background(NotelPrimary))
+                    }
+                    
+                    Spacer(Modifier.height(8.dp))
+                    
+                    // Glassy Progress Bar
+                    Box(modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(NotelSurfaceHigh.copy(alpha = 0.1f))) {
+                        Box(modifier = Modifier.fillMaxWidth(progressRatio).fillMaxHeight().background(NotelPrimary))
+                    }
+                    
+                    Spacer(Modifier.height(16.dp))
+                    
+                    // Horizontal scrolling habits or placeholder
+                    if (habits.isEmpty()) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().height(80.dp),
+                            shape = RoundedCornerShape(20.dp),
+                            color = NotelSurfaceHigh.copy(alpha = 0.1f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text("No habits yet. Add one below! 🔥", color = NotelTextSecondary, fontSize = 13.sp)
+                            }
                         }
-                        
-                        Spacer(Modifier.height(16.dp))
-                        
-                        // Horizontal scrolling habits
+                    } else {
                         LazyRow(
                             modifier = Modifier.fillMaxWidth().offset(x = (-24).dp),
                             contentPadding = PaddingValues(horizontal = 24.dp),
@@ -380,8 +394,8 @@ fun BodyLoadScreen(
                                                 fontWeight = FontWeight.Bold,
                                                 color = if (streak > 0) Color(0xFFE2A123) else NotelTextSecondary
                                             )
-                                            if (isChecked) {
-                                                Icon(Icons.Default.CheckCircle, null, tint = NotelPrimary, modifier = Modifier.size(16.dp))
+                                            IconButton(onClick = { habitViewModel.deleteHabit(habit.id) }, modifier = Modifier.size(16.dp)) {
+                                                Icon(Icons.Default.Close, null, tint = NotelTextSecondary.copy(alpha = 0.5f), modifier = Modifier.size(10.dp))
                                             }
                                         }
                                         
@@ -406,6 +420,38 @@ fun BodyLoadScreen(
                             }
                         }
                     }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    // Add Habit Input
+                    OutlinedTextField(
+                        value = newHabitText,
+                        onValueChange = { newHabitText = it },
+                        placeholder = { Text("Add new routine habit...", color = NotelTextSecondary, fontSize = 13.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        trailingIcon = {
+                            if (newHabitText.isNotBlank()) {
+                                IconButton(onClick = {
+                                    habitViewModel.addHabit(newHabitText)
+                                    newHabitText = ""
+                                }) {
+                                    Icon(Icons.Default.Add, "Add", tint = NotelPrimary)
+                                }
+                            }
+                        },
+                        shape = RoundedCornerShape(16.dp),
+                        singleLine = true,
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = NotelPrimary.copy(alpha = 0.5f),
+                            unfocusedBorderColor = NotelSurfaceHigh.copy(alpha = 0.2f),
+                            focusedTextColor = NotelTextPrimary,
+                            unfocusedTextColor = NotelTextPrimary,
+                            cursorColor = NotelPrimary,
+                            focusedContainerColor = NotelSurfaceHigh.copy(alpha = 0.05f),
+                            unfocusedContainerColor = NotelSurfaceHigh.copy(alpha = 0.05f)
+                        )
+                    )
                 }
             }
 
