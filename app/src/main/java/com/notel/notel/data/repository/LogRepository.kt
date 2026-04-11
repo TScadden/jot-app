@@ -314,7 +314,15 @@ class LogRepository @Inject constructor(
         if (!isUnlimited && balance < 0.01f) return Result.failure(IllegalStateException("Insufficient credits. Please top up in Settings."))
 
         val recent = logEntryDao.getRecentEntries(category.id, limit = 20)
-        val context = getEnrichedUserContext()
+        val context = getEnrichedUserContext() + 
+            "\n\n[SYSTEM: SUGGESTION_ENGINE_RULES]\n" +
+            "Return 6-10 'Quick Note' chips. Rules:\n" +
+            "1. Each chip MUST be 1-3 words total.\n" +
+            "2. Focus only on specific symptoms, actions, or status updates appropriate for the category '${category.name}'.\n" +
+            "3. NO full sentences. NO punctuation at the end. NO conjunctions like 'and', 'but', or 'with' at the end.\n" +
+            "4. Priorities matching current user data (HR spikes, sleep debt, past logs).\n" +
+            "Example: 'Morning Brain Fog', 'Sharp Rib Pain', 'Dry Mouth'."
+        
         val kb = getEnrichedKnowledgeBase()
         
         return geminiService.getSuggestions(category, recent, userContext = context, knowledgeBase = kb).onSuccess {
