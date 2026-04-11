@@ -100,34 +100,31 @@ fun BodyLoadCard(
 
         Spacer(Modifier.height(16.dp))
 
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 24.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 16.dp, vertical = 20.dp)
         ) {
-            // Left Column: Orbiters Node List
-            Column(
-                verticalArrangement = Arrangement.spacedBy(24.dp),
-                horizontalAlignment = Alignment.Start
+            // Left Group: Small horizontal orbiters
+            Row(
+                modifier = Modifier.align(Alignment.CenterStart),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.Top
             ) {
-                // 1. Calories
-                PillarNode(
+                // Calories Small
+                SmallPillarNode(
                     icon = Icons.Default.Whatshot,
                     value = "${state.activeCalories}",
-                    target = "",
-                    label = "CALORIES",
+                    label = "CAL",
                     progress = (state.activeCalories / 2500f).coerceIn(0f, 1f),
                     color = Color(0xFFFF5252)
                 )
 
-                // 2. Sleep
+                // Sleep Small
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    PillarNode(
+                    SmallPillarNode(
                         icon = Icons.Default.Nightlight,
                         value = formatSleep(state.sleepMinutes),
-                        target = "8h",
                         label = "SLEEP",
                         progress = (state.sleepMinutes / 480f).coerceIn(0f, 1f),
                         color = Color(0xFF42A5F5)
@@ -141,60 +138,54 @@ fun BodyLoadCard(
                         val dDebt = if (isDeficit) -debtMins else debtMins
                         val h = dDebt / 60
                         val m = dDebt % 60
-                        val dStr = if (h > 0) "${h}h ${m}m" else "${m}m"
-                        val lbl = if (isSurplus) "surplus" else if (isDeficit) "deficit" else "balanced"
+                        val dStr = if (h > 0) "${h}h" else "${m}m" // More compact
                         val bColor = if (isSurplus) Color(0xFF66BB6A) else if (isDeficit && dDebt > 600) Color(0xFFFF5252) else Color(0xFFFFB74D)
 
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = NotelSurface.copy(alpha = 0.8f),
+                            shape = RoundedCornerShape(4.dp),
+                            color = NotelSurface,
                             modifier = Modifier
-                                .offset(y = (-4).dp)
+                                .offset(y = (-2).dp)
                                 .clickable { showDebtHistory = true }
-                                .border(1.dp, bColor.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                .padding(horizontal = 2.dp)
                         ) {
-                            Text("$dStr $lbl", color = bColor, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                            Text(dStr, color = bColor, fontSize = 7.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
 
-                // 3. Jots
-                PillarNode(
+                // Jots Small
+                SmallPillarNode(
                     icon = Icons.Default.Edit,
                     value = "${state.jotCountDaily}",
-                    target = "",
                     label = "JOTS",
                     progress = (state.jotCount7Days / 20f).coerceIn(0f, 1f),
                     color = Color(0xFF7C6EFF)
                 )
             }
 
-            // Right Box: Primary Summary Hub
+            // Right Group: Main Hub
             Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(end = 8.dp)
+                modifier = Modifier.align(Alignment.CenterEnd),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 val infiniteTransition = rememberInfiniteTransition()
                 val rotation by infiniteTransition.animateFloat(
                     initialValue = 0f,
                     targetValue = 360f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(15000, easing = LinearEasing),
-                        repeatMode = RepeatMode.Restart
-                    )
+                    animationSpec = infiniteRepeatable(animation = tween(15000, easing = LinearEasing))
                 )
 
                 Box(
-                    modifier = Modifier.size(140.dp),
+                    modifier = Modifier.size(100.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Canvas(modifier = Modifier.fillMaxSize()) {
-                        val strokeWidth = 6.dp.toPx()
-                        val gradientColors = listOf(Color(0xFFFF5252), Color(0xFF42A5F5), Color(0xFF7C6EFF), Color(0xFFFF5252))
+                        val strokeWidth = 4.dp.toPx()
+                        val colors = listOf(Color(0xFFFF5252), Color(0xFF42A5F5), Color(0xFF7C6EFF), Color(0xFFFF5252))
                         rotate(rotation) {
                             drawArc(
-                                brush = Brush.sweepGradient(gradientColors),
+                                brush = Brush.sweepGradient(colors),
                                 startAngle = 0f,
                                 sweepAngle = 360f,
                                 useCenter = false,
@@ -209,11 +200,11 @@ fun BodyLoadCard(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
                                 text = score.toString(),
-                                fontSize = 56.sp,
+                                fontSize = 42.sp,
                                 fontWeight = FontWeight.Black,
                                 color = NotelTextPrimary
                             )
-                            Text("BODY LOAD", fontSize = 10.sp, color = NotelTextSecondary, fontWeight = FontWeight.Bold)
+                            Text("BODY LOAD", fontSize = 8.sp, color = NotelTextSecondary, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -273,6 +264,39 @@ fun BodyLoadCard(
             }
         
 
+    }
+}
+
+@Composable
+fun SmallPillarNode(
+    icon: ImageVector,
+    value: String,
+    label: String,
+    progress: Float,
+    color: Color
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(62.dp)) {
+        Box(
+            modifier = Modifier
+                .size(42.dp)
+                .background(NotelSurface, CircleShape)
+                .border(1.5.dp, NotelSurfaceHigh.copy(alpha = 0.2f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize().padding(2.dp)) {
+                drawArc(
+                    color = color,
+                    startAngle = -90f,
+                    sweepAngle = 360f * progress,
+                    useCenter = false,
+                    style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                )
+            }
+            Icon(icon, null, tint = color, modifier = Modifier.size(16.dp))
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(value, color = NotelTextPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+        Text(label, color = NotelTextSecondary, fontSize = 7.sp, fontWeight = FontWeight.Bold)
     }
 }
 
