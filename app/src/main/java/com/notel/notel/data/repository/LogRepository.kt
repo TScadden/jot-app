@@ -317,11 +317,13 @@ class LogRepository @Inject constructor(
         val context = getEnrichedUserContext() + 
             "\n\n[SYSTEM: SUGGESTION_ENGINE_RULES]\n" +
             "Return 6-10 'Quick Note' chips. Rules:\n" +
-            "1. Each chip MUST be 1-3 words total.\n" +
-            "2. Focus only on specific symptoms, actions, or status updates appropriate for the category '${category.name}'.\n" +
-            "3. NO full sentences. NO punctuation at the end. NO conjunctions like 'and', 'but', or 'with' at the end.\n" +
-            "4. Priorities matching current user data (HR spikes, sleep debt, past logs).\n" +
-            "Example: 'Morning Brain Fog', 'Sharp Rib Pain', 'Dry Mouth'."
+            "1. STRICTURE: Each chip MUST BE 20 CHARACTERS OR LESS (including spaces).\n" +
+            "2. Each chip MUST be 1-3 words total.\n" +
+            "3. Focus only on specific symptoms, actions, or status updates appropriate for the category '${category.name}'.\n" +
+            "4. NO full sentences. NO punctuation. NO trailing conjunctions ('and', 'with', 'for').\n" +
+            "5. Use clear health abbreviations if necessary (e.g., 'RLS', 'POTs', 'OI', 'MCAS').\n" +
+            "6. Priorities matching current user data (HR spikes, sleep debt, past logs).\n" +
+            "Example: 'Brain Fog', 'Chest Pain', 'High HR Spike', 'Restless Legs'."
         
         val kb = getEnrichedKnowledgeBase()
         
