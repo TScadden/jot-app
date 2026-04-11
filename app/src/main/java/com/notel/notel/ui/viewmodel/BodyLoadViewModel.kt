@@ -352,7 +352,7 @@ class BodyLoadViewModel @Inject constructor(
         } catch(e: Exception) { return emptyList() }
         
         val bodyLoads = insights.filter { it.type == "BodyLoad" }
-            .filter { (System.currentTimeMillis() - it.timestamp) < (7L * 24 * 60 * 60 * 1000) }
+            .filter { (System.currentTimeMillis() - it.timestamp) < (90L * 24 * 60 * 60 * 1000) }
             .sortedByDescending { it.timestamp }
             
         val sdfDay = java.text.SimpleDateFormat("EEE", java.util.Locale.US)
