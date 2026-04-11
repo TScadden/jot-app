@@ -36,18 +36,31 @@ fun BodyLoadScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        "Score",
-                        fontWeight = FontWeight.Bold,
-                        color = NotelTextPrimary,
-                        fontSize = 20.sp
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "Back", tint = NotelPrimary)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = CircleShape,
+                            color = NotelPrimary.copy(alpha = 0.1f),
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.Adjust,
+                                    contentDescription = null,
+                                    tint = NotelPrimary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            "Jot",
+                            fontWeight = FontWeight.Black,
+                            color = NotelTextPrimary,
+                            fontSize = 22.sp
+                        )
                     }
                 },
+                navigationIcon = {},
                 actions = {
                     TextButton(onClick = { showTheorySheet = true }) {
                         Text("What is this?", color = NotelTextSecondary, fontSize = 14.sp)
