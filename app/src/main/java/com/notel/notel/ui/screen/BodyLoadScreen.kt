@@ -113,7 +113,7 @@ fun BodyLoadScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(bottom = 32.dp),
+                .padding(bottom = 140.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             BodyLoadCard(
