@@ -128,38 +128,47 @@ class BodyLoadViewModel @Inject constructor(
         viewModelScope.launch {
             val history = _uiState.value.historyScores
             val snapshot = history.find { it.date == dateStr }
+            val todayStr = java.time.LocalDate.now().toString()
             
-            // 1. Immediately update the UI with AI snapshot / cache data so there is no delay
-            if (snapshot != null) {
-                _uiState.value = _uiState.value.copy(
-                    selectedDate = dateStr,
-                    score = snapshot.score,
-                    factors = snapshot.factors,
-                    adviceList = snapshot.adviceList
-                )
-            } else if (dateStr == java.time.LocalDate.now().toString()) {
-                val currentAdvice = preferences.lastBodyLoadAdvice.first() ?: ""
-                val currentFactors = preferences.lastBodyLoadFactors.first()
-                _uiState.value = _uiState.value.copy(
-                    selectedDate = dateStr,
-                    score = preferences.lastBodyLoadScore.first(),
-                    factors = parseFactors(currentFactors),
-                    adviceList = splitAdvice(currentAdvice)
-                )
+            // 1. Resolve core Body Load metrics for the target day
+            val (targetScore, targetFactors, targetAdvice) = when {
+                snapshot != null -> Triple(snapshot.score, snapshot.factors, snapshot.adviceList)
+                dateStr == todayStr -> {
+                    val currentAdvice = preferences.lastBodyLoadAdvice.first() ?: ""
+                    val currentFactors = preferences.lastBodyLoadFactors.first()
+                    Triple(
+                        preferences.lastBodyLoadScore.first(),
+                        parseFactors(currentFactors),
+                        splitAdvice(currentAdvice)
+                    )
+                }
+                else -> Triple(0, emptyList<FactorWeight>(), emptyList<String>())
             }
+
+            _uiState.update { it.copy(
+                selectedDate = dateStr,
+                score = targetScore,
+                factors = targetFactors,
+                adviceList = targetAdvice
+            ) }
 
             // 2. Fetch raw stats for this day and merge them in
             val stats = logRepository.getDailyStatsSummary(dateStr)
+            val sMins = stats["sleepMins"] as? Int ?: (stats["sleepMins"] as? Double)?.toInt() ?: 0
             
-            _uiState.value = _uiState.value.copy(
-                activeCalories = stats["calories"] as? Int ?: (stats["calories"] as? Double)?.toInt() ?: 0,
-                sleepMinutes = stats["sleepMins"] as? Int ?: (stats["sleepMins"] as? Double)?.toInt() ?: 0,
-                sleepDebtMins = ((stats["sleepDebt"] as? Double ?: 0.0) * 60).toInt(),
-                sleepDebtHistory = stats["sleepDebtHistory"] as? List<Triple<String, Double, Double>> ?: emptyList(),
-                spikeCount = stats["spikeCount"] as? Int ?: (stats["spikeCount"] as? Double)?.toInt() ?: 0,
-                jotCount7Days = stats["jotCount"] as? Int ?: (stats["jotCount"] as? Double)?.toInt() ?: 0,
-                jotCountDaily = stats["jotCountDaily"] as? Int ?: (stats["jotCountDaily"] as? Double)?.toInt() ?: 0
-            )
+            _uiState.update { current ->
+                val finalScore = if (sMins == 0) 0 else current.score
+                current.copy(
+                    activeCalories = stats["calories"] as? Int ?: (stats["calories"] as? Double)?.toInt() ?: 0,
+                    sleepMinutes = sMins,
+                    sleepDebtMins = ((stats["sleepDebt"] as? Double ?: 0.0) * 60).toInt(),
+                    sleepDebtHistory = stats["sleepDebtHistory"] as? List<Triple<String, Double, Double>> ?: emptyList(),
+                    spikeCount = stats["spikeCount"] as? Int ?: (stats["spikeCount"] as? Double)?.toInt() ?: 0,
+                    jotCount7Days = stats["jotCount"] as? Int ?: (stats["jotCount"] as? Double)?.toInt() ?: 0,
+                    jotCountDaily = stats["jotCountDaily"] as? Int ?: (stats["jotCountDaily"] as? Double)?.toInt() ?: 0,
+                    score = finalScore
+                )
+            }
         }
     }
 

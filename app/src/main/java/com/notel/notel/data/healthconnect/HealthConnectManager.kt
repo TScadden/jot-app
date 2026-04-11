@@ -163,7 +163,11 @@ class HealthConnectManager(private val context: Context) {
 
     suspend fun readSleepSession(dateStr: String): SleepData? {
         try {
-            val startOfDay = if (dateStr == "today" || dateStr.isBlank()) ZonedDateTime.now(ZoneId.systemDefault()).truncatedTo(ChronoUnit.DAYS).toInstant() else Instant.parse("${dateStr}T00:00:00Z")
+            val startOfDay = if (dateStr == "today" || dateStr.isBlank()) {
+                ZonedDateTime.now(ZoneId.systemDefault()).truncatedTo(ChronoUnit.DAYS).toInstant()
+            } else {
+                java.time.LocalDate.parse(dateStr).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant()
+            }
             val endOfDay = startOfDay.plus(1, ChronoUnit.DAYS)
             
             val response = healthConnectClient.readRecords(
