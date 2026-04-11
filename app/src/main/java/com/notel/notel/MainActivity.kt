@@ -213,8 +213,8 @@ class MainActivity : ComponentActivity() {
                     }
 
                     // Floating Glass Nav Banner
-                    val onboardingRoutes = listOf("login", "profile_setup", "connections", "setup_loading")
-                    if (currentRoute !in onboardingRoutes && currentRoute != null) {
+                    val hideNavRoutes = listOf("login", "profile_setup", "connections", "setup_loading", "data_connections")
+                    if (currentRoute !in hideNavRoutes && currentRoute != null) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
