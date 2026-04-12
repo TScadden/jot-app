@@ -35,6 +35,7 @@ data class DailyHeartRateSummary(
     val spikeCount: Int,    // total readings >= SPIKE_THRESHOLD_BPM
     val daySpikeCount: Int = 0,   // Spikes from 7am-10pm
     val nightSpikeCount: Int = 0, // Spikes from 10pm-7am
+    val awakeAvg: Int = 0,        // Avg between 7am and 10pm
     val maxDelta: Int,      // max - baseline (key POTS orthostatic delta)
     val totalReadings: Int,
     val eventsList: List<SpikeEventRecord> = emptyList()
@@ -160,6 +161,34 @@ class HealthConnectManager(private val context: Context) {
         }
     }
 
+    suspend fun readHistoricalCalories(days: Int = 30): List<Pair<String, Int>> {
+        try {
+            val zoneId = java.time.ZoneId.systemDefault()
+            val end = java.time.ZonedDateTime.now(zoneId).plusDays(1).truncatedTo(java.time.temporal.ChronoUnit.DAYS).toInstant()
+            val start = end.minus(days.toLong(), java.time.temporal.ChronoUnit.DAYS)
+            
+            val response = healthConnectClient.aggregateGroupByDuration(
+                AggregateGroupByDurationRequest(
+                    metrics = setOf(TotalCaloriesBurnedRecord.ENERGY_TOTAL, ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL),
+                    timeRangeFilter = TimeRangeFilter.between(start, end),
+                    timeRangeSlicer = Duration.ofDays(1)
+                )
+            )
+            
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
+                timeZone = java.util.TimeZone.getTimeZone(zoneId)
+            }
+            return response.map { bucket ->
+                val date = sdf.format(java.util.Date.from(bucket.startTime))
+                val active = bucket.result[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories?.toInt()
+                val total = bucket.result[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories?.toInt()
+                date to (active ?: total ?: 0)
+            }
+        } catch(e: Exception) {
+            return emptyList()
+        }
+    }
+
 
     suspend fun readSleepSession(dateStr: String): SleepData? {
         try {
@@ -236,8 +265,8 @@ class HealthConnectManager(private val context: Context) {
     suspend fun readHistoricalHeartRateWithSpikes(days: Int = 30): List<DailyHeartRateSummary> {
         try {
             val zoneId = ZoneId.systemDefault()
-            val end = Instant.now()
-            val start = end.minus(days.toLong(), ChronoUnit.DAYS)
+            val end = java.time.ZonedDateTime.now(zoneId).plusDays(1).truncatedTo(java.time.temporal.ChronoUnit.DAYS).toInstant()
+            val start = end.minus(days.toLong(), java.time.temporal.ChronoUnit.DAYS)
 
             val response = healthConnectClient.readRecords(
                 ReadRecordsRequest(
@@ -248,7 +277,9 @@ class HealthConnectManager(private val context: Context) {
 
             // Group all samples by local date string mapping to time and bpm
             val byDay = mutableMapOf<String, MutableList<Pair<Long, Int>>>()
-            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
+                timeZone = java.util.TimeZone.getTimeZone(zoneId)
+            }
             response.records.forEach { record ->
                 record.samples.forEach { sample ->
                     val timestamp = sample.time.toEpochMilli()
@@ -268,6 +299,12 @@ class HealthConnectManager(private val context: Context) {
                 val baseline = bpmList[p10Index]
                 val maxDelta = max - baseline
                 
+                val daytimeSamples = sortedSamples.filter { 
+                    val h = java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(it.first), zoneId).hour
+                    h in 7..21
+                }
+                val awakeAvg = if (daytimeSamples.isNotEmpty()) daytimeSamples.map { it.second }.average().toInt() else avg
+
                 var dayCount = 0
                 var nightCount = 0
                 val eventRecords = mutableListOf<SpikeEventRecord>()
@@ -311,6 +348,7 @@ class HealthConnectManager(private val context: Context) {
                     spikeCount = dayCount + nightCount,
                     daySpikeCount = dayCount,
                     nightSpikeCount = nightCount,
+                    awakeAvg = awakeAvg,
                     maxDelta = maxDelta,
                     totalReadings = sortedSamples.size,
                     eventsList = eventRecords
@@ -335,7 +373,7 @@ class HealthConnectManager(private val context: Context) {
             )
             
             val formatter = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
-                timeZone = java.util.TimeZone.getTimeZone("UTC")
+                timeZone = java.util.TimeZone.getTimeZone(java.time.ZoneId.systemDefault())
             }
             
             return response.mapNotNull { bucket ->
@@ -350,37 +388,6 @@ class HealthConnectManager(private val context: Context) {
         }
     }
 
-    suspend fun readHistoricalCalories(days: Int = 180): List<Pair<String, Int>> {
-        try {
-            val end = ZonedDateTime.now(ZoneId.systemDefault()).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
-            val start = end.minus(days.toLong(), ChronoUnit.DAYS)
-            
-            val response = healthConnectClient.aggregateGroupByDuration(
-                AggregateGroupByDurationRequest(
-                    metrics = setOf(TotalCaloriesBurnedRecord.ENERGY_TOTAL, ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL),
-                    timeRangeFilter = TimeRangeFilter.between(start, end),
-                    timeRangeSlicer = Duration.ofDays(1)
-                )
-            )
-            
-            val formatter = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
-                timeZone = java.util.TimeZone.getTimeZone("UTC")
-            }
-            
-            return response.mapNotNull { bucket ->
-                val active = bucket.result[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories
-                val total = bucket.result[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories
-                val finalValue = active ?: total
-                
-                if (finalValue != null && finalValue > 0) {
-                    val dateStr = formatter.format(java.util.Date(bucket.startTime.toEpochMilli()))
-                    dateStr to finalValue.toInt()
-                } else null
-            }.sortedBy { it.first }
-        } catch(e: Exception) {
-            return emptyList()
-        }
-    }
 
     suspend fun readHistoricalSleep(days: Int = 180, targetDateStr: String? = null): List<Pair<String, Int>> {
         try {
@@ -390,11 +397,9 @@ class HealthConnectManager(private val context: Context) {
                 ZonedDateTime.now(ZoneId.systemDefault())
             }
             
-            // Clamp end to now; HealthConnect rejects future timestamps unconditionally
-            var end = anchorDate.plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
-            if (end.isAfter(Instant.now())) {
-                end = Instant.now()
-            }
+            // Ensure end is the end of the ANCHOR day to include all records for that date
+            val endOfAnchor = anchorDate.with(java.time.LocalTime.MAX).toInstant()
+            val end = if (endOfAnchor.isAfter(Instant.now())) Instant.now() else endOfAnchor
             
             val start = anchorDate.minusDays(days.toLong()).truncatedTo(ChronoUnit.DAYS).toInstant()
             
@@ -542,7 +547,7 @@ class HealthConnectManager(private val context: Context) {
             )
             
             val formatter = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
-                timeZone = java.util.TimeZone.getTimeZone("UTC")
+                timeZone = java.util.TimeZone.getTimeZone(java.time.ZoneId.systemDefault())
             }
             
             // Group by day, take mean of RMSSD for the day (ideally nocturnal but depends on wearable source)

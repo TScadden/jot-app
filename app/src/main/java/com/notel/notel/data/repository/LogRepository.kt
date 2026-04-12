@@ -65,8 +65,10 @@ class LogRepository @Inject constructor(
     private val _processError = MutableStateFlow<String?>(null)
     val processError = _processError.asStateFlow()
 
-    // Session-level cache for AI suggestions to prevent re-fetching on tab switches
+    // Session-level cache for UI performance
     private val suggestionCache = mutableMapOf<Int, List<String>>()
+    private var biometricCache: Map<String, Any>? = null
+    private var lastBiometricFetch: Long = 0
 
     fun getCachedSuggestions(catId: Int): List<String>? {
         return suggestionCache[catId]
@@ -215,17 +217,55 @@ class LogRepository @Inject constructor(
         return logEntryDao.getEntryCountSince(since)
     }
 
-    suspend fun getDailyStatsSummary(dateStr: String? = null): Map<String, Any> {
+    suspend fun getDailyStatsSummary(dateStr: String? = null, forceRefresh: Boolean = false): Map<String, Any> {
         val targetDay = dateStr ?: java.time.LocalDate.now().toString()
+        val now = System.currentTimeMillis()
+        
+        // Use cache only for "Today" and if not forced
+        val todayStr = java.time.LocalDate.now().toString()
+        val isToday = targetDay == todayStr
+        
+        if (!forceRefresh && isToday && biometricCache != null && (now - lastBiometricFetch) < 10 * 60 * 1000L) {
+            val cachedData = biometricCache!!
+            val hrvHistory = cachedData["hrvHistory"] as? List<Pair<String, Double>> ?: emptyList()
+            val historyHr = cachedData["historyHr"] as? List<com.notel.notel.data.healthconnect.DailyHeartRateSummary> ?: emptyList()
+            val sleepHistoryRecords = cachedData["sleepHistory"] as? List<Pair<String, Int>> ?: emptyList()
+            val calorieHistory = cachedData["calorieHistory"] as? List<Pair<String, Int>> ?: emptyList()
+            
+            return extractDayFromCache(targetDay, hrvHistory, historyHr, sleepHistoryRecords, calorieHistory)
+        }
+
         val isAvailable = healthConnectManager.checkAvailability() == androidx.health.connect.client.HealthConnectClient.SDK_AVAILABLE
         
-        // 1. Fetch Historical Aggregates (Efficiently)
-        val hrvHistory = if (isAvailable) try { healthConnectManager.readHeartRateVariability(30) } catch(e: Exception) { emptyList() } else emptyList()
-        val historyHr = if (isAvailable) try { healthConnectManager.readHistoricalHeartRateWithSpikes(30) } catch(e: Exception) { emptyList() } else emptyList()
-        val sleepHistoryRecords = if (isAvailable) try { healthConnectManager.readHistoricalSleep(30, targetDay) } catch(e: Exception) { emptyList() } else emptyList()
+        // 1. Fetch Historical Aggregates (42-day window for stable trends/ACWR)
+        val hrvHistory = if (isAvailable) try { healthConnectManager.readHeartRateVariability(42) } catch(e: Exception) { emptyList() } else emptyList()
+        val historyHr = if (isAvailable) try { healthConnectManager.readHistoricalHeartRateWithSpikes(42) } catch(e: Exception) { emptyList() } else emptyList()
+        val sleepHistoryRecords = if (isAvailable) try { healthConnectManager.readHistoricalSleep(42, targetDay) } catch(e: Exception) { emptyList() } else emptyList()
+        val calorieHistory = if (isAvailable) try { healthConnectManager.readHistoricalCalories(42) } catch(e: Exception) { emptyList() } else emptyList()
+
+        // Update cache
+        biometricCache = mapOf(
+            "hrvHistory" to hrvHistory, 
+            "historyHr" to historyHr, 
+            "sleepHistory" to sleepHistoryRecords,
+            "calorieHistory" to calorieHistory
+        )
+        lastBiometricFetch = now
+
+        return extractDayFromCache(targetDay, hrvHistory, historyHr, sleepHistoryRecords, calorieHistory)
+    }
+
+    private suspend fun extractDayFromCache(
+        targetDay: String,
+        hrvHistory: List<Pair<String, Double>>,
+        historyHr: List<com.notel.notel.data.healthconnect.DailyHeartRateSummary>,
+        sleepHistoryRecords: List<Pair<String, Int>>,
+        calorieHistory: List<Pair<String, Int>> = emptyList()
+    ): Map<String, Any> {
+        val isAvailable = healthConnectManager.checkAvailability() == androidx.health.connect.client.HealthConnectClient.SDK_AVAILABLE
         
         // 2. Extract Target Day Biometrics
-        val calories = if (isAvailable) try { healthConnectManager.readActiveCalories(targetDay) } catch(e: Exception) { 0 } else 0
+        val calories = calorieHistory.find { it.first == targetDay }?.second?.toInt() ?: 0
         
         // Use aggregated records for a more robust sleep duration (naps etc.)
         val sleepMins = sleepHistoryRecords.find { it.first == targetDay }?.second?.toDouble() ?: 0.0
@@ -254,10 +294,12 @@ class LogRepository @Inject constructor(
         val rhrMean = if (historyHr.isNotEmpty()) historyHr.map { it.baseline.toDouble() }.average() else 70.0
         val rhrStd = if (historyHr.size > 2) calculateStdDev(historyHr.map { it.baseline.toDouble() }) else 5.0
         
-        // 4. Activity Trends (ACWR)
-        val activityHistory = if (isAvailable) try { healthConnectManager.readHistoricalCalories(42) } catch(e: Exception) { emptyList() } else emptyList()
-        val acuteCalories = activityHistory.takeLast(7).map { it.second }.average()
-        val chronicCalories = activityHistory.map { it.second }.average()
+        // 4. Activity Trends (ACWR) relative to targetDay
+        val caloriesUpToDay = calorieHistory
+            .filter { it.first <= targetDay }
+            .sortedBy { it.first }
+        val acuteCalories = caloriesUpToDay.takeLast(7).map { it.second }.average()
+        val chronicCalories = caloriesUpToDay.takeLast(28).map { it.second }.average()
         val acwr = if (chronicCalories > 100) acuteCalories / chronicCalories else 1.0
         
         // 5. Sleep Debt Bank calculation
@@ -277,13 +319,16 @@ class LogRepository @Inject constructor(
         val sleepDebtHistory = bankHistory
         
         // Jots for the 7 days
-        val dateObj = if (dateStr != null) try { java.time.LocalDate.parse(dateStr) } catch(e: Exception) { java.time.LocalDate.now() } else java.time.LocalDate.now()
+        val dateObj = if (targetDay != null) try { java.time.LocalDate.parse(targetDay) } catch(e: Exception) { java.time.LocalDate.now() } else java.time.LocalDate.now()
         val endTs = dateObj.atTime(23, 59).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
         val startTs = endTs - (7L * 24 * 60 * 60 * 1000L)
         val startOfDayTs = dateObj.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
         val jotCount = logEntryDao.getEntryCountInRange(startTs, endTs).toDouble()
         val jotCountDaily = logEntryDao.getEntryCountInRange(startOfDayTs, endTs).toDouble()
         
+        val targetHrSummary = historyHr.find { it.date == targetDay }
+        val awakeAvg = targetHrSummary?.awakeAvg?.toDouble() ?: 0.0
+
         return mapOf(
             "calories" to calories.toDouble(),
             "sleepMins" to sleepMins,
@@ -298,7 +343,8 @@ class LogRepository @Inject constructor(
             "rhrStd" to rhrStd,
             "acwr" to acwr,
             "sleepDebtHistory" to sleepDebtHistory,
-            "sleepDebt" to sleepDebt
+            "sleepDebt" to sleepDebt,
+            "awakeAvg" to awakeAvg
         )
     }
 
@@ -706,13 +752,32 @@ class LogRepository @Inject constructor(
         }
     }
     
-    suspend fun saveAiInsight(text: String, type: String) {
+    suspend fun saveAiInsight(text: String, type: String, timestamp: Long? = null) {
         val insightsStr = preferences.aiInsights.first()
         val insights: MutableList<AiInsight> = try {
             if (insightsStr.isNotBlank()) Json.decodeFromString<MutableList<AiInsight>>(insightsStr) else mutableListOf()
         } catch(e: Exception) { mutableListOf() }
-        insights.add(0, AiInsight(java.util.UUID.randomUUID().toString(), text, System.currentTimeMillis(), type))
+        
+        val ts = timestamp ?: System.currentTimeMillis()
+        insights.add(0, AiInsight(java.util.UUID.randomUUID().toString(), text, ts, type))
         preferences.setAiInsights(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(AiInsight.serializer()), insights.take(20))) // Keep last 20
+        triggerSync()
+    }
+
+    suspend fun saveAiInsightsBulk(newEntries: List<AiInsight>) {
+        if (newEntries.isEmpty()) return
+        val insightsStr = preferences.aiInsights.first()
+        val insights: MutableList<AiInsight> = try {
+            if (insightsStr.isNotBlank()) Json.decodeFromString<MutableList<AiInsight>>(insightsStr) else mutableListOf()
+        } catch(e: Exception) { mutableListOf() }
+        
+        newEntries.forEach { newOn ->
+            // Minimal duplicate check (day-level)
+            val exists = insights.any { it.type == newOn.type && Math.abs(it.timestamp - newOn.timestamp) < 6 * 60 * 60 * 1000 }
+            if (!exists) insights.add(0, newOn)
+        }
+        
+        preferences.setAiInsights(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(AiInsight.serializer()), insights.take(30))) 
         triggerSync()
     }
 
@@ -912,126 +977,13 @@ class LogRepository @Inject constructor(
      * Calculates the scientific "Body Load Index" based on the Cup Load Blueprint.
      * Weights: 35% HRV, 30% Sleep, 20% Activity, 10% RHR, 5% Subjective (Jots).
      */
-    suspend fun getBodyLoad(allCategories: List<Category>): Result<BodyLoadResponse> {
-        val isUnlimited = preferences.isUnlimited.first()
-        val balance = preferences.userBalance.first()
-        if (!isUnlimited && balance < 0.05f) return Result.failure(IllegalStateException("Insufficient credits (0.05 Required)"))
-
-        // 1. Fetch Technical Stats/Baselines
-        val stats = getDailyStatsSummary()
-        
-        // 2. Compute Z-Scores and Sigmoidal Sub-Scores (0-100 scale)
-        // HRV: Higher is better. Z = (Today - Mean) / StdDev. 
-        val hrv = stats["hrv"] as? Double ?: 0.0
-        val hrvMean = stats["hrvMean"] as? Double ?: 0.0
-        val hrvStd = stats["hrvStd"] as? Double ?: 0.0
-        val hrvZ = if (hrvStd > 0) (hrv - hrvMean) / hrvStd else 0.0
-        val hrvScore = sigmoidScore(hrvZ, k = 1.0) 
-        
-        // Sleep: Debt is bad. 
-        val sleepDebt = stats["sleepDebt"] as? Double ?: 0.0
-        val sleepScore = (100.0 - (sleepDebt * 10.0)).coerceIn(0.0, 100.0)
-        
-        // Activity (ACWR): Sweet spot is 0.8 to 1.3. Breaching 1.5 is bad.
-        val acwr = stats["acwr"] as? Double ?: 1.0
-        val activityScore = when {
-            acwr < 1.3 -> 100.0
-            acwr < 1.5 -> 70.0
-            else -> 30.0
-        }
-        
-        // RHR: Higher is bad. Z = (Today - Mean) / StdDev.
-        val rhr = stats["rhr"] as? Double ?: 70.0
-        val rhrMean = stats["rhrMean"] as? Double ?: 70.0
-        val rhrStd = stats["rhrStd"] as? Double ?: 0.0
-        val rhrZ = if (rhrStd > 0) (rhr - rhrMean) / rhrStd else 0.0
-        val rhrScore = sigmoidScore(-rhrZ, k = 1.5) // Negative Z because higher RHR is worse
-
-        // 3. Let AI provide the Subjective 5% based on Jots
-        val recent = logEntryDao.getRecentEntriesAll(limit = 50)
-        val catMap = allCategories.associate { it.id to it.name }
-        
-        val technicalContext = """
-            TECHNICAL BIOMETRICS:
-            - HRV RMSSD: ${stats["hrv"] as? Double ?: 0.0} (Baseline: ${stats["hrvMean"] as? Double ?: 0.0}, Z: ${"%.2f".format(hrvZ)})
-            - RHR: ${stats["rhr"] as? Double ?: 70.0} bpm (Baseline: ${stats["rhrMean"] as? Double ?: 70.0}, Z: ${"%.2f".format(rhrZ)})
-            - Orthostatic Spikes: ${(stats["spikeCount"] as? Double)?.toInt() ?: 0} events today
-            - Sleep Debt: ${"%.1f".format(sleepDebt)} hours
-            - Activity ACWR: ${"%.2f".format(acwr)}
-        """.trimIndent()
-
-        val systemPrompt = """
-            You are a Cup Load Theory analyst. 
-            1. Evaluate the user's JOTS & CONTEXT for hidden stressors (anxiety, illness, pain).
-            2. Provide a 'subjectiveImpact' from 0.0 (Perfect) to 1.0 (Critical Load).
-            3. Provide 'factors' as Name:Weight (e.g. Stress:0.4, Sleep:0.3).
-            4. Provide 'advice' as 3 bullet points on how to lower the load.
-            FORMAT: JSON with fields [subjectiveImpact, factors, advice]
-        """.trimIndent()
-
-        return geminiService.getBodyLoadEnriched(
-            recentEntries = recent,
-            categories = catMap,
-            userContext = getEnrichedUserContext() + "\n" + systemPrompt,
-            knowledgeBase = getEnrichedKnowledgeBase(),
-            technicalStats = technicalContext
-        ).onSuccess { res ->
-            preferences.deductBalance(0.05f)
-            
-            // 4. Master Algorithmic Merge
-            val subjectiveImpact = res.subjectiveImpact * 100.0 // 0.0 to 100.0 (High is bad)
-            val subjectiveScore = 100.0 - subjectiveImpact // High is good
-            
-            // Spike Hinderance: 0 spikes = 0 hinder, 10+ spikes = 100 hinder.
-            val spikeCountVal = stats["spikeCount"] as? Double ?: 0.0
-            val spikeHinderance = (spikeCountVal * 10.0).coerceIn(0.0, 100.0)
-            val spikeScore = 100.0 - spikeHinderance
-
-            // Cardio Hinderance (Merge RHR and Spikes)
-            val rhrVal = stats["rhr"] as? Double ?: 70.0
-            val rhrMeanVal = stats["rhrMean"] as? Double ?: 70.0
-            val rhrStdVal = stats["rhrStd"] as? Double ?: 0.0
-            val rhrZVal = if (rhrStdVal > 0) (rhrVal - rhrMeanVal) / rhrStdVal else 0.0
-            val rhrHinderance = (100.0 - sigmoidScore(-rhrZVal, k = 1.5)).coerceIn(0.0, 100.0)
-            val cardioHinderance = (rhrHinderance * 0.5 + spikeHinderance * 0.5).coerceIn(0.0, 100.0)
-            val cardioScore = 100.0 - cardioHinderance
-
-            // Other Hinderances
-            val hrvHinderance = 100.0 - hrvScore
-            val sleepHinderance = 100.0 - sleepScore
-            val activityHinderance = 100.0 - activityScore
-
-            val finalScore = (
-                (hrvScore * 0.35) + 
-                (sleepScore * 0.30) + 
-                (activityScore * 0.20) + 
-                (cardioScore * 0.10) + 
-                (subjectiveScore * 0.05)
-            ).toInt().coerceIn(0, 100)
-            
-            // Overwrite the AI's response with mathematical truth for the UI ring
-            res.score = finalScore
-            // Create the factors list for the UI using the 35/30/20/10/5 weights
-            // Format: "Name:Weight" where Weight is the hinderance fraction
-            // Scaling the weights so the ring always looks full if there are stressors, 
-            // but the relative sizes follow the algorithm.
-            res.factors = listOf(
-                "HRV:${"%.2f".format((hrvHinderance/100.0) * 0.35)}",
-                "Sleep:${"%.2f".format((sleepHinderance/100.0) * 0.30)}",
-                "Activity:${"%.2f".format((activityHinderance/100.0) * 0.20)}",
-                "Cardio:${"%.2f".format((cardioHinderance/100.0) * 0.10)}",
-                "Jots:${"%.2f".format((subjectiveImpact/100.0) * 0.05)}"
-            )
-            
-            saveAiInsight("Body Load: $finalScore | Factors: ${res.factors.joinToString(", ")} | Advice: ${res.advice ?: "Keep resting and focusing on your health."}", "BodyLoad")
-        }
+    suspend fun getBodyLoad(allCategories: List<Category>, dateStr: String? = null): Result<BodyLoadResponse> {
+        // Logic stripped per user request. UI only.
+        return Result.success(BodyLoadResponse(0, emptyList(), "Stripped."))
     }
 
-    private fun sigmoidScore(z: Double, k: Double = 1.0): Double {
-        // Center the 0.0 Z-score at 70% (Healthy Baseline)
-        // Formula: 100 / (1 + exp(-k * (z + 0.85)))
-        // A Z of 0 results in ~70. A Z of 1.5 results in ~90. A Z of -1.5 results in ~30.
-        return 100.0 / (1.0 + Math.exp(-k * (z + 0.85)))
+    private fun sigmoidScore(z: Double, k: Double = 1.2): Double {
+        return 0.0
     }
 
     /**

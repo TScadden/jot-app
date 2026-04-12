@@ -86,7 +86,11 @@ class NotelPreferences @Inject constructor(
         val LAST_KNOWN_LAT = doublePreferencesKey("last_known_lat")
         val LAST_KNOWN_LON = doublePreferencesKey("last_known_lon")
         val LAST_KNOWN_CITY = stringPreferencesKey("last_known_city")
+        val HAS_HISTORICAL_BODY_LOAD = booleanPreferencesKey("has_historical_body_load")
     }
+
+    val hasHistoricalBodyLoad: Flow<Boolean> = context.dataStore.data.map { it[HAS_HISTORICAL_BODY_LOAD] ?: false }
+    suspend fun setHasHistoricalBodyLoad(v: Boolean) { context.dataStore.edit { it[HAS_HISTORICAL_BODY_LOAD] = v } }
 
     val authToken: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[AUTH_TOKEN] ?: ""

@@ -47,6 +47,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalContext
 import com.notel.notel.ui.screen.*
 import com.notel.notel.ui.theme.*
+import com.notel.notel.ui.viewmodel.BodyLoadViewModel
 import com.notel.notel.ui.viewmodel.FitbitViewModel
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -79,7 +80,8 @@ class MainActivity : ComponentActivity() {
             // Provide a global instance of FitbitViewModel at the activity level
             // so it can handle the auth redirect regardless of current navigation destination.
             val fitbitViewModel: FitbitViewModel = hiltViewModel()
-            val bodyLoadViewModel: com.notel.notel.ui.viewmodel.BodyLoadViewModel = hiltViewModel()
+            val bodyLoadViewModel: BodyLoadViewModel = hiltViewModel()
+            val quickLogViewModel: com.notel.notel.ui.viewmodel.QuickLogViewModel = hiltViewModel()
             val notelPreferences = remember { com.notel.notel.data.preferences.NotelPreferences(context) }
             
             LaunchedEffect(Unit) {
@@ -158,6 +160,7 @@ class MainActivity : ComponentActivity() {
                         composable("body_load") {
                             BodyLoadScreen(
                                 viewModel = bodyLoadViewModel,
+                                quickLogViewModel = quickLogViewModel,
                                 onBack = { /* Root */ },
                                 onNavigateToConnections = { navController.navigate("data_connections") }
                             )
@@ -173,6 +176,7 @@ class MainActivity : ComponentActivity() {
                         }
                         composable("quick_log") {
                             QuickLogScreen(
+                                viewModel = quickLogViewModel,
                                 onNavigateToHistory = { navController.navigate("history") },
                                 onNavigateToSettings = { navController.navigate("settings") },
                                 onNavigateToTrends = { /* trends Lego piece coming soon */ },
@@ -261,7 +265,15 @@ class MainActivity : ComponentActivity() {
                                     )
                                     
                                     // Simple Purple Pencil Note Button
-                                    IconButton(onClick = { navController.navigate("quick_log") }) {
+                                    IconButton(onClick = { 
+                                        if (currentRoute != "quick_log") {
+                                            navController.navigate("quick_log") {
+                                                popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                                launchSingleTop = true
+                                                restoreState = true
+                                            }
+                                        }
+                                    }) {
                                         Icon(
                                             imageVector = Icons.Default.Edit,
                                             contentDescription = "New Note",

@@ -39,6 +39,7 @@ data class BodyLoadState(
     val adviceList: List<String> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null,
+    val isHealthConnected: Boolean = true,
     
     // Detailed stats for the sub-pillars
     val activeCalories: Int = 0,
@@ -126,49 +127,22 @@ class BodyLoadViewModel @Inject constructor(
 
     fun selectDay(dateStr: String) {
         viewModelScope.launch {
-            val history = _uiState.value.historyScores
-            val snapshot = history.find { it.date == dateStr }
-            val todayStr = java.time.LocalDate.now().toString()
+            _uiState.update { it.copy(selectedDate = dateStr) }
             
-            // 1. Resolve core Body Load metrics for the target day
-            val (targetScore, targetFactors, targetAdvice) = when {
-                snapshot != null -> Triple(snapshot.score, snapshot.factors, snapshot.adviceList)
-                dateStr == todayStr -> {
-                    val currentAdvice = preferences.lastBodyLoadAdvice.first() ?: ""
-                    val currentFactors = preferences.lastBodyLoadFactors.first()
-                    Triple(
-                        preferences.lastBodyLoadScore.first(),
-                        parseFactors(currentFactors),
-                        splitAdvice(currentAdvice)
-                    )
-                }
-                else -> Triple(0, emptyList<FactorWeight>(), emptyList<String>())
-            }
-
+            // Try cache first
+            val statsJson = preferences.lastKnownStats.first()
+            val allHistory: Map<String, Map<String, Double>> = try {
+                if (statsJson.isNotBlank()) Json.decodeFromString(statsJson) else emptyMap()
+            } catch(e: Exception) { emptyMap() }
+            
+            val stats = allHistory[dateStr] ?: logRepository.getDailyStatsSummary(dateStr).filterValues { it is Number }.mapValues { (it.value as Number).toDouble() }
+            
             _uiState.update { it.copy(
-                selectedDate = dateStr,
-                score = targetScore,
-                factors = targetFactors,
-                adviceList = targetAdvice
+                activeCalories = (stats["calories"] ?: 0.0).toInt(),
+                sleepMinutes = (stats["sleepMins"] ?: 0.0).toInt(),
+                jotCountDaily = (stats["jotCountDaily"] ?: 0.0).toInt(),
+                sleepDebtMins = ((stats["sleepDebt"] ?: 0.0) * 60).toInt()
             ) }
-
-            // 2. Fetch raw stats for this day and merge them in
-            val stats = logRepository.getDailyStatsSummary(dateStr)
-            val sMins = stats["sleepMins"] as? Int ?: (stats["sleepMins"] as? Double)?.toInt() ?: 0
-            
-            _uiState.update { current ->
-                val finalScore = if (sMins == 0) 0 else current.score
-                current.copy(
-                    activeCalories = stats["calories"] as? Int ?: (stats["calories"] as? Double)?.toInt() ?: 0,
-                    sleepMinutes = sMins,
-                    sleepDebtMins = ((stats["sleepDebt"] as? Double ?: 0.0) * 60).toInt(),
-                    sleepDebtHistory = stats["sleepDebtHistory"] as? List<Triple<String, Double, Double>> ?: emptyList(),
-                    spikeCount = stats["spikeCount"] as? Int ?: (stats["spikeCount"] as? Double)?.toInt() ?: 0,
-                    jotCount7Days = stats["jotCount"] as? Int ?: (stats["jotCount"] as? Double)?.toInt() ?: 0,
-                    jotCountDaily = stats["jotCountDaily"] as? Int ?: (stats["jotCountDaily"] as? Double)?.toInt() ?: 0,
-                    score = finalScore
-                )
-            }
         }
     }
 
@@ -177,193 +151,144 @@ class BodyLoadViewModel @Inject constructor(
         
         viewModelScope.launch {
             val now = System.currentTimeMillis()
-            val todayStr = java.time.LocalDate.now().toString()
             val lastRefresh = preferences.lastBodyLoadRefresh.first()
-            val cachedStatsJson = preferences.lastKnownStats.first()
+            val todayStr = java.time.LocalDate.now().toString()
             
-            val json = Json { ignoreUnknownKeys = true }
-            val cachedStats: Map<String, Double> = try {
-                if (cachedStatsJson.isNotBlank() && cachedStatsJson != "{}") {
-                    json.decodeFromString<Map<String, Double>>(cachedStatsJson)
-                } else emptyMap()
-            } catch (e: Exception) { emptyMap() }
-
-            // Auto-refresh rule: 3 hours
-            val shouldAutoRefresh = (now - lastRefresh) > (3 * 60 * 60 * 1000L) || lastRefresh == 0L
-
-            if (!force && !shouldAutoRefresh) {
-                // Restore purely from cache including stats to avoid loading times
-                val cachedAdvice = preferences.lastBodyLoadAdvice.first() ?: ""
-                val cachedFactors = preferences.lastBodyLoadFactors.first()
-                val cachedScore = preferences.lastBodyLoadScore.first()
-                val history = getHistoricalScores().sortedByDescending { it.date }
+            // 1. Instant Load from Cache (for non-forced resume)
+            val statsJson = preferences.lastKnownStats.first()
+            val allHistory: Map<String, Map<String, Double>> = try {
+                if (statsJson.isNotBlank()) Json.decodeFromString(statsJson) else emptyMap()
+            } catch(e: Exception) { emptyMap() }
+            
+            if (allHistory.isNotEmpty()) {
+                val todayCache = allHistory[todayStr]
+                val cacheSleep = (todayCache?.get("sleepMins") ?: 0.0).toInt()
+                val cacheCals = (todayCache?.get("calories") ?: 0.0).toInt()
+                val cacheJots = (todayCache?.get("jotCountDaily") ?: 0.0).toInt()
                 
-                _uiState.update { it.copy(
-                    activeCalories = cachedStats["calories"]?.toInt() ?: 0,
-                    sleepMinutes = cachedStats["sleepMins"]?.toInt() ?: 0,
-                    score = cachedScore,
-                    factors = parseFactors(cachedFactors),
-                    adviceList = splitAdvice(cachedAdvice),
-                    historyScores = history,
-                    selectedDate = todayStr,
-                    isLoading = false
-                ) }
-                return@launch
-            }
-
-            _uiState.update { it.copy(isLoading = true, error = null) }
-            
-            // FULL REFRESH (Force or Timer expired)
-            fetchWeather()
-            
-            // 1. Fetch current stats
-            val stats = logRepository.getDailyStatsSummary(todayStr)
-            val sleepMins = stats["sleepMins"] as? Int ?: (stats["sleepMins"] as? Double)?.toInt() ?: 0
-
-            // Save stats and timestamp for next startup immediately after biometric fetch
-            val statsToSave = stats.filterValues { it is Number }.mapValues { (it.value as Number).toDouble() }
-            preferences.setLastKnownStats(json.encodeToString(statsToSave))
-            preferences.setLastBodyLoadRefresh(now)
-            
-            val history = getHistoricalScores().toMutableList()
-            
-            // ── Heuristic Logic: Fill gaps for ALL 7 days ──────────────────
-            val sdfDay = java.text.SimpleDateFormat("EEE", java.util.Locale.US)
-            val last7Days = (0..6).map { java.time.LocalDate.now().minusDays(it.toLong()) }
-            
-            // Fetch necessary history once to avoid loop-based rate limiting
-            val allSleepHistory = if (logRepository.healthConnectManager.checkAvailability() == androidx.health.connect.client.HealthConnectClient.SDK_AVAILABLE) {
-                try { logRepository.healthConnectManager.readHistoricalSleep(14, todayStr) } catch(e: Exception) { emptyList() }
-            } else emptyList()
-
-            val finalHistory = mutableListOf<BodyLoadSnapshot>()
-            last7Days.forEach { dateObj ->
-                val dStr = dateObj.toString()
-                val existing = history.find { it.date == dStr }
-                
-                // Use the fetched history instead of a nested repo call
-                val dSleep = allSleepHistory.find { it.first == dStr }?.second ?: 0
-                
-                if (existing != null) {
-                    val maskedScore = if (dSleep == 0) 0 else existing.score
-                    finalHistory.add(existing.copy(score = maskedScore))
-                } else {
-                    // Fallback to heuristic ONLY if we have sleep data
-                    if (dSleep > 0) {
-                        val dStats = logRepository.getDailyStatsSummary(dStr)
-                        val hScore = calculateHeuristicScore(dStats)
-                        val displayDayStr = sdfDay.format(java.util.Date.from(dateObj.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant()))
-                        finalHistory.add(BodyLoadSnapshot(
-                            date = dStr, displayDay = displayDayStr, score = hScore,
-                            factors = listOf(FactorWeight("Biometric Heuristic", 0.5f)),
-                            adviceList = listOf("Heuristic analysis based on raw sensor data.")
-                        ))
-                    } else {
-                        val displayDayStr = sdfDay.format(java.util.Date.from(dateObj.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant()))
-                        finalHistory.add(BodyLoadSnapshot(dStr, displayDayStr, 0, emptyList(), emptyList()))
-                    }
+                // Only update if data has actually changed to prevent UI flicker
+                if (cacheSleep != _uiState.value.sleepMinutes || cacheCals != _uiState.value.activeCalories || cacheJots != _uiState.value.jotCountDaily) {
+                    _uiState.update { it.copy(
+                        activeCalories = cacheCals,
+                        sleepMinutes = cacheSleep,
+                        jotCountDaily = cacheJots,
+                        sleepDebtMins = ((todayCache?.get("sleepDebt") ?: 0.0) * 60).toInt(),
+                        historyScores = (0..6).map { i ->
+                            val d = java.time.LocalDate.now().minusDays(i.toLong()).toString()
+                            BodyLoadSnapshot(d, java.time.LocalDate.parse(d).format(java.time.format.DateTimeFormatter.ofPattern("EEE")), 0, emptyList(), emptyList())
+                        }.reversed()
+                    ) }
                 }
             }
-            
-            val sortedHistory = finalHistory.sortedByDescending { it.date }
-            val todaySnapshot = sortedHistory.find { it.date == todayStr }
-            
-            val cStreak = preferences.currentStreak.first()
-            val bStreak = preferences.bestStreak.first()
-            val theorySeen = preferences.cupTheorySeen.first()
 
-            _uiState.update { it.copy(
-                activeCalories = stats["calories"] as? Int ?: (stats["calories"] as? Double)?.toInt() ?: 0,
-                sleepMinutes = stats["sleepMins"] as? Int ?: (stats["sleepMins"] as? Double)?.toInt() ?: 0,
-                sleepDebtMins = ((stats["sleepDebt"] as? Double ?: 0.0) * 60).toInt(),
-                sleepDebtHistory = stats["sleepDebtHistory"] as? List<Triple<String, Double, Double>> ?: emptyList(),
-                spikeCount = stats["spikeCount"] as? Int ?: (stats["spikeCount"] as? Double)?.toInt() ?: 0,
-                jotCount7Days = stats["jotCount"] as? Int ?: (stats["jotCount"] as? Double)?.toInt() ?: 0,
-                jotCountDaily = stats["jotCountDaily"] as? Int ?: (stats["jotCountDaily"] as? Double)?.toInt() ?: 0,
-                currentStreak = cStreak,
-                bestStreak = bStreak,
-                historyScores = sortedHistory,
-                selectedDate = todayStr,
-                score = todaySnapshot?.score ?: 0,
-                factors = todaySnapshot?.factors ?: emptyList(),
-                adviceList = todaySnapshot?.adviceList ?: emptyList(),
-                cupTheorySeen = theorySeen
-            ) }
+            val todayCache = allHistory[todayStr]
+            val isCacheMissingToday = todayCache == null
+            // Only consider '0' stale if it's been at least 15 mins since last attempt
+            val isCacheStaleZero = todayCache != null && (todayCache["sleepMins"] ?: 0.0) == 0.0 && (now - lastRefresh) > (15 * 60 * 1000L)
+            
+            // 2. Refresh rule: force or 3-hours or if today's cache is missing/broken
+            val shouldRefresh = force || (now - lastRefresh) > (3 * 60 * 60 * 1000L) || 
+                               lastRefresh == 0L || isCacheMissingToday || isCacheStaleZero
+            
+            if (!shouldRefresh) return@launch
 
-            if (!force && !shouldAutoRefresh) {
-                return@launch
+            // Show loader ONLY if manual refresh. Passive refreshes are silent.
+            if (force) {
+                _uiState.update { it.copy(isLoading = true) }
             }
-
-            _uiState.update { it.copy(isLoading = true, error = null) }
-            val allCats = categoryRepository.getAllCategories().first()
             
-            val loadResult = logRepository.getBodyLoad(allCats)
-            val res = loadResult.getOrNull()
-            if (res != null) {
-                val finalScore = if (_uiState.value.sleepMinutes == 0) 0 else res.score
-                val finalAdvice = if (_uiState.value.sleepMinutes == 0) 
-                    listOf("Body Load calculation is awaiting today's sleep data for clinical accuracy.") 
-                else splitAdvice(res.advice ?: "")
-                
-                _uiState.update { it.copy(
-                    score = finalScore,
-                    factors = parseFactors(res.factors.joinToString(", ")),
-                    adviceList = finalAdvice,
-                    isLoading = false
-                ) }
-                preferences.setLastBodyLoadData(
-                    res.score,
-                    res.factors.joinToString(", "),
-                    res.advice ?: ""
-                )
+            // 3. Smart Refresh
+            // All other refreshes only fetch 'Today' and merge into cache.
+            val lastUpdateDay = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date(lastRefresh))
+            val isFullHistoryNeeded = lastUpdateDay != todayStr || force
+            
+            val updatedHistory = allHistory.toMutableMap()
+            
+            if (isFullHistoryNeeded) {
+                // Full Sync (happens on first launch of the day)
+                (0..6).forEach { i ->
+                    val d = java.time.LocalDate.now().minusDays(i.toLong()).toString()
+                    val dayStats = logRepository.getDailyStatsSummary(d)
+                    val statsMap = dayStats.filterValues { it is Number }.mapValues { (it.value as Number).toDouble() }
+                    
+                    // Protective merge
+                    val existing = updatedHistory[d]
+                    val merged = statsMap.toMutableMap()
+                    if (merged["sleepMins"] == 0.0 && (existing?.get("sleepMins") ?: 0.0) > 0.0) merged["sleepMins"] = existing!!["sleepMins"]!!
+                    if (merged["calories"] == 0.0 && (existing?.get("calories") ?: 0.0) > 0.0) merged["calories"] = existing!!["calories"]!!
+                    
+                    updatedHistory[d] = merged
+                }
             } else {
-                _uiState.update { it.copy(isLoading = false, error = null) }
+                // Incremental Sync (Today Only)
+                val todayStats = logRepository.getDailyStatsSummary(todayStr)
+                val statsMap = todayStats.filterValues { it is Number }.mapValues { (it.value as Number).toDouble() }
+                
+                // Protective merge
+                val existing = updatedHistory[todayStr]
+                val merged = statsMap.toMutableMap()
+                if (merged["sleepMins"] == 0.0 && (existing?.get("sleepMins") ?: 0.0) > 0.0) merged["sleepMins"] = existing!!["sleepMins"]!!
+                if (merged["calories"] == 0.0 && (existing?.get("calories") ?: 0.0) > 0.0) merged["calories"] = existing!!["calories"]!!
+                
+                updatedHistory[todayStr] = merged
             }
-
-            // Refresh history after new result
-            val finalHistoryList = getHistoricalScores().sortedByDescending { h -> h.date }
-            _uiState.update { it.copy(historyScores = finalHistoryList) }
+            
+            // 4. Persistence
+            preferences.setLastKnownStats(Json.encodeToString(updatedHistory))
+            preferences.setLastBodyLoadRefresh(now)
+            
+            // 5. Final UI Update
+            val todayStats = logRepository.getDailyStatsSummary(todayStr)
+            val finalToday = updatedHistory[todayStr] ?: emptyMap()
+            
+            _uiState.update { it.copy(
+                isLoading = false,
+                activeCalories = (finalToday["calories"] ?: 0.0).toInt(),
+                sleepMinutes = (finalToday["sleepMins"] ?: 0.0).toInt(),
+                jotCountDaily = (finalToday["jotCountDaily"] ?: 0.0).toInt(),
+                sleepDebtMins = ((finalToday["sleepDebt"] ?: 0.0) * 60).toInt(),
+                sleepDebtHistory = todayStats["sleepDebtHistory"] as? List<Triple<String, Double, Double>> ?: emptyList(),
+                historyScores = (0..6).map { i ->
+                    val d = java.time.LocalDate.now().minusDays(i.toLong()).toString()
+                    BodyLoadSnapshot(d, java.time.LocalDate.parse(d).format(java.time.format.DateTimeFormatter.ofPattern("EEE")), 0, emptyList(), emptyList())
+                }.reversed()
+            ) }
         }
     }
 
-    private fun calculateHeuristicScore(stats: Map<String, Any>): Int {
-        val sleepMins = stats["sleepMins"] as? Int ?: (stats["sleepMins"] as? Double)?.toInt() ?: 0
-        if (sleepMins == 0) return 0 // REQUIRE sleep data for a valid score
+    private suspend fun loadTodayFromStorage(todayStr: String) {
+        val cachedScore = preferences.lastBodyLoadScore.first()
+        val cachedFactors = preferences.lastBodyLoadFactors.first()
+        val cachedAdvice = preferences.lastBodyLoadAdvice.first() ?: ""
+        val cachedStatsJson = preferences.lastKnownStats.first()
+        
+        val stats: Map<String, Double> = try {
+            if (cachedStatsJson.isNotBlank()) Json.decodeFromString(cachedStatsJson) else emptyMap()
+        } catch(e: Exception) { emptyMap() }
 
-        val hrv = stats["hrv"] as? Double ?: 0.0
-        val hrvMean = stats["hrvMean"] as? Double ?: 50.0
-        val sleepDebt = stats["sleepDebt"] as? Double ?: 0.0
-        val spikes = stats["spikeCount"] as? Double ?: 0.0
-        val acwr = stats["acwr"] as? Double ?: 1.0
-        val jots = stats["jotCountDaily"] as? Double ?: 0.0
-
-        // Start with a base load
-        var cupScore = 15.0 // Calm baseline
-
-        // 1. HRV Impact (30%) - Higher HRV is lower load
-        val hrvDelta = hrvMean - hrv
-        if (hrv > 0) cupScore += (hrvDelta * 0.8).coerceIn(-20.0, 30.0)
-
-        // 2. Sleep Debt (25%) - Negative balance adds load
-        if (sleepDebt < 0) cupScore += (Math.abs(sleepDebt) * 8.0).coerceAtMost(25.0)
-
-        // 3. Spikes (15%) - Each spike adds stress
-        cupScore += (spikes * 4.0).coerceAtMost(15.0)
-
-        // 4. Activity (20%) - ACWR > 1.3 adds load
-        if (acwr > 1.3) cupScore += ((acwr - 1.3) * 15.0).coerceAtMost(20.0)
-
-        // 5. Jots (10%) - Each entry suggests active symptoms
-        cupScore += (jots * 3.0).coerceAtMost(10.0)
-
-        return cupScore.toInt().coerceIn(5, 100)
+        _uiState.update { it.copy(
+            score = cachedScore,
+            factors = parseFactors(cachedFactors),
+            adviceList = splitAdvice(cachedAdvice),
+            activeCalories = stats["calories"]?.toInt() ?: 0,
+            sleepMinutes = stats["sleepMins"]?.toInt() ?: 0,
+            jotCountDaily = stats["jotCountDaily"]?.toInt() ?: 0,
+            historyScores = getHistoricalScores()
+        ) }
     }
 
-    fun markTheorySeen() {
-        viewModelScope.launch {
-            preferences.setCupTheorySeen(true)
-            _uiState.value = _uiState.value.copy(cupTheorySeen = true)
-        }
+    private fun updateUiWithRawStats(stats: Map<String, Any>, date: String) {
+        _uiState.update { it.copy(
+            activeCalories = (stats["calories"] as? Number)?.toInt() ?: 0,
+            sleepMinutes = (stats["sleepMins"] as? Number)?.toInt() ?: 0,
+            jotCountDaily = (stats["jotCountDaily"] as? Number)?.toInt() ?: 0,
+            sleepDebtMins = ((stats["sleepDebt"] as? Number)?.toDouble() ?: 0.0).let { (it * 60).toInt() },
+            sleepDebtHistory = stats["sleepDebtHistory"] as? List<Triple<String, Double, Double>> ?: emptyList()
+        ) }
+    }
+
+    private suspend fun performHistoricalSync(todayStr: String) {
+        // Stripped per user request.
     }
 
     private fun parseFactors(factorsStr: String): List<FactorWeight> {
@@ -372,50 +297,28 @@ class BodyLoadViewModel @Inject constructor(
             factorsStr.split(",").map { part ->
                 val pair = part.split(":")
                 val name = pair[0].trim()
-                val weight = if (pair.size > 1) pair[1].trim().toFloatOrNull() ?: 0.1f else 0.2f
+                val weight = if (pair.size > 1) pair[1].trim().toFloatOrNull() ?: 0.2f else 0.2f
                 FactorWeight(name, weight)
             }.filter { it.name.isNotBlank() }
-        } catch (e: Exception) {
-            emptyList()
-        }
+        } catch (e: Exception) { emptyList() }
     }
 
     private fun splitAdvice(advice: String): List<String> {
         if (advice.isBlank()) return emptyList()
-        if (advice.contains("error", ignoreCase = true) || advice.contains("Exception", ignoreCase = true)) return emptyList()
-        
-        // 1. Split by hard delimiters (newlines, bullets, asterisks, pipes, semicolons)
-        var parts = advice.split(Regex("[\\n\\*\\•\\-\\|\\;]"))
+        return advice.split(Regex("[\\n\\*\\•\\-]"))
             .map { it.trim().removePrefix("-").removePrefix("•").trim() }
-            .filter { it.length > 10 }
-            
-        // If the AI completely failed to format and just gave us a giant paragraph, chunk it by sentences instead
-        if (parts.size <= 1) {
-            parts = advice.split(Regex("(?<=\\.)(?=\\s|$)"))
-                .map { it.trim().removePrefix("-").removePrefix("•").removePrefix(Regex("\\d+\\.\\s+").toString()).trim() }
-                .filter { it.length > 10 }
-                .chunked(2) { chunk -> chunk.joinToString(" ") }
-        } else {
-            // Otherwise, we have parts, let's limit each part to 2 sentences max
-            parts = parts.map { piece ->
-                val sentences = piece.split(Regex("(?<=\\.)(?=\\s|$)"))
-                sentences.take(2).joinToString("").trim()
-            }.filter { it.isNotEmpty() }
-        }
-            
-        return parts.take(3)
+            .filter { it.length > 5 }
+            .take(3)
     }
 
     private suspend fun getHistoricalScores(): List<BodyLoadSnapshot> {
         val insightsStr = preferences.aiInsights.first()
         val insights: List<com.notel.notel.data.local.entity.AiInsight> = try {
-            if (insightsStr.isNotBlank()) 
-                Json.decodeFromString<List<com.notel.notel.data.local.entity.AiInsight>>(insightsStr) 
-            else emptyList()
+            if (insightsStr.isNotBlank()) Json.decodeFromString(insightsStr) else emptyList()
         } catch(e: Exception) { return emptyList() }
         
         val bodyLoads = insights.filter { it.type == "BodyLoad" }
-            .filter { (System.currentTimeMillis() - it.timestamp) < (7L * 24 * 60 * 60 * 1000) }
+            .filter { (System.currentTimeMillis() - it.timestamp) < (8L * 24 * 60 * 60 * 1000) }
             .sortedByDescending { it.timestamp }
             
         val sdfDay = java.text.SimpleDateFormat("EEE", java.util.Locale.US)
@@ -424,22 +327,20 @@ class BodyLoadViewModel @Inject constructor(
         return bodyLoads.map { insight ->
             val date = sdfDate.format(java.util.Date(insight.timestamp))
             val displayDay = sdfDay.format(java.util.Date(insight.timestamp))
-            
-            val score = if (insight.text.contains("Cup %: ")) {
-                insight.text.substringAfter("Cup %: ").substringBefore(" |").trim().toIntOrNull() ?: 0
-            } else {
-                insight.text.substringAfter("Body Load: ").substringBefore(" |").trim().toIntOrNull() ?: 0
-            }
-            
-            val factorsStr = if (insight.text.contains("Factors: ")) {
-                insight.text.substringAfter("Factors: ").substringBefore(" |")
-            } else ""
-            
-            val adviceStr = if (insight.text.contains("Advice: ")) {
-                insight.text.substringAfter("Advice: ").trim()
-            } else ""
+            val rawText = insight.text
+            val scorePart = if (rawText.contains("Body Load:")) rawText.substringAfter("Body Load:").substringBefore("|").trim() else "0"
+            val score = scorePart.toIntOrNull() ?: 0
+            val factorsStr = if (rawText.contains("Factors:")) rawText.substringAfter("Factors:").substringBefore("|").trim() else ""
+            val adviceStr = if (rawText.contains("Advice:")) rawText.substringAfter("Advice:").trim() else ""
             
             BodyLoadSnapshot(date, displayDay, score, parseFactors(factorsStr), splitAdvice(adviceStr))
+        }.distinctBy { it.date }
+    }
+
+    fun markTheorySeen() {
+        viewModelScope.launch {
+            preferences.setCupTheorySeen(true)
+            _uiState.value = _uiState.value.copy(cupTheorySeen = true)
         }
     }
 }

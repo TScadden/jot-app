@@ -62,10 +62,10 @@ class NotificationHelper(private val context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Cup Reminders",
+                "Score Reminders",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Daily nudge to check your updated Cup level"
+                description = "Daily nudge to check your updated Score"
             }
             manager.createNotificationChannel(channel)
         }
@@ -75,10 +75,12 @@ class NotificationHelper(private val context: Context) {
         }
         val pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE)
 
+        val content = "Your score has updated. Check it now to plan the rest of your day better."
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_noti_j) 
-            .setContentTitle("Cup Status Refreshed 🧪")
-            .setContentText("Your score has updated. Check it now to plan the rest of your day better.")
+            .setContentTitle("Score Refreshed 🧪")
+            .setContentText(content)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(content))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
@@ -102,11 +104,12 @@ class NotificationHelper(private val context: Context) {
         val intent = Intent(context, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE)
 
+        val content = "Your Score for today was $score/100. Plan for tomorrow with your level in mind."
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_noti_j)
-            .setContentTitle("Daily Cup Finalized: $score/100")
-            .setContentText("Your Cup level for today was $score/100. Plan for tomorrow with your level in mind.")
-            .setStyle(NotificationCompat.BigTextStyle().bigText("Your Cup level for today was $score/100. Plan for tomorrow with your level in mind."))
+            .setContentTitle("Daily Score Finalized: $score/100")
+            .setContentText(content)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(content))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)

@@ -260,7 +260,7 @@ fun BodyLoadScreen(
                             ) {
                                 Text("No suggestions loaded", color = NotelTextSecondary, fontSize = 12.sp)
                                 Spacer(Modifier.height(8.dp))
-                                TextButton(onClick = { quickLogViewModel.fetchSuggestions() }) {
+                                TextButton(onClick = { quickLogViewModel.fetchSuggestions(forceRefresh = true) }) {
                                     Text("Load Suggestions", color = NotelPrimary, fontWeight = FontWeight.Bold)
                                 }
                             }
@@ -521,11 +521,10 @@ fun BodyLoadScreen(
                            "• MODERATE (41-65): Managing Load. You have used a fair amount of your daily capacity.\n" +
                            "• HIGH (66-90+): High Strain. Your cup is nearly full. Even small drops (stressors) could cause an 'overflow' (a flare or crash).\n\n" +
                            "Your score is weighted using clinical biometric markers:\n" +
-                           "• 30% Autonomic Balance (HRV)\n" +
-                           "• 25% Sleep Architecture & Debt\n" +
-                           "• 20% Activity Workload (ACWR)\n" +
-                           "• 15% Orthostatic Spikes (>100bpm)\n" +
-                           "• 10% Symptoms & Subjective Jots",
+                           "• 50% Autonomic Balance (HRV)\n" +
+                           "• 30% Activity Workload (ACWR)\n" +
+                           "• 15% Cardiovascular Strain (RHR & Spikes)\n" +
+                           "• 5% Subjective Context (Jots & Stress)",
                     color = NotelTextPrimary,
                     fontSize = 15.sp,
                     lineHeight = 22.sp
