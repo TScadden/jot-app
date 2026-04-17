@@ -948,11 +948,7 @@ fun SettingsScreen(
                         Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                     }
 
-                    if (processedFiles.isNotBlank()) {
-                        Spacer(Modifier.height(16.dp))
-                        Text("Processed Files:", color = NotelTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        Text(processedFiles, color = NotelTextSecondary, fontSize = 12.sp)
-                    }
+
 
                     if (knowledgeBase.isNotBlank()) {
                         Spacer(Modifier.height(16.dp))
@@ -993,12 +989,7 @@ fun SettingsScreen(
                                                 horizontalArrangement = Arrangement.SpaceBetween,
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                val filesList = processedFiles.split(",").map { it.trim() }.filter { it.isNotBlank() }
-                                                val titleText = if (index in filesList.indices) {
-                                                    "Extraction from: ${filesList[index]}"
-                                                } else {
-                                                    "Extraction ${index + 1}"
-                                                }
+                                                val titleText = "Extraction ${index + 1}"
                                                 
                                                 Text(
                                                     text = titleText,
@@ -1146,15 +1137,19 @@ fun SettingsScreen(
                                 }
                             }
 
-                            Spacer(Modifier.height(12.dp))
-                            GlassyButton(
-                                onClick = { showClearAllDialog = true },
-                                modifier = Modifier.fillMaxWidth(),
-                                containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
-                            ) {
-                                Icon(Icons.Default.DeleteSweep, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("Clear All Files", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
+                            if (knowledgeDocuments.isNotEmpty()) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { showClearAllDialog = true }
+                                        .padding(vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.DeleteSweep, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Clear All Files", color = MaterialTheme.colorScheme.error, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                }
                             }
 
                             if (showClearAllDialog) {
@@ -2468,12 +2463,38 @@ fun DocumentTile(
                     }
                 }
             }
-            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+            }
+            
+            var showDeleteDialog by remember { mutableStateOf(false) }
+            
+            IconButton(onClick = { showDeleteDialog = true }, modifier = Modifier.size(32.dp)) {
                 Icon(
                     Icons.Default.Delete, 
                     "Delete document", 
                     tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f),
                     modifier = Modifier.size(18.dp)
+                )
+            }
+            
+            if (showDeleteDialog) {
+                AlertDialog(
+                    onDismissRequest = { showDeleteDialog = false },
+                    title = { Text("Trash File?", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
+                    text = { Text("Are you sure you want to permanently delete '${doc.name}'?", color = NotelTextSecondary) },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            onDelete()
+                            showDeleteDialog = false
+                        }) {
+                            Text("Delete", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDeleteDialog = false }) {
+                            Text("Cancel", color = NotelTextSecondary)
+                        }
+                    },
+                    containerColor = NotelSurface
                 )
             }
         }
