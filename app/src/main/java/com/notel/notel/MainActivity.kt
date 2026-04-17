@@ -245,6 +245,9 @@ class MainActivity : ComponentActivity() {
                                 filePath = path,
                                 mimeType = mime,
                                 extractedText = extractedText,
+                                onSaveEditedText = { newText ->
+                                    settingsVm.updateDocumentExtractedText(docId, newText)
+                                },
                                 onBack = { navController.popBackStack() }
                             )
                         }

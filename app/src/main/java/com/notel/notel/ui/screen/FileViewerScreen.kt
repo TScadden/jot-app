@@ -17,6 +17,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Share
@@ -28,10 +31,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.notel.notel.ui.theme.*
 import java.io.File
@@ -43,6 +47,7 @@ fun FileViewerScreen(
     filePath: String,
     mimeType: String,
     extractedText: String? = null,
+    onSaveEditedText: (String) -> Unit = {},
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -64,7 +69,7 @@ fun FileViewerScreen(
                         )
                         if (!extractedText.isNullOrBlank()) {
                             Text(
-                                "AI read · tap below to view",
+                                "AI read · tap below to view or edit",
                                 color = Color(0xFF4CAF50),
                                 fontSize = 10.sp
                             )
@@ -114,7 +119,11 @@ fun FileViewerScreen(
                 contentAlignment = Alignment.Center
             ) {
                 if (!file.exists()) {
-                    Text("File not found or has been deleted.", color = NotelTextSecondary, modifier = Modifier.padding(16.dp))
+                    Text(
+                        "File not found or has been deleted.",
+                        color = NotelTextSecondary,
+                        modifier = Modifier.padding(16.dp)
+                    )
                 } else {
                     when {
                         mimeType.startsWith("image/") -> {
@@ -129,7 +138,6 @@ fun FileViewerScreen(
                             PdfViewer(file)
                         }
                         mimeType == "text/plain" -> {
-                            // For text files show raw content inline since we have formatted extraction below
                             val rawText = remember(filePath) {
                                 try { file.readText() } catch (e: Exception) { "Could not read file." }
                             }
@@ -153,10 +161,22 @@ fun FileViewerScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 modifier = Modifier.padding(32.dp)
                             ) {
-                                Icon(Icons.Default.Share, null, Modifier.size(64.dp), tint = NotelTextSecondary)
+                                Icon(
+                                    Icons.Default.Share,
+                                    null,
+                                    Modifier.size(64.dp),
+                                    tint = NotelTextSecondary
+                                )
                                 Spacer(Modifier.height(16.dp))
-                                Text("Preview not available for this file type.", color = NotelTextSecondary)
-                                Text("Type: $mimeType", color = NotelTextSecondary, fontSize = 12.sp)
+                                Text(
+                                    "Preview not available for this file type.",
+                                    color = NotelTextSecondary
+                                )
+                                Text(
+                                    "Type: $mimeType",
+                                    color = NotelTextSecondary,
+                                    fontSize = 12.sp
+                                )
                             }
                         }
                     }
@@ -166,7 +186,10 @@ fun FileViewerScreen(
             Spacer(Modifier.height(16.dp))
 
             // ── AI Extracted Content panel ─────────────────────────────────
-            AiExtractionPanel(extractedText = extractedText)
+            AiExtractionPanel(
+                extractedText = extractedText,
+                onSaveEditedText = onSaveEditedText
+            )
 
             Spacer(Modifier.height(32.dp))
         }
@@ -174,27 +197,37 @@ fun FileViewerScreen(
 }
 
 @Composable
-private fun AiExtractionPanel(extractedText: String?) {
+private fun AiExtractionPanel(
+    extractedText: String?,
+    onSaveEditedText: (String) -> Unit
+) {
     var isExpanded by remember { mutableStateOf(true) }
+    var showEditDialog by remember { mutableStateOf(false) }
 
     Surface(
-        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 16.dp, bottomEnd = 16.dp),
+        shape = RoundedCornerShape(
+            topStart = 20.dp, topEnd = 20.dp,
+            bottomStart = 16.dp, bottomEnd = 16.dp
+        ),
         color = NotelSurface,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
     ) {
         Column {
-            // Header row — always visible, toggles expansion
+            // Header row — always visible
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { isExpanded = !isExpanded }
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                    .padding(start = 16.dp, end = 8.dp, top = 14.dp, bottom = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
                     Icon(
                         Icons.Default.AutoAwesome,
                         contentDescription = null,
@@ -221,21 +254,43 @@ private fun AiExtractionPanel(extractedText: String?) {
                         )
                     }
                 }
-                Icon(
-                    if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    contentDescription = "Toggle",
-                    tint = NotelTextSecondary
-                )
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Edit button — only shown when there's text to edit
+                    if (!extractedText.isNullOrBlank()) {
+                        IconButton(
+                            onClick = { showEditDialog = true },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = "Edit extracted text",
+                                tint = NotelPrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = { isExpanded = !isExpanded },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            if (isExpanded) Icons.Default.KeyboardArrowUp
+                            else Icons.Default.KeyboardArrowDown,
+                            contentDescription = "Toggle",
+                            tint = NotelTextSecondary
+                        )
+                    }
+                }
             }
 
-            // Divider
             HorizontalDivider(
                 color = NotelSurfaceHigh,
                 thickness = 0.5.dp,
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
 
-            // Content
+            // Collapsible content
             AnimatedVisibility(
                 visible = isExpanded,
                 enter = expandVertically(),
@@ -243,7 +298,6 @@ private fun AiExtractionPanel(extractedText: String?) {
             ) {
                 when {
                     extractedText == null -> {
-                        // Still processing
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -289,14 +343,136 @@ private fun AiExtractionPanel(extractedText: String?) {
             }
         }
     }
+
+    // ── Full-screen edit dialog ────────────────────────────────────────────
+    if (showEditDialog && extractedText != null) {
+        EditExtractedTextDialog(
+            initialText = extractedText,
+            onDismiss = { showEditDialog = false },
+            onSave = { edited ->
+                onSaveEditedText(edited)
+                showEditDialog = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun EditExtractedTextDialog(
+    initialText: String,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit
+) {
+    var editText by remember { mutableStateOf(initialText) }
+    val hasChanges = editText != initialText
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = 24.dp),
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            color = NotelBackground
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Dialog top bar
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, "Cancel", tint = NotelTextSecondary)
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            "Edit AI Extraction",
+                            color = NotelTextPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                        Text(
+                            "Correct anything Gemini got wrong",
+                            color = NotelTextSecondary,
+                            fontSize = 11.sp
+                        )
+                    }
+                    IconButton(
+                        onClick = { onSave(editText) },
+                        enabled = hasChanges && editText.isNotBlank()
+                    ) {
+                        Icon(
+                            Icons.Default.Check,
+                            "Save",
+                            tint = if (hasChanges && editText.isNotBlank())
+                                NotelPrimary else NotelTextSecondary.copy(alpha = 0.4f)
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = NotelSurfaceHigh, thickness = 0.5.dp)
+
+                // Info strip
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(NotelSurface)
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.AutoAwesome,
+                        null,
+                        tint = NotelPrimary,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "Your edits are saved locally and used in all future AI requests.",
+                        color = NotelTextSecondary,
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp
+                    )
+                }
+
+                HorizontalDivider(color = NotelSurfaceHigh, thickness = 0.5.dp)
+
+                // Editable text field
+                OutlinedTextField(
+                    value = editText,
+                    onValueChange = { editText = it },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = NotelPrimary,
+                        unfocusedBorderColor = NotelSurfaceHigh,
+                        focusedTextColor = NotelTextPrimary,
+                        unfocusedTextColor = NotelTextPrimary,
+                        cursorColor = NotelPrimary,
+                        focusedContainerColor = NotelSurface,
+                        unfocusedContainerColor = NotelSurface
+                    ),
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        fontSize = 13.sp,
+                        lineHeight = 20.sp,
+                        color = NotelTextPrimary
+                    ),
+                    label = { Text("Extracted text", color = NotelTextSecondary, fontSize = 12.sp) },
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+        }
+    }
 }
 
 /**
  * Renders extracted text in a readable, structured format.
- * - Lines starting with ALL CAPS or ending in ":" are treated as section headers
- * - Bullet-like lines (starting with -, •, *) are indented
- * - Blank lines become visual spacers
- * - Everything else is body text
  */
 @Composable
 private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) {
@@ -308,8 +484,8 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                 trimmed.isBlank() -> {
                     Spacer(Modifier.height(6.dp))
                 }
-                // Section header: all-caps line, or ends with colon, or short line in caps
-                trimmed.length < 60 && (trimmed == trimmed.uppercase() && trimmed.any { it.isLetter() }) -> {
+                // Section header: all-caps short line
+                trimmed.length < 60 && trimmed == trimmed.uppercase() && trimmed.any { it.isLetter() } -> {
                     Spacer(Modifier.height(10.dp))
                     Text(
                         text = trimmed,
@@ -324,7 +500,7 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                         modifier = Modifier.padding(top = 2.dp, bottom = 4.dp)
                     )
                 }
-                // Sub-header: line ending in ":"
+                // Sub-header: ends with ":"
                 trimmed.endsWith(":") && trimmed.length < 80 -> {
                     Spacer(Modifier.height(8.dp))
                     Text(
@@ -347,15 +523,20 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                             modifier = Modifier.padding(top = 1.dp, end = 8.dp)
                         )
                         Text(
-                            text = trimmed.removePrefix("-").removePrefix("•").removePrefix("*").trim(),
+                            text = trimmed
+                                .removePrefix("-")
+                                .removePrefix("•")
+                                .removePrefix("*")
+                                .trim(),
                             color = NotelTextSecondary,
                             fontSize = 13.sp,
                             lineHeight = 19.sp
                         )
                     }
                 }
-                // Numbered list (1. 2. etc.)
-                trimmed.length > 2 && trimmed[0].isDigit() && (trimmed.getOrNull(1) == '.' || trimmed.getOrNull(2) == '.') -> {
+                // Numbered list
+                trimmed.length > 2 && trimmed[0].isDigit() &&
+                        (trimmed.getOrNull(1) == '.' || trimmed.getOrNull(2) == '.') -> {
                     Row(
                         modifier = Modifier.padding(start = 4.dp),
                         verticalAlignment = Alignment.Top
@@ -404,7 +585,11 @@ fun PdfViewer(file: File) {
 
             for (i in 0 until pageCount) {
                 val page = renderer.openPage(i)
-                val bitmap = Bitmap.createBitmap(page.width * 2, page.height * 2, Bitmap.Config.ARGB_8888)
+                val bitmap = Bitmap.createBitmap(
+                    page.width * 2,
+                    page.height * 2,
+                    Bitmap.Config.ARGB_8888
+                )
                 page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                 bitmaps.add(bitmap)
                 page.close()
@@ -417,9 +602,18 @@ fun PdfViewer(file: File) {
     }
 
     if (error != null) {
-        Text("Error: $error", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
+        Text(
+            "Error: $error",
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(16.dp)
+        )
     } else if (bitmaps.isEmpty()) {
-        Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(200.dp),
+            contentAlignment = Alignment.Center
+        ) {
             CircularProgressIndicator(color = NotelPrimary)
         }
     } else {

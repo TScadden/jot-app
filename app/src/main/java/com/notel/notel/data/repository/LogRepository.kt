@@ -920,6 +920,11 @@ class LogRepository @Inject constructor(
         }
     }
 
+    /** Persists a user-edited correction to the cached extracted text. */
+    suspend fun updateDocumentExtractedText(docId: String, newText: String) {
+        knowledgeDocumentDao.updateExtractedText(docId, newText)
+    }
+
     suspend fun clearKnowledgeBase() {
         preferences.setKnowledgeBase("")
         preferences.setProcessedFiles("")

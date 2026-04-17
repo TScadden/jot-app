@@ -384,6 +384,12 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun updateDocumentExtractedText(docId: String, newText: String) {
+        viewModelScope.launch {
+            logRepository.updateDocumentExtractedText(docId, newText)
+        }
+    }
+
     fun editKnowledgeItem(index: Int, newText: String) {
         viewModelScope.launch {
             val currentKb = preferences.knowledgeBase.first()
