@@ -59,7 +59,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onRestartOnboarding: () -> Unit,
     onLogout: () -> Unit,
-    onNavigateToFile: (name: String, path: String, mime: String) -> Unit
+    onNavigateToFile: (name: String, path: String, mime: String, docId: String) -> Unit
 ) {
     val userContext by viewModel.userContext.collectAsState()
     val knowledgeBase by viewModel.knowledgeBase.collectAsState()
@@ -1135,7 +1135,7 @@ fun SettingsScreen(
                                 knowledgeDocuments.forEach { doc ->
                                     DocumentTile(
                                         doc = doc,
-                                        onView = { onNavigateToFile(doc.name, doc.filePath, doc.mimeType) },
+                                        onView = { onNavigateToFile(doc.name, doc.filePath, doc.mimeType, doc.id) },
                                         onDelete = { viewModel.deleteDocument(doc) }
                                     )
                                 }
@@ -2391,6 +2391,7 @@ fun DocumentTile(
     onView: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val isExtracted = !doc.extractedText.isNullOrBlank()
     Surface(
         onClick = onView,
         shape = RoundedCornerShape(12.dp),
@@ -2401,12 +2402,29 @@ fun DocumentTile(
             modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = if (doc.mimeType == "application/pdf") Icons.Default.PictureAsPdf else Icons.Default.Image,
-                contentDescription = null,
-                tint = NotelPrimary,
-                modifier = Modifier.size(24.dp)
-            )
+            Box {
+                Icon(
+                    imageVector = when {
+                        doc.mimeType == "application/pdf" -> Icons.Default.PictureAsPdf
+                        doc.mimeType.startsWith("image/") -> Icons.Default.Image
+                        else -> Icons.Default.Description
+                    },
+                    contentDescription = null,
+                    tint = NotelPrimary,
+                    modifier = Modifier.size(28.dp)
+                )
+                if (isExtracted) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .align(Alignment.TopEnd)
+                            .background(
+                                color = Color(0xFF4CAF50),
+                                shape = CircleShape
+                            )
+                    )
+                }
+            }
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -2417,11 +2435,33 @@ fun DocumentTile(
                     maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
-                Text(
-                    text = doc.mimeType,
-                    color = NotelTextSecondary,
-                    fontSize = 10.sp
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = when (doc.mimeType) {
+                            "application/pdf" -> "PDF"
+                            "text/plain" -> "Text"
+                            else -> doc.mimeType.substringAfter("/").uppercase()
+                        },
+                        color = NotelTextSecondary,
+                        fontSize = 10.sp
+                    )
+                    if (isExtracted) {
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = "• AI read",
+                            color = Color(0xFF4CAF50),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    } else {
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = "• Extracting…",
+                            color = NotelTextSecondary.copy(alpha = 0.6f),
+                            fontSize = 10.sp
+                        )
+                    }
+                }
             }
             IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
                 Icon(

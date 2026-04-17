@@ -9,5 +9,6 @@ data class KnowledgeDocument(
     val name: String,
     val mimeType: String,
     val filePath: String,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val extractedText: String? = null
 )

@@ -20,4 +20,7 @@ interface KnowledgeDocumentDao {
 
     @Query("DELETE FROM knowledge_documents")
     suspend fun deleteAll()
+
+    @Query("UPDATE knowledge_documents SET extractedText = :text WHERE id = :id")
+    suspend fun updateExtractedText(id: String, text: String)
 }

@@ -209,11 +209,12 @@ class MainActivity : ComponentActivity() {
                                         popUpTo(0) { inclusive = true }
                                     }
                                 },
-                                onNavigateToFile = { name, path, mime ->
+                                onNavigateToFile = { name, path, mime, docId ->
                                     val encName = java.net.URLEncoder.encode(name, "UTF-8")
                                     val encPath = java.net.URLEncoder.encode(path, "UTF-8")
                                     val encMime = java.net.URLEncoder.encode(mime, "UTF-8")
-                                    navController.navigate("file_viewer?name=$encName&path=$encPath&mime=$encMime")
+                                    val encDocId = java.net.URLEncoder.encode(docId, "UTF-8")
+                                    navController.navigate("file_viewer?name=$encName&path=$encPath&mime=$encMime&docId=$encDocId")
                                 }
                             )
                         }
@@ -222,20 +223,28 @@ class MainActivity : ComponentActivity() {
                             FitbitScreen(viewModel = fitbitViewModel, onBack = { navController.popBackStack() })
                         }
                         composable(
-                            route = "file_viewer?name={name}&path={path}&mime={mime}",
+                            route = "file_viewer?name={name}&path={path}&mime={mime}&docId={docId}",
                             arguments = listOf(
                                 navArgument("name") { type = NavType.StringType },
                                 navArgument("path") { type = NavType.StringType },
-                                navArgument("mime") { type = NavType.StringType }
+                                navArgument("mime") { type = NavType.StringType },
+                                navArgument("docId") { type = NavType.StringType; defaultValue = "" }
                             )
                         ) { backStack ->
                             val name = backStack.arguments?.getString("name") ?: ""
                             val path = backStack.arguments?.getString("path") ?: ""
                             val mime = backStack.arguments?.getString("mime") ?: ""
+                            val docId = backStack.arguments?.getString("docId") ?: ""
+                            val settingsVm: com.notel.notel.ui.viewmodel.SettingsViewModel = hiltViewModel()
+                            val docs by settingsVm.knowledgeDocuments.collectAsState()
+                            val extractedText = remember(docId, docs) {
+                                docs.find { it.id == docId }?.extractedText
+                            }
                             FileViewerScreen(
                                 fileName = name,
                                 filePath = path,
                                 mimeType = mime,
+                                extractedText = extractedText,
                                 onBack = { navController.popBackStack() }
                             )
                         }

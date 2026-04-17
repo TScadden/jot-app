@@ -842,6 +842,24 @@ class LogRepository @Inject constructor(
             val currentFiles = preferences.processedFiles.first()
             val updatedFiles = if (currentFiles.isBlank()) fileName else "$fileName, $currentFiles"
             preferences.setProcessedFiles(updatedFiles)
+
+            // ── Extract text once via Gemini and cache it ─────────────────────
+            // This runs as a background task so the UI doesn't block.
+            // Any failure here is non-fatal — the document is already saved.
+            @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+            kotlinx.coroutines.GlobalScope.launch {
+                try {
+                    val extracted = geminiService.processDocumentFile(mimeType, base64Data)
+                    extracted.onSuccess { text ->
+                        if (text.isNotBlank()) {
+                            knowledgeDocumentDao.updateExtractedText(doc.id, text)
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Non-fatal: extraction failed, will fall back to inline data at report time
+                    e.printStackTrace()
+                }
+            }
             
             triggerSync()
             Result.success(Unit)
@@ -854,12 +872,22 @@ class LogRepository @Inject constructor(
         val docs = knowledgeDocumentDao.getAllDocuments().first()
         return docs.mapNotNull { doc ->
             try {
-                val file = File(doc.filePath)
-                if (file.exists()) {
-                    val bytes = file.readBytes()
-                    val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                    com.notel.notel.data.remote.ProcessDocumentRequest(doc.mimeType, b64)
-                } else null
+                // If we already extracted text, send it as plain text (no base64 re-read = no API cost)
+                if (!doc.extractedText.isNullOrBlank()) {
+                    val textB64 = android.util.Base64.encodeToString(
+                        doc.extractedText.toByteArray(Charsets.UTF_8),
+                        android.util.Base64.NO_WRAP
+                    )
+                    com.notel.notel.data.remote.ProcessDocumentRequest("text/plain", textB64)
+                } else {
+                    // Fallback: send raw file so the server can extract it for the first time
+                    val file = File(doc.filePath)
+                    if (file.exists()) {
+                        val bytes = file.readBytes()
+                        val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                        com.notel.notel.data.remote.ProcessDocumentRequest(doc.mimeType, b64)
+                    } else null
+                }
             } catch (e: Exception) { null }
         }
     }
