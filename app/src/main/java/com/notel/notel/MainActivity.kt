@@ -231,10 +231,15 @@ class MainActivity : ComponentActivity() {
                                 navArgument("docId") { type = NavType.StringType; defaultValue = "" }
                             )
                         ) { backStack ->
-                            val name = backStack.arguments?.getString("name") ?: ""
-                            val path = backStack.arguments?.getString("path") ?: ""
-                            val mime = backStack.arguments?.getString("mime") ?: ""
-                            val docId = backStack.arguments?.getString("docId") ?: ""
+                            val nameRaw = backStack.arguments?.getString("name") ?: ""
+                            val pathRaw = backStack.arguments?.getString("path") ?: ""
+                            val mimeRaw = backStack.arguments?.getString("mime") ?: ""
+                            val docIdRaw = backStack.arguments?.getString("docId") ?: ""
+                            
+                            val name = java.net.URLDecoder.decode(nameRaw, "UTF-8")
+                            val path = java.net.URLDecoder.decode(pathRaw, "UTF-8")
+                            val mime = java.net.URLDecoder.decode(mimeRaw, "UTF-8")
+                            val docId = java.net.URLDecoder.decode(docIdRaw, "UTF-8")
                             val settingsVm: com.notel.notel.ui.viewmodel.SettingsViewModel = hiltViewModel()
                             val docs by settingsVm.knowledgeDocuments.collectAsState()
                             val extractedText = remember(docId, docs) {
