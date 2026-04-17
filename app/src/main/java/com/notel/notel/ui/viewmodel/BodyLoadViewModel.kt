@@ -256,9 +256,11 @@ class BodyLoadViewModel @Inject constructor(
                                 adviceList = listOf(response.advice ?: "")
                             )
                         }
-                        preferences.setLastBodyLoadScore(response.score)
-                        preferences.setLastBodyLoadFactors(response.factors.joinToString(","))
-                        preferences.setLastBodyLoadAdvice(response.advice ?: "")
+                        preferences.setLastBodyLoadData(
+                            response.score,
+                            response.factors.joinToString(","),
+                            response.advice
+                        )
                     }
                     
                     // Progressive UI update for the history row
