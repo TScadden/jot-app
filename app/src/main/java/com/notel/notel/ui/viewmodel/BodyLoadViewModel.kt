@@ -155,6 +155,7 @@ class BodyLoadViewModel @Inject constructor(
                 activeCalories = (stats["calories"] ?: 0.0).toInt(),
                 sleepMinutes = (stats["sleepMins"] ?: 0.0).toInt(),
                 jotCountDaily = (stats["jotCountDaily"] ?: 0.0).toInt(),
+                spikeCount = (stats["spikeCount"] ?: 0.0).toInt(),
                 sleepDebtMins = ((stats["sleepDebt"] ?: 0.0) * 60).toInt()
             ) }
         }
@@ -178,14 +179,15 @@ class BodyLoadViewModel @Inject constructor(
                 val todayCache = allHistory[todayStr]
                 val cacheSleep = (todayCache?.get("sleepMins") ?: 0.0).toInt()
                 val cacheCals = (todayCache?.get("calories") ?: 0.0).toInt()
-                val cacheJots = (todayCache?.get("jotCountDaily") ?: 0.0).toInt()
+                val cacheSpikes = (todayCache?.get("spikeCount") ?: 0.0).toInt()
                 
                 // Only update if data has actually changed to prevent UI flicker
-                if (cacheSleep != _uiState.value.sleepMinutes || cacheCals != _uiState.value.activeCalories || cacheJots != _uiState.value.jotCountDaily) {
+                if (cacheSleep != _uiState.value.sleepMinutes || cacheCals != _uiState.value.activeCalories || cacheJots != _uiState.value.jotCountDaily || cacheSpikes != _uiState.value.spikeCount) {
                     _uiState.update { it.copy(
                         activeCalories = cacheCals,
                         sleepMinutes = cacheSleep,
                         jotCountDaily = cacheJots,
+                        spikeCount = cacheSpikes,
                         sleepDebtMins = ((todayCache?.get("sleepDebt") ?: 0.0) * 60).toInt(),
                         historyScores = (0..6).map { i ->
                             val d = java.time.LocalDate.now().minusDays(i.toLong()).toString()
@@ -260,6 +262,7 @@ class BodyLoadViewModel @Inject constructor(
                 activeCalories = (finalToday["calories"] ?: 0.0).toInt(),
                 sleepMinutes = (finalToday["sleepMins"] ?: 0.0).toInt(),
                 jotCountDaily = (finalToday["jotCountDaily"] ?: 0.0).toInt(),
+                spikeCount = (finalToday["spikeCount"] ?: 0.0).toInt(),
                 sleepDebtMins = ((finalToday["sleepDebt"] ?: 0.0) * 60).toInt(),
                 sleepDebtHistory = todayStats["sleepDebtHistory"] as? List<Triple<String, Double, Double>> ?: emptyList(),
                 historyScores = (0..6).map { i ->

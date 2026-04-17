@@ -313,6 +313,15 @@ fun BodyLoadCard(
 
                             VerticalDivider(modifier = Modifier.height(20.dp), color = Color.White.copy(alpha = 0.1f))
 
+                            // Heart Spikes
+                            MetricItem(
+                                icon = Icons.Default.Favorite,
+                                value = "${state.spikeCount}",
+                                color = if (state.spikeCount >= 5) Color(0xFFFF6B6B) else NotelPrimary
+                            )
+
+                            VerticalDivider(modifier = Modifier.height(20.dp), color = Color.White.copy(alpha = 0.1f))
+
                             // Jots
                             MetricItem(
                                 icon = Icons.Default.Edit,
