@@ -225,8 +225,9 @@ class BodyLoadViewModel @Inject constructor(
             // Only consider '0' stale if it's been at least 15 mins since last attempt
             val isCacheStaleZero = todayCache != null && (todayCache["sleepMins"] ?: 0.0) == 0.0 && (now - lastRefresh) > (15 * 60 * 1000L)
             
-            // Critical: If the cache exists but was created before the spikeCount field was added, force a refresh
-            val isCacheMissingSpikes = todayCache != null && !todayCache.containsKey("spikeCount")
+            // Critical: If the cache exists but was created before the spikeCount field was added to any of the past 7 days, force a refresh
+            val pastDays = (0..6).map { java.time.LocalDate.now().minusDays(it.toLong()).toString() }
+            val isCacheMissingSpikes = pastDays.any { d -> allHistory[d] != null && !allHistory[d]!!.containsKey("spikeCount") }
             
             // 2. Refresh rule: force or 3-hours or if today's cache is missing/broken
             val shouldRefresh = force || (now - lastRefresh) > (3 * 60 * 60 * 1000L) || 
