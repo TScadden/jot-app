@@ -1148,6 +1148,12 @@ class LogRepository @Inject constructor(
             weatherContext = weather
         )
     }
+    
+    private fun formatSleep(mins: Int): String {
+        val h = mins / 60
+        val m = mins % 60
+        return if (h > 0) "${h}h ${m}m" else "${m}m"
+    }
 
     private fun sigmoidScore(z: Double, k: Double = 1.2): Double {
         return 0.0
