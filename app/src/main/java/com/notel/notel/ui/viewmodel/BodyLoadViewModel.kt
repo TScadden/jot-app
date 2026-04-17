@@ -166,7 +166,12 @@ class BodyLoadViewModel @Inject constructor(
                 if (statsJson.isNotBlank()) Json.decodeFromString(statsJson) else emptyMap()
             } catch(e: Exception) { emptyMap() }
             
-            val stats = allHistory[dateStr] ?: logRepository.getDailyStatsSummary(dateStr).filterValues { it is Number }.mapValues { (it.value as Number).toDouble() }
+            val today = java.time.LocalDate.now().toString()
+            val stats = if (allHistory[dateStr]?.containsKey("spikeCount") == true) {
+                allHistory[dateStr]!!
+            } else {
+                logRepository.getDailyStatsSummary(dateStr).filterValues { it is Number }.mapValues { (it.value as Number).toDouble() }
+            }
             
             _uiState.update { it.copy(
                 activeCalories = (stats["calories"] ?: 0.0).toInt(),

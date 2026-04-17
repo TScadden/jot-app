@@ -151,11 +151,24 @@ class HrSpikeMonitorService : Service() {
                 preferences.setHrLastSampleTime(latestTime)
             }
 
-            // Always update Today's Spike Count for the Home screen UI
+            // Update Today's Spike Count and the last 7 days of history for the Home screen UI
             val todayStr = java.time.LocalDate.now().toString()
-            val todaySummary = healthConnectManager.readHistoricalHeartRateWithSpikes(1).find { it.date == todayStr }
+            val history = healthConnectManager.readHistoricalHeartRateWithSpikes(7)
+            
+            val todaySummary = history.find { it.date == todayStr }
             todaySummary?.let {
                 preferences.setTodaySpikeCount(it.spikeCount)
+            }
+            
+            // Also update the full historical HR spikes list for the summary views across all screens
+            if (history.isNotEmpty()) {
+                val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                preferences.setHistoricalHrSpikes(
+                    json.encodeToString(
+                        kotlinx.serialization.serializer<List<com.notel.notel.data.healthconnect.DailyHeartRateSummary>>(), 
+                        history
+                    )
+                )
             }
         } catch (e: Exception) {
             e.printStackTrace()
