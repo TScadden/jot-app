@@ -14,7 +14,8 @@ data class AiRequest(
     val pastInsights: String? = null,
     val fitbitData: String? = null,
     val habitData: String? = null,
-    val bodyLoadHistory: String? = null
+    val bodyLoadHistory: String? = null,
+    val documents: List<ProcessDocumentRequest> = emptyList()
 )
 
 @Serializable
@@ -148,6 +149,7 @@ data class SyncProfileRequest(
     val eventCounters: String? = null,
     val counterHistory: String? = null,
     val redditSubreddits: String? = null,
+    val redditSummaries: String? = null,
     val currentStreak: Int? = null,
     val bestStreak: Int? = null
 )
@@ -163,6 +165,20 @@ data class InsightDtoModel(
 @Serializable
 data class SyncInsightsRequest(
     val insights: List<InsightDtoModel>
+)
+
+@Serializable
+data class KnowledgeDocumentDtoModel(
+    val id: String,
+    val name: String,
+    val mimeType: String,
+    val fileData: String? = null,
+    val createdAt: Long
+)
+
+@Serializable
+data class SyncDocumentsRequest(
+    val documents: List<KnowledgeDocumentDtoModel>
 )
 
 @Serializable
@@ -188,6 +204,7 @@ data class ProfileDtoModel(
     val eventCounters: String? = null,
     val counterHistory: String? = null,
     val redditSubreddits: String? = null,
+    val redditSummaries: String? = null,
     val currentStreak: Int? = null,
     val bestStreak: Int? = null
 )
@@ -198,6 +215,7 @@ data class SyncPullResponse(
     val categories: List<CategoryDtoModel> = emptyList(),
     val profile: ProfileDtoModel? = null,
     val insights: List<InsightDtoModel> = emptyList(),
+    val documents: List<KnowledgeDocumentDtoModel> = emptyList(),
     val isUnlimited: Boolean? = null,
     val balance: Float? = null
 )
@@ -351,8 +369,17 @@ interface JotApi {
     @POST("api/sync/insights")
     suspend fun syncInsights(@Body request: SyncInsightsRequest): Response<SyncResponse>
 
+    @POST("api/sync/documents")
+    suspend fun syncDocuments(@Body request: SyncDocumentsRequest): Response<SyncResponse>
+
+    @retrofit2.http.GET("api/sync/documents/{id}")
+    suspend fun getDocumentData(@retrofit2.http.Path("id") id: String): Response<AiResponse<String>>
+
     @retrofit2.http.DELETE("api/sync/entries/{localId}")
     suspend fun deleteEntry(@retrofit2.http.Path("localId") localId: Long): Response<GenericResponse>
+
+    @retrofit2.http.DELETE("api/sync/documents/{id}")
+    suspend fun deleteDocument(@retrofit2.http.Path("id") id: String): Response<GenericResponse>
 
     // ── BILLING ──────────────────────────────────────────
     @POST("api/billing/verify")

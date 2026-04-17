@@ -42,6 +42,7 @@ class LogRepository @Inject constructor(
     private val habitRepository: HabitRepository,
     private val lifecycleTracker: com.notel.notel.util.AppLifecycleTracker,
     private val jotApi: com.notel.notel.data.remote.JotApi,
+    private val knowledgeDocumentDao: com.notel.notel.data.local.dao.KnowledgeDocumentDao,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) {
     private val _isGeneratingReport = MutableStateFlow(false)
@@ -208,6 +209,37 @@ class LogRepository @Inject constructor(
         GlobalScope.launch {
             syncManager.syncAllData()
         }
+    }
+
+    fun getAllDocuments(): Flow<List<com.notel.notel.data.local.entity.KnowledgeDocument>> = 
+        knowledgeDocumentDao.getAllDocuments()
+
+    suspend fun deleteDocument(doc: com.notel.notel.data.local.entity.KnowledgeDocument) {
+        // 1. Local Delete
+        knowledgeDocumentDao.deleteDocument(doc)
+        val file = File(doc.filePath)
+        if (file.exists()) file.delete()
+        
+        // 2. Cloud Delete
+        try {
+            if (preferences.loggedIn.first()) {
+                jotApi.deleteDocument(doc.id)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        
+        // 3. Trigger refresh
+        triggerSync()
+    }
+
+    suspend fun clearAllDocuments() {
+        knowledgeDocumentDao.getAllDocuments().first().forEach { 
+            val file = File(it.filePath)
+            if (file.exists()) file.delete()
+        }
+        knowledgeDocumentDao.deleteAll()
+        triggerSync()
     }
 
     suspend fun getEntryById(id: Long): LogEntry? = logEntryDao.getEntryById(id)
@@ -561,7 +593,9 @@ class LogRepository @Inject constructor(
         val balance = preferences.userBalance.first()
         if (!isUnlimited && balance < 0.01f) return Result.failure(IllegalStateException("Insufficient credits. Please top up in Settings."))
 
-        val result = geminiService.getAdvice(recent, catMap, userContext = context, knowledgeBase = kb, pastInsights = pastInsights, fitbitData = fitbitData, habitData = habitData)
+        val documents = getEnrichedDocuments()
+
+        val result = geminiService.getAdvice(recent, catMap, userContext = context, knowledgeBase = kb, pastInsights = pastInsights, fitbitData = fitbitData, habitData = habitData, documents = documents)
         result.onSuccess { text ->
             preferences.deductBalance(0.01f)
             saveAiInsight(text, "Advice")
@@ -609,7 +643,8 @@ class LogRepository @Inject constructor(
                 pastInsights = pastInsights, 
                 fitbitData = fitbitData, 
                 habitData = habitData,
-                bodyLoadHistory = bodyLoadHistory
+                bodyLoadHistory = bodyLoadHistory,
+                documents = getEnrichedDocuments()
             )
             
             if (finalResult.isSuccess) break
@@ -641,7 +676,7 @@ class LogRepository @Inject constructor(
         val balance = preferences.userBalance.first()
         if (!isUnlimited && balance < 0.05f) return Result.failure(IllegalStateException("Insufficient credits ($0.05 required). Please top up in Settings."))
 
-        val result = geminiService.getWeeklyRecap(recent, catMap, userContext = context, knowledgeBase = kb, fitbitData = fitbitData, habitData = habitData)
+        val result = geminiService.getWeeklyRecap(recent, catMap, userContext = context, knowledgeBase = kb, fitbitData = fitbitData, habitData = habitData, documents = getEnrichedDocuments())
         result.onSuccess { text ->
             preferences.deductBalance(0.05f)
             saveAiInsight(text, "Weekly Recap")
@@ -666,7 +701,7 @@ class LogRepository @Inject constructor(
         val balance = preferences.userBalance.first()
         if (!isUnlimited && balance < 0.10f) return Result.failure(IllegalStateException("Insufficient credits ($0.10 required). Please top up in Settings."))
 
-        val result = geminiService.getDeepResearch(recent, catMap, userContext = context, knowledgeBase = kb, pastInsights = pastInsights, fitbitData = fitbitData, habitData = habitData)
+        val result = geminiService.getDeepResearch(recent, catMap, userContext = context, knowledgeBase = kb, pastInsights = pastInsights, fitbitData = fitbitData, habitData = habitData, documents = getEnrichedDocuments())
         result.onSuccess { text ->
             preferences.deductBalance(0.10f)
             saveAiInsight(text, "Deep Advice")
@@ -692,7 +727,7 @@ class LogRepository @Inject constructor(
         val balance = preferences.userBalance.first()
         if (!isUnlimited && balance < 0.05f) return Result.failure(IllegalStateException("Insufficient credits ($0.05 required). Please top up in Settings."))
 
-        val result = geminiService.getDocumentComparison(recent, catMap, userContext = context, knowledgeBase = kb, pastInsights = pastInsights, fitbitData = fitbitData, habitData = habitData)
+        val result = geminiService.getDocumentComparison(recent, catMap, userContext = context, knowledgeBase = kb, pastInsights = pastInsights, fitbitData = fitbitData, habitData = habitData, documents = getEnrichedDocuments())
         result.onSuccess { text ->
             preferences.deductBalance(0.05f)
             saveAiInsight(text, "Document Comparison")
@@ -786,25 +821,47 @@ class LogRepository @Inject constructor(
         val balance = preferences.userBalance.first()
         if (!isUnlimited && balance < 0.05f) return Result.failure(IllegalStateException("Insufficient credits ($0.05 required). Please top up in Settings."))
 
-        return geminiService.processDocumentFile(mimeType, base64Data).fold(
-            onSuccess = { newKnowledge ->
-                preferences.deductBalance(0.05f)
-                val timestamp = java.text.SimpleDateFormat("MMMM d, yyyy", java.util.Locale.US).format(java.util.Date())
-                val entry = "[ADDED $timestamp]\n$newKnowledge"
-                val currentKb = preferences.knowledgeBase.first()
-                val updatedKb = if (currentKb.isBlank()) entry else "$entry\n\n$currentKb"
-                preferences.setKnowledgeBase(updatedKb)
-                
-                // Track that we processed this file
-                val currentFiles = preferences.processedFiles.first()
-                val updatedFiles = if (currentFiles.isBlank()) fileName else "$fileName, $currentFiles"
-                preferences.setProcessedFiles(updatedFiles)
-                
-                triggerSync()
-                Result.success(Unit)
-            },
-            onFailure = { Result.failure(it) }
-        )
+        return try {
+            val dir = File(context.filesDir, "knowledge_docs")
+            if (!dir.exists()) dir.mkdirs()
+            
+            val file = File(dir, "${UUID.randomUUID()}_$fileName")
+            val bytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
+            file.writeBytes(bytes)
+            
+            val doc = com.notel.notel.data.local.entity.KnowledgeDocument(
+                fileName = fileName,
+                mimeType = mimeType,
+                filePath = file.absolutePath
+            )
+            knowledgeDocumentDao.insertDocument(doc)
+            
+            preferences.deductBalance(0.05f)
+            
+            // Track that we processed this file in old format too for compatibility if needed
+            val currentFiles = preferences.processedFiles.first()
+            val updatedFiles = if (currentFiles.isBlank()) fileName else "$fileName, $currentFiles"
+            preferences.setProcessedFiles(updatedFiles)
+            
+            triggerSync()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private suspend fun getEnrichedDocuments(): List<com.notel.notel.data.remote.ProcessDocumentRequest> {
+        val docs = knowledgeDocumentDao.getAllDocuments().first()
+        return docs.mapNotNull { doc ->
+            try {
+                val file = File(doc.filePath)
+                if (file.exists()) {
+                    val bytes = file.readBytes()
+                    val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                    com.notel.notel.data.remote.ProcessDocumentRequest(doc.mimeType, b64)
+                } else null
+            } catch (e: Exception) { null }
+        }
     }
 
     suspend fun ingestTextNote(title: String, text: String): Result<Unit> {

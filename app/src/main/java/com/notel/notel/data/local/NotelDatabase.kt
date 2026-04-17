@@ -15,13 +15,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @Database(
-    entities = [LogEntry::class, Category::class],
-    version = 12, 
+    entities = [LogEntry::class, Category::class, com.notel.notel.data.local.entity.KnowledgeDocument::class],
+    version = 13, 
     exportSchema = false
 )
 abstract class NotelDatabase : RoomDatabase() {
     abstract fun logEntryDao(): LogEntryDao
     abstract fun categoryDao(): CategoryDao
+    abstract fun knowledgeDocumentDao(): com.notel.notel.data.local.dao.KnowledgeDocumentDao
 
     companion object {
         @Volatile private var INSTANCE: NotelDatabase? = null

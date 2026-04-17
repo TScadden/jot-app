@@ -69,6 +69,9 @@ class SettingsViewModel @Inject constructor(
     val processedFiles = preferences.processedFiles
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
+    val knowledgeDocuments = logRepository.getAllDocuments()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val categories = categoryRepository.getAllCategories()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -119,6 +122,17 @@ class SettingsViewModel @Inject constructor(
 
     init {
         checkHealthConnectStatus()
+        cleanKnowledgeBase()
+    }
+
+    private fun cleanKnowledgeBase() {
+        viewModelScope.launch {
+            val kb = preferences.knowledgeBase.first()
+            if (kb.contains("[REDDIT r/")) {
+                val lines = kb.split("\n\n").filter { !it.contains("[REDDIT r/") }
+                preferences.setKnowledgeBase(lines.joinToString("\n\n"))
+            }
+        }
     }
 
     fun checkHealthConnectStatus() {
@@ -338,6 +352,12 @@ class SettingsViewModel @Inject constructor(
 
     fun deleteKnowledgeItem(index: Int) {
         viewModelScope.launch { logRepository.deleteKnowledgeItem(index) }
+    }
+
+    fun deleteDocument(doc: com.notel.notel.data.local.entity.KnowledgeDocument) {
+        viewModelScope.launch {
+            logRepository.deleteDocument(doc)
+        }
     }
 
     fun editKnowledgeItem(index: Int, newText: String) {
@@ -719,16 +739,16 @@ class SettingsViewModel @Inject constructor(
                             if (existing >= 0) current[existing] = entry else current.add(0, entry)
                             preferences.setRedditSubreddits(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(LinkedSubreddit.serializer()), current))
 
-                            // 2. Replace old KB entry for this subreddit and prepend fresh one
+                            // 2. Replace old Reddit summary entry for this subreddit and prepend fresh one
                             val timestamp = java.text.SimpleDateFormat("MMMM d, yyyy", java.util.Locale.US).format(java.util.Date())
                             val redditMarker = "[REDDIT r/$sub]"
                             val newEntry = "[ADDED $timestamp] $redditMarker\n${body.result}"
-                            val currentKb = preferences.knowledgeBase.first()
-                            val filteredKb = currentKb.split("\n\n")
+                            val currentRedditSummaries = preferences.redditSummaries.first()
+                            val filteredReddit = currentRedditSummaries.split("\n\n")
                                 .filter { !it.contains(redditMarker) }
                                 .joinToString("\n\n")
-                            val updatedKb = if (filteredKb.isBlank()) newEntry else "$newEntry\n\n$filteredKb"
-                            preferences.setKnowledgeBase(updatedKb)
+                            val updatedReddit = if (filteredReddit.isBlank()) newEntry else "$newEntry\n\n$filteredReddit"
+                            preferences.setRedditSummaries(updatedReddit)
                             syncManager.pushProfileData()
                             _redditSynced.emit("Integrated r/$sub community knowledge")
                         } else {
@@ -762,11 +782,11 @@ class SettingsViewModel @Inject constructor(
             current.removeAll { it.name == subredditName }
             preferences.setRedditSubreddits(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(LinkedSubreddit.serializer()), current))
 
-            // Also remove its KB entry
+            // Also remove its summary entry
             val redditMarker = "[REDDIT r/$subredditName]"
-            val currentKb = preferences.knowledgeBase.first()
-            val filteredKb = currentKb.split("\n\n").filter { !it.contains(redditMarker) }.joinToString("\n\n")
-            preferences.setKnowledgeBase(filteredKb)
+            val currentRedditSummaries = preferences.redditSummaries.first()
+            val filteredReddit = currentRedditSummaries.split("\n\n").filter { !it.contains(redditMarker) }.joinToString("\n\n")
+            preferences.setRedditSummaries(filteredReddit)
             syncManager.pushProfileData()
         }
     }
@@ -786,10 +806,11 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun getSubredditSummary(subredditName: String): String {
-        val kb = knowledgeBase.value
-        val marker = "[REDDIT r/$subredditName]"
-        val entries = kb.split("\n\n")
-        return entries.find { it.contains(marker) }?.substringAfter(marker)?.trim() ?: "No summary found."
+        val summaries = redditSummaries.value
+        val marker = "r/$subredditName]"
+        val entries = summaries.split("\n\n")
+        val found = entries.find { it.contains(marker) }
+        return found?.substringAfter(marker)?.trim() ?: "No summary found."
     }
 
     fun getSubredditPosts(subredditName: String): List<com.notel.notel.data.remote.RedditPost> {

@@ -22,6 +22,7 @@ datastore = "1.1.4"
 healthConnect = "1.1.0-alpha09"
 billing = "7.1.1"
 work = "2.10.0"
+coil = "2.7.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -70,6 +71,7 @@ androidx-health-connect = { group = "androidx.health.connect", name = "connect-c
 google-billing = { group = "com.android.billingclient", name = "billing-ktx", version.ref = "billing" }
 androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
 androidx-core-google-shortcuts = { group = "androidx.core", name = "core-google-shortcuts", version = "1.1.0" }
+coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

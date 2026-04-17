@@ -58,7 +58,8 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
     onBack: () -> Unit,
     onRestartOnboarding: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onNavigateToFile: (name: String, path: String, mime: String) -> Unit
 ) {
     val userContext by viewModel.userContext.collectAsState()
     val knowledgeBase by viewModel.knowledgeBase.collectAsState()
@@ -70,6 +71,7 @@ fun SettingsScreen(
     val processError by viewModel.processError.collectAsState()
     val aiInsights by viewModel.aiInsights.collectAsState()
     val showProfessionalCheckIn by viewModel.showProfessionalCheckIn.collectAsState()
+    val knowledgeDocuments by viewModel.knowledgeDocuments.collectAsState()
     
     val isGeneratingWeeklyRecap by viewModel.isGeneratingWeeklyRecap.collectAsState()
     val isGeneratingDeepResearch by viewModel.isGeneratingDeepResearch.collectAsState()
@@ -970,7 +972,7 @@ fun SettingsScreen(
                         if (isFactsExpanded) {
                             Spacer(Modifier.height(8.dp))
                             
-                            val facts = knowledgeBase.split("\n\n").filter { it.isNotBlank() }
+                            val facts = knowledgeBase.split("\n\n").filter { it.isNotBlank() && !it.contains("[REDDIT r/") }
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 facts.forEachIndexed { index, fact ->
                                     var expanded by remember { mutableStateOf(false) }
@@ -1088,6 +1090,21 @@ fun SettingsScreen(
                             }
                         }
                     }
+
+                if (knowledgeDocuments.isNotEmpty()) {
+                    Spacer(Modifier.height(24.dp))
+                    Text("ORIGINAL DOCUMENTS", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(8.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        knowledgeDocuments.forEach { doc ->
+                            DocumentTile(
+                                doc = doc, 
+                                onView = { onNavigateToFile(doc.fileName, doc.filePath, doc.mimeType) },
+                                onDelete = { viewModel.deleteDocument(doc) }
+                            )
+                        }
+                    }
+                }
 
                 Spacer(Modifier.height(24.dp))
                 Text("AI CONFIGURATION", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
@@ -2291,6 +2308,56 @@ fun DebugScreen(
                     color = Color.Green,
                     fontSize = 11.sp,
                     fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun DocumentTile(
+    doc: com.notel.notel.data.local.entity.KnowledgeDocument,
+    onView: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Surface(
+        onClick = onView,
+        shape = RoundedCornerShape(12.dp),
+        color = NotelSurfaceHigh.copy(alpha = 0.5f),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = if (doc.mimeType == "application/pdf") Icons.Default.PictureAsPdf else Icons.Default.Image,
+                contentDescription = null,
+                tint = NotelPrimary,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = doc.fileName,
+                    color = NotelTextPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+                Text(
+                    text = doc.mimeType,
+                    color = NotelTextSecondary,
+                    fontSize = 10.sp
+                )
+            }
+            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    Icons.Default.Delete, 
+                    "Delete document", 
+                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f),
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }

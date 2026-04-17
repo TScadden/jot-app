@@ -208,12 +208,36 @@ class MainActivity : ComponentActivity() {
                                     navController.navigate("login") {
                                         popUpTo(0) { inclusive = true }
                                     }
+                                },
+                                onNavigateToFile = { name, path, mime ->
+                                    val encName = java.net.URLEncoder.encode(name, "UTF-8")
+                                    val encPath = java.net.URLEncoder.encode(path, "UTF-8")
+                                    val encMime = java.net.URLEncoder.encode(mime, "UTF-8")
+                                    navController.navigate("file_viewer?name=$encName&path=$encPath&mime=$encMime")
                                 }
                             )
                         }
                         composable("fitbit") {
                             val fitbitViewModel: com.notel.notel.ui.viewmodel.FitbitViewModel = hiltViewModel()
                             FitbitScreen(viewModel = fitbitViewModel, onBack = { navController.popBackStack() })
+                        }
+                        composable(
+                            route = "file_viewer?name={name}&path={path}&mime={mime}",
+                            arguments = listOf(
+                                navArgument("name") { type = NavType.StringType },
+                                navArgument("path") { type = NavType.StringType },
+                                navArgument("mime") { type = NavType.StringType }
+                            )
+                        ) { backStack ->
+                            val name = backStack.arguments?.getString("name") ?: ""
+                            val path = backStack.arguments?.getString("path") ?: ""
+                            val mime = backStack.arguments?.getString("mime") ?: ""
+                            FileViewerScreen(
+                                fileName = name,
+                                filePath = path,
+                                mimeType = mime,
+                                onBack = { navController.popBackStack() }
+                            )
                         }
                     }
 
@@ -466,6 +490,12 @@ fun NotelNavGraph() {
                         navController.navigate("login") {
                             popUpTo(0) { inclusive = true }
                         }
+                    },
+                    onNavigateToFile = { name, path, mime ->
+                        val encName = java.net.URLEncoder.encode(name, "UTF-8")
+                        val encPath = java.net.URLEncoder.encode(path, "UTF-8")
+                        val encMime = java.net.URLEncoder.encode(mime, "UTF-8")
+                        navController.navigate("file_viewer?name=$encName&path=$encPath&mime=$encMime")
                     }
                 )
             }

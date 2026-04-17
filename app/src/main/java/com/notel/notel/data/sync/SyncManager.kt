@@ -24,6 +24,7 @@ class SyncManager @Inject constructor(
     private val jotApi: JotApi,
     private val logEntryDao: LogEntryDao,
     private val categoryDao: CategoryDao,
+    private val knowledgeDocumentDao: com.notel.notel.data.local.dao.KnowledgeDocumentDao,
     private val preferences: NotelPreferences,
     @ApplicationContext private val context: Context
 ) {
@@ -66,6 +67,8 @@ class SyncManager @Inject constructor(
                     jotApi.syncEntries(SyncEntriesRequest(entryDtos))
                 }
 
+                syncDocuments()
+
                 val pullSuccess = pullAllData()
                 if (!pullSuccess) {
                     Log.w(tag, "Sync aborted: Recovery failed. To avoid data loss, we will not push local empty state to server.")
@@ -95,6 +98,7 @@ class SyncManager @Inject constructor(
                     eventCounters = preferences.eventCounters.first(),
                     counterHistory = preferences.counterHistory.first(),
                     redditSubreddits = preferences.redditSubreddits.first(),
+                    redditSummaries = preferences.redditSummaries.first(),
                     currentStreak = preferences.currentStreak.first(),
                     bestStreak = preferences.bestStreak.first()
                 )
@@ -180,8 +184,41 @@ class SyncManager @Inject constructor(
                     profile.eventCounters?.let { if (it.isNotBlank()) preferences.setEventCounters(it) }
                     profile.counterHistory?.let { if (it.isNotBlank()) preferences.setCounterHistory(it) }
                     profile.redditSubreddits?.let { if (it.isNotBlank()) preferences.setRedditSubreddits(it) }
+                    profile.redditSummaries?.let { if (it.isNotBlank()) preferences.setRedditSummaries(it) }
                     profile.currentStreak?.let { preferences.setCurrentStreak(it) }
                     profile.bestStreak?.let { preferences.setBestStreak(it) }
+                }
+
+                // D. Restore Documents
+                if (body.documents.isNotEmpty()) {
+                    body.documents.forEach { doc ->
+                        val local = knowledgeDocumentDao.getDocumentById(doc.id)
+                        if (local == null) {
+                            // Fetch content and save
+                            try {
+                                val dataRes = jotApi.getDocumentData(doc.id)
+                                val base64 = dataRes.body()?.result
+                                if (base64 != null) {
+                                    val bytes = android.util.Base64.decode(base64, android.util.Base64.DEFAULT)
+                                    val file = java.io.File(context.filesDir, "knowledge_docs/${doc.id}_${doc.name}")
+                                    file.parentFile?.mkdirs()
+                                    file.writeBytes(bytes)
+                                    
+                                    knowledgeDocumentDao.insertDocument(
+                                        com.notel.notel.data.local.entity.KnowledgeDocument(
+                                            id = doc.id,
+                                            name = doc.name,
+                                            mimeType = doc.mimeType,
+                                            filePath = file.absolutePath,
+                                            createdAt = doc.createdAt
+                                        )
+                                    )
+                                }
+                            } catch (e: Exception) {
+                                Log.e(tag, "Failed to download doc ${doc.id}: ${e.message}")
+                            }
+                        }
+                    }
                 }
 
                 // D. Restore AI Results (Productivity)
@@ -205,6 +242,34 @@ class SyncManager @Inject constructor(
         } catch (e: Exception) {
             log("Sync Critical Error: ${e.message}")
             false
+        }
+    }
+
+    private suspend fun syncDocuments() {
+        try {
+            val docs = knowledgeDocumentDao.getAllDocuments().first()
+            if (docs.isNotEmpty()) {
+                val dtos = docs.map { doc ->
+                    val file = java.io.File(doc.filePath)
+                    val base64 = if (file.exists()) {
+                        android.util.Base64.encodeToString(file.readBytes(), android.util.Base64.DEFAULT)
+                    } else null
+                    
+                    KnowledgeDocumentDtoModel(
+                        id = doc.id,
+                        name = doc.name,
+                        mimeType = doc.mimeType,
+                        fileData = base64,
+                        createdAt = doc.createdAt
+                    )
+                }.filter { it.fileData != null }
+                
+                if (dtos.isNotEmpty()) {
+                    jotApi.syncDocuments(SyncDocumentsRequest(dtos))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "syncDocuments failed: ${e.message}")
         }
     }
 }

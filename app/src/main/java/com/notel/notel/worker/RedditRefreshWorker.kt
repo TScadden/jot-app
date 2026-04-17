@@ -46,18 +46,18 @@ class RedditRefreshWorker @AssistedInject constructor(
                     val body = response.body()
                     if (body != null) {
                         // Update knowledge base
-                        val kb = preferences.knowledgeBase.first()
+                        val summaries = preferences.redditSummaries.first()
                         val marker = "[REDDIT r/${sub.name}]"
                         val timestamp = DateTimeFormatter.ofPattern("MMM dd, yyyy").format(LocalDate.now())
                         val newEntry = "[ADDED $timestamp] $marker\n${body.result}"
                         
-                        val updatedKb = if (kb.contains(marker)) {
-                            val entries = kb.split("\n\n").filter { !it.contains(marker) }
+                        val updatedSummaries = if (summaries.contains(marker)) {
+                            val entries = summaries.split("\n\n").filter { !it.contains(marker) }
                             (entries + newEntry).joinToString("\n\n")
                         } else {
-                            if (kb.isBlank()) newEntry else "$kb\n\n$newEntry"
+                            if (summaries.isBlank()) newEntry else "$summaries\n\n$newEntry"
                         }
-                        preferences.setKnowledgeBase(updatedKb)
+                        preferences.setRedditSummaries(updatedSummaries)
 
                         // Update list
                         val idx = mutableSubs.indexOfFirst { it.name == sub.name }
