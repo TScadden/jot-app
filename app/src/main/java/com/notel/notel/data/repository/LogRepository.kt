@@ -522,7 +522,7 @@ class LogRepository @Inject constructor(
         return if (kb.isBlank()) proSection else "$proSection\n---\nKNOWLEDGE BASE / UPLOADED DOCUMENTS (reference, lower priority than professional instructions):\n$kb"
     }
 
-    private suspend fun getHabitDataSummary(): String {
+    private suspend fun getHabitDataSummary(targetDate: String? = null): String {
         val habits = habitRepository.habits.first()
         if (habits.isEmpty()) return ""
         val today = java.time.LocalDate.now()
@@ -534,14 +534,13 @@ class LogRepository @Inject constructor(
         
         if (allLogsTotallyEmpty) {
             sb.append("- [STREAK DATA UNAVAILABLE / ALL HISTORICAL HABIT LOGS RECENTLY CLEARED BY USER]\n")
-            sb.append("AI CRITICAL INSTRUCTION: The user has explicitly RESET their habit data. You MUST ignore any habit streaks or completion history from previous sessions or 'Past Insights'. Every current habit streak is 0 days. Report that habit tracking has been reset.\n")
         } else {
             sb.append("Format: Date: [Habits completed on this day]\n")
             var hasAnyLog = false
-            // Show chronological map of the last 15 days of habits for context-aware symptom correlation
-            for (i in 0..14) {
-                val checkDay = today.minusDays(i.toLong())
-                val dateStr = checkDay.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
+            
+            val daysToLog = if (targetDate != null) listOf(targetDate) else (0..14).map { today.minusDays(it.toLong()).format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE) }
+            
+            for (dateStr in daysToLog) {
                 val completed = habits.filter { it.logs.contains(dateStr) }.map { it.title }
                 if (completed.isNotEmpty()) {
                     hasAnyLog = true
@@ -549,7 +548,7 @@ class LogRepository @Inject constructor(
                 }
             }
             if (!hasAnyLog) {
-                sb.append("- No habits logged in the last 15 days, but historical logs exist.\n")
+                sb.append("- No habits logged for the requested period.\n")
             }
         }
         
@@ -967,7 +966,7 @@ class LogRepository @Inject constructor(
         }
     }
 
-    private suspend fun getFitbitDataSummary(): String {
+    private suspend fun getFitbitDataSummary(targetDate: String? = null): String {
         val hasHealthConnect = healthConnectManager.hasAllPermissions()
         val fitbitToken = preferences.fitbitToken.first()
         if (!hasHealthConnect && fitbitToken.isBlank()) return ""
@@ -979,46 +978,53 @@ class LogRepository @Inject constructor(
         val spikeHistory: List<DailyHeartRateSummary> = if (spikesJson.isNotBlank()) {
             try { json.decodeFromString(spikesJson) } catch (e: Exception) { emptyList() }
         } else if (hasHealthConnect) {
-            // Fresh fetch from Health Connect — raw samples, last 30 days
             val fresh = healthConnectManager.readHistoricalHeartRateWithSpikes(30)
             if (fresh.isNotEmpty()) {
-                preferences.setHistoricalHrSpikes(kotlinx.serialization.json.Json.encodeToString(
-                    kotlinx.serialization.serializer<List<DailyHeartRateSummary>>(), fresh
-                ))
+                preferences.setHistoricalHrSpikes(kotlinx.serialization.json.Json.encodeToString(fresh))
             }
             fresh
         } else emptyList()
 
-        // ── Plain daily averages (fallback / longer history) ─────────────────
         val heartJson = preferences.historicalHeartRate.first()
         val heartHist = try {
             if (heartJson.isNotBlank()) json.decodeFromString<List<BiomarkerPoint>>(heartJson).map { it.date to it.value }
-            else if (hasHealthConnect) healthConnectManager.readHistoricalHeartRate(180).sortedByDescending { it.first }
+            else if (hasHealthConnect) healthConnectManager.readHistoricalHeartRate(180)
             else emptyList()
         } catch (e: Exception) { emptyList() }
 
         val sleepJson = preferences.historicalSleep.first()
         val sleepHist = try {
             if (sleepJson.isNotBlank()) json.decodeFromString<List<BiomarkerPoint>>(sleepJson).map { it.date to it.value }
-            else if (hasHealthConnect) healthConnectManager.readHistoricalSleep(180).sortedByDescending { it.first }
+            else if (hasHealthConnect) healthConnectManager.readHistoricalSleep(180)
             else emptyList()
         } catch (e: Exception) { emptyList() }
 
         val calJson = preferences.historicalCalories.first()
         val calHist = try {
             if (calJson.isNotBlank()) json.decodeFromString<List<BiomarkerPoint>>(calJson).map { it.date to it.value }
-            else if (hasHealthConnect) healthConnectManager.readHistoricalCalories(180).sortedByDescending { it.first }
+            else if (hasHealthConnect) healthConnectManager.readHistoricalCalories(180)
             else emptyList()
         } catch (e: Exception) { emptyList() }
 
         val summary = StringBuilder()
+
+        if (targetDate != null) {
+            summary.append("DAILY SNAPSHOT FOR $targetDate:\n")
+            heartHist.find { it.first == targetDate }?.let { summary.append("- Avg HR: ${it.second} bpm\n") }
+            sleepHist.find { it.first == targetDate }?.let { summary.append("- Sleep: ${formatSleep(it.second)} \n") }
+            calHist.find { it.first == targetDate }?.let { summary.append("- Active Energy: ${it.second} kcal\n") }
+            spikeHistory.find { it.date == targetDate }?.let {
+                summary.append("- HR Spikes: ${it.spikeCount} events | Max Delta: +${it.maxDelta} bpm | Range: ${it.baseline}-${it.max} bpm\n")
+            }
+            return summary.toString().trim()
+        }
 
         // ── SECTION 1: Orthostatic spike report (most important for POTS) ────
         if (spikeHistory.isNotEmpty()) {
             summary.append("ORTHOSTATIC HEART RATE SPIKE REPORT (Last 30 Days):\n")
             summary.append("NOTE: Heart rate spikes ≥30 bpm above resting baseline are flagged as orthostatic events.\n")
             summary.append("Format: Date | Avg | Max | Resting Baseline (p10) | Events >100bpm | Largest Spike | Details\n")
-            spikeHistory.take(30).forEach { d ->
+            spikeHistory.take(15).forEach { d ->
                 summary.append("- ${formatReportDate(d.date)}: Average: ${d.avg} bpm | Max: ${d.max} bpm | Baseline: ${d.baseline} bpm")
                 summary.append(" | Active Spike: ${d.baseline} bpm TO ${d.max} bpm (Delta jump of +${d.maxDelta}) | Count: ${d.spikeCount}")
                 if (d.eventsList.isNotEmpty()) {
@@ -1109,8 +1115,27 @@ class LogRepository @Inject constructor(
      * Weights: 35% HRV, 30% Sleep, 20% Activity, 10% RHR, 5% Subjective (Jots).
      */
     suspend fun getBodyLoad(allCategories: List<Category>, dateStr: String? = null): Result<BodyLoadResponse> {
-        // Logic stripped per user request. UI only.
-        return Result.success(BodyLoadResponse(0, emptyList(), "Stripped."))
+        val targetDay = dateStr ?: java.time.LocalDate.now().toString()
+        val recent = logEntryDao.getRecentEntriesAll(limit = 100) 
+        val catMap = allCategories.associate { it.id to it.name }
+        val context = getEnrichedUserContext()
+        val kb = getEnrichedKnowledgeBase()
+        val pastInsights = getPastInsightsText()
+        val fitbitData = getFitbitDataSummary(targetDay) 
+        val habitData = getHabitDataSummary(targetDay)
+        val weather = getWeatherContext()
+        
+        return geminiService.getBodyLoadEnriched(
+            targetDate = targetDay,
+            recentEntries = recent,
+            categories = catMap,
+            userContext = context,
+            knowledgeBase = kb,
+            fitbitData = fitbitData,
+            habitData = habitData,
+            pastInsights = pastInsights,
+            weatherContext = weather
+        )
     }
 
     private fun sigmoidScore(z: Double, k: Double = 1.2): Double {

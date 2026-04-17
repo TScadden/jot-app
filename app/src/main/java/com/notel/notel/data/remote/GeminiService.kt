@@ -317,21 +317,27 @@ class GeminiService @Inject constructor(
     }
 
     suspend fun getBodyLoadEnriched(
+        targetDate: String,
         recentEntries: List<LogEntry>,
         categories: Map<Int, String>,
         userContext: String = "",
         knowledgeBase: String = "",
-        technicalStats: String = "",
+        fitbitData: String = "",
+        habitData: String = "",
+        pastInsights: String = "",
         weatherContext: String? = null
     ): Result<BodyLoadResponse> {
         return try {
             val response = jotApi.getBodyLoadEnriched(
                 BodyLoadEnrichedRequest(
+                    targetDate = targetDate,
                     entries = recentEntries.toDto(),
                     categories = categories,
                     userContext = userContext,
                     knowledgeBase = knowledgeBase,
-                    technicalStats = technicalStats,
+                    fitbitData = fitbitData,
+                    habitData = habitData,
+                    pastInsights = pastInsights,
                     weatherContext = weatherContext
                 )
             )

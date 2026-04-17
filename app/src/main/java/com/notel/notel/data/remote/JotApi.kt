@@ -53,11 +53,14 @@ data class SmartCategorySuggestion(
 
 @Serializable
 data class BodyLoadEnrichedRequest(
+    val targetDate: String? = null,
     val entries: List<LogEntryDtoModel> = emptyList(),
     val categories: Map<Int, String> = emptyMap(),
     val userContext: String? = null,
     val knowledgeBase: String? = null,
-    val technicalStats: String? = null,
+    val fitbitData: String? = null,
+    val habitData: String? = null,
+    val pastInsights: String? = null,
     val weatherContext: String? = null
 )
 
