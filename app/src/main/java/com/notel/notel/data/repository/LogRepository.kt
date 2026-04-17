@@ -463,19 +463,26 @@ class LogRepository @Inject constructor(
                 val sb = java.lang.StringBuilder("⏰ ACTIVE EVENT COUNTERS (CHRONOLOGICAL PRIORITY):\n")
                 sb.append("Rule: Use these dates to determine the user's current status (e.g., 'X days since event Y').\n")
                 counters.forEach { counter ->
-                    val diffMillis = counter.targetDate - System.currentTimeMillis()
-                    var isUp = counter.isUp
-                    var finalDiffMillis = diffMillis
+                    val targetLocalDate = java.time.Instant.ofEpochMilli(counter.targetDate)
+                        .atZone(java.time.ZoneId.systemDefault())
+                        .toLocalDate()
+                    val today = java.time.LocalDate.now()
                     
-                    if (!isUp && diffMillis < 0 && counter.autoUp) {
+                    val diffDays = java.time.temporal.ChronoUnit.DAYS.between(targetLocalDate, today)
+                    var isUp = counter.isUp
+                    var finalDays = diffDays
+                    
+                    if (!isUp && diffDays > 0 && counter.autoUp) {
                         isUp = true
-                        finalDiffMillis = System.currentTimeMillis() - counter.targetDate
+                        finalDays = diffDays
                     } else if (isUp) {
-                        finalDiffMillis = System.currentTimeMillis() - counter.targetDate
+                        finalDays = diffDays
+                    } else {
+                        finalDays = -diffDays // "Until"
                     }
                     
-                    if (isUp || diffMillis >= 0) {
-                        val daysRemaining = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(Math.abs(finalDiffMillis))
+                    if (isUp || diffDays <= 0) {
+                        val daysRemaining = Math.max(0L, finalDays)
                         val direction = if (isUp) "since" else "until"
                         val startDate = java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.US).format(java.util.Date(counter.targetDate))
                         val archivedTag = if (counter.isArchived) "[ARCHIVED] " else ""

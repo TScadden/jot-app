@@ -437,25 +437,25 @@ fun BodyLoadCard(
                         val counter = activeCounters[counterIndex]
                         
                         // Logic to calculate days remaining/since
-                        val todayStart = java.util.Calendar.getInstance().apply {
-                            set(java.util.Calendar.HOUR_OF_DAY, 0)
-                            set(java.util.Calendar.MINUTE, 0)
-                            set(java.util.Calendar.SECOND, 0)
-                            set(java.util.Calendar.MILLISECOND, 0)
-                        }.timeInMillis
+                        val targetLocalDate = java.time.Instant.ofEpochMilli(counter.targetDate)
+                            .atZone(java.time.ZoneId.systemDefault())
+                            .toLocalDate()
+                        val today = java.time.LocalDate.now()
                         
-                        val diffMillis = counter.targetDate - todayStart
+                        val diffDays = java.time.temporal.ChronoUnit.DAYS.between(targetLocalDate, today)
                         var isCalculatedUp = counter.isUp
-                        var finalDiffMillis = diffMillis
+                        var finalDays = diffDays
                         
-                        if (!isCalculatedUp && diffMillis < 0 && counter.autoUp) {
+                        if (!isCalculatedUp && diffDays > 0 && counter.autoUp) {
                             isCalculatedUp = true
-                            finalDiffMillis = todayStart - counter.targetDate
+                            finalDays = diffDays
                         } else if (isCalculatedUp) {
-                            finalDiffMillis = todayStart - counter.targetDate
+                            finalDays = diffDays
+                        } else {
+                            finalDays = -diffDays // "Until" (negative diff means target is in future)
                         }
                         
-                        val daysCount = Math.max(0L, finalDiffMillis / 86400000L).toString()
+                        val daysCount = Math.max(0L, finalDays).toString()
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
