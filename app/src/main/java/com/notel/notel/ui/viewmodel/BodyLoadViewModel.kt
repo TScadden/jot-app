@@ -35,7 +35,7 @@ data class WeatherState(
 )
 
 data class BodyLoadState(
-    val score: Int = 0,
+    val score: Int = -1,
     val factors: List<FactorWeight> = emptyList(),
     val adviceList: List<String> = emptyList(),
     val isLoading: Boolean = false,
@@ -169,7 +169,9 @@ class BodyLoadViewModel @Inject constructor(
             val lastRefresh = preferences.lastBodyLoadRefresh.first()
             val todayStr = java.time.LocalDate.now().toString()
             
-            // 1. Instant Load from Cache
+            // 1. Initial Load from Cache (Immediate UI update)
+            loadTodayFromStorage(todayStr)
+            
             val statsJson = preferences.lastKnownStats.first()
             val allHistory: MutableMap<String, MutableMap<String, Double>> = try {
                 if (statsJson.isNotBlank()) {
@@ -190,10 +192,11 @@ class BodyLoadViewModel @Inject constructor(
                 val existing = allHistory[d] ?: mutableMapOf()
                 val merged = dayStatsMap.toMutableMap()
                 
-                // Protective merge (preserve scores and non-zero stats)
+                // Protective merge
                 if (merged["sleepMins"] == 0.0 && (existing["sleepMins"] ?: 0.0) > 0.0) merged["sleepMins"] = existing["sleepMins"]!!
                 if (merged["calories"] == 0.0 && (existing["calories"] ?: 0.0) > 0.0) merged["calories"] = existing["calories"]!!
                 if (existing.containsKey("score")) merged["score"] = existing["score"]!!
+                else if (!merged.containsKey("score")) merged["score"] = -1.0 // -1 means missing
                 
                 allHistory[d] = merged
             }
@@ -204,43 +207,26 @@ class BodyLoadViewModel @Inject constructor(
             
             if (isTodayStale) daysNeedingAi.add(todayStr)
             
-            // Fill historical gaps (Yesterday back to 7 days)
+            // Fill historical gaps
             last7Days.drop(1).forEach { d ->
-                if ((allHistory[d]?.get("score") ?: 0.0) == 0.0) {
+                if ((allHistory[d]?.get("score") ?: -1.0) == -1.0) {
                     daysNeedingAi.add(d)
                 }
             }
 
-            // 4. Update UI with current known data before remote calls
-            val currentToday = allHistory[todayStr] ?: emptyMap()
-            val todayStatsFull = logRepository.getDailyStatsSummary(todayStr)
-            _uiState.update { state ->
-                state.copy(
-                    activeCalories = currentToday["calories"]?.toInt() ?: 0,
-                    sleepMinutes = currentToday["sleepMins"]?.toInt() ?: 0,
-                    jotCountDaily = currentToday["jotCountDaily"]?.toInt() ?: 0,
-                    score = currentToday["score"]?.toInt() ?: 0,
-                    sleepDebtMins = ((currentToday["sleepDebt"] ?: 0.0) * 60).toInt(),
-                    sleepDebtHistory = todayStatsFull["sleepDebtHistory"] as? List<Triple<String, Double, Double>> ?: emptyList(),
-                    historyScores = last7Days.map { d ->
-                        val h = allHistory[d] ?: emptyMap()
-                        BodyLoadSnapshot(d, java.time.LocalDate.parse(d).format(java.time.format.DateTimeFormatter.ofPattern("EEE")), (h["score"] ?: 0.0).toInt(), emptyList(), emptyList())
-                    }.reversed()
-                )
-            }
-
             if (daysNeedingAi.isEmpty()) {
                 preferences.setLastKnownStats(Json.encodeToString(allHistory))
+                preferences.setLastBodyLoadRefresh(now)
                 return@launch
             }
 
-            // 5. Loading Indicator Rule: Only if '-' or manual refresh
-            val todayScore = allHistory[todayStr]?.get("score") ?: 0.0
-            if (force || todayScore == 0.0) {
+            // 5. Loading Indicator Rule
+            val todayScore = allHistory[todayStr]?.get("score") ?: -1.0
+            if (force || todayScore == -1.0) {
                 _uiState.update { it.copy(isLoading = true) }
             }
 
-            // 6. Sequential AI calls (Today -> Yesterday -> ...)
+            // 6. Sequential AI calls
             for (d in daysNeedingAi) {
                 val result = logRepository.getBodyLoad(categories, d)
                 result.onSuccess { response ->
@@ -263,18 +249,17 @@ class BodyLoadViewModel @Inject constructor(
                         )
                     }
                     
-                    // Progressive UI update for the history row
+                    // Save and update UI incrementally
+                    preferences.setLastKnownStats(Json.encodeToString(allHistory))
                     _uiState.update { state ->
                         state.copy(
                             historyScores = last7Days.map { day ->
                                 val stats = allHistory[day] ?: emptyMap()
-                                BodyLoadSnapshot(day, java.time.LocalDate.parse(day).format(java.time.format.DateTimeFormatter.ofPattern("EEE")), (stats["score"] ?: 0.0).toInt(), emptyList(), emptyList())
+                                BodyLoadSnapshot(day, java.time.LocalDate.parse(day).format(java.time.format.DateTimeFormatter.ofPattern("EEE")), (stats["score"] ?: -1.0).toInt(), emptyList(), emptyList())
                             }.reversed()
                         )
                     }
                 }
-                // Save incrementally
-                preferences.setLastKnownStats(Json.encodeToString(allHistory))
             }
 
             preferences.setLastBodyLoadRefresh(now)
@@ -293,9 +278,10 @@ class BodyLoadViewModel @Inject constructor(
 
         val todayStats = allHistory[todayStr] ?: emptyMap()
         val todayStatsFull = logRepository.getDailyStatsSummary(todayStr)
+        val todayScore = todayStats["score"]?.toInt() ?: -1
 
         _uiState.update { it.copy(
-            score = todayStats["score"]?.toInt() ?: 0,
+            score = todayScore,
             factors = parseFactors(cachedFactors),
             adviceList = splitAdvice(cachedAdvice),
             activeCalories = todayStats["calories"]?.toInt() ?: 0,
@@ -305,7 +291,7 @@ class BodyLoadViewModel @Inject constructor(
             sleepDebtHistory = todayStatsFull["sleepDebtHistory"] as? List<Triple<String, Double, Double>> ?: emptyList(),
             historyScores = (0..6).map { i ->
                 val d = java.time.LocalDate.now().minusDays(i.toLong()).toString()
-                val score = allHistory[d]?.get("score")?.toInt() ?: 0
+                val score = allHistory[d]?.get("score")?.toInt() ?: -1
                 BodyLoadSnapshot(d, java.time.LocalDate.parse(d).format(java.time.format.DateTimeFormatter.ofPattern("EEE")), score, emptyList(), emptyList())
             }.reversed()
         ) }
