@@ -95,7 +95,7 @@ fun FileViewerScreen(
                     }
                     else -> {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(androidx.compose.material.icons.Icons.Default.Description, null, Modifier.size(64.dp), tint = NotelTextSecondary)
+                            Icon(Icons.Default.Menu, null, Modifier.size(64.dp), tint = NotelTextSecondary)
                             Spacer(Modifier.height(16.dp))
                             Text("Preview not available for this file type.", color = NotelTextSecondary)
                             Text("Mime: $mimeType", color = NotelTextSecondary, fontSize = 12.sp)
