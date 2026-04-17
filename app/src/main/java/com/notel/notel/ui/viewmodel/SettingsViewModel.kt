@@ -575,6 +575,7 @@ class SettingsViewModel @Inject constructor(
                 current.add(EventCounterDto(id, uniqueName, dateMills, isUp, autoUp, isFavorite = current.isEmpty()))
             }
             preferences.setEventCounters(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(EventCounterDto.serializer()), current))
+            syncManager.pushProfileData()
         }
     }
 
@@ -585,6 +586,7 @@ class SettingsViewModel @Inject constructor(
             
             val updated = current.map { it.copy(isFavorite = it.id == id) }
             preferences.setEventCounters(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(EventCounterDto.serializer()), updated))
+            syncManager.pushProfileData()
         }
     }
 
@@ -607,6 +609,7 @@ class SettingsViewModel @Inject constructor(
                 
                 history.add(0, CounterHistoryItem(counter.name, counter.targetDate, System.currentTimeMillis()))
                 preferences.setCounterHistory(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(CounterHistoryItem.serializer()), history.take(20)))
+                syncManager.pushProfileData()
             }
         }
     }
@@ -801,6 +804,7 @@ class SettingsViewModel @Inject constructor(
             if (idx >= 0) {
                 current[idx] = current[idx].copy(autoUpdate = !current[idx].autoUpdate)
                 preferences.setRedditSubreddits(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(LinkedSubreddit.serializer()), current))
+                syncManager.pushProfileData()
             }
         }
     }

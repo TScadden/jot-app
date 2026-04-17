@@ -292,6 +292,11 @@ class QuickLogViewModel @Inject constructor(
             // User requested: if no tiles/chips added, default to General (ID 7)
             val finalCategoryId = if (state.selectedChips.isEmpty()) 7 else category.id
             
+            // Mark today as logged
+            val todayStr = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
+            val updatedDays = state.loggedDays + todayStr
+            preferences.setLoggedDays(Json.encodeToString(updatedDays))
+
             logRepository.insertEntry(
                 LogEntry(
                     categoryId = finalCategoryId,
@@ -300,10 +305,6 @@ class QuickLogViewModel @Inject constructor(
                     manualText = state.manualText
                 )
             )
-            // Mark today as logged
-            val todayStr = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
-            val updatedDays = state.loggedDays + todayStr
-            preferences.setLoggedDays(Json.encodeToString(updatedDays))
             
             // Invalidate cache for this category so next fetch reflects the new entry
             chipCache.remove(category.id)
@@ -317,6 +318,9 @@ class QuickLogViewModel @Inject constructor(
                 )
             }
             calculateSmartRanking()
+            
+            // Final push to ensure profile data (logged days, counters) is updated
+            syncManager.pushProfileData()
         }
     }
 
@@ -506,6 +510,7 @@ class QuickLogViewModel @Inject constructor(
         _uiState.update { it.copy(loggedDays = updatedDays) }
         viewModelScope.launch {
             preferences.setLoggedDays(Json.encodeToString(updatedDays))
+            syncManager.pushProfileData()
         }
     }
 
