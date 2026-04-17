@@ -160,15 +160,10 @@ class BodyLoadViewModel @Inject constructor(
         }
     }
 
+
     fun refresh(force: Boolean = false) {
         if (_uiState.value.isLoading) return
         
-        viewModelScope.launch {
-            val now = System.currentTimeMillis()
-            val lastRefresh = preferences.lastBodyLoadRefresh.first()
-            val todayStr = java.time.LocalDate.now().toString()
-            
-    fun refresh(force: Boolean = false) {
         viewModelScope.launch {
             val now = System.currentTimeMillis()
             val lastRefresh = preferences.lastBodyLoadRefresh.first()
