@@ -112,6 +112,9 @@ class HrSpikeMonitorService : Service() {
                 val latestTime = latest.first
                 val latestBpm = latest.second
                 
+                // Track this BPM for real-time Home screen update
+                preferences.setLatestBpm(latestBpm)
+                
                 // 1. Only process if this is a NEW sample we haven't seen yet
                 // 2. Only alert if the sample is RECENT (within last 10 minutes)
                 val currentTime = System.currentTimeMillis()
@@ -146,6 +149,13 @@ class HrSpikeMonitorService : Service() {
                 
                 // Track this sample to avoid re-alerts
                 preferences.setHrLastSampleTime(latestTime)
+            }
+
+            // Always update Today's Spike Count for the Home screen UI
+            val todayStr = java.time.LocalDate.now().toString()
+            val todaySummary = healthConnectManager.readHistoricalHeartRateWithSpikes(0).find { it.date == todayStr }
+            todaySummary?.let {
+                preferences.setTodaySpikeCount(it.spikeCount)
             }
         } catch (e: Exception) {
             e.printStackTrace()

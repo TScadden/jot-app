@@ -90,10 +90,18 @@ class NotelPreferences @Inject constructor(
         val HIGHEST_CUP_DAILY = intPreferencesKey("highest_cup_daily")
         val USER_CONTEXT_HIDDEN = booleanPreferencesKey("user_context_hidden")
         val HAS_HISTORICAL_BODY_LOAD = booleanPreferencesKey("has_historical_body_load")
+        val TODAY_SPIKE_COUNT = intPreferencesKey("today_spike_count")
+        val LATEST_BPM = intPreferencesKey("latest_bpm")
     }
 
     val hasHistoricalBodyLoad: Flow<Boolean> = context.dataStore.data.map { it[HAS_HISTORICAL_BODY_LOAD] ?: false }
     suspend fun setHasHistoricalBodyLoad(v: Boolean) { context.dataStore.edit { it[HAS_HISTORICAL_BODY_LOAD] = v } }
+
+    val todaySpikeCount: Flow<Int> = context.dataStore.data.map { it[TODAY_SPIKE_COUNT] ?: 0 }
+    suspend fun setTodaySpikeCount(v: Int) { context.dataStore.edit { it[TODAY_SPIKE_COUNT] = v } }
+
+    val latestBpm: Flow<Int> = context.dataStore.data.map { it[LATEST_BPM] ?: 0 }
+    suspend fun setLatestBpm(v: Int) { context.dataStore.edit { it[LATEST_BPM] = v } }
 
     val authToken: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[AUTH_TOKEN] ?: ""

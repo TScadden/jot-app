@@ -58,7 +58,8 @@ data class BodyLoadState(
     val selectedFactor: String? = null,
     val sleepDebtHistory: List<Triple<String, Double, Double>> = emptyList(),
     val cupTheorySeen: Boolean = false,
-    val weather: WeatherState? = null
+    val weather: WeatherState? = null,
+    val latestBpm: Int = 0
 )
 
 data class BodyLoadSnapshot(
@@ -93,6 +94,22 @@ class BodyLoadViewModel @Inject constructor(
         viewModelScope.launch {
             preferences.bestStreak.collect { streak ->
                 _uiState.update { it.copy(bestStreak = streak) }
+            }
+        }
+
+        // Reactive Health Updates
+        viewModelScope.launch {
+            preferences.todaySpikeCount.collect { count ->
+                val today = java.time.LocalDate.now().toString()
+                // Only update from reactive flow if we are looking at 'Today'
+                if (_uiState.value.selectedDate == today) {
+                    _uiState.update { it.copy(spikeCount = count) }
+                }
+            }
+        }
+        viewModelScope.launch {
+            preferences.latestBpm.collect { bpm ->
+                _uiState.update { it.copy(latestBpm = bpm) }
             }
         }
     }
