@@ -58,8 +58,7 @@ data class BodyLoadState(
     val selectedFactor: String? = null,
     val sleepDebtHistory: List<Triple<String, Double, Double>> = emptyList(),
     val cupTheorySeen: Boolean = false,
-    val weather: WeatherState? = null,
-    val latestBpm: Int = 0
+    val weather: WeatherState? = null
 )
 
 data class BodyLoadSnapshot(
@@ -94,22 +93,6 @@ class BodyLoadViewModel @Inject constructor(
         viewModelScope.launch {
             preferences.bestStreak.collect { streak ->
                 _uiState.update { it.copy(bestStreak = streak) }
-            }
-        }
-
-        // Reactive Health Updates
-        viewModelScope.launch {
-            preferences.todaySpikeCount.collect { count ->
-                val today = java.time.LocalDate.now().toString()
-                // Only update from reactive flow if we are looking at 'Today'
-                if (_uiState.value.selectedDate == today) {
-                    _uiState.update { it.copy(spikeCount = count) }
-                }
-            }
-        }
-        viewModelScope.launch {
-            preferences.latestBpm.collect { bpm ->
-                _uiState.update { it.copy(latestBpm = bpm) }
             }
         }
     }
@@ -166,18 +149,12 @@ class BodyLoadViewModel @Inject constructor(
                 if (statsJson.isNotBlank()) Json.decodeFromString(statsJson) else emptyMap()
             } catch(e: Exception) { emptyMap() }
             
-            val today = java.time.LocalDate.now().toString()
-            val stats = if (allHistory[dateStr]?.containsKey("spikeCount") == true) {
-                allHistory[dateStr]!!
-            } else {
-                logRepository.getDailyStatsSummary(dateStr).filterValues { it is Number }.mapValues { (it.value as Number).toDouble() }
-            }
+            val stats = allHistory[dateStr] ?: logRepository.getDailyStatsSummary(dateStr).filterValues { it is Number }.mapValues { (it.value as Number).toDouble() }
             
             _uiState.update { it.copy(
                 activeCalories = (stats["calories"] ?: 0.0).toInt(),
                 sleepMinutes = (stats["sleepMins"] ?: 0.0).toInt(),
                 jotCountDaily = (stats["jotCountDaily"] ?: 0.0).toInt(),
-                spikeCount = (stats["spikeCount"] ?: 0.0).toInt(),
                 sleepDebtMins = ((stats["sleepDebt"] ?: 0.0) * 60).toInt()
             ) }
         }
@@ -202,15 +179,13 @@ class BodyLoadViewModel @Inject constructor(
                 val cacheSleep = (todayCache?.get("sleepMins") ?: 0.0).toInt()
                 val cacheCals = (todayCache?.get("calories") ?: 0.0).toInt()
                 val cacheJots = (todayCache?.get("jotCountDaily") ?: 0.0).toInt()
-                val cacheSpikes = (todayCache?.get("spikeCount") ?: 0.0).toInt()
                 
                 // Only update if data has actually changed to prevent UI flicker
-                if (cacheSleep != _uiState.value.sleepMinutes || cacheCals != _uiState.value.activeCalories || cacheJots != _uiState.value.jotCountDaily || cacheSpikes != _uiState.value.spikeCount) {
+                if (cacheSleep != _uiState.value.sleepMinutes || cacheCals != _uiState.value.activeCalories || cacheJots != _uiState.value.jotCountDaily) {
                     _uiState.update { it.copy(
                         activeCalories = cacheCals,
                         sleepMinutes = cacheSleep,
                         jotCountDaily = cacheJots,
-                        spikeCount = cacheSpikes,
                         sleepDebtMins = ((todayCache?.get("sleepDebt") ?: 0.0) * 60).toInt(),
                         historyScores = (0..6).map { i ->
                             val d = java.time.LocalDate.now().minusDays(i.toLong()).toString()
@@ -225,13 +200,9 @@ class BodyLoadViewModel @Inject constructor(
             // Only consider '0' stale if it's been at least 15 mins since last attempt
             val isCacheStaleZero = todayCache != null && (todayCache["sleepMins"] ?: 0.0) == 0.0 && (now - lastRefresh) > (15 * 60 * 1000L)
             
-            // Critical: If the cache exists but was created before the spikeCount field was added to any of the past 7 days, force a refresh
-            val pastDays = (0..6).map { java.time.LocalDate.now().minusDays(it.toLong()).toString() }
-            val isCacheMissingSpikes = pastDays.any { d -> allHistory[d] != null && !allHistory[d]!!.containsKey("spikeCount") }
-            
             // 2. Refresh rule: force or 3-hours or if today's cache is missing/broken
             val shouldRefresh = force || (now - lastRefresh) > (3 * 60 * 60 * 1000L) || 
-                               lastRefresh == 0L || isCacheMissingToday || isCacheStaleZero || isCacheMissingSpikes
+                               lastRefresh == 0L || isCacheMissingToday || isCacheStaleZero
             
             if (!shouldRefresh) return@launch
 
@@ -289,7 +260,6 @@ class BodyLoadViewModel @Inject constructor(
                 activeCalories = (finalToday["calories"] ?: 0.0).toInt(),
                 sleepMinutes = (finalToday["sleepMins"] ?: 0.0).toInt(),
                 jotCountDaily = (finalToday["jotCountDaily"] ?: 0.0).toInt(),
-                spikeCount = (finalToday["spikeCount"] ?: 0.0).toInt(),
                 sleepDebtMins = ((finalToday["sleepDebt"] ?: 0.0) * 60).toInt(),
                 sleepDebtHistory = todayStats["sleepDebtHistory"] as? List<Triple<String, Double, Double>> ?: emptyList(),
                 historyScores = (0..6).map { i ->

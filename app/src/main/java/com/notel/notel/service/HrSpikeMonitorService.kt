@@ -112,9 +112,6 @@ class HrSpikeMonitorService : Service() {
                 val latestTime = latest.first
                 val latestBpm = latest.second
                 
-                // Track this BPM for real-time Home screen update
-                preferences.setLatestBpm(latestBpm)
-                
                 // 1. Only process if this is a NEW sample we haven't seen yet
                 // 2. Only alert if the sample is RECENT (within last 10 minutes)
                 val currentTime = System.currentTimeMillis()
@@ -149,42 +146,6 @@ class HrSpikeMonitorService : Service() {
                 
                 // Track this sample to avoid re-alerts
                 preferences.setHrLastSampleTime(latestTime)
-            }
-
-            // Optimization: Only fetch a full 7-day week if our cache is missing or incomplete
-            val currentSpikesStr = preferences.historicalHrSpikes.first()
-            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-            val existingList = try {
-                if (currentSpikesStr.isNotBlank()) json.decodeFromString<List<com.notel.notel.data.healthconnect.DailyHeartRateSummary>>(currentSpikesStr) else emptyList()
-            } catch(e: Exception) { emptyList() }
-            
-            val todayStr = java.time.LocalDate.now().toString()
-            val needsFullSync = existingList.size < 7 || existingList.none { it.date == todayStr }
-            
-            val fetchDays = if (needsFullSync) 7 else 1
-            val history = healthConnectManager.readHistoricalHeartRateWithSpikes(fetchDays)
-            
-            val todaySummary = history.find { it.date == todayStr }
-            todaySummary?.let {
-                preferences.setTodaySpikeCount(it.spikeCount)
-            }
-            
-            // Merge or replace: if we fetched 7, replace. If we fetched 1, merge with existing.
-            if (history.isNotEmpty()) {
-                val newList = if (fetchDays == 7) {
-                    history
-                } else {
-                    val updatedToday = history.first()
-                    // Filter out old version of today, add new one, and keep history (sort by date desc)
-                    (existingList.filter { it.date != todayStr } + updatedToday).sortedByDescending { it.date }
-                }
-
-                preferences.setHistoricalHrSpikes(
-                    json.encodeToString(
-                        kotlinx.serialization.serializer<List<com.notel.notel.data.healthconnect.DailyHeartRateSummary>>(), 
-                        newList
-                    )
-                )
             }
         } catch (e: Exception) {
             e.printStackTrace()
