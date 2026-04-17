@@ -203,9 +203,12 @@ class BodyLoadViewModel @Inject constructor(
             // Only consider '0' stale if it's been at least 15 mins since last attempt
             val isCacheStaleZero = todayCache != null && (todayCache["sleepMins"] ?: 0.0) == 0.0 && (now - lastRefresh) > (15 * 60 * 1000L)
             
+            // Critical: If the cache exists but was created before the spikeCount field was added, force a refresh
+            val isCacheMissingSpikes = todayCache != null && !todayCache.containsKey("spikeCount")
+            
             // 2. Refresh rule: force or 3-hours or if today's cache is missing/broken
             val shouldRefresh = force || (now - lastRefresh) > (3 * 60 * 60 * 1000L) || 
-                               lastRefresh == 0L || isCacheMissingToday || isCacheStaleZero
+                               lastRefresh == 0L || isCacheMissingToday || isCacheStaleZero || isCacheMissingSpikes
             
             if (!shouldRefresh) return@launch
 
