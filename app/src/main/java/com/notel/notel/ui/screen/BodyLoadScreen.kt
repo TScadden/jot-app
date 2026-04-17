@@ -595,6 +595,15 @@ fun BodyLoadScreen(
                                 }
                             }
                         }
+
+                        // Pressure Box
+                        WeatherMetricBox(
+                            icon = "⏲️",
+                            value = String.format("%.0f", weather.pressure),
+                            subLabel = "hPa",
+                            label = "Pressure",
+                            modifier = Modifier.weight(1f)
+                        )
                     }
                     
                     if (weather.uvIndex > 5) {
