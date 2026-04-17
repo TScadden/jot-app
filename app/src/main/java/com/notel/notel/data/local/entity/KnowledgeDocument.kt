@@ -5,9 +5,9 @@ import androidx.room.PrimaryKey
 
 @Entity(tableName = "knowledge_documents")
 data class KnowledgeDocument(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val fileName: String,
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val name: String,
     val mimeType: String,
-    val filePath: String, // Path relative to filesDir or absolute
-    val timestamp: Long = System.currentTimeMillis()
+    val filePath: String,
+    val createdAt: Long = System.currentTimeMillis()
 )

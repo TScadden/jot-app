@@ -830,7 +830,7 @@ class LogRepository @Inject constructor(
             file.writeBytes(bytes)
             
             val doc = com.notel.notel.data.local.entity.KnowledgeDocument(
-                fileName = fileName,
+                name = fileName,
                 mimeType = mimeType,
                 filePath = file.absolutePath
             )
