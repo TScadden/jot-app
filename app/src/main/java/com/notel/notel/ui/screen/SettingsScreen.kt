@@ -154,7 +154,12 @@ fun SettingsScreen(
     val fitbitViewModel: com.notel.notel.ui.viewmodel.FitbitViewModel = hiltViewModel()
     val fitbitState by fitbitViewModel.state.collectAsState()
     
-    var currentMenu by remember { mutableStateOf(SettingsMenu.MAIN) }
+    var currentMenu by androidx.compose.runtime.saveable.rememberSaveable(
+        stateSaver = androidx.compose.runtime.saveable.Saver(
+            save = { it.name },
+            restore = { SettingsMenu.valueOf(it) }
+        )
+    ) { mutableStateOf(SettingsMenu.MAIN) }
     
     BackHandler(enabled = currentMenu != SettingsMenu.MAIN) {
         currentMenu = SettingsMenu.MAIN
