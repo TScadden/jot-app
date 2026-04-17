@@ -126,6 +126,21 @@ class SettingsViewModel @Inject constructor(
     init {
         checkHealthConnectStatus()
         cleanKnowledgeBase()
+        backfillDocumentExtractions()
+    }
+
+    /**
+     * One-time background pass: for every document that doesn't have cached extracted text yet,
+     * read its file and extract it now. Runs on init so text is ready BEFORE the user generates a PDF.
+     */
+    private fun backfillDocumentExtractions() {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val docs = logRepository.getAllDocuments().first()
+            val missing = docs.filter { it.extractedText.isNullOrBlank() }
+            missing.forEach { doc ->
+                logRepository.extractAndCacheDocumentText(doc)
+            }
+        }
     }
 
     private fun cleanKnowledgeBase() {

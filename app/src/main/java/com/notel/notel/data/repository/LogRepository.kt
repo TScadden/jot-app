@@ -897,6 +897,29 @@ class LogRepository @Inject constructor(
         return ingestDocumentFile(title, "text/plain", base64)
     }
 
+    /**
+     * Reads an existing document from disk, sends it to Gemini for text extraction,
+     * and caches the result in Room. No-ops if the file doesn't exist or text is already cached.
+     * Safe to call multiple times — only does work when extractedText is missing.
+     */
+    suspend fun extractAndCacheDocumentText(doc: com.notel.notel.data.local.entity.KnowledgeDocument) {
+        if (!doc.extractedText.isNullOrBlank()) return // already done
+        try {
+            val file = File(doc.filePath)
+            if (!file.exists()) return
+            val bytes = file.readBytes()
+            val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+            val result = geminiService.processDocumentFile(doc.mimeType, b64)
+            result.onSuccess { text ->
+                if (text.isNotBlank()) {
+                    knowledgeDocumentDao.updateExtractedText(doc.id, text)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     suspend fun clearKnowledgeBase() {
         preferences.setKnowledgeBase("")
         preferences.setProcessedFiles("")
