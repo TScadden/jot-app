@@ -40,6 +40,7 @@ fun BodyLoadScreen(
     viewModel: BodyLoadViewModel = hiltViewModel(),
     onBack: () -> Unit,
     onNavigateToConnections: () -> Unit = {},
+    onNavigateToHeart: () -> Unit = {},
     quickLogViewModel: QuickLogViewModel = hiltViewModel(),
     habitViewModel: HabitViewModel = hiltViewModel()
 ) {
@@ -141,7 +142,10 @@ fun BodyLoadScreen(
                     state = state,
                     counters = quickLogState.eventCounters,
                     onDaySelected = { viewModel.selectDay(it) },
-                    onFactorSelected = { viewModel.selectFactor(it) },
+                    onFactorSelected = { factor ->
+                        if (factor == "Heart") onNavigateToHeart()
+                        else viewModel.selectFactor(factor)
+                    },
                     onResetSelection = { viewModel.selectFactor(null) },
                     onShowTheory = { 
                         viewModel.markTheorySeen()

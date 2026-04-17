@@ -46,6 +46,7 @@ class NotelPreferences @Inject constructor(
         val HISTORICAL_SLEEP = stringPreferencesKey("historical_sleep")
         val HISTORICAL_CALORIES = stringPreferencesKey("historical_calories")
         val HISTORICAL_HR_SPIKES = stringPreferencesKey("historical_hr_spikes")
+        val TODAY_AWAKE_AVG_HR = intPreferencesKey("today_awake_avg_hr")
 
         val USER_AGE = intPreferencesKey("user_age")
         val USER_HEIGHT = floatPreferencesKey("user_height")
@@ -201,6 +202,9 @@ class NotelPreferences @Inject constructor(
 
     val historicalHrSpikes: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[HISTORICAL_HR_SPIKES] ?: ""
+    }
+    val todayAwakeAvgHr: Flow<Int> = context.dataStore.data.map { prefs ->
+        prefs[TODAY_AWAKE_AVG_HR] ?: 0
     }
 
     val userAge: Flow<Int> = context.dataStore.data.map { prefs ->
@@ -409,6 +413,9 @@ class NotelPreferences @Inject constructor(
 
     suspend fun setHistoricalHrSpikes(json: String) {
         context.dataStore.edit { it[HISTORICAL_HR_SPIKES] = json }
+    }
+    suspend fun setTodayAwakeAvgHr(avg: Int) {
+        context.dataStore.edit { it[TODAY_AWAKE_AVG_HR] = avg }
     }
 
     suspend fun setUserAge(age: Int) {

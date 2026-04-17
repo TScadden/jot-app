@@ -237,8 +237,11 @@ class FitbitViewModel @Inject constructor(
          preferences.setHistoricalHeartRate(json.encodeToString(histHR.map { BiomarkerPoint(it.first, it.second) }))
          preferences.setHistoricalSleep(json.encodeToString(histSleep.map { BiomarkerPoint(it.first, it.second) }))
          preferences.setHistoricalCalories(json.encodeToString(histCal.map { BiomarkerPoint(it.first, it.second) }))
-         // Save POTS spike data separately
-         if (histSpikes.isNotEmpty()) {
+        // Save POTS spike data separately
+        if (_state.value.selectedHeartRateDate == "today" && avgHR > 0) {
+            preferences.setTodayAwakeAvgHr(avgHR)
+        }
+        if (histSpikes.isNotEmpty()) {
              preferences.setHistoricalHrSpikes(
                  kotlinx.serialization.json.Json.encodeToString(
                      kotlinx.serialization.serializer<List<DailyHeartRateSummary>>(), histSpikes
@@ -405,6 +408,9 @@ class FitbitViewModel @Inject constructor(
                     // historicalSpikes is populated from the DataStore preferences flow in init{}
                     errorMessage = if (intradayHR.isEmpty() && activeCal == 0) "No data found for this date." else null
                 )
+            }
+            if (date == "today" && avgHR > 0) {
+                preferences.setTodayAwakeAvgHr(avgHR)
             }
         }
     }

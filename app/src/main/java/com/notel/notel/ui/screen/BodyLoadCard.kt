@@ -297,72 +297,72 @@ fun BodyLoadCard(
                     
                     VerticalDivider(modifier = Modifier.height(32.dp).padding(horizontal = 4.dp), color = Color.White.copy(alpha = 0.1f))
 
-                    // Center Metrics Group
-                    if (state.isHealthConnected) {
-                        Row(
-                            modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly,
-                            verticalAlignment = Alignment.CenterVertically
+                    // Metrics Row (Always visible)
+                    Row(
+                        modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Heart Rate
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.clickable { onFactorSelected?.invoke("Heart") }
                         ) {
-                            // Calories
                             MetricItem(
-                                icon = Icons.Default.Whatshot,
-                                value = "${state.activeCalories}",
-                                color = Color(0xFFFF5252)
+                                icon = Icons.Default.Favorite,
+                                value = if (state.avgHeartRate > 0) "${state.avgHeartRate}" else "--",
+                                color = NotelPrimary
                             )
-
-                            VerticalDivider(modifier = Modifier.height(20.dp), color = Color.White.copy(alpha = 0.1f))
-
-                            // Jots
-                            MetricItem(
-                                icon = Icons.Default.Edit,
-                                value = "${state.jotCountDaily}",
-                                color = Color(0xFF66BB6A)
-                            )
-
-                            VerticalDivider(modifier = Modifier.height(20.dp), color = Color.White.copy(alpha = 0.1f))
-
-                            // Sleep + Debt Unified Group
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.clickable { showDebtHistory = true }
-                            ) {
-                                MetricItem(
-                                    icon = Icons.Default.Nightlight,
-                                    value = formatSleep(state.sleepMinutes),
-                                    color = Color(0xFF42A5F5)
-                                )
-                                
-                                val debtMins = state.sleepDebtMins
-                                if (!isLoading) {
-                                    val isDeficit = debtMins < 0
-                                    val h = Math.abs(debtMins) / 60
-                                    val m = Math.abs(debtMins) % 60
-                                    val dStr = if (isDeficit) "-${h}h ${m}m" else "+${h}h ${m}m"
-                                    val bColor = if (!isDeficit) Color(0xFF66BB6A) else if (Math.abs(debtMins) > 600) Color(0xFFFF5252) else Color(0xFFFFB74D)
-
-                                    Text(
-                                        text = dStr,
-                                        color = bColor,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.offset(y = (-2).dp)
-                                    )
-                                }
-                            }
+                            Text("Avg HR", color = NotelTextSecondary, fontSize = 8.sp, fontWeight = FontWeight.Medium)
                         }
-                    } else {
-                        Box(
-                            modifier = Modifier.weight(1f).padding(horizontal = 16.dp),
-                            contentAlignment = Alignment.Center
+
+                        VerticalDivider(modifier = Modifier.height(16.dp), color = Color.White.copy(alpha = 0.05f))
+
+                        // Calories
+                        MetricItem(
+                            icon = Icons.Default.Whatshot,
+                            value = if (state.activeCalories > 0) "${state.activeCalories}" else "--",
+                            color = Color(0xFFFF5252)
+                        )
+
+                        VerticalDivider(modifier = Modifier.height(16.dp), color = Color.White.copy(alpha = 0.05f))
+
+                        // Jots
+                        MetricItem(
+                            icon = Icons.Default.Edit,
+                            value = "${state.jotCountDaily}",
+                            color = Color(0xFF66BB6A)
+                        )
+
+                        VerticalDivider(modifier = Modifier.height(16.dp), color = Color.White.copy(alpha = 0.05f))
+
+                        // Sleep + Debt
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.clickable { showDebtHistory = true }
                         ) {
-                            Text(
-                                "Connect Health to see data",
-                                color = NotelTextSecondary,
-                                fontSize = 12.sp,
-                                textAlign = TextAlign.Center,
-                                fontWeight = FontWeight.Medium
+                            MetricItem(
+                                icon = Icons.Default.Nightlight,
+                                value = formatSleep(state.sleepMinutes),
+                                color = Color(0xFF42A5F5)
                             )
+                            
+                            val debtMins = state.sleepDebtMins
+                            if (!isLoading && debtMins != 0) {
+                                val isDeficit = debtMins < 0
+                                val h = Math.abs(debtMins) / 60
+                                val m = Math.abs(debtMins) % 60
+                                val dStr = if (isDeficit) "-${h}h ${m}m" else "+${h}h ${m}m"
+                                val bColor = if (!isDeficit) Color(0xFF66BB6A) else if (Math.abs(debtMins) > 600) Color(0xFFFF5252) else Color(0xFFFFB74D)
+
+                                Text(
+                                    text = dStr,
+                                    color = bColor,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.offset(y = (-2).dp)
+                                )
+                            }
                         }
                     }
                 }

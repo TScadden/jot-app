@@ -244,9 +244,13 @@ class LogRepository @Inject constructor(
 
     suspend fun getEntryById(id: Long): LogEntry? = logEntryDao.getEntryById(id)
     
-    suspend fun getJotCountOverPastDays(days: Int): Int {
-        val since = System.currentTimeMillis() - (days * 24 * 60 * 60 * 1000L)
-        return logEntryDao.getEntryCountSince(since)
+    suspend fun getTodayJotCount(): Int {
+        val todayStart = java.time.LocalDate.now().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        return logEntryDao.getEntryCountSince(todayStart)
+    }
+
+    suspend fun getJotCountInRange(start: Long, end: Long): Int {
+        return logEntryDao.getEntryCountInRange(start, end)
     }
 
     suspend fun getDailyStatsSummary(dateStr: String? = null, forceRefresh: Boolean = false): Map<String, Any> {

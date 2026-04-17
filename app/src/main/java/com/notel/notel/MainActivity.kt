@@ -162,7 +162,8 @@ class MainActivity : ComponentActivity() {
                                 viewModel = bodyLoadViewModel,
                                 quickLogViewModel = quickLogViewModel,
                                 onBack = { /* Root */ },
-                                onNavigateToConnections = { navController.navigate("data_connections") }
+                                onNavigateToConnections = { navController.navigate("data_connections") },
+                                onNavigateToHeart = { navController.navigate("fitbit") }
                             )
                         }
                         composable("data_connections") {
