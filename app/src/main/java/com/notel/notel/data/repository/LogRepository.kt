@@ -320,6 +320,14 @@ class LogRepository @Inject constructor(
             spikeCount = currentHr?.spikeCount?.toDouble() ?: 0.0
         }
         
+        // Final fallback/override: Use the real-time background monitor's count if it's today and higher
+        if (targetDay == java.time.LocalDate.now().toString()) {
+            val realtimeSpikes = preferences.todaySpikeCount.first().toDouble()
+            if (realtimeSpikes > spikeCount) {
+                spikeCount = realtimeSpikes
+            }
+        }
+        
         // 3. Baselines & Trends
         val hrvMean = if (hrvHistory.isNotEmpty()) hrvHistory.map { it.second }.average() else 45.0
         val hrvStd = if (hrvHistory.size > 2) calculateStdDev(hrvHistory.map { it.second }) else 10.0

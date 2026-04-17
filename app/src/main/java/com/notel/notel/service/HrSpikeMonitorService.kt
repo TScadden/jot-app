@@ -153,7 +153,7 @@ class HrSpikeMonitorService : Service() {
 
             // Always update Today's Spike Count for the Home screen UI
             val todayStr = java.time.LocalDate.now().toString()
-            val todaySummary = healthConnectManager.readHistoricalHeartRateWithSpikes(0).find { it.date == todayStr }
+            val todaySummary = healthConnectManager.readHistoricalHeartRateWithSpikes(1).find { it.date == todayStr }
             todaySummary?.let {
                 preferences.setTodaySpikeCount(it.spikeCount)
             }
