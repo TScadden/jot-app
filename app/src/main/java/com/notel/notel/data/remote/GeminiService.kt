@@ -22,7 +22,8 @@ class GeminiService @Inject constructor(
         category: Category,
         recentEntries: List<LogEntry>,
         userContext: String = "",
-        knowledgeBase: String = ""
+        knowledgeBase: String = "",
+        weatherContext: String? = null
     ): Result<List<String>> {
         return try {
             val response = jotApi.getSuggestions(
@@ -30,7 +31,8 @@ class GeminiService @Inject constructor(
                     category = category.toDto(),
                     recentEntries = recentEntries.toDto(),
                     userContext = userContext,
-                    knowledgeBase = knowledgeBase
+                    knowledgeBase = knowledgeBase,
+                    weatherContext = weatherContext
                 )
             )
             val result = response.body()?.result
@@ -90,6 +92,7 @@ class GeminiService @Inject constructor(
         pastInsights: String = "",
         fitbitData: String = "",
         habitData: String = "",
+        weatherContext: String? = null,
         documents: List<ProcessDocumentRequest> = emptyList()
     ): Result<String> {
         return try {
@@ -102,6 +105,7 @@ class GeminiService @Inject constructor(
                     pastInsights = pastInsights,
                     fitbitData = fitbitData,
                     habitData = habitData,
+                    weatherContext = weatherContext,
                     documents = documents
                 )
             )
@@ -125,6 +129,7 @@ class GeminiService @Inject constructor(
         fitbitData: String = "",
         habitData: String = "",
         bodyLoadHistory: String = "",
+        weatherContext: String? = null,
         documents: List<ProcessDocumentRequest> = emptyList()
     ): Result<String> {
         return try {
@@ -138,6 +143,7 @@ class GeminiService @Inject constructor(
                     fitbitData = fitbitData,
                     habitData = habitData,
                     bodyLoadHistory = bodyLoadHistory,
+                    weatherContext = weatherContext,
                     documents = documents
                 )
             )
@@ -159,6 +165,7 @@ class GeminiService @Inject constructor(
         knowledgeBase: String = "",
         fitbitData: String = "",
         habitData: String = "",
+        weatherContext: String? = null,
         documents: List<ProcessDocumentRequest> = emptyList()
     ): Result<String> {
         return try {
@@ -170,6 +177,7 @@ class GeminiService @Inject constructor(
                     knowledgeBase = knowledgeBase,
                     fitbitData = fitbitData,
                     habitData = habitData,
+                    weatherContext = weatherContext,
                     documents = documents
                 )
             )
@@ -192,6 +200,7 @@ class GeminiService @Inject constructor(
         pastInsights: String = "",
         fitbitData: String = "",
         habitData: String = "",
+        weatherContext: String? = null,
         documents: List<ProcessDocumentRequest> = emptyList()
     ): Result<String> {
         return try {
@@ -204,6 +213,7 @@ class GeminiService @Inject constructor(
                     pastInsights = pastInsights,
                     fitbitData = fitbitData,
                     habitData = habitData,
+                    weatherContext = weatherContext,
                     documents = documents
                 )
             )
@@ -226,6 +236,7 @@ class GeminiService @Inject constructor(
         pastInsights: String = "",
         fitbitData: String = "",
         habitData: String = "",
+        weatherContext: String? = null,
         documents: List<ProcessDocumentRequest> = emptyList()
     ): Result<String> {
         return try {
@@ -238,6 +249,7 @@ class GeminiService @Inject constructor(
                     pastInsights = pastInsights,
                     fitbitData = fitbitData,
                     habitData = habitData,
+                    weatherContext = weatherContext,
                     documents = documents
                 )
             )
@@ -276,6 +288,7 @@ class GeminiService @Inject constructor(
         fitbitData: String = "",
         habitData: String = "",
         pastInsights: String = "",
+        weatherContext: String? = null,
         documents: List<ProcessDocumentRequest> = emptyList()
     ): Result<BodyLoadResponse> {
         return try {
@@ -288,6 +301,7 @@ class GeminiService @Inject constructor(
                     fitbitData = fitbitData,
                     habitData = habitData,
                     pastInsights = pastInsights,
+                    weatherContext = weatherContext,
                     documents = documents
                 )
             )
@@ -307,7 +321,8 @@ class GeminiService @Inject constructor(
         categories: Map<Int, String>,
         userContext: String = "",
         knowledgeBase: String = "",
-        technicalStats: String = ""
+        technicalStats: String = "",
+        weatherContext: String? = null
     ): Result<BodyLoadResponse> {
         return try {
             val response = jotApi.getBodyLoadEnriched(
@@ -316,7 +331,8 @@ class GeminiService @Inject constructor(
                     categories = categories,
                     userContext = userContext,
                     knowledgeBase = knowledgeBase,
-                    technicalStats = technicalStats
+                    technicalStats = technicalStats,
+                    weatherContext = weatherContext
                 )
             )
             val result = response.body()?.result

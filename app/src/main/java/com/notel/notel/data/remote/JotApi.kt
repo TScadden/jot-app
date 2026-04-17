@@ -15,6 +15,7 @@ data class AiRequest(
     val fitbitData: String? = null,
     val habitData: String? = null,
     val bodyLoadHistory: String? = null,
+    val weatherContext: String? = null,
     val documents: List<ProcessDocumentRequest> = emptyList()
 )
 
@@ -23,7 +24,8 @@ data class SuggestionsRequest(
     val category: CategoryDtoModel,
     val recentEntries: List<LogEntryDtoModel>,
     val userContext: String? = null,
-    val knowledgeBase: String? = null
+    val knowledgeBase: String? = null,
+    val weatherContext: String? = null
 )
 
 @Serializable
@@ -55,7 +57,8 @@ data class BodyLoadEnrichedRequest(
     val categories: Map<Int, String> = emptyMap(),
     val userContext: String? = null,
     val knowledgeBase: String? = null,
-    val technicalStats: String? = null
+    val technicalStats: String? = null,
+    val weatherContext: String? = null
 )
 
 @Serializable

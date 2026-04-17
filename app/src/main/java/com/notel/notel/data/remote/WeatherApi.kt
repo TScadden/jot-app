@@ -23,7 +23,8 @@ data class OpenMeteoResponse(
 data class CurrentWeather(
     val temperature_2m: Double,
     val weather_code: Int,
-    val is_day: Int = 1
+    val is_day: Int = 1,
+    val surface_pressure: Double = 0.0
 )
 
 @Serializable
@@ -41,7 +42,8 @@ data class WeatherInfo(
     val locationName: String,
     val unit: String,
     val humidity: Int = 0,
-    val windSpeed: Double = 0.0
+    val windSpeed: Double = 0.0,
+    val pressure: Double = 0.0
 )
 
 class WeatherApi {
@@ -92,8 +94,8 @@ class WeatherApi {
             val units = if (countryCode == "US") "fahrenheit" else "celsius"
             val unitLabel = if (units == "fahrenheit") "F" else "C"
             
-            // 3. Get Weather with is_day
-            val weatherUrl = "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,weather_code,is_day&hourly=uv_index,relative_humidity_2m,wind_speed_10m&forecast_days=1&temperature_unit=$units"
+            // 3. Get Weather with is_day and surface_pressure
+            val weatherUrl = "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,weather_code,is_day,surface_pressure&hourly=uv_index,relative_humidity_2m,wind_speed_10m&forecast_days=1&temperature_unit=$units"
             val weatherResponseText = fetchUrl(weatherUrl)
             val data = json.decodeFromString<OpenMeteoResponse>(weatherResponseText)
             
@@ -105,7 +107,8 @@ class WeatherApi {
                 locationName = city,
                 unit = unitLabel,
                 humidity = data.hourly.relative_humidity_2m?.firstOrNull()?.toInt() ?: 0,
-                windSpeed = data.hourly.wind_speed_10m?.firstOrNull() ?: 0.0
+                windSpeed = data.hourly.wind_speed_10m?.firstOrNull() ?: 0.0,
+                pressure = data.current.surface_pressure
             )
         } catch (e: Exception) {
             null

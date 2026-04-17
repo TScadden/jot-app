@@ -50,7 +50,7 @@ fun QuickLogScreen(
     val isGeneratingWeeklyRecap by viewModel.isGeneratingWeeklyRecap.collectAsState()
     val isGeneratingDeepResearch by viewModel.isGeneratingDeepResearch.collectAsState()
 
-    // Auto-fetch chips once: when category is selected, user has credits/access, and no chips loaded yet
+    // Auto-fetch chips once...
     LaunchedEffect(state.selectedCategory, state.userBalance, state.isUnlimited, state.autoAiSuggestions) {
         val hasAccess = state.isUnlimited || state.userBalance >= 0.01f
         if (state.autoAiSuggestions && state.selectedCategory != null && hasAccess &&
@@ -60,18 +60,16 @@ fun QuickLogScreen(
         }
     }
 
-    // Snackbar on save
-    val snackbarHostState = remember { SnackbarHostState() }
+    // Reset saveSuccess without showing snackbar
     LaunchedEffect(state.saveSuccess) {
         if (state.saveSuccess) {
-            snackbarHostState.showSnackbar("Entry logged ✓")
+            kotlinx.coroutines.delay(1000)
             viewModel.resetSaveSuccess()
         }
     }
 
     Scaffold(
         containerColor = NotelBackground,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { },
@@ -169,88 +167,6 @@ fun QuickLogScreen(
                 ) {
                 when {
                     !state.isUnlimited && state.userBalance < 0.01f -> NoBalancePrompt(onGoToSettings = onNavigateToSettings)
-                    state.selectedCategory?.id == -1 -> {
-                        val today = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
-                        var showClearHabitConfirm by remember { mutableStateOf(false) }
-                        
-                        Box(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                            Column {
-                                FlowRow(
-                                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    state.habits.forEach { habit ->
-                                        val isChecked = habit.logs.contains(today)
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(20.dp))
-                                                .background(if (isChecked) NotelSurfaceHigh else NotelSurface)
-                                                .clickable {
-                                                    viewModel.toggleHabit(habit.id, !isChecked)
-                                                }
-                                                .border(
-                                                    width = 1.dp,
-                                                    color = if (isChecked) Color.Transparent else NotelPrimary.copy(alpha = 0.5f),
-                                                    shape = RoundedCornerShape(20.dp)
-                                                )
-                                                .padding(horizontal = 16.dp, vertical = 10.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                if (isChecked) {
-                                                    Icon(Icons.Default.CheckCircle, null, tint = NotelPrimary, modifier = Modifier.size(16.dp))
-                                                    Spacer(Modifier.width(6.dp))
-                                                }
-                                                Text(
-                                                    habit.title,
-                                                    color = if (isChecked) NotelTextSecondary else NotelTextPrimary,
-                                                    fontWeight = if (isChecked) FontWeight.Normal else FontWeight.SemiBold,
-                                                    fontSize = 14.sp,
-                                                    textDecoration = if (isChecked) androidx.compose.ui.text.style.TextDecoration.LineThrough else null
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                                
-                                if (state.habits.isNotEmpty()) {
-                                    Spacer(Modifier.height(32.dp))
-                                    TextButton(
-                                        onClick = { showClearHabitConfirm = true },
-                                        modifier = Modifier.align(Alignment.CenterHorizontally)
-                                    ) {
-                                        Icon(Icons.Default.DeleteSweep, "Clear habit logs", tint = NotelTextSecondary, modifier = Modifier.size(16.dp))
-                                        Spacer(Modifier.width(6.dp))
-                                        Text("Clear History Logs", color = NotelTextSecondary, fontSize = 12.sp)
-                                    }
-                                    Spacer(Modifier.height(16.dp))
-                                }
-                            }
-                        }
-
-                        if (showClearHabitConfirm) {
-                            AlertDialog(
-                                onDismissRequest = { showClearHabitConfirm = false },
-                                title = { Text("Clear Habit Logs?", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
-                                text = { Text("This will wipe all historical habit streaks and completions. Habit list will remain. Cannot be undone.", color = NotelTextSecondary) },
-                                confirmButton = {
-                                    TextButton(onClick = {
-                                        viewModel.clearHabitData()
-                                        showClearHabitConfirm = false
-                                    }) {
-                                        Text("Clear", color = NotelPrimary)
-                                    }
-                                },
-                                dismissButton = {
-                                    TextButton(onClick = { showClearHabitConfirm = false }) {
-                                        Text("Cancel", color = NotelTextSecondary)
-                                    }
-                                },
-                                containerColor = NotelSurface
-                            )
-                        }
-                    }
                     !state.autoAiSuggestions && state.chips.isEmpty() && !state.isLoadingChips -> {
                         Column(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),

@@ -180,13 +180,12 @@ class QuickLogViewModel @Inject constructor(
                 selectedChips = emptyList(),
                 composedText = "",
                 // Immediately show cached chips if available — no spinner needed
-                chips = if (category.id == -1) emptyList() else cached ?: emptyList(),
-                isLoadingChips = category.id != -1 && cached == null && it.autoAiSuggestions,
+                chips = cached ?: emptyList(),
+                isLoadingChips = cached == null && it.autoAiSuggestions,
                 chipsError = null,
                 retryAfterSeconds = 0
             )
         }
-        if (category.id == -1) return
         if (cached != null) return  // Already have chips — skip the API call
         if (!_uiState.value.autoAiSuggestions) return // Skip fetch if auto is off
 
@@ -302,7 +301,8 @@ class QuickLogViewModel @Inject constructor(
                     categoryId = finalCategoryId,
                     body = body,
                     chips = Json.encodeToString(state.selectedChips),
-                    manualText = state.manualText
+                    manualText = "", // No longer storing redundant manual text separately
+                    source = if (state.selectedChips.isNotEmpty()) "Combined" else "Manual"
                 )
             )
             
@@ -358,27 +358,12 @@ class QuickLogViewModel @Inject constructor(
             }
 
             // 4. Sort and Filter
-            val smart = categories
+            val finalSmart = categories
                 .filter { it.id != 7 } // Exclude General from smart list (it's always available)
                 .sortedByDescending { scores[it.id] ?: 0 }
-                .take(4) // Only top 4
+                .take(5) // Only top 5
 
-            val finalSmart = mutableListOf<Category>()
-            if (_uiState.value.habits.isNotEmpty()) {
-                finalSmart.add(
-                    Category(
-                        id = -1,
-                        name = "Habits",
-                        icon = "FactCheck",
-                        colorHex = "#9C27B0", // Purple
-                        isDefault = true,
-                        sortOrder = -100
-                    )
-                )
-            }
-            finalSmart.addAll(smart)
-
-            _uiState.update { it.copy(smartCategories = finalSmart.take(5)) }
+            _uiState.update { it.copy(smartCategories = finalSmart) }
             checkForSmartActions(recentEntries)
         }
     }

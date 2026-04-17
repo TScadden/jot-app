@@ -31,8 +31,8 @@ class RedditRefreshWorker @AssistedInject constructor(
             if (subredditsStr.isNotBlank() && subredditsStr != "[]") Json.decodeFromString(subredditsStr) else emptyList()
         } catch (e: Exception) { emptyList() }
 
-        val threeDaysAgoMs = System.currentTimeMillis() - (3 * 24 * 60 * 60 * 1000L)
-        val toUpdate = subreddits.filter { it.autoUpdate && it.lastFetched < threeDaysAgoMs }
+        val aDayAgoMs = System.currentTimeMillis() - (24 * 60 * 60 * 1000L)
+        val toUpdate = subreddits.filter { it.autoUpdate && it.lastFetched < aDayAgoMs }
 
         if (toUpdate.isEmpty()) return Result.success()
 
@@ -95,7 +95,7 @@ class RedditRefreshWorker @AssistedInject constructor(
 
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 "REDDIT_REFRESH",
-                ExistingPeriodicWorkPolicy.KEEP,
+                ExistingPeriodicWorkPolicy.UPDATE,
                 request
             )
         }

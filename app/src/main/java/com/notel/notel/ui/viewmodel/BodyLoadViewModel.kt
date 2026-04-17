@@ -30,7 +30,8 @@ data class WeatherState(
     val locationName: String = "Unknown",
     val unit: String = "F",
     val humidity: Int = 0,
-    val windSpeed: Double = 0.0
+    val windSpeed: Double = 0.0,
+    val pressure: Double = 0.0
 )
 
 data class BodyLoadState(
@@ -82,6 +83,18 @@ class BodyLoadViewModel @Inject constructor(
     init {
         refresh(force = false)
         fetchWeather()
+        
+        // Observe streak data
+        viewModelScope.launch {
+            preferences.currentStreak.collect { streak ->
+                _uiState.update { it.copy(currentStreak = streak) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.bestStreak.collect { streak ->
+                _uiState.update { it.copy(bestStreak = streak) }
+            }
+        }
     }
 
     private var lastKnownLat: Double? = null
@@ -114,7 +127,8 @@ class BodyLoadViewModel @Inject constructor(
                         locationName = info.locationName,
                         unit = info.unit,
                         humidity = info.humidity,
-                        windSpeed = info.windSpeed
+                        windSpeed = info.windSpeed,
+                        pressure = info.pressure
                     )
                 ) }
             }

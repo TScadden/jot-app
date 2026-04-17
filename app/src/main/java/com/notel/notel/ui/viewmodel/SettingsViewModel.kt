@@ -177,6 +177,9 @@ class SettingsViewModel @Inject constructor(
         .map { it as Boolean? }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    val userContextHidden = preferences.userContextHidden
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     val bodyLoadRemindersEnabled = preferences.bodyLoadRemindersEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
@@ -250,6 +253,13 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { 
             preferences.setUserContext(text)
             preferences.setUserContextLastUpdate(System.currentTimeMillis())
+        }
+    }
+
+    fun toggleUserContextHidden() {
+        viewModelScope.launch {
+            val current = userContextHidden.value
+            preferences.setUserContextHidden(!current)
         }
     }
 
@@ -609,14 +619,18 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun toggleFavoriteCounter(id: String) {
+    fun toggleArchiveCounter(id: String) {
         viewModelScope.launch {
             val currentStr = preferences.eventCounters.first()
             val current = try { if (currentStr.isNotBlank()) Json.decodeFromString<MutableList<EventCounterDto>>(currentStr) else mutableListOf() } catch(e: Exception) { mutableListOf() }
             
-            val updated = current.map { it.copy(isFavorite = it.id == id) }
-            preferences.setEventCounters(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(EventCounterDto.serializer()), updated))
-            syncManager.pushProfileData()
+            val index = current.indexOfFirst { it.id == id }
+            if (index >= 0) {
+                val counter = current[index]
+                current[index] = counter.copy(isArchived = !counter.isArchived)
+                preferences.setEventCounters(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(EventCounterDto.serializer()), current))
+                syncManager.pushProfileData()
+            }
         }
     }
 
@@ -629,8 +643,8 @@ class SettingsViewModel @Inject constructor(
             if (index >= 0) {
                 val counter = current[index]
                 current.removeAt(index)
-                if (counter.isFavorite && current.isNotEmpty()) {
-                    current[0] = current[0].copy(isFavorite = true)
+                if (current.isNotEmpty()) {
+                    // No longer specifically managing 'isFavorite' as we're removing that system
                 }
                 preferences.setEventCounters(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(EventCounterDto.serializer()), current))
                 
@@ -761,7 +775,7 @@ class SettingsViewModel @Inject constructor(
                             } catch (e: Exception) { mutableListOf() }
                             
                             val existing = current.indexOfFirst { it.name == sub }
-                            val currentAutoUpdate = if (existing >= 0) current[existing].autoUpdate else false
+                            val currentAutoUpdate = if (existing >= 0) current[existing].autoUpdate else true // Default to true for new ones
                             val entry = LinkedSubreddit(
                                 name = sub, 
                                 lastFetched = System.currentTimeMillis(), 
@@ -859,7 +873,8 @@ data class EventCounterDto(
     val targetDate: Long,
     val isUp: Boolean,
     val autoUp: Boolean,
-    val isFavorite: Boolean
+    val isFavorite: Boolean = false,
+    val isArchived: Boolean = false
 )
 
 @kotlinx.serialization.Serializable

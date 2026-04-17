@@ -87,6 +87,8 @@ class NotelPreferences @Inject constructor(
         val LAST_KNOWN_LAT = doublePreferencesKey("last_known_lat")
         val LAST_KNOWN_LON = doublePreferencesKey("last_known_lon")
         val LAST_KNOWN_CITY = stringPreferencesKey("last_known_city")
+        val HIGHEST_CUP_DAILY = intPreferencesKey("highest_cup_daily")
+        val USER_CONTEXT_HIDDEN = booleanPreferencesKey("user_context_hidden")
         val HAS_HISTORICAL_BODY_LOAD = booleanPreferencesKey("has_historical_body_load")
     }
 
@@ -229,6 +231,9 @@ class NotelPreferences @Inject constructor(
         prefs[IS_UNLIMITED] ?: false
     }
 
+    val userContextHidden: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[USER_CONTEXT_HIDDEN] ?: true
+    }
 
     suspend fun setAuthToken(token: String) {
         context.dataStore.edit { it[AUTH_TOKEN] = token }
@@ -435,6 +440,10 @@ class NotelPreferences @Inject constructor(
     }
     suspend fun setAutoAiSuggestions(enabled: Boolean) {
         context.dataStore.edit { it[AUTO_AI_SUGGESTIONS] = enabled }
+    }
+
+    suspend fun setUserContextHidden(hidden: Boolean) {
+        context.dataStore.edit { it[USER_CONTEXT_HIDDEN] = hidden }
     }
 
     suspend fun deductBalance(amount: Float) {

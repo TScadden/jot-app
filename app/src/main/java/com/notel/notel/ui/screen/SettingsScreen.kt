@@ -46,6 +46,8 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.alpha
 import kotlinx.coroutines.*
 
 enum class SettingsMenu {
@@ -92,6 +94,7 @@ fun SettingsScreen(
     val hrDeltaEnabled by viewModel.hrDeltaEnabled.collectAsState()
     val spikeDeltaThreshold by viewModel.spikeDeltaThreshold.collectAsState()
     val habitReminderEnabled by viewModel.habitReminderEnabled.collectAsState()
+    val userContextHidden by viewModel.userContextHidden.collectAsState()
     val tutorialSeen by viewModel.settingsTutorialSeen.collectAsState()  // null = loading, false = not seen, true = seen
 
     // Screen dimensions for smart tooltip placement
@@ -413,17 +416,74 @@ fun SettingsScreen(
                     Text("BACKGROUND CONTEXT", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(8.dp))
                     GlassyCard(shape = RoundedCornerShape(16.dp), color = NotelSurface, modifier = Modifier.onGloballyPositioned { coordPersonalCtx = it }) {
-                        Text("Personal Context", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Personal Context", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                            IconButton(
+                                onClick = { viewModel.toggleUserContextHidden() },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    if (userContextHidden) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = "Toggle Visibility",
+                                    tint = NotelPrimary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
                         Spacer(Modifier.height(4.dp))
                         Text("Tell Jot about your goals (e.g. 'training for a marathon').", color = NotelTextSecondary, fontSize = 11.sp)
                         Spacer(Modifier.height(8.dp))
-                        OutlinedTextField(
-                            value = contextInput, onValueChange = { contextInput = it; viewModel.saveUserContext(it.trim()) },
-                            modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 4,
-                            placeholder = { Text("Add background info here…", color = NotelTextSecondary, fontSize = 12.sp) },
-                            shape = RoundedCornerShape(12.dp),
-                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, unfocusedBorderColor = NotelSurfaceHigh, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
-                        )
+                        
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .then(if (userContextHidden) Modifier.clickable { viewModel.toggleUserContextHidden() } else Modifier)
+                        ) {
+                            OutlinedTextField(
+                                value = contextInput, 
+                                onValueChange = { contextInput = it; viewModel.saveUserContext(it.trim()) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .blur(if (userContextHidden && userContext.isNotBlank()) 12.dp else 0.dp),
+                                minLines = 2, 
+                                maxLines = 4,
+                                enabled = !userContextHidden || userContext.isBlank(),
+                                placeholder = { Text("Add background info here…", color = NotelTextSecondary, fontSize = 12.sp) },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = NotelPrimary, 
+                                    unfocusedBorderColor = NotelSurfaceHigh, 
+                                    focusedTextColor = NotelTextPrimary, 
+                                    unfocusedTextColor = NotelTextPrimary,
+                                    disabledTextColor = NotelTextPrimary,
+                                    disabledBorderColor = NotelSurfaceHigh
+                                )
+                            )
+                            
+                            if (userContextHidden && userContext.isNotBlank()) {
+                                Column(
+                                    modifier = Modifier.matchParentSize(),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        "Hidden for your privacy", 
+                                        color = NotelTextPrimary, 
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp
+                                    )
+                                    Text(
+                                        "Click here to show the text", 
+                                        color = NotelTextSecondary, 
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            }
+                        }
                     }
 
                     Spacer(Modifier.height(24.dp))
@@ -448,13 +508,30 @@ fun SettingsScreen(
             var showCounterDialog by remember { mutableStateOf(false) }
             var editCounter by remember { mutableStateOf<com.notel.notel.ui.viewmodel.EventCounterDto?>(null) }
 
+            GlassyButton(
+                onClick = { 
+                    editCounter = null
+                    showCounterDialog = true 
+                },
+                modifier = Modifier.fillMaxWidth(),
+                containerColor = NotelSurfaceHigh
+            ) {
+                Icon(Icons.Default.Add, "Add Counter", tint = NotelPrimary)
+                Spacer(Modifier.width(8.dp))
+                Text("Add New Counter", color = NotelTextPrimary)
+            }
+            Spacer(Modifier.height(16.dp))
+
             GlassyCard(
                 shape = RoundedCornerShape(16.dp),
                 color = NotelSurface
             ) {
                 if (eventCounters.isNotEmpty()) {
+                    val activeCounters = eventCounters.filter { !it.isArchived }
+                    val archivedCounters = eventCounters.filter { it.isArchived }
+
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        eventCounters.forEach { counter ->
+                        activeCounters.forEach { counter ->
                             val todayStart = java.util.Calendar.getInstance().apply {
                                 set(java.util.Calendar.HOUR_OF_DAY, 0)
                                 set(java.util.Calendar.MINUTE, 0)
@@ -462,11 +539,12 @@ fun SettingsScreen(
                                 set(java.util.Calendar.MILLISECOND, 0)
                             }.timeInMillis
                             val daysRemaining = Math.max(0L, Math.abs(todayStart - counter.targetDate) / 86400000L)
-                            val direction = if (counter.isUp) "since" else "until"
+                            val isUp = counter.isUp || (counter.autoUp && todayStart > counter.targetDate)
+                            val direction = if (isUp) "since" else "until"
                             
                             GlassyCard(
                                 shape = RoundedCornerShape(12.dp),
-                                color = if (counter.isFavorite) NotelPrimary.copy(alpha = 0.1f) else NotelSurfaceHigh.copy(alpha = 0.5f)
+                                color = NotelSurfaceHigh.copy(alpha = 0.5f)
                             ) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
@@ -477,10 +555,10 @@ fun SettingsScreen(
                                         Text("$daysRemaining days $direction", color = NotelPrimary, fontSize = 11.sp)
                                     }
                                     IconButton(
-                                        onClick = { viewModel.toggleFavoriteCounter(counter.id) },
+                                        onClick = { viewModel.toggleArchiveCounter(counter.id) },
                                         modifier = Modifier.size(28.dp)
                                     ) {
-                                        Icon(if (counter.isFavorite) Icons.Default.Star else Icons.Default.StarOutline, "Favorite", tint = if (counter.isFavorite) Color.Yellow else NotelTextSecondary, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Default.Archive, "Archive", tint = NotelTextSecondary, modifier = Modifier.size(16.dp))
                                     }
                                     IconButton(
                                         onClick = { 
@@ -500,36 +578,54 @@ fun SettingsScreen(
                                 }
                             }
                         }
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    GlassyButton(
-                        onClick = { 
-                            editCounter = null
-                            showCounterDialog = true 
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        containerColor = NotelSurfaceHigh
-                    ) {
-                        Icon(Icons.Default.Add, "Add Counter", tint = NotelPrimary)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Add New Counter", color = NotelTextPrimary)
+
+                        if (archivedCounters.isNotEmpty()) {
+                            Spacer(Modifier.height(8.dp))
+                            Text("ARCHIVED", fontSize = 10.sp, color = NotelTextSecondary, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 4.dp))
+                            archivedCounters.forEach { counter ->
+                                val todayStart = java.util.Calendar.getInstance().apply {
+                                    set(java.util.Calendar.HOUR_OF_DAY, 0)
+                                    set(java.util.Calendar.MINUTE, 0)
+                                    set(java.util.Calendar.SECOND, 0)
+                                    set(java.util.Calendar.MILLISECOND, 0)
+                                }.timeInMillis
+                                val daysRemaining = Math.max(0L, Math.abs(todayStart - counter.targetDate) / 86400000L)
+                                val isUp = counter.isUp || (counter.autoUp && todayStart > counter.targetDate)
+                                val direction = if (isUp) "since" else "until"
+
+                                GlassyCard(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = NotelSurfaceHigh.copy(alpha = 0.2f)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).alpha(0.5f),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(counter.name, color = NotelTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                                            Text("$daysRemaining days $direction", color = NotelTextSecondary, fontSize = 10.sp)
+                                        }
+                                        IconButton(
+                                            onClick = { viewModel.toggleArchiveCounter(counter.id) },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(Icons.Default.Unarchive, "Unarchive", tint = NotelTextSecondary, modifier = Modifier.size(16.dp))
+                                        }
+                                        IconButton(
+                                            onClick = { viewModel.endCounterAndSave(counter.id) },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(Icons.Default.Delete, "End", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 } else {
-                    Text("Track important upcoming or past events. The favorite one shows on the main screen and syncs with the AI.", color = NotelTextSecondary, fontSize = 12.sp)
-                    Spacer(Modifier.height(16.dp))
-                    GlassyButton(
-                        onClick = { 
-                            editCounter = null
-                            showCounterDialog = true 
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        containerColor = NotelSurfaceHigh
-                    ) {
-                        Icon(Icons.Default.Timer, "Add Counter", tint = NotelPrimary)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Add New Counter", color = NotelTextPrimary)
-                    }
+                    Text("Track important upcoming or past events. All active counters will show on the main screen and sync with the AI.", color = NotelTextSecondary, fontSize = 12.sp)
                 }
+
 
                 if (cHistory.isNotEmpty()) {
                     Spacer(Modifier.height(16.dp))
@@ -1857,18 +1953,7 @@ fun SettingsScreen(
                             )
                         }
                         
-                        TextButton(
-                            onClick = { 
-                                if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-                                    viewModel.testDailyReminder(context)
-                                } else {
-                                    requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                }
-                            },
-                            modifier = Modifier.align(Alignment.Start)
-                        ) {
-                            Text("Test Cup Reminder Notification", color = NotelPrimary, fontSize = 12.sp)
-                        }
+
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(modifier = Modifier.weight(1f)) {
@@ -1891,18 +1976,7 @@ fun SettingsScreen(
                             )
                         }
 
-                        TextButton(
-                            onClick = { 
-                                if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-                                    viewModel.testBodyLoadNotification(context)
-                                } else {
-                                    requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                }
-                            },
-                            modifier = Modifier.align(Alignment.Start)
-                        ) {
-                            Text("Test Cup Summary Notification", color = NotelPrimary, fontSize = 12.sp)
-                        }
+
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(modifier = Modifier.weight(1f)) {
@@ -1925,18 +1999,7 @@ fun SettingsScreen(
                             )
                         }
                         
-                        TextButton(
-                            onClick = { 
-                                if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-                                    viewModel.testHabitNotification(context)
-                                } else {
-                                    requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                }
-                            },
-                            modifier = Modifier.align(Alignment.Start)
-                        ) {
-                            Text("Test Habit Reminder Notification", color = NotelPrimary, fontSize = 12.sp)
-                        }
+
 
                         Column {
                             val initialThreshold = remember { spikeThreshold }
@@ -2083,23 +2146,9 @@ fun SettingsScreen(
                                     )
                                 }
                             }
-
-                            TextButton(
-                                onClick = { 
-                                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-                                        viewModel.testSpikeNotification(context)
-                                    } else {
-                                        requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                    }
-                                },
-                                modifier = Modifier.align(Alignment.Start)
-                            ) {
-                                Text("Test Spike Alert Notification", color = NotelPrimary, fontSize = 12.sp)
-                            }
                         }
                     }
                 }
-                Spacer(Modifier.height(24.dp))
             }
 
             val isSyncing by viewModel.isSyncing.collectAsState()
@@ -2207,6 +2256,7 @@ fun SettingsScreen(
         }
     }
     }
+}
 
     // ── Tutorial overlay — sits above the Scaffold so it can cover the top bar ──
     if (tutorialStep in 0..<settingsTutorialSteps.size) {
@@ -2228,7 +2278,6 @@ fun SettingsScreen(
                 viewModel.markSettingsTutorialSeen()
             }
         )
-    }
     }
 }
 @Composable
@@ -2462,7 +2511,6 @@ fun DocumentTile(
                         )
                     }
                 }
-            }
             }
             
             var showDeleteDialog by remember { mutableStateOf(false) }

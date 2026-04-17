@@ -155,28 +155,6 @@ fun BodyLoadScreen(
                 )
             }
 
-            // Success Indicator for Logs
-            item {
-                AnimatedVisibility(
-                    visible = quickLogState.saveSuccess,
-                    enter = expandVertically() + fadeIn(),
-                    exit = shrinkVertically() + fadeOut()
-                ) {
-                    Surface(
-                        modifier = Modifier.padding(16.dp),
-                        color = Color(0xFF43A047).copy(alpha = 0.1f),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, Color(0xFF43A047).copy(alpha = 0.2f))
-                    ) {
-                        Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.CheckCircle, "Success", tint = Color(0xFF43A047), modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Log saved successfully!", color = Color.White, fontSize = 12.sp)
-                        }
-                    }
-                }
-            }
-            
             // Divider under streak area
             item {
                 HorizontalDivider(
@@ -399,8 +377,8 @@ fun BodyLoadScreen(
                                 Surface(
                                     onClick = { habitViewModel.toggleHabit(habit.id, !isChecked) },
                                     modifier = Modifier
-                                        .width(140.dp)
-                                        .height(100.dp),
+                                        .widthIn(min = 140.dp, max = 220.dp)
+                                        .heightIn(min = 100.dp),
                                     shape = RoundedCornerShape(20.dp),
                                     color = if (isChecked) NotelPrimary.copy(alpha = 0.15f) else NotelSurfaceHigh.copy(alpha = 0.1f),
                                     border = BorderStroke(1.dp, if (isChecked) NotelPrimary.copy(alpha = 0.3f) else Color.White.copy(alpha = 0.05f))
@@ -431,8 +409,6 @@ fun BodyLoadScreen(
                                                 color = NotelTextPrimary,
                                                 fontSize = 13.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis,
                                                 lineHeight = 16.sp
                                             )
                                             Text(

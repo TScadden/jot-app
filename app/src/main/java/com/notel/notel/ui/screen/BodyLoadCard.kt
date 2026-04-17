@@ -54,15 +54,16 @@ fun BodyLoadCard(
     val todayStr = java.time.LocalDate.now().toString()
     var showDebtHistory by remember { mutableStateOf(false) }
     
-    val infinitePageCount = if (counters.size > 1) 10000 else counters.size
+    val activeCounters = counters.filter { !it.isArchived }
+    val infinitePageCount = if (activeCounters.size > 1) 10000 else activeCounters.size
     val pagerState = rememberPagerState(
-        initialPage = if (counters.size > 1) 5000 else 0,
+        initialPage = if (activeCounters.size > 1) 5000 else 0,
         pageCount = { infinitePageCount }
     )
     
     // Robust Auto-scroll logic tied to settledPage to prevent mid-transition freezes during background/foreground events
-    LaunchedEffect(counters.size) {
-        if (counters.size > 1) {
+    LaunchedEffect(activeCounters.size) {
+        if (activeCounters.size > 1) {
             snapshotFlow { pagerState.settledPage }.collectLatest { settledIndex ->
                 kotlinx.coroutines.delay(15000)
                 pagerState.animateScrollToPage(settledIndex + 1)
@@ -422,7 +423,7 @@ fun BodyLoadCard(
                 }
             }
 
-            if (counters.isNotEmpty()) {
+            if (activeCounters.isNotEmpty()) {
                 Column(
                     modifier = Modifier.weight(1f).padding(start = 16.dp),
                     horizontalAlignment = Alignment.End
@@ -432,8 +433,8 @@ fun BodyLoadCard(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) { page ->
-                        val counterIndex = page % counters.size
-                        val counter = counters[counterIndex]
+                        val counterIndex = page % activeCounters.size
+                        val counter = activeCounters[counterIndex]
                         
                         // Logic to calculate days remaining/since
                         val todayStart = java.util.Calendar.getInstance().apply {
@@ -493,14 +494,14 @@ fun BodyLoadCard(
                                 }
                                 
                                 // Indicator Dots under the number
-                                if (counters.size > 1) {
+                                if (activeCounters.size > 1) {
                                     Row(
                                         modifier = Modifier.padding(top = 2.dp),
                                         horizontalArrangement = Arrangement.spacedBy(3.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        repeat(counters.size) { iteration ->
-                                            val isCurrent = (pagerState.currentPage % counters.size) == iteration
+                                        repeat(activeCounters.size) { iteration ->
+                                            val isCurrent = (pagerState.currentPage % activeCounters.size) == iteration
                                             val color = if (isCurrent) NotelPrimary else NotelSurfaceHigh.copy(alpha = 0.3f)
                                             Box(
                                                 modifier = Modifier

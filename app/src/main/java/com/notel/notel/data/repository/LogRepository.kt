@@ -412,8 +412,9 @@ class LogRepository @Inject constructor(
             "Example: 'Brain Fog', 'Chest Pain', 'High HR Spike', 'Restless Legs'."
         
         val kb = getEnrichedKnowledgeBase()
+        val weather = getWeatherContext()
         
-        return geminiService.getSuggestions(category, recent, userContext = context, knowledgeBase = kb).onSuccess { list ->
+        return geminiService.getSuggestions(category, recent, userContext = context, knowledgeBase = kb, weatherContext = weather).onSuccess { list ->
             suggestionCache[category.id] = list
             preferences.deductBalance(0.01f)
         }
@@ -430,6 +431,19 @@ class LogRepository @Inject constructor(
         return geminiService.getSmartCategorySuggestion(recent, existingCategories).onSuccess {
             preferences.deductBalance(0.01f)
         }
+    }
+
+    private suspend fun getWeatherContext(): String? {
+        return try {
+            val lat = preferences.lastKnownLat.first()
+            val lon = preferences.lastKnownLon.first()
+            val city = preferences.lastKnownCity.first()
+            if (lat == 0.0) return null
+            
+            com.notel.notel.data.remote.WeatherApi().getDetailedWeather(lat, lon, city)?.let { info ->
+                "ENVIRONMENTAL CONTEXT:\n- Location: ${info.locationName}\n- Temp: ${info.temp}°${info.unit}\n- Condition: ${info.condition}\n- Humidity: ${info.humidity}%\n- Wind: ${info.windSpeed} km/h\n- Pressure: ${info.pressure} hPa\n- UV Index: ${info.uvIndex}"
+            }
+        } catch (e: Exception) { null }
     }
 
     private suspend fun getEnrichedUserContext(): String {
@@ -464,7 +478,8 @@ class LogRepository @Inject constructor(
                         val daysRemaining = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(Math.abs(finalDiffMillis))
                         val direction = if (isUp) "since" else "until"
                         val startDate = java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.US).format(java.util.Date(counter.targetDate))
-                        sb.append("- ${counter.name}: ${daysRemaining} days ${direction} (Started/Target: $startDate)\n")
+                        val archivedTag = if (counter.isArchived) "[ARCHIVED] " else ""
+                        sb.append("- ${archivedTag}${counter.name}: ${daysRemaining} days ${direction} (Started/Target: $startDate)\n")
                     }
                 }
                 counterContext = sb.toString()
@@ -594,8 +609,9 @@ class LogRepository @Inject constructor(
         if (!isUnlimited && balance < 0.01f) return Result.failure(IllegalStateException("Insufficient credits. Please top up in Settings."))
 
         val documents = getEnrichedDocuments()
+        val weather = getWeatherContext()
 
-        val result = geminiService.getAdvice(recent, catMap, userContext = context, knowledgeBase = kb, pastInsights = pastInsights, fitbitData = fitbitData, habitData = habitData, documents = documents)
+        val result = geminiService.getAdvice(recent, catMap, userContext = context, knowledgeBase = kb, pastInsights = pastInsights, fitbitData = fitbitData, habitData = habitData, weatherContext = weather, documents = documents)
         result.onSuccess { text ->
             preferences.deductBalance(0.01f)
             saveAiInsight(text, "Advice")
@@ -644,6 +660,7 @@ class LogRepository @Inject constructor(
                 fitbitData = fitbitData, 
                 habitData = habitData,
                 bodyLoadHistory = bodyLoadHistory,
+                weatherContext = getWeatherContext(),
                 documents = getEnrichedDocuments()
             )
             
@@ -672,11 +689,9 @@ class LogRepository @Inject constructor(
         val fitbitData = getFitbitDataSummary()
         val habitData = getHabitDataSummary()
 
-        val isUnlimited = preferences.isUnlimited.first()
-        val balance = preferences.userBalance.first()
-        if (!isUnlimited && balance < 0.05f) return Result.failure(IllegalStateException("Insufficient credits ($0.05 required). Please top up in Settings."))
+        val weather = getWeatherContext()
 
-        val result = geminiService.getWeeklyRecap(recent, catMap, userContext = context, knowledgeBase = kb, fitbitData = fitbitData, habitData = habitData, documents = getEnrichedDocuments())
+        val result = geminiService.getWeeklyRecap(recent, catMap, userContext = context, knowledgeBase = kb, fitbitData = fitbitData, habitData = habitData, weatherContext = weather, documents = getEnrichedDocuments())
         result.onSuccess { text ->
             preferences.deductBalance(0.05f)
             saveAiInsight(text, "Weekly Recap")
@@ -697,11 +712,9 @@ class LogRepository @Inject constructor(
         val fitbitData = getFitbitDataSummary()
         val habitData = getHabitDataSummary()
 
-        val isUnlimited = preferences.isUnlimited.first()
-        val balance = preferences.userBalance.first()
-        if (!isUnlimited && balance < 0.10f) return Result.failure(IllegalStateException("Insufficient credits ($0.10 required). Please top up in Settings."))
+        val weather = getWeatherContext()
 
-        val result = geminiService.getDeepResearch(recent, catMap, userContext = context, knowledgeBase = kb, pastInsights = pastInsights, fitbitData = fitbitData, habitData = habitData, documents = getEnrichedDocuments())
+        val result = geminiService.getDeepResearch(recent, catMap, userContext = context, knowledgeBase = kb, pastInsights = pastInsights, fitbitData = fitbitData, habitData = habitData, weatherContext = weather, documents = getEnrichedDocuments())
         result.onSuccess { text ->
             preferences.deductBalance(0.10f)
             saveAiInsight(text, "Deep Advice")
@@ -723,11 +736,9 @@ class LogRepository @Inject constructor(
         val fitbitData = getFitbitDataSummary()
         val habitData = getHabitDataSummary()
 
-        val isUnlimited = preferences.isUnlimited.first()
-        val balance = preferences.userBalance.first()
-        if (!isUnlimited && balance < 0.05f) return Result.failure(IllegalStateException("Insufficient credits ($0.05 required). Please top up in Settings."))
+        val weather = getWeatherContext()
 
-        val result = geminiService.getDocumentComparison(recent, catMap, userContext = context, knowledgeBase = kb, pastInsights = pastInsights, fitbitData = fitbitData, habitData = habitData, documents = getEnrichedDocuments())
+        val result = geminiService.getDocumentComparison(recent, catMap, userContext = context, knowledgeBase = kb, pastInsights = pastInsights, fitbitData = fitbitData, habitData = habitData, weatherContext = weather, documents = getEnrichedDocuments())
         result.onSuccess { text ->
             preferences.deductBalance(0.05f)
             saveAiInsight(text, "Document Comparison")
@@ -1113,7 +1124,7 @@ class LogRepository @Inject constructor(
                 LogEntry(
                     categoryId = 7, 
                     body = rawText,
-                    manualText = rawText,
+                    manualText = "", // No longer storing redundant manual text
                     source = "Voice Raw"
                 )
             )
@@ -1127,7 +1138,7 @@ class LogRepository @Inject constructor(
                     LogEntry(
                         categoryId = response.categoryId,
                         body = response.cleanedText,
-                        manualText = response.cleanedText,
+                        manualText = "", // No longer storing redundant manual text
                         source = "Voice AI"
                     )
                 )
@@ -1139,7 +1150,7 @@ class LogRepository @Inject constructor(
                     LogEntry(
                         categoryId = 7, 
                         body = rawText,
-                        manualText = rawText,
+                        manualText = "", // No longer storing redundant manual text
                         source = "Voice AI (Fallback)"
                     )
                 )
