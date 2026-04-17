@@ -1116,7 +1116,18 @@ class LogRepository @Inject constructor(
      */
     suspend fun getBodyLoad(allCategories: List<Category>, dateStr: String? = null): Result<BodyLoadResponse> {
         val targetDay = dateStr ?: java.time.LocalDate.now().toString()
-        val recent = logEntryDao.getRecentEntriesAll(limit = 100) 
+        
+        val targetDayEndMillis = try {
+            java.time.LocalDate.parse(targetDay)
+                .atTime(23, 59, 59)
+                .atZone(java.time.ZoneId.systemDefault())
+                .toInstant()
+                .toEpochMilli()
+        } catch (e: Exception) { System.currentTimeMillis() }
+        
+        val startMillis = targetDayEndMillis - (7L * 24 * 60 * 60 * 1000L)
+        val recent = logEntryDao.getRecentEntriesInRange(startMillis, targetDayEndMillis) 
+
         val catMap = allCategories.associate { it.id to it.name }
         val context = getEnrichedUserContext()
         val kb = getEnrichedKnowledgeBase()
