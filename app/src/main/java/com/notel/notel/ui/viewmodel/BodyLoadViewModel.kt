@@ -179,6 +179,7 @@ class BodyLoadViewModel @Inject constructor(
                 val todayCache = allHistory[todayStr]
                 val cacheSleep = (todayCache?.get("sleepMins") ?: 0.0).toInt()
                 val cacheCals = (todayCache?.get("calories") ?: 0.0).toInt()
+                val cacheJots = (todayCache?.get("jotCountDaily") ?: 0.0).toInt()
                 val cacheSpikes = (todayCache?.get("spikeCount") ?: 0.0).toInt()
                 
                 // Only update if data has actually changed to prevent UI flicker
