@@ -483,8 +483,59 @@ private fun EditExtractedTextDialog(
 private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
         val lines = text.lines()
-        lines.forEach { line ->
+        
+        var i = 0
+        while (i < lines.size) {
+            val line = lines[i]
             val trimmed = line.trim()
+            
+            // Check for Markdown table block
+            if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+                val tableLines = mutableListOf<String>()
+                while (i < lines.size && lines[i].trim().startsWith("|")) {
+                    tableLines.add(lines[i].trim())
+                    i++
+                }
+                
+                // Render table in a scrollable spreadsheet box
+                Surface(
+                    color = NotelSurfaceHigh.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp)
+                ) {
+                    val hScroll = rememberScrollState()
+                    Column(
+                        modifier = Modifier
+                            .horizontalScroll(hScroll)
+                            .padding(12.dp)
+                    ) {
+                        tableLines.forEachIndexed { index, rowRaw ->
+                            val isHeaderDivider = rowRaw.contains("---")
+                            if (!isHeaderDivider) {
+                                Text(
+                                    text = rowRaw.replace("|", "  |  ").trim(),
+                                    color = if (index == 0) NotelPrimary else NotelTextPrimary,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (index == 0) FontWeight.Bold else FontWeight.Normal,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                    maxLines = 1,
+                                    style = androidx.compose.ui.text.TextStyle(letterSpacing = 0.sp)
+                                )
+                                if (index == 0) {
+                                    HorizontalDivider(
+                                        color = NotelPrimary.copy(alpha = 0.3f),
+                                        modifier = Modifier.padding(vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                continue // Already incremented i inside the loop
+            }
+            
             when {
                 trimmed.isBlank() -> {
                     Spacer(Modifier.height(6.dp))
@@ -573,6 +624,7 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                     )
                 }
             }
+            i++
         }
     }
 }
