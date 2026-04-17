@@ -66,6 +66,9 @@ class SettingsViewModel @Inject constructor(
     val professionalUpdates = preferences.professionalUpdates
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
+    val redditSummaries = preferences.redditSummaries
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+
     val processedFiles = preferences.processedFiles
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
@@ -357,6 +360,12 @@ class SettingsViewModel @Inject constructor(
     fun deleteDocument(doc: com.notel.notel.data.local.entity.KnowledgeDocument) {
         viewModelScope.launch {
             logRepository.deleteDocument(doc)
+        }
+    }
+
+    fun clearAllDocuments() {
+        viewModelScope.launch {
+            logRepository.clearAllDocuments()
         }
     }
 

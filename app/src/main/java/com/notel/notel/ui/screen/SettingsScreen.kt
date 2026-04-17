@@ -833,7 +833,7 @@ fun SettingsScreen(
                     Spacer(Modifier.height(24.dp))
                 }
 
-                // ── FILE KNOWLEDGE BASE (top of AI tab) ──────────────────────────
+                // ── FILE KNOWLEDGE BASE + ORIGINAL DOCUMENTS (merged) ────────────
                 Text("FILE KNOWLEDGE BASE", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(8.dp))
 
@@ -1089,22 +1089,93 @@ fun SettingsScreen(
                                 }
                             }
                         }
-                    }
 
-                if (knowledgeDocuments.isNotEmpty()) {
-                    Spacer(Modifier.height(24.dp))
-                    Text("ORIGINAL DOCUMENTS", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(8.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        knowledgeDocuments.forEach { doc ->
-                            DocumentTile(
-                                doc = doc, 
-                                onView = { onNavigateToFile(doc.fileName, doc.filePath, doc.mimeType) },
-                                onDelete = { viewModel.deleteDocument(doc) }
+                    // ── ORIGINAL DOCUMENTS (collapsible, inside same card) ────────
+                    if (knowledgeDocuments.isNotEmpty()) {
+                        Spacer(Modifier.height(16.dp))
+                        HorizontalDivider(color = NotelSurfaceHigh, thickness = 0.5.dp)
+                        Spacer(Modifier.height(12.dp))
+
+                        var isDocsExpanded by remember { mutableStateOf(false) }
+                        var showClearAllDialog by remember { mutableStateOf(false) }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { isDocsExpanded = !isDocsExpanded }
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.Folder,
+                                    contentDescription = null,
+                                    tint = NotelPrimary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    "Original Documents (${knowledgeDocuments.size})",
+                                    color = NotelPrimary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Icon(
+                                if (isDocsExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                contentDescription = "Toggle Documents",
+                                tint = NotelPrimary
                             )
                         }
+
+                        if (isDocsExpanded) {
+                            Spacer(Modifier.height(8.dp))
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                knowledgeDocuments.forEach { doc ->
+                                    DocumentTile(
+                                        doc = doc,
+                                        onView = { onNavigateToFile(doc.name, doc.filePath, doc.mimeType) },
+                                        onDelete = { viewModel.deleteDocument(doc) }
+                                    )
+                                }
+                            }
+
+                            Spacer(Modifier.height(12.dp))
+                            GlassyButton(
+                                onClick = { showClearAllDialog = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
+                            ) {
+                                Icon(Icons.Default.DeleteSweep, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Clear All Files", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
+                            }
+
+                            if (showClearAllDialog) {
+                                AlertDialog(
+                                    onDismissRequest = { showClearAllDialog = false },
+                                    title = { Text("Clear All Files?", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
+                                    text = { Text("This will permanently delete all ${knowledgeDocuments.size} uploaded files. This cannot be undone.", color = NotelTextSecondary) },
+                                    confirmButton = {
+                                        TextButton(onClick = {
+                                            viewModel.clearAllDocuments()
+                                            showClearAllDialog = false
+                                        }) {
+                                            Text("Delete All", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                                        }
+                                    },
+                                    dismissButton = {
+                                        TextButton(onClick = { showClearAllDialog = false }) {
+                                            Text("Cancel", color = NotelTextSecondary)
+                                        }
+                                    },
+                                    containerColor = NotelSurface
+                                )
+                            }
+                        }
                     }
-                }
+                } // end GlassyCard
 
                 Spacer(Modifier.height(24.dp))
                 Text("AI CONFIGURATION", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
@@ -2339,7 +2410,7 @@ fun DocumentTile(
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = doc.fileName,
+                    text = doc.name,
                     color = NotelTextPrimary,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,

@@ -40,6 +40,11 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideKnowledgeDocumentDao(db: NotelDatabase): com.notel.notel.data.local.dao.KnowledgeDocumentDao = 
+        db.knowledgeDocumentDao()
+
+    @Provides
+    @Singleton
     fun provideOkHttpClient(authInterceptor: AuthInterceptor): OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)

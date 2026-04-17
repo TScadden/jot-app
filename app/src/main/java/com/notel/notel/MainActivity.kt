@@ -243,7 +243,8 @@ class MainActivity : ComponentActivity() {
 
                     // Floating Glass Nav Banner
                     val hideNavRoutes = listOf("login", "profile_setup", "connections", "setup_loading", "data_connections")
-                    if (currentRoute !in hideNavRoutes && currentRoute != null) {
+                    val isFileViewer = currentRoute?.startsWith("file_viewer") == true
+                    if (currentRoute !in hideNavRoutes && !isFileViewer && currentRoute != null) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
