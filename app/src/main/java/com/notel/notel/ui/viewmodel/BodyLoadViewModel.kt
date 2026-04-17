@@ -195,10 +195,27 @@ class BodyLoadViewModel @Inject constructor(
                 // Protective merge
                 if (merged["sleepMins"] == 0.0 && (existing["sleepMins"] ?: 0.0) > 0.0) merged["sleepMins"] = existing["sleepMins"]!!
                 if (merged["calories"] == 0.0 && (existing["calories"] ?: 0.0) > 0.0) merged["calories"] = existing["calories"]!!
-                if (existing.containsKey("score")) merged["score"] = existing["score"]!!
-                else if (!merged.containsKey("score")) merged["score"] = -1.0 // -1 means missing
+                
+                // Preserve score if it exists and is valid (>=0)
+                val existingScore = existing["score"] ?: -1.0
+                if (existingScore >= 0.0) merged["score"] = existingScore
+                else merged["score"] = -1.0
                 
                 allHistory[d] = merged
+            }
+
+            // 2.5 Update UI with merged data before determining AI needs
+            _uiState.update { state ->
+                state.copy(
+                    activeCalories = allHistory[todayStr]?.get("calories")?.toInt() ?: 0,
+                    sleepMinutes = allHistory[todayStr]?.get("sleepMins")?.toInt() ?: 0,
+                    jotCountDaily = allHistory[todayStr]?.get("jotCountDaily")?.toInt() ?: 0,
+                    score = allHistory[todayStr]?.get("score")?.toInt() ?: -1,
+                    historyScores = last7Days.map { d ->
+                        val h = allHistory[d] ?: emptyMap()
+                        BodyLoadSnapshot(d, java.time.LocalDate.parse(d).format(java.time.format.DateTimeFormatter.ofPattern("EEE")), (h["score"] ?: -1.0).toInt(), emptyList(), emptyList())
+                    }.reversed()
+                )
             }
 
             // 3. Determine which days need AI Scoring
@@ -273,7 +290,7 @@ class BodyLoadViewModel @Inject constructor(
         val statsJson = preferences.lastKnownStats.first()
         
         val allHistory: Map<String, Map<String, Double>> = try {
-            if (statsJson.isNotBlank()) Json.decodeFromString(statsJson) else emptyMap()
+            if (statsJson.isNotBlank()) Json.decodeFromString<Map<String, Map<String, Double>>>(statsJson) else emptyMap()
         } catch(e: Exception) { emptyMap() }
 
         val todayStats = allHistory[todayStr] ?: emptyMap()
