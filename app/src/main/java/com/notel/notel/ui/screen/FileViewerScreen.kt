@@ -368,12 +368,17 @@ private fun EditExtractedTextDialog(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
     ) {
         Surface(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = 24.dp),
+                .padding(top = 24.dp)
+                .imePadding()
+                .navigationBarsPadding(),
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             color = NotelBackground
         ) {
