@@ -501,11 +501,12 @@ fun NotelNavGraph() {
                             popUpTo(0) { inclusive = true }
                         }
                     },
-                    onNavigateToFile = { name, path, mime ->
+                    onNavigateToFile = { name, path, mime, docId ->
                         val encName = java.net.URLEncoder.encode(name, "UTF-8")
                         val encPath = java.net.URLEncoder.encode(path, "UTF-8")
                         val encMime = java.net.URLEncoder.encode(mime, "UTF-8")
-                        navController.navigate("file_viewer?name=$encName&path=$encPath&mime=$encMime")
+                        val encDocId = java.net.URLEncoder.encode(docId, "UTF-8")
+                        navController.navigate("file_viewer?name=$encName&path=$encPath&mime=$encMime&docId=$encDocId")
                     }
                 )
             }
