@@ -137,9 +137,10 @@ class SyncManager @Inject constructor(
                 val logsFound = body.entries.size
                 val categoriesFound = body.categories.size
                 
-                // IMPORTANT SENSITIVITY: If data exists, onboarding is complete
+                // IMPORTANT SENSITIVITY: If data exists, onboarding is complete and they don't need the tutorial
                 if (logsFound > 0 || categoriesFound > 0) {
                     preferences.setOnboardingComplete(true)
+                    preferences.setSettingsTutorialSeen(true)
                 }
 
                 // A. Restore Categories FIRST
