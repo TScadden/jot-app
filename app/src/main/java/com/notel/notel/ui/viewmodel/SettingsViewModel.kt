@@ -407,7 +407,7 @@ class SettingsViewModel @Inject constructor(
             if (index in facts.indices) {
                 facts[index] = newText
                 preferences.setKnowledgeBase(facts.joinToString("\n\n"))
-                syncManager.pushProfileData()
+                syncManager.syncAllData()
             }
         }
     }
@@ -419,7 +419,7 @@ class SettingsViewModel @Inject constructor(
             val current = preferences.professionalUpdates.first()
             val combined = if (current.isBlank()) newEntry else "$newEntry\n\n$current"
             preferences.setProfessionalUpdates(combined)
-            syncManager.pushProfileData()
+            syncManager.syncAllData()
         }
     }
 
@@ -431,7 +431,7 @@ class SettingsViewModel @Inject constructor(
                 if (index in updatesList.indices) {
                     updatesList.removeAt(index)
                     preferences.setProfessionalUpdates(updatesList.joinToString("\n\n"))
-                    syncManager.pushProfileData()
+                    syncManager.syncAllData()
                 }
             }
         }
@@ -445,7 +445,7 @@ class SettingsViewModel @Inject constructor(
                 if (index in updatesList.indices) {
                     updatesList[index] = newText
                     preferences.setProfessionalUpdates(updatesList.joinToString("\n\n"))
-                    syncManager.pushProfileData()
+                    syncManager.syncAllData()
                 }
             }
         }
@@ -454,7 +454,7 @@ class SettingsViewModel @Inject constructor(
     fun clearProfessionalUpdates() {
         viewModelScope.launch { 
             preferences.setProfessionalUpdates("")
-            syncManager.pushProfileData()
+            syncManager.syncAllData()
         }
     }
 
@@ -615,7 +615,7 @@ class SettingsViewModel @Inject constructor(
                 current.add(EventCounterDto(id, uniqueName, dateMills, isUp, autoUp, isFavorite = current.isEmpty()))
             }
             preferences.setEventCounters(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(EventCounterDto.serializer()), current))
-            syncManager.pushProfileData()
+            syncManager.syncAllData()
         }
     }
 
@@ -629,7 +629,7 @@ class SettingsViewModel @Inject constructor(
                 val counter = current[index]
                 current[index] = counter.copy(isArchived = !counter.isArchived)
                 preferences.setEventCounters(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(EventCounterDto.serializer()), current))
-                syncManager.pushProfileData()
+                syncManager.syncAllData()
             }
         }
     }
@@ -653,7 +653,7 @@ class SettingsViewModel @Inject constructor(
                 
                 history.add(0, CounterHistoryItem(counter.name, counter.targetDate, System.currentTimeMillis()))
                 preferences.setCounterHistory(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(CounterHistoryItem.serializer()), history.take(20)))
-                syncManager.pushProfileData()
+                syncManager.syncAllData()
             }
         }
     }
@@ -796,7 +796,7 @@ class SettingsViewModel @Inject constructor(
                                 .joinToString("\n\n")
                             val updatedReddit = if (filteredReddit.isBlank()) newEntry else "$newEntry\n\n$filteredReddit"
                             preferences.setRedditSummaries(updatedReddit)
-                            syncManager.pushProfileData()
+                            syncManager.syncAllData()
                             _redditSynced.emit("Integrated r/$sub community knowledge")
                         } else {
                             _redditError.emit(body?.error ?: "No content returned for r/$sub")
@@ -834,7 +834,7 @@ class SettingsViewModel @Inject constructor(
             val currentRedditSummaries = preferences.redditSummaries.first()
             val filteredReddit = currentRedditSummaries.split("\n\n").filter { !it.contains(redditMarker) }.joinToString("\n\n")
             preferences.setRedditSummaries(filteredReddit)
-            syncManager.pushProfileData()
+            syncManager.syncAllData()
         }
     }
 
@@ -848,7 +848,7 @@ class SettingsViewModel @Inject constructor(
             if (idx >= 0) {
                 current[idx] = current[idx].copy(autoUpdate = !current[idx].autoUpdate)
                 preferences.setRedditSubreddits(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(LinkedSubreddit.serializer()), current))
-                syncManager.pushProfileData()
+                syncManager.syncAllData()
             }
         }
     }
