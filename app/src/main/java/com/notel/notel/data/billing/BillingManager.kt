@@ -62,6 +62,10 @@ class BillingManager @Inject constructor(
 
     private val productList = listOf(
         QueryProductDetailsParams.Product.newBuilder()
+            .setProductId("jot_membership_monthly")
+            .setProductType(BillingClient.ProductType.SUBS)
+            .build(),
+        QueryProductDetailsParams.Product.newBuilder()
             .setProductId("jot_credits_5")
             .setProductType(BillingClient.ProductType.INAPP)
             .build(),
@@ -106,11 +110,17 @@ class BillingManager @Inject constructor(
             return
         }
 
-        val productDetailsParamsList = listOf<BillingFlowParams.ProductDetailsParams>(
-            BillingFlowParams.ProductDetailsParams.newBuilder()
-                .setProductDetails(productDetails)
-                .build()
-        )
+        val productDetailsParamsBuilder = BillingFlowParams.ProductDetailsParams.newBuilder()
+            .setProductDetails(productDetails)
+
+        if (productDetails.productType == BillingClient.ProductType.SUBS) {
+            val offerToken = productDetails.subscriptionOfferDetails?.firstOrNull()?.offerToken
+            if (offerToken != null) {
+                productDetailsParamsBuilder.setOfferToken(offerToken)
+            }
+        }
+
+        val productDetailsParamsList = listOf(productDetailsParamsBuilder.build())
 
         val flowParams = BillingFlowParams.newBuilder()
             .setProductDetailsParamsList(productDetailsParamsList)

@@ -291,7 +291,7 @@ fun SettingsScreen(
                             onClick = { currentMenu = SettingsMenu.MEMBERSHIP },
                             modifier = Modifier.onGloballyPositioned { coordWallet = it }
                         ) {
-                            Icon(Icons.Default.Star, "Membership", tint = NotelPrimary)
+                            Icon(Icons.Default.AccountBalanceWallet, "Membership", tint = NotelPrimary)
                         }
                     }
                 },
@@ -393,7 +393,7 @@ fun SettingsScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 containerColor = NotelPrimary
                             ) {
-                                Icon(Icons.Default.Star, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Default.AccountBalanceWallet, null, tint = Color.White, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
                                 Text("Start Free Trial · \$3/month", color = Color.White, fontWeight = FontWeight.Bold)
                             }
