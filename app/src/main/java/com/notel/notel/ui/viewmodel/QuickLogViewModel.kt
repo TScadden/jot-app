@@ -81,6 +81,7 @@ class QuickLogViewModel @Inject constructor(
 
     /** Debounce job — cancels any in-flight category switch before starting a new one */
     private var fetchJob: Job? = null
+    private var debounceJob: Job? = null
 
     /** In-memory cache: category ID → chip list. Persists for the lifetime of the ViewModel. */
     private val chipCache = mutableMapOf<Int, List<String>>()
@@ -190,8 +191,8 @@ class QuickLogViewModel @Inject constructor(
         if (!_uiState.value.autoAiSuggestions) return // Skip fetch if auto is off
 
         // Debounce: if user switches quickly, cancel the previous fetch
-        fetchJob?.cancel()
-        fetchJob = viewModelScope.launch {
+        debounceJob?.cancel()
+        debounceJob = viewModelScope.launch {
             delay(300) // 300ms debounce — ignore rapid taps
             fetchSuggestions(category)
         }
