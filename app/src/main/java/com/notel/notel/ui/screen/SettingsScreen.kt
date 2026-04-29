@@ -331,14 +331,14 @@ fun SettingsScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    if (isUnlimited) "Active Membership" else "No Active Membership",
+                                    if (isUnlimited) "Admin Account" else "No Active Membership",
                                     color = NotelTextPrimary,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 18.sp
                                 )
                                 Spacer(Modifier.height(4.dp))
                                 Text(
-                                    if (isUnlimited) "Full AI Access · All Features Unlocked" else "Subscribe to unlock all AI features",
+                                    if (isUnlimited) "No membership needed · All Features Unlocked" else "Subscribe to unlock all AI features",
                                     color = if (isUnlimited) Color(0xFF4CAF50) else NotelTextSecondary,
                                     fontSize = 13.sp
                                 )
@@ -348,7 +348,7 @@ fun SettingsScreen(
                                 color = if (isUnlimited) Color(0xFF4CAF50).copy(alpha = 0.15f) else NotelSurfaceHigh
                             ) {
                                 Text(
-                                    if (isUnlimited) "ACTIVE" else "INACTIVE",
+                                    if (isUnlimited) "ADMIN" else "INACTIVE",
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                                     color = if (isUnlimited) Color(0xFF4CAF50) else NotelTextSecondary,
                                     fontSize = 11.sp,
