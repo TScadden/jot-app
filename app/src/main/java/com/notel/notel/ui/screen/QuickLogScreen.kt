@@ -51,8 +51,8 @@ fun QuickLogScreen(
     val isGeneratingDeepResearch by viewModel.isGeneratingDeepResearch.collectAsState()
 
     // Auto-fetch chips once...
-    LaunchedEffect(state.selectedCategory, state.userBalance, state.isUnlimited, state.autoAiSuggestions) {
-        val hasAccess = state.isUnlimited || state.userBalance >= 0.01f
+    LaunchedEffect(state.selectedCategory, state.isUnlimited, state.autoAiSuggestions) {
+        val hasAccess = state.isUnlimited
         if (state.autoAiSuggestions && state.selectedCategory != null && hasAccess &&
             state.chips.isEmpty() && !state.isLoadingChips && state.chipsError == null
         ) {
@@ -166,7 +166,16 @@ fun QuickLogScreen(
                         .padding(horizontal = 16.dp)
                 ) {
                     when {
-                        // Membership gate is enforced at the repository layer; errors surface via chipsError
+                        !state.isUnlimited -> Column(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("You do not have a membership", color = NotelTextSecondary, fontSize = 12.sp)
+                            Spacer(Modifier.height(8.dp))
+                            TextButton(onClick = onNavigateToSettings) {
+                                Text("Click here to start Free Trial", color = NotelTextSecondary.copy(alpha = 0.5f), fontWeight = FontWeight.Bold)
+                            }
+                        }
                         state.isLoadingChips -> Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 GlassySpinner(size = 48.dp)
@@ -336,20 +345,20 @@ fun QuickLogScreen(
             )
         }
 
-        // Free Credit Bonus Dialog
+        // Free Trial Bonus Dialog
         if (state.showFreeCreditPopup) {
             AlertDialog(
                 onDismissRequest = { viewModel.dismissBonusPopup() },
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.AccountBalanceWallet, null, tint = NotelPrimary)
+                        Icon(Icons.Default.Star, null, tint = NotelPrimary)
                         Spacer(Modifier.width(12.dp))
-                        Text("Free Credits!", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
+                        Text("3-Day Free Trial!", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
                     }
                 },
                 text = {
                     Text(
-                        "To get you started, we've added a free $1.00 to your wallet! Use it to explore AI suggestions, professional reports, and deep advice.",
+                        "To get you started, you can try Jot Premium completely free for 3 days! Unlock AI suggestions, professional reports, and deep advice in the Settings.",
                         color = NotelTextSecondary
                     )
                 },
