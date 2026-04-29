@@ -62,8 +62,8 @@ fun BodyLoadScreen(
     }
 
     // Auto-fetch suggestions if category is selected and auto is on
-    LaunchedEffect(quickLogState.selectedCategory, quickLogState.autoAiSuggestions) {
-        if (quickLogState.autoAiSuggestions && quickLogState.selectedCategory != null && quickLogState.chips.isEmpty()) {
+    LaunchedEffect(quickLogState.selectedCategory, quickLogState.autoAiSuggestions, quickLogState.isUnlimited) {
+        if (quickLogState.isUnlimited && quickLogState.autoAiSuggestions && quickLogState.selectedCategory != null && quickLogState.chips.isEmpty()) {
             quickLogViewModel.fetchSuggestions()
         }
     }
@@ -232,6 +232,16 @@ fun BodyLoadScreen(
                         .heightIn(min = 100.dp)
                 ) {
                     when {
+                        !quickLogState.isUnlimited -> Column(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("You do not have a membership", color = NotelTextSecondary, fontSize = 12.sp)
+                            Spacer(Modifier.height(8.dp))
+                            TextButton(onClick = { /* User can navigate via bottom bar */ }) {
+                                Text("Go to Settings to start Free Trial", color = NotelTextSecondary.copy(alpha = 0.5f), fontWeight = FontWeight.Bold)
+                            }
+                        }
                         quickLogState.isLoadingChips -> Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(color = NotelPrimary, modifier = Modifier.size(24.dp))
                         }
