@@ -2,6 +2,8 @@ package com.notel.notel.ui.screen
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -16,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -23,11 +26,12 @@ import com.notel.notel.data.local.entity.Category
 import com.notel.notel.data.local.entity.LogEntry
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.HistoryViewModel
-import com.notel.notel.ui.viewmodel.HabitViewModel
-import androidx.compose.animation.animateContentSize
-import androidx.compose.foundation.clickable
 import java.text.SimpleDateFormat
 import java.util.*
+
+// ── Design tokens matching the reference "System Vitals / Climate Core" tile style ──
+private val TileBackground = Color(0xFF0D1428)
+private val TileAccentPurple = Color(0xFF7C6EFF)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -81,13 +85,13 @@ fun HistoryScreen(
                 shape = RoundedCornerShape(14.dp),
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = NotelPrimary,
-                    unfocusedBorderColor = NotelSurfaceHigh,
+                    focusedBorderColor = TileAccentPurple,
+                    unfocusedBorderColor = TileAccentPurple.copy(alpha = 0.25f),
                     focusedTextColor = NotelTextPrimary,
                     unfocusedTextColor = NotelTextPrimary,
-                    cursorColor = NotelPrimary,
-                    unfocusedContainerColor = NotelSurface,
-                    focusedContainerColor = NotelSurface
+                    cursorColor = TileAccentPurple,
+                    unfocusedContainerColor = TileBackground,
+                    focusedContainerColor = TileBackground
                 )
             )
 
@@ -97,41 +101,52 @@ fun HistoryScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 item {
-                    Surface(
-                        onClick = { viewModel.setCategoryFilter(null) },
-                        modifier = Modifier.liquidGlass(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (categoryFilter == null) NotelPrimary else NotelSurfaceHigh,
-                            alpha = if (categoryFilter == null) 0.6f else 0.3f
-                        ),
-                        color = Color.Transparent
+                    val isAllSelected = categoryFilter == null
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (isAllSelected) TileAccentPurple else TileBackground)
+                            .border(
+                                width = 1.dp,
+                                color = if (isAllSelected) TileAccentPurple else TileAccentPurple.copy(alpha = 0.25f),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                            .clickable { viewModel.setCategoryFilter(null) }
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
                     ) {
                         Text(
-                            "All",
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            color = if (categoryFilter == null) Color.White else NotelTextSecondary,
-                            fontSize = 13.sp,
-                            fontWeight = if (categoryFilter == null) FontWeight.Bold else FontWeight.Medium
+                            "ALL",
+                            color = if (isAllSelected) Color(0xFF0A0A0E) else NotelTextSecondary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.8.sp
                         )
                     }
                 }
                 items(categories) { cat ->
                     val isSelected = categoryFilter == cat.id
-                    Surface(
-                        onClick = { viewModel.setCategoryFilter(if (isSelected) null else cat.id) },
-                        modifier = Modifier.liquidGlass(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isSelected) NotelPrimary else NotelSurfaceHigh,
-                            alpha = if (isSelected) 0.6f else 0.3f
-                        ),
-                        color = Color.Transparent
+                    val catColor = remember(cat) {
+                        try { Color(android.graphics.Color.parseColor(cat.colorHex)) }
+                        catch (e: Exception) { TileAccentPurple }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (isSelected) catColor else TileBackground)
+                            .border(
+                                width = 1.dp,
+                                color = if (isSelected) catColor else catColor.copy(alpha = 0.35f),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                            .clickable { viewModel.setCategoryFilter(if (isSelected) null else cat.id) }
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
                     ) {
                         Text(
-                            cat.name,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            color = if (isSelected) Color.White else NotelTextSecondary,
-                            fontSize = 13.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                            cat.name.uppercase(),
+                            color = if (isSelected) Color(0xFF0A0A0E) else NotelTextSecondary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.8.sp
                         )
                     }
                 }
@@ -141,8 +156,10 @@ fun HistoryScreen(
             Text(
                 "${entries.size} ${if (entries.size == 1) "entry" else "entries"}",
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
-                color = NotelTextSecondary,
-                fontSize = 12.sp
+                color = TileAccentPurple.copy(alpha = 0.6f),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 0.5.sp
             )
 
             // ── Entry List ────────────────────────────────────────────────
@@ -183,72 +200,137 @@ private fun EntryCard(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     val sdf = remember { SimpleDateFormat("MMM d, yyyy · h:mm a", Locale.getDefault()) }
 
-    GlassyCard(
-        modifier = Modifier.fillMaxWidth().animateContentSize(),
-        shape = RoundedCornerShape(16.dp),
-        color = NotelSurface
+    val catColor = remember(category) {
+        if (category != null) {
+            try { Color(android.graphics.Color.parseColor(category.colorHex)) }
+            catch (e: Exception) { null }
+        } else null
+    }
+
+    val accentColor = catColor ?: TileAccentPurple
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize()
+            .clip(RoundedCornerShape(16.dp))
+            .background(TileBackground)
+            .border(
+                width = 1.dp,
+                color = accentColor.copy(alpha = 0.20f),
+                shape = RoundedCornerShape(16.dp)
+            )
+            .clickable { onClick() }
     ) {
-        Column(modifier = Modifier.clickable { onClick() }) {
+        // Left accent strip
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .width(3.dp)
+                .fillMaxHeight()
+                .background(
+                    accentColor.copy(alpha = 0.85f),
+                    RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp)
+                )
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 4.dp, top = 14.dp, bottom = 14.dp)
+        ) {
+            // ── Header row ───────────────────────────────────────────────
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Category tag
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (category != null) {
-                        val catColor = try { Color(android.graphics.Color.parseColor(category.colorHex)) }
-                        catch (e: Exception) { NotelPrimary }
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = catColor.copy(alpha = 0.2f)
+                // Left side: category chip + voice AI badge
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    if (category != null && catColor != null) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(catColor.copy(alpha = 0.15f))
+                                .border(1.dp, catColor.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
                         ) {
                             Text(
-                                category.name,
+                                text = category.name.uppercase(),
                                 color = catColor,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.8.sp
                             )
                         }
+                        Spacer(Modifier.width(8.dp))
                     }
 
                     if (entry.source == "Voice AI") {
-                        Spacer(Modifier.width(8.dp))
                         Icon(
                             Icons.Default.AutoAwesome,
                             contentDescription = "Voice AI",
-                            tint = Color(0xFFB39DDB), // Light purple
-                            modifier = Modifier.size(14.dp)
+                            tint = TileAccentPurple,
+                            modifier = Modifier.size(12.dp)
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(
-                            "Voice AI",
-                            color = Color(0xFFB39DDB).copy(alpha = 0.7f),
+                            "VOICE AI",
+                            color = TileAccentPurple.copy(alpha = 0.75f),
                             fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.8.sp
                         )
                     }
                 }
+
+                // Delete button
                 IconButton(
                     onClick = { showDeleteConfirm = true },
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(28.dp)
                 ) {
-                    Icon(Icons.Default.Delete, null, tint = NotelTextSecondary, modifier = Modifier.size(18.dp))
+                    Icon(
+                        Icons.Default.Delete,
+                        null,
+                        tint = NotelTextSecondary.copy(alpha = 0.45f),
+                        modifier = Modifier.size(16.dp)
+                    )
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
-            Text(entry.body, color = NotelTextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-            Spacer(Modifier.height(6.dp))
-            Text(sdf.format(Date(entry.timestamp)), color = NotelTextSecondary, fontSize = 12.sp)
+            Spacer(Modifier.height(10.dp))
+
+            // ── Entry body ───────────────────────────────────────────────
+            Text(
+                text = entry.body,
+                color = NotelTextPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                lineHeight = 22.sp,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(Modifier.height(10.dp))
+
+            // ── Timestamp ────────────────────────────────────────────────
+            Text(
+                text = sdf.format(Date(entry.timestamp)),
+                color = TileAccentPurple.copy(alpha = 0.55f),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 0.3.sp
+            )
         }
     }
 
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            containerColor = NotelSurface,
+            containerColor = TileBackground,
             title = { Text("Delete entry?", color = NotelTextPrimary) },
             text = { Text("This cannot be undone.", color = NotelTextSecondary) },
             confirmButton = {
@@ -257,7 +339,7 @@ private fun EntryCard(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
+                TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel", color = NotelTextSecondary) }
             }
         )
     }

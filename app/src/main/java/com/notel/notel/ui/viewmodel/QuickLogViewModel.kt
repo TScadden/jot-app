@@ -225,7 +225,7 @@ class QuickLogViewModel @Inject constructor(
             }
         }
 
-        // 3. Fallback: If not cached and NO auto-AI preference, don't start a background fetch
+        // 3. Fallback: If not cached and auto-AI is off AND this isn't a forced manual load — don't auto-fetch
         if (!forceRefresh && !_uiState.value.autoAiSuggestions) {
              return
         }

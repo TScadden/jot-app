@@ -107,7 +107,7 @@ fun QuickLogScreen(
                                 }
                             }
                         } else {
-                            IconButton(onClick = { 
+                            IconButton(onClick = {
                                 context.startActivity(Intent(context, com.notel.notel.VoiceLogActivity::class.java))
                             }) {
                                 Icon(Icons.Default.Mic, null, tint = NotelPrimary)
@@ -117,7 +117,7 @@ fun QuickLogScreen(
                     shape = RoundedCornerShape(14.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = NotelPrimary,
-                        unfocusedBorderColor = NotelSurfaceHigh,
+                        unfocusedBorderColor = NotelPrimary.copy(alpha = 0.25f),
                         focusedTextColor = NotelTextPrimary,
                         unfocusedTextColor = NotelTextPrimary,
                         cursorColor = NotelPrimary,
@@ -165,10 +165,26 @@ fun QuickLogScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp)
                 ) {
-                when {
-                    !state.isUnlimited && state.userBalance < 0.01f -> NoBalancePrompt(onGoToSettings = onNavigateToSettings)
-                    !state.autoAiSuggestions && state.chips.isEmpty() && !state.isLoadingChips -> {
-                        Column(
+                    when {
+                        !state.isUnlimited && state.userBalance < 0.01f -> NoBalancePrompt(onGoToSettings = onNavigateToSettings)
+                        state.isLoadingChips -> Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                GlassySpinner(size = 48.dp)
+                                Spacer(Modifier.height(12.dp))
+                                Text("Getting suggestions…", color = NotelTextSecondary, fontSize = 14.sp)
+                            }
+                        }
+                        state.chipsError != null -> Column(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(state.chipsError!!, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                            Spacer(Modifier.height(12.dp))
+                            TextButton(onClick = { viewModel.fetchSuggestions(forceRefresh = true) }) {
+                                Text("Retry", color = NotelPrimary, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        !state.autoAiSuggestions && state.chips.isEmpty() -> Column(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
@@ -178,33 +194,16 @@ fun QuickLogScreen(
                                 Text("Load Suggestions", color = NotelPrimary, fontWeight = FontWeight.Bold)
                             }
                         }
+                        else -> ChipGrid(
+                            chips = state.chips,
+                            selected = state.selectedChips,
+                            onToggle = viewModel::toggleChip
+                        )
                     }
-                    state.isLoadingChips -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            GlassySpinner(size = 48.dp)
-                            Spacer(Modifier.height(12.dp))
-                            Text("Getting suggestions…", color = NotelTextSecondary, fontSize = 14.sp)
-                        }
-                    }
-                    state.chipsError != null -> Column(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text(state.chipsError!!, color = MaterialTheme.colorScheme.error, fontSize = 14.sp)
-                        Spacer(Modifier.height(12.dp))
-                        Button(onClick = { viewModel.fetchSuggestions(forceRefresh = true) }) { Text("Retry") }
-                    }
-                    else -> ChipGrid(
-                        chips = state.chips,
-                        selected = state.selectedChips,
-                        onToggle = viewModel::toggleChip
-                    )
                 }
             }
-        }
 
-        item {
+            item {
                 // ── Productivity Layer / Combo Preview ────────────────────────
                 AnimatedVisibility(
                     visible = state.manualText.isBlank() && state.selectedChips.isEmpty(),
@@ -510,27 +509,29 @@ fun QuickLogScreen(
 
 @Composable
 private fun CategoryChip(category: Category, isSelected: Boolean, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
+    val catColor = remember(category) {
+        try { Color(android.graphics.Color.parseColor(category.colorHex)) }
+        catch (e: Exception) { NotelPrimary }
+    }
+    Box(
         modifier = Modifier
-            .liquidGlass(
-                shape = RoundedCornerShape(12.dp),
-                color = if (isSelected) NotelPrimary else NotelSurfaceHigh,
-                alpha = if (isSelected) 0.6f else 0.3f
-            ),
-        color = Color.Transparent
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                category.name,
-                color = if (isSelected) Color.White else NotelTextSecondary,
-                fontSize = 13.sp,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (isSelected) catColor else NotelSurface)
+            .border(
+                width = 1.dp,
+                color = if (isSelected) catColor else catColor.copy(alpha = 0.35f),
+                shape = RoundedCornerShape(10.dp)
             )
-        }
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+    ) {
+        Text(
+            text = category.name.uppercase(),
+            color = if (isSelected) Color.White else NotelTextSecondary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.6.sp
+        )
     }
 }
 
@@ -548,23 +549,22 @@ private fun ChipGrid(chips: List<String>, selected: List<String>, onToggle: (Str
         ) {
             chips.forEach { chip ->
                 val isSelected = chip in selected
-                Surface(
-                    onClick = { onToggle(chip) },
+                Box(
                     modifier = Modifier
                         .weight(1f)
                         .animateContentSize()
                         .clip(RoundedCornerShape(14.dp))
-                        .background(if (isSelected) NotelPrimary.copy(alpha = 0.8f) else NotelSurfaceHigh.copy(alpha = 0.2f))
+                        .background(if (isSelected) NotelPrimary else NotelSurface)
                         .border(
                             width = 1.dp,
-                            color = if (isSelected) Color.Transparent else Color.White.copy(alpha = 0.05f),
+                            color = if (isSelected) NotelPrimary else NotelPrimary.copy(alpha = 0.20f),
                             shape = RoundedCornerShape(14.dp)
-                        ),
-                    color = Color.Transparent
+                        )
+                        .clickable { onToggle(chip) }
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
                 ) {
                     Text(
                         text = chip,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                         color = if (isSelected) Color.White else NotelTextPrimary,
                         fontSize = 13.sp,
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
@@ -743,25 +743,30 @@ private fun SmartActionCard(
     onDismiss: () -> Unit,
     onAccept: () -> Unit
 ) {
-    Surface(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp)
-            .liquidGlass(
-                shape = RoundedCornerShape(16.dp),
-                color = NotelPrimary,
-                alpha = 0.15f
-            ),
-        color = Color.Transparent
+            .clip(RoundedCornerShape(16.dp))
+            .background(NotelSurface)
+            .border(1.dp, NotelPrimary.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        // Left accent strip
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .width(3.dp)
+                .fillMaxHeight()
+                .background(NotelPrimary.copy(alpha = 0.8f), RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp))
+        )
+        Column(modifier = Modifier.padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Lightbulb, contentDescription = null, tint = NotelPrimary, modifier = Modifier.size(20.dp))
+                Icon(Icons.Default.Lightbulb, contentDescription = null, tint = NotelPrimary, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text(action.title, style = MaterialTheme.typography.titleMedium, color = NotelPrimary, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
                 IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
-                    Icon(Icons.Default.Close, contentDescription = "Dismiss", tint = NotelTextSecondary, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Close, contentDescription = "Dismiss", tint = NotelTextSecondary, modifier = Modifier.size(14.dp))
                 }
             }
             Spacer(Modifier.height(8.dp))

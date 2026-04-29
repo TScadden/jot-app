@@ -1,6 +1,10 @@
 package com.notel.notel.ui.screen
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -130,9 +134,8 @@ fun EntryDetailScreen(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(20.dp) // More spacious
             ) {
-                // Category Picker Section
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Change Category", style = MaterialTheme.typography.labelSmall, color = NotelTextSecondary)
+                    Text("CHANGE CATEGORY", style = MaterialTheme.typography.labelSmall, color = NotelPrimary, letterSpacing = 0.8.sp)
                     androidx.compose.foundation.lazy.LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxWidth()
@@ -142,29 +145,22 @@ fun EntryDetailScreen(
                             val isSelected = cat.id == e.categoryId
                             val color = try { Color(android.graphics.Color.parseColor(cat.colorHex)) }
                                         catch (_: Exception) { NotelPrimary }
-                                        
-                            Surface(
-                                onClick = { viewModel.updateCategory(cat.id) },
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color.Transparent,
+                            Box(
                                 modifier = Modifier
                                     .height(40.dp)
-                                    .liquidGlass(
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = if (isSelected) color else NotelSurface,
-                                        alpha = if (isSelected) 0.6f else 0.3f,
-                                        borderWidth = if (isSelected) 2.dp else 1.dp
-                                    )
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (isSelected) color else NotelSurface)
+                                    .border(1.dp, if (isSelected) color else color.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                                    .clickable { viewModel.updateCategory(cat.id) }
+                                    .padding(horizontal = 14.dp)
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxHeight()) {
                                     Text(
-                                        cat.name, 
-                                        color = if (isSelected) Color.White else NotelTextPrimary,
-                                        fontSize = 13.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                        cat.name.uppercase(),
+                                        color = if (isSelected) Color.White else NotelTextSecondary,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.6.sp
                                     )
                                 }
                             }
@@ -212,42 +208,47 @@ fun EntryDetailScreen(
                 }
 
                 // Body card
-                GlassyCard(
-                    modifier = Modifier.fillMaxWidth()
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(NotelSurface)
+                        .border(1.dp, NotelPrimary.copy(alpha = 0.18f), RoundedCornerShape(16.dp))
+                        .padding(16.dp)
                 ) {
-                    Text("Content", style = MaterialTheme.typography.labelSmall, color = NotelTextSecondary)
-                    Spacer(Modifier.height(8.dp))
-                    
-                    val combinedText = if (e.manualText.isNotBlank()) {
-                        "${e.body}\n\n${e.manualText}"
-                    } else {
-                        e.body
+                    Column {
+                        Text("CONTENT", style = MaterialTheme.typography.labelSmall, color = NotelPrimary, letterSpacing = 0.8.sp)
+                        Spacer(Modifier.height(10.dp))
+                        val combinedText = if (e.manualText.isNotBlank()) "${e.body}\n\n${e.manualText}" else e.body
+                        Text(combinedText, color = NotelTextPrimary, fontSize = 17.sp, lineHeight = 24.sp, fontWeight = FontWeight.Medium)
                     }
-
-                    Text(
-                        combinedText, 
-                        color = NotelTextPrimary, 
-                        fontSize = 17.sp, 
-                        lineHeight = 24.sp,
-                        fontWeight = FontWeight.Medium
-                    )
                 }
 
                 // Chips used
                 if (chips.isNotEmpty()) {
-                    GlassyCard(modifier = Modifier.fillMaxWidth()) {
-                        Text("Associated Tiles", style = MaterialTheme.typography.labelSmall, color = NotelTextSecondary)
-                        Spacer(Modifier.height(12.dp))
-                        @OptIn(ExperimentalLayoutApi::class)
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            chips.forEach { chip ->
-                                Surface(
-                                    shape = RoundedCornerShape(20.dp),
-                                    color = Color.Transparent,
-                                    modifier = Modifier.liquidGlass(shape = RoundedCornerShape(20.dp), color = NotelSurfaceHigh, alpha = 0.5f)
-                                ) {
-                                    Text(chip, color = NotelTextPrimary, fontSize = 13.sp,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(NotelSurface)
+                            .border(1.dp, NotelPrimary.copy(alpha = 0.18f), RoundedCornerShape(16.dp))
+                            .padding(16.dp)
+                    ) {
+                        Column {
+                            Text("ASSOCIATED TILES", style = MaterialTheme.typography.labelSmall, color = NotelPrimary, letterSpacing = 0.8.sp)
+                            Spacer(Modifier.height(12.dp))
+                            @OptIn(ExperimentalLayoutApi::class)
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                chips.forEach { chip ->
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(20.dp))
+                                            .background(NotelSurfaceHigh)
+                                            .border(1.dp, NotelPrimary.copy(alpha = 0.25f), RoundedCornerShape(20.dp))
+                                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Text(chip, color = NotelTextPrimary, fontSize = 13.sp)
+                                    }
                                 }
                             }
                         }

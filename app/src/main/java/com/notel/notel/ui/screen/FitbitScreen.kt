@@ -413,7 +413,7 @@ fun FitbitScreen(
                 // ── Orthostatic Spike Card ─────────────────────────────────
                 val todaySpikes = remember(state.heartRateData) {
                     val readings = state.heartRateData.map { it.second }
-                    if (readings.isEmpty()) listOf(0, 0, 0, 0, 0, 0)
+                    if (readings.isEmpty()) listOf(0, 0, 0, 0, 0, 0, 0, 0)
                     else {
                         val sorted = readings.sorted()
                         val max = sorted.last()
@@ -424,20 +424,36 @@ fun FitbitScreen(
                         var nightCount = 0
                         var inEvent = false
                         var eventEndMs = 0L
+                        var currentEventPeak = 0
+                        var over130Count = 0
+                        var over110Count = 0
                         
                         for ((tMs, bpm) in state.heartRateData) {
                             if (bpm >= 100) {
                                 if (!inEvent || tMs > eventEndMs) {
+                                    // Close previous event and classify its peak
+                                    if (inEvent) {
+                                        if (currentEventPeak >= 130) over130Count++
+                                        if (currentEventPeak >= 110) over110Count++
+                                    }
                                     val h = java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(tMs), zoneId).hour
                                     if (h in 7..21) dayCount++ else nightCount++
                                     inEvent = true
+                                    currentEventPeak = bpm
+                                } else {
+                                    currentEventPeak = maxOf(currentEventPeak, bpm)
                                 }
                                 eventEndMs = tMs + (5 * 60 * 1000)
                             }
                         }
+                        // Close final event
+                        if (inEvent) {
+                            if (currentEventPeak >= 130) over130Count++
+                            if (currentEventPeak >= 110) over110Count++
+                        }
                         
                         val delta = max - p10
-                        listOf(max, dayCount + nightCount, delta, p10, dayCount, nightCount)
+                        listOf(max, dayCount + nightCount, delta, p10, dayCount, nightCount, over130Count, over110Count)
                     }
                 }
 
@@ -447,8 +463,21 @@ fun FitbitScreen(
                 val baseline = todaySpikes[3]
                 val daySpikeCount = todaySpikes[4]
                 val nightSpikeCount = todaySpikes[5]
+                val spikesOver130 = todaySpikes[6]
+                val spikesOver110 = todaySpikes[7]
                 
-                val isHighBurden = spikeCount >= 8 || maxDelta >= 45
+                // Load classification:
+                // Heavy    = 2+ events peaking ≥ 130 bpm
+                // Moderate = 2+ events peaking ≥ 110 bpm  OR  5+ total spike events
+                // Low      = everything else
+                val loadLevel = when {
+                    spikesOver130 >= 2                     -> "HEAVY"
+                    spikesOver110 >= 2 || spikeCount >= 5 -> "MODERATE"
+                    else                                   -> "LOW"
+                }
+                val isHighBurden = loadLevel == "HEAVY"
+                val isModerate   = loadLevel == "MODERATE"
+
                 val noData = maxBpm == 0
                 var showSpikeDetails by remember { mutableStateOf(false) }
                 
@@ -462,12 +491,16 @@ fun FitbitScreen(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
                         ) { if (!noData) showSpikeDetails = !showSpikeDetails },
-                    color = if (isHighBurden) Color(0xFF331522) else NotelSurface
+                    color = when (loadLevel) {
+                        "HEAVY"    -> Color(0xFF331522)
+                        "MODERATE" -> Color(0xFF1A1500)
+                        else       -> NotelSurface
+                    }
                 ) {
                     if (noData) {
                         Column(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                text = "POTS Spike Analysis",
+                                text = "Spike Analysis",
                                 color = NotelTextPrimary,
                                 fontWeight = FontWeight.Black,
                                 fontSize = 16.sp
@@ -495,22 +528,38 @@ fun FitbitScreen(
                             ) {
                                 Column {
                                     Text(
-                                        text = if (isHighBurden) "CRITICAL SPIKES" else "SPIKE ANALYSIS",
-                                        color = if (isHighBurden) Color(0xFFFF5252) else NotelPrimary,
+                                        text = when (loadLevel) {
+                                            "HEAVY"    -> "CRITICAL SPIKES"
+                                            "MODERATE" -> "ELEVATED ACTIVITY"
+                                            else       -> "SPIKE ANALYSIS"
+                                        },
+                                        color = when (loadLevel) {
+                                            "HEAVY"    -> Color(0xFFFF5252)
+                                            "MODERATE" -> Color(0xFFE2A123)
+                                            else       -> NotelPrimary
+                                        },
                                         fontWeight = FontWeight.Black,
                                         fontSize = 11.sp,
                                         letterSpacing = 1.sp
                                     )
                                     Text(
-                                        text = if (isHighBurden) "⚠️ High Burden Detected" else "Normal Autonomic Response",
-                                        color = if (isHighBurden) Color(0xFFFF5252).copy(alpha = 0.7f) else NotelTextSecondary,
+                                        text = when (loadLevel) {
+                                            "HEAVY"    -> "⚠️ High Burden Detected"
+                                            "MODERATE" -> "⚡ Moderate Load Detected"
+                                            else       -> "Normal Autonomic Response"
+                                        },
+                                        color = when (loadLevel) {
+                                            "HEAVY"    -> Color(0xFFFF5252).copy(alpha = 0.7f)
+                                            "MODERATE" -> Color(0xFFE2A123).copy(alpha = 0.7f)
+                                            else       -> NotelTextSecondary
+                                        },
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Medium
                                     )
                                 }
                                 
-                                if (isHighBurden) {
-                                    Surface(
+                                when (loadLevel) {
+                                    "HEAVY" -> Surface(
                                         color = Color(0xFFFF5252).copy(alpha = 0.15f),
                                         shape = RoundedCornerShape(12.dp),
                                         border = BorderStroke(1.dp, Color(0xFFFF5252).copy(alpha = 0.3f))
@@ -523,6 +572,20 @@ fun FitbitScreen(
                                             fontWeight = FontWeight.Black
                                         )
                                     }
+                                    "MODERATE" -> Surface(
+                                        color = Color(0xFFE2A123).copy(alpha = 0.15f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        border = BorderStroke(1.dp, Color(0xFFE2A123).copy(alpha = 0.3f))
+                                    ) {
+                                        Text(
+                                            "MODERATE LOAD",
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                            color = Color(0xFFE2A123),
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Black
+                                        )
+                                    }
+                                    else -> {}
                                 }
                             }
                             

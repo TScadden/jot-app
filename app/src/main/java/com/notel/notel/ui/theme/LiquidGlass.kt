@@ -20,70 +20,54 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * A custom modifier that applies a "Liquid Glass" effect.
- * Features:
- * - Backdrop blur emulation (via semi-transparent gradient)
- * - Inner highlight border (refraction)
- * - Animated "shine" flare
- * - Press response scale
+ * Solid dark-navy tile modifier — replaces the old liquid glass effect.
+ * Applies:
+ *  - Solid [color] background
+ *  - Subtle 1dp [NotelPrimary]-tinted border
+ *  - Clip to [shape]
  */
 fun Modifier.liquidGlass(
     shape: Shape = RoundedCornerShape(16.dp),
     color: Color = NotelSurface,
     showBorder: Boolean = true,
-    alpha: Float = 0.6f,
-    borderWidth: Dp = 1.5.dp
+    alpha: Float = 1f,
+    borderWidth: Dp = 1.dp
 ): Modifier = this.then(
     Modifier
         .clip(shape)
-        .drawBehind {
-            val radius = if (shape is RoundedCornerShape) {
-                shape.topStart.toPx(size, this)
-            } else {
-                16.dp.toPx()
-            }
-
-            // Background Layer
-            drawRoundRect(
-                brush = Brush.verticalGradient(
-                    listOf(color.copy(alpha = alpha), color.copy(alpha = alpha * 0.8f))
-                ),
-                cornerRadius = CornerRadius(radius, radius)
-            )
-
-            // Inner Highlight (Top Edge Light Refraction)
-            if (showBorder) {
-                drawRoundRect(
-                    brush = Brush.verticalGradient(
-                        0.0f to GlassWhite.copy(alpha = 0.4f),
-                        0.1f to Color.Transparent,
-                        0.9f to Color.Transparent,
-                        1.0f to GlassWhite.copy(alpha = 0.1f)
-                    ),
-                    cornerRadius = CornerRadius(radius, radius),
-                    style = Stroke(width = borderWidth.toPx())
-                )
-            }
-        }
+        .background(color.copy(alpha = alpha.coerceIn(0f, 1f)))
+        .then(
+            if (showBorder) Modifier.border(
+                width = borderWidth,
+                color = NotelPrimary.copy(alpha = 0.18f),
+                shape = shape
+            ) else Modifier
+        )
 )
 
+/**
+ * A solid-filled action button using the tile theme's primary cyan color.
+ */
 @Composable
 fun GlassyButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     containerColor: Color = NotelPrimary,
-    shape: Shape = RoundedCornerShape(16.dp),
+    shape: Shape = RoundedCornerShape(14.dp),
     content: @Composable RowScope.() -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
-    
+
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.96f else 1f,
         animationSpec = spring(stiffness = Spring.StiffnessLow),
         label = "scale"
     )
+
+    val resolvedColor = if (enabled) containerColor else Color(0xFF1E2A3A)
+    val borderColor  = if (enabled) containerColor.copy(alpha = 0.6f) else Color(0xFF253040)
 
     Surface(
         onClick = onClick,
@@ -94,17 +78,13 @@ fun GlassyButton(
                 scaleX = scale
                 scaleY = scale
             }
-            .liquidGlass(
-                shape = shape,
-                color = if (enabled) containerColor else Color.Gray,
-                alpha = if (enabled) 0.5f else 0.2f
-            ),
-        color = Color.White.copy(alpha = 0.01f), // Ensure hit-testing works on the whole area
+            .clip(shape)
+            .border(width = 1.dp, color = borderColor, shape = shape),
+        color = resolvedColor,
         shape = shape
     ) {
         Row(
-            modifier = Modifier
-                .padding(horizontal = 24.dp, vertical = 12.dp),
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
             content = content
@@ -112,16 +92,22 @@ fun GlassyButton(
     }
 }
 
+/**
+ * Tile-style card — solid deep-navy background with a subtle cyan border.
+ * Drop-in replacement for the old GlassyCard.
+ */
 @Composable
 fun GlassyCard(
     modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(20.dp),
+    shape: Shape = RoundedCornerShape(16.dp),
     color: Color = NotelSurface,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Box(
         modifier = modifier
-            .liquidGlass(shape = shape, color = color, alpha = 0.4f)
+            .clip(shape)
+            .background(color)
+            .border(width = 1.dp, color = NotelPrimary.copy(alpha = 0.18f), shape = shape)
             .padding(16.dp),
         contentAlignment = Alignment.TopStart
     ) {
@@ -129,19 +115,22 @@ fun GlassyCard(
     }
 }
 
+/**
+ * Animated spinner — kept as-is for loading states.
+ */
 @Composable
 fun GlassySpinner(
     modifier: Modifier = Modifier,
-    color: Color = Color.White,
+    color: Color = NotelPrimary,
     size: Dp = 48.dp
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "spinner")
-    
+
     val rotation by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
-            animation = outlineCutoutAnimation(1000),
+            animation = tween(1000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "rotation"
@@ -160,14 +149,19 @@ fun GlassySpinner(
     Box(
         modifier = modifier
             .size(size)
-            .liquidGlass(shape = RoundedCornerShape(50), color = NotelSurface, alpha = 0.3f),
+            .clip(RoundedCornerShape(50))
+            .background(NotelSurface)
+            .border(1.dp, color.copy(alpha = 0.25f), RoundedCornerShape(50)),
         contentAlignment = Alignment.Center
     ) {
-        // Spinner Ring
-        androidx.compose.foundation.Canvas(modifier = Modifier.size(size * 0.75f).graphicsLayer { rotationZ = rotation }) {
+        androidx.compose.foundation.Canvas(
+            modifier = Modifier
+                .size(size * 0.72f)
+                .graphicsLayer { rotationZ = rotation }
+        ) {
             drawArc(
                 brush = Brush.sweepGradient(
-                    listOf(color.copy(alpha = 0.1f), color.copy(alpha = 0.8f), color.copy(alpha = 0.1f))
+                    listOf(color.copy(alpha = 0.05f), color.copy(alpha = 0.9f), color.copy(alpha = 0.05f))
                 ),
                 startAngle = 0f,
                 sweepAngle = 300f,
@@ -175,21 +169,15 @@ fun GlassySpinner(
                 style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
             )
         }
-        
-        // Pulsing Core
+
         Box(
             modifier = Modifier
-                .size(size * 0.25f)
-                .graphicsLayer { 
+                .size(size * 0.22f)
+                .graphicsLayer {
                     scaleX = pulseScale
                     scaleY = pulseScale
                 }
-                .background(color.copy(alpha = 0.9f), RoundedCornerShape(50))
+                .background(color.copy(alpha = 0.85f), RoundedCornerShape(50))
         )
     }
 }
-
-private fun outlineCutoutAnimation(duration: Int) = tween<Float>(
-    durationMillis = duration,
-    easing = LinearEasing
-)
