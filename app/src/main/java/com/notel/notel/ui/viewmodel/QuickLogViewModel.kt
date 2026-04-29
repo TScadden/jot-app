@@ -357,13 +357,24 @@ class QuickLogViewModel @Inject constructor(
                 }
             }
 
-            // 4. Sort and Filter
             val finalSmart = categories
                 .filter { it.id != 7 } // Exclude General from smart list (it's always available)
                 .sortedByDescending { scores[it.id] ?: 0 }
                 .take(5) // Only top 5
 
-            _uiState.update { it.copy(smartCategories = finalSmart) }
+            _uiState.update { state ->
+                // If auto AI is on, default to the first recommended tile instead of the plain first category
+                val isDefaultSelected = state.selectedCategory == null || state.selectedCategory.id == categories.firstOrNull()?.id
+                val newlySelected = if (state.autoAiSuggestions && finalSmart.isNotEmpty() && isDefaultSelected) finalSmart.first() else state.selectedCategory
+                
+                state.copy(smartCategories = finalSmart, selectedCategory = newlySelected)
+            }
+            
+            val finalSelected = _uiState.value.selectedCategory
+            if (_uiState.value.autoAiSuggestions && finalSelected != null && _uiState.value.chips.isEmpty()) {
+                fetchSuggestions(finalSelected)
+            }
+            
             checkForSmartActions(recentEntries)
         }
     }

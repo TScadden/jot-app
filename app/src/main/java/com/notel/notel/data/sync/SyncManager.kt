@@ -50,7 +50,11 @@ class SyncManager @Inject constructor(
                 Log.d(tag, "Full sync initiated...")
                 
                 // 1. Snapshot Recovery (Local -> Server, then Server -> Local)
-                pushProfileData()
+                // PREVENT DATA LOSS: Only push profile data if the user has completed onboarding locally.
+                // This prevents overwriting the server's data with empty local data on a fresh login.
+                if (preferences.onboardingComplete.first()) {
+                    pushProfileData()
+                }
                 val categories = categoryDao.getAllCategories().first()
                 if (categories.isNotEmpty()) {
                     val categoryDtos = categories.map {

@@ -246,7 +246,17 @@ fun BodyLoadScreen(
                         quickLogState.isLoadingChips -> Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(color = NotelPrimary, modifier = Modifier.size(24.dp))
                         }
-                        quickLogState.chips.isEmpty() && !quickLogState.autoAiSuggestions -> {
+                        quickLogState.chipsError != null -> Column(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(quickLogState.chipsError!!, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                            Spacer(Modifier.height(12.dp))
+                            TextButton(onClick = { quickLogViewModel.fetchSuggestions(forceRefresh = true) }) {
+                                Text("Retry", color = NotelPrimary, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        quickLogState.chips.isEmpty() -> {
                             Column(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
