@@ -166,7 +166,7 @@ fun QuickLogScreen(
                         .padding(horizontal = 16.dp)
                 ) {
                     when {
-                        !state.isUnlimited && state.userBalance < 0.01f -> NoBalancePrompt(onGoToSettings = onNavigateToSettings)
+                        // Membership gate is enforced at the repository layer; errors surface via chipsError
                         state.isLoadingChips -> Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 GlassySpinner(size = 48.dp)
@@ -416,94 +416,6 @@ fun QuickLogScreen(
             }
         }
 
-        // ── Magical AI Bubble (Floating Action) ────────────────────────
-        var isAiExpanded by remember { mutableStateOf(false) }
-        
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(bottom = 120.dp, start = 24.dp), // Left side and slightly higher
-            contentAlignment = Alignment.BottomStart // Moved to Left
-        ) {
-            Box(
-                modifier = Modifier
-                    .animateContentSize(
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioLowBouncy,
-                            stiffness = Spring.StiffnessLow
-                        )
-                    )
-                    .liquidGlass(
-                        shape = if (isAiExpanded) RoundedCornerShape(20.dp) else CircleShape,
-                        color = NotelPrimary,
-                        alpha = if (isAiExpanded) 1f else 0.8f,
-                        showBorder = true
-                    )
-                    .clickable { isAiExpanded = !isAiExpanded }
-                    .padding(if (isAiExpanded) 12.dp else 14.dp)
-            ) {
-                if (!isAiExpanded) {
-                    Icon(
-                        Icons.Default.AutoAwesome,
-                        contentDescription = "AI Magic",
-                        tint = Color.White,
-                        modifier = Modifier.size(28.dp)
-                    )
-                } else {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.wrapContentWidth()
-                    ) {
-                        // Expert Research Tile
-                        Surface(
-                            onClick = { 
-                                isAiExpanded = false
-                                viewModel.generateDeepResearch() 
-                            },
-                            color = Color.White.copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Icon(Icons.Default.TravelExplore, null, tint = Color.White, modifier = Modifier.size(20.dp))
-                                Spacer(Modifier.height(4.dp))
-                                Text("Research", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                        
-                        // Analyze Changes Tile
-                        Surface(
-                            onClick = { 
-                                isAiExpanded = false
-                                viewModel.compareDocuments() 
-                            },
-                            color = Color.White.copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Icon(Icons.Default.CompareArrows, null, tint = Color.White, modifier = Modifier.size(20.dp))
-                                Spacer(Modifier.height(4.dp))
-                                Text("Analyze", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-
-                        // Close "X"
-                        IconButton(
-                            onClick = { isAiExpanded = false },
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(Icons.Default.Close, null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -634,6 +546,7 @@ fun ProductivityDashboard(
     val daysCompleted = sortedDates.size
     
     var streak = 0
+    val hasAnyLogs = sortedDates.isNotEmpty()
     if (sortedDates.contains(today)) {
         var tempDate = today
         while (sortedDates.contains(tempDate)) {
@@ -684,7 +597,7 @@ fun ProductivityDashboard(
             // Stat Cards
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 StatCard("Days", "$daysCompleted", Modifier.weight(1f))
-                StatCard("Streak", "$streak \uD83D\uDD25", Modifier.weight(1f))
+                StatCard("Streak", "${if (hasAnyLogs) streak.coerceAtLeast(1) else 0} \uD83D\uDD25", Modifier.weight(1f))
                 StatCard("Phase", "$currentPhase", Modifier.weight(1f))
                 StatCard("Progress", "$progressPercent%", Modifier.weight(1f))
             }

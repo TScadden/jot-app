@@ -51,7 +51,7 @@ import androidx.compose.ui.draw.alpha
 import kotlinx.coroutines.*
 
 enum class SettingsMenu {
-    MAIN, USER_PROFILE, CONNECTED_APPS, AI_AND_KNOWLEDGE, EVENT_COUNTERS, WALLET, NOTIFICATIONS, DEBUG
+    MAIN, USER_PROFILE, CONNECTED_APPS, AI_AND_KNOWLEDGE, EVENT_COUNTERS, MEMBERSHIP, NOTIFICATIONS, DEBUG
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -272,7 +272,7 @@ fun SettingsScreen(
                         SettingsMenu.CONNECTED_APPS -> "Connected Apps"
                         SettingsMenu.AI_AND_KNOWLEDGE -> "AI & Knowledge Base"
                         SettingsMenu.EVENT_COUNTERS -> "Event Counters"
-                        SettingsMenu.WALLET -> "Wallet & Usage"
+                        SettingsMenu.MEMBERSHIP -> "Membership"
                         SettingsMenu.NOTIFICATIONS -> "Notifications"
                         SettingsMenu.DEBUG -> "Developer Terminal"
                     }
@@ -288,10 +288,10 @@ fun SettingsScreen(
                 actions = {
                     if (currentMenu == SettingsMenu.MAIN) {
                         IconButton(
-                            onClick = { currentMenu = SettingsMenu.WALLET },
+                            onClick = { currentMenu = SettingsMenu.MEMBERSHIP },
                             modifier = Modifier.onGloballyPositioned { coordWallet = it }
                         ) {
-                            Icon(Icons.Default.AccountBalanceWallet, "Wallet", tint = NotelPrimary)
+                            Icon(Icons.Default.Star, "Membership", tint = NotelPrimary)
                         }
                     }
                 },
@@ -315,101 +315,99 @@ fun SettingsScreen(
                     // Wallet moved to its own tab
                 }
 
-                if (currentMenu == SettingsMenu.WALLET) {
-                    Text("WALLET & USAGE", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+                if (currentMenu == SettingsMenu.MEMBERSHIP) {
+                    Text("MEMBERSHIP", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(8.dp))
 
                     GlassyCard(
                         shape = RoundedCornerShape(16.dp),
                         color = NotelSurface
                     ) {
+                        // Status row
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(if (isUnlimited) "Infinite AI Access" else "Available Credits", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                                Text(
+                                    if (isUnlimited) "Active Membership" else "No Active Membership",
+                                    color = NotelTextPrimary,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp
+                                )
                                 Spacer(Modifier.height(4.dp))
-                                if (isUnlimited) {
-                                    Text(
-                                        "∞",
-                                        color = NotelPrimary,
-                                        fontSize = 42.sp,
-                                        fontWeight = FontWeight.Black
-                                    )
-                                } else {
-                                    Text(
-                                        "$${String.format("%.2f", userBalance)}",
-                                        color = NotelPrimary,
-                                        fontSize = 28.sp,
-                                        fontWeight = FontWeight.Black
-                                    )
-                                }
+                                Text(
+                                    if (isUnlimited) "Full AI Access · All Features Unlocked" else "Subscribe to unlock all AI features",
+                                    color = if (isUnlimited) Color(0xFF4CAF50) else NotelTextSecondary,
+                                    fontSize = 13.sp
+                                )
                             }
-                            Icon(
-                                if (isUnlimited) Icons.Default.AutoAwesome else Icons.Default.AccountBalanceWallet,
-                                contentDescription = null,
-                                tint = NotelPrimary,
-                                modifier = Modifier.size(40.dp)
-                            )
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isUnlimited) Color(0xFF4CAF50).copy(alpha = 0.15f) else NotelSurfaceHigh
+                            ) {
+                                Text(
+                                    if (isUnlimited) "ACTIVE" else "INACTIVE",
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    color = if (isUnlimited) Color(0xFF4CAF50) else NotelTextSecondary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Black
+                                )
+                            }
                         }
 
-                        Spacer(Modifier.height(16.dp))
-                        
+                        Spacer(Modifier.height(20.dp))
+                        HorizontalDivider(color = NotelSurfaceHigh, thickness = 0.5.dp)
+                        Spacer(Modifier.height(20.dp))
+
+                        // Pricing display
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.Bottom
+                        ) {
+                            Text(
+                                "\$3",
+                                color = NotelPrimary,
+                                fontSize = 36.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                            Text(
+                                " / month",
+                                color = NotelTextSecondary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                        Spacer(Modifier.height(4.dp))
                         Text(
-                            if (isUnlimited) "You have exclusive unlimited access. No billing applies." 
-                            else "You are billed $0.01 per AI action. Your balance covers server and API costs with a small markup for development.",
+                            "Includes 3-day free trial · Cancel anytime",
                             color = NotelTextSecondary,
                             fontSize = 12.sp
                         )
 
                         if (!isUnlimited) {
                             Spacer(Modifier.height(20.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                GlassyButton(
-                                    onClick = { activity?.let { viewModel.purchaseCredits(it, "jot_credits_5") } },
-                                    modifier = Modifier.weight(1f),
-                                    containerColor = NotelPrimary
-                                ) {
-                                    Text("Add $5", color = Color.White, fontWeight = FontWeight.Bold)
-                                }
-                                GlassyButton(
-                                    onClick = { activity?.let { viewModel.purchaseCredits(it, "jot_credits_10") } },
-                                    modifier = Modifier.weight(1f),
-                                    containerColor = NotelSurfaceHigh
-                                ) {
-                                    Text("Add $10", color = NotelTextPrimary)
-                                }
-                            }
-
-                            Spacer(Modifier.height(16.dp))
-                            
                             GlassyButton(
-                                onClick = { 
-                                    activity?.let { viewModel.purchaseCredits(it, "jot_credit_unit") }
-                                },
+                                onClick = { activity?.let { viewModel.purchaseCredits(it, "jot_membership_monthly") } },
                                 modifier = Modifier.fillMaxWidth(),
-                                containerColor = NotelSurfaceHigh
+                                containerColor = NotelPrimary
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp), tint = NotelPrimary)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Add Custom Amount ($1/unit)", color = NotelTextPrimary)
-                                }
+                                Icon(Icons.Default.Star, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Start Free Trial · \$3/month", color = Color.White, fontWeight = FontWeight.Bold)
                             }
-                            
-                            Spacer(Modifier.height(12.dp))
+                        } else {
+                            Spacer(Modifier.height(20.dp))
                             Text(
-                                "Note: For custom amounts, select the quantity you'd like to purchase in the Google Play window (each unit is $1.00).",
+                                "Thank you for being a member! Your support keeps Jot improving.",
                                 color = NotelTextSecondary,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
-                                lineHeight = 16.sp
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
                             )
                         }
                     } // Close GlassyCard
-                } // Close if (currentMenu == SettingsMenu.WALLET)
+                } // Close if (currentMenu == SettingsMenu.MEMBERSHIP)
 
                 if (currentMenu == SettingsMenu.MAIN) {
                     // 2. Personal Context
@@ -1284,7 +1282,7 @@ fun SettingsScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Auto AI Pings", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
                             Text(
-                                "Automatically load smart tiles when opening the app. Turn off to save credits ($0.01/ping).",
+                                "Automatically load smart tiles when opening the app.",
                                 color = NotelTextSecondary,
                                 fontSize = 11.sp
                             )
@@ -1321,6 +1319,7 @@ fun SettingsScreen(
                     
                     val isGenerating by viewModel.isGeneratingReport.collectAsState()
                     val generatedFile by viewModel.generatedReport.collectAsState()
+                    val hasLogs = viewModel.allLogs.collectAsState().value.isNotEmpty()
                     
                     LaunchedEffect(generatedFile) {
                         generatedFile?.let { file ->
@@ -1344,16 +1343,31 @@ fun SettingsScreen(
                     GlassyButton(
                         onClick = { viewModel.generateProfessionalReport() },
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = !isGenerating,
+                        enabled = !isGenerating && hasLogs,
                         containerColor = NotelSurfaceHigh
                     ) {
                         if (isGenerating) {
                             GlassySpinner(size = 20.dp)
                         } else {
-                            Icon(Icons.Default.PictureAsPdf, null, tint = NotelPrimary)
+                            Icon(
+                                Icons.Default.PictureAsPdf,
+                                null,
+                                tint = if (hasLogs) NotelPrimary else NotelTextSecondary.copy(alpha = 0.4f)
+                            )
                             Spacer(Modifier.width(8.dp))
-                            Text("Export Professional Report", color = NotelTextPrimary)
+                            Text(
+                                "Export Professional Report",
+                                color = if (hasLogs) NotelTextPrimary else NotelTextSecondary.copy(alpha = 0.4f)
+                            )
                         }
+                    }
+                    if (!hasLogs) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Add some notes first to generate a report.",
+                            color = NotelTextSecondary.copy(alpha = 0.5f),
+                            fontSize = 11.sp
+                        )
                     }
                 }
 

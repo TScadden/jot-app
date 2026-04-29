@@ -1,15 +1,19 @@
 package com.notel.notel.ui.screen
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -19,6 +23,7 @@ import androidx.lifecycle.viewModelScope
 import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.sync.SyncManager
 import com.notel.notel.ui.theme.*
+import com.notel.notel.ui.viewmodel.SettingsViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -49,10 +54,30 @@ class ProfileSetupViewModel @Inject constructor(
 @Composable
 fun ProfileSetupScreen(
     viewModel: ProfileSetupViewModel = hiltViewModel(),
+    settingsViewModel: SettingsViewModel = hiltViewModel(),
     onNavigateNext: () -> Unit
 ) {
+    val context = LocalContext.current
     val serverContext by viewModel.existingContext.collectAsState(initial = "")
     var profileText by remember { mutableStateOf("") }
+    var uploadedFileName by remember { mutableStateOf<String?>( null) }
+
+    val filePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let {
+            // Derive display name
+            val cursor = context.contentResolver.query(it, null, null, null, null)
+            val displayName = cursor?.use { c ->
+                if (c.moveToFirst()) {
+                    val idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (idx != -1) c.getString(idx) else null
+                } else null
+            } ?: "Document"
+            uploadedFileName = displayName
+            settingsViewModel.ingestFile(it, context.contentResolver)
+        }
+    }
     
     // Pre-fill once when server data arrives
     LaunchedEffect(serverContext) {
@@ -118,13 +143,19 @@ fun ProfileSetupScreen(
             Spacer(modifier = Modifier.height(24.dp))
             
             GlassyButton(
-                onClick = { /* TODO: File picking logic */ },
+                onClick = { filePicker.launch("*/*") },
                 modifier = Modifier.fillMaxWidth(),
                 containerColor = NotelSurfaceHigh
             ) {
-                Icon(Icons.Default.UploadFile, "Upload", tint = NotelPrimary)
-                Spacer(Modifier.width(8.dp))
-                Text("Upload Documents (Optional)", color = NotelTextPrimary, fontWeight = FontWeight.SemiBold)
+                if (uploadedFileName != null) {
+                    Icon(Icons.Default.CheckCircle, "Uploaded", tint = Color(0xFF4CAF50))
+                    Spacer(Modifier.width(8.dp))
+                    Text(uploadedFileName!!, color = Color(0xFF4CAF50), fontWeight = FontWeight.SemiBold, maxLines = 1)
+                } else {
+                    Icon(Icons.Default.UploadFile, "Upload", tint = NotelPrimary)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Upload Documents (Optional)", color = NotelTextPrimary, fontWeight = FontWeight.SemiBold)
+                }
             }
             
             Spacer(modifier = Modifier.height(48.dp))
