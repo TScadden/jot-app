@@ -39,7 +39,23 @@ class GeminiService @Inject constructor(
             if (response.isSuccessful && result != null) {
                 Result.success(result)
             } else {
-                Result.failure(IOException(response.body()?.error ?: "Unknown API Error"))
+                val errorBody = response.errorBody()?.string()
+                var errorMessage = "Unknown API Error"
+                if (errorBody != null) {
+                    try {
+                        val json = org.json.JSONObject(errorBody)
+                        if (json.has("error")) {
+                            errorMessage = json.getString("error")
+                        } else if (json.has("message")) {
+                            errorMessage = json.getString("message")
+                        } else {
+                            errorMessage = errorBody
+                        }
+                    } catch (e: Exception) {
+                        errorMessage = errorBody
+                    }
+                }
+                Result.failure(IOException(errorMessage))
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -55,7 +71,23 @@ class GeminiService @Inject constructor(
             if (response.isSuccessful && result != null) {
                 Result.success(result)
             } else {
-                Result.failure(IOException(response.body()?.error ?: "Unknown API Error"))
+                val errorBody = response.errorBody()?.string()
+                var errorMessage = "Unknown API Error"
+                if (errorBody != null) {
+                    try {
+                        val json = org.json.JSONObject(errorBody)
+                        if (json.has("error")) {
+                            errorMessage = json.getString("error")
+                        } else if (json.has("message")) {
+                            errorMessage = json.getString("message")
+                        } else {
+                            errorMessage = errorBody
+                        }
+                    } catch (e: Exception) {
+                        errorMessage = errorBody
+                    }
+                }
+                Result.failure(IOException(errorMessage))
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -77,7 +109,23 @@ class GeminiService @Inject constructor(
             if (response.isSuccessful) {
                 Result.success(result)
             } else {
-                Result.failure(IOException(response.body()?.error ?: "Unknown API Error"))
+                val errorBody = response.errorBody()?.string()
+                var errorMessage = "Unknown API Error"
+                if (errorBody != null) {
+                    try {
+                        val json = org.json.JSONObject(errorBody)
+                        if (json.has("error")) {
+                            errorMessage = json.getString("error")
+                        } else if (json.has("message")) {
+                            errorMessage = json.getString("message")
+                        } else {
+                            errorMessage = errorBody
+                        }
+                    } catch (e: Exception) {
+                        errorMessage = errorBody
+                    }
+                }
+                Result.failure(IOException(errorMessage))
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -113,7 +161,23 @@ class GeminiService @Inject constructor(
             if (response.isSuccessful && result != null) {
                 Result.success(result)
             } else {
-                Result.failure(IOException(response.body()?.error ?: "Unknown API Error"))
+                val errorBody = response.errorBody()?.string()
+                var errorMessage = "Unknown API Error"
+                if (errorBody != null) {
+                    try {
+                        val json = org.json.JSONObject(errorBody)
+                        if (json.has("error")) {
+                            errorMessage = json.getString("error")
+                        } else if (json.has("message")) {
+                            errorMessage = json.getString("message")
+                        } else {
+                            errorMessage = errorBody
+                        }
+                    } catch (e: Exception) {
+                        errorMessage = errorBody
+                    }
+                }
+                Result.failure(IOException(errorMessage))
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -151,7 +215,23 @@ class GeminiService @Inject constructor(
             if (response.isSuccessful && result != null) {
                 Result.success(result)
             } else {
-                Result.failure(IOException(response.body()?.error ?: "Unknown API Error"))
+                val errorBody = response.errorBody()?.string()
+                var errorMessage = "Unknown API Error"
+                if (errorBody != null) {
+                    try {
+                        val json = org.json.JSONObject(errorBody)
+                        if (json.has("error")) {
+                            errorMessage = json.getString("error")
+                        } else if (json.has("message")) {
+                            errorMessage = json.getString("message")
+                        } else {
+                            errorMessage = errorBody
+                        }
+                    } catch (e: Exception) {
+                        errorMessage = errorBody
+                    }
+                }
+                Result.failure(IOException(errorMessage))
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -185,7 +265,23 @@ class GeminiService @Inject constructor(
             if (response.isSuccessful && result != null) {
                 Result.success(result)
             } else {
-                Result.failure(IOException(response.body()?.error ?: "Unknown API Error"))
+                val errorBody = response.errorBody()?.string()
+                var errorMessage = "Unknown API Error"
+                if (errorBody != null) {
+                    try {
+                        val json = org.json.JSONObject(errorBody)
+                        if (json.has("error")) {
+                            errorMessage = json.getString("error")
+                        } else if (json.has("message")) {
+                            errorMessage = json.getString("message")
+                        } else {
+                            errorMessage = errorBody
+                        }
+                    } catch (e: Exception) {
+                        errorMessage = errorBody
+                    }
+                }
+                Result.failure(IOException(errorMessage))
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -221,7 +317,23 @@ class GeminiService @Inject constructor(
             if (response.isSuccessful && result != null) {
                 Result.success(result)
             } else {
-                Result.failure(IOException(response.body()?.error ?: "Unknown API Error"))
+                val errorBody = response.errorBody()?.string()
+                var errorMessage = "Unknown API Error"
+                if (errorBody != null) {
+                    try {
+                        val json = org.json.JSONObject(errorBody)
+                        if (json.has("error")) {
+                            errorMessage = json.getString("error")
+                        } else if (json.has("message")) {
+                            errorMessage = json.getString("message")
+                        } else {
+                            errorMessage = errorBody
+                        }
+                    } catch (e: Exception) {
+                        errorMessage = errorBody
+                    }
+                }
+                Result.failure(IOException(errorMessage))
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -257,7 +369,23 @@ class GeminiService @Inject constructor(
             if (response.isSuccessful && result != null) {
                 Result.success(result)
             } else {
-                Result.failure(IOException(response.body()?.error ?: "Unknown API Error"))
+                val errorBody = response.errorBody()?.string()
+                var errorMessage = "Unknown API Error"
+                if (errorBody != null) {
+                    try {
+                        val json = org.json.JSONObject(errorBody)
+                        if (json.has("error")) {
+                            errorMessage = json.getString("error")
+                        } else if (json.has("message")) {
+                            errorMessage = json.getString("message")
+                        } else {
+                            errorMessage = errorBody
+                        }
+                    } catch (e: Exception) {
+                        errorMessage = errorBody
+                    }
+                }
+                Result.failure(IOException(errorMessage))
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -274,7 +402,23 @@ class GeminiService @Inject constructor(
             if (response.isSuccessful && result != null) {
                 Result.success(result)
             } else {
-                Result.failure(IOException(response.body()?.error ?: "Unknown API Error"))
+                val errorBody = response.errorBody()?.string()
+                var errorMessage = "Unknown API Error"
+                if (errorBody != null) {
+                    try {
+                        val json = org.json.JSONObject(errorBody)
+                        if (json.has("error")) {
+                            errorMessage = json.getString("error")
+                        } else if (json.has("message")) {
+                            errorMessage = json.getString("message")
+                        } else {
+                            errorMessage = errorBody
+                        }
+                    } catch (e: Exception) {
+                        errorMessage = errorBody
+                    }
+                }
+                Result.failure(IOException(errorMessage))
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -309,7 +453,23 @@ class GeminiService @Inject constructor(
             if (response.isSuccessful && result != null) {
                 Result.success(result)
             } else {
-                Result.failure(IOException(response.body()?.error ?: "Unknown API Error"))
+                val errorBody = response.errorBody()?.string()
+                var errorMessage = "Unknown API Error"
+                if (errorBody != null) {
+                    try {
+                        val json = org.json.JSONObject(errorBody)
+                        if (json.has("error")) {
+                            errorMessage = json.getString("error")
+                        } else if (json.has("message")) {
+                            errorMessage = json.getString("message")
+                        } else {
+                            errorMessage = errorBody
+                        }
+                    } catch (e: Exception) {
+                        errorMessage = errorBody
+                    }
+                }
+                Result.failure(IOException(errorMessage))
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -345,7 +505,23 @@ class GeminiService @Inject constructor(
             if (response.isSuccessful && result != null) {
                 Result.success(result)
             } else {
-                Result.failure(IOException(response.body()?.error ?: "Unknown API Error"))
+                val errorBody = response.errorBody()?.string()
+                var errorMessage = "Unknown API Error"
+                if (errorBody != null) {
+                    try {
+                        val json = org.json.JSONObject(errorBody)
+                        if (json.has("error")) {
+                            errorMessage = json.getString("error")
+                        } else if (json.has("message")) {
+                            errorMessage = json.getString("message")
+                        } else {
+                            errorMessage = errorBody
+                        }
+                    } catch (e: Exception) {
+                        errorMessage = errorBody
+                    }
+                }
+                Result.failure(IOException(errorMessage))
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -362,7 +538,23 @@ class GeminiService @Inject constructor(
             if (response.isSuccessful && result != null) {
                 Result.success(result)
             } else {
-                Result.failure(IOException(response.body()?.error ?: "Unknown API Error"))
+                val errorBody = response.errorBody()?.string()
+                var errorMessage = "Unknown API Error"
+                if (errorBody != null) {
+                    try {
+                        val json = org.json.JSONObject(errorBody)
+                        if (json.has("error")) {
+                            errorMessage = json.getString("error")
+                        } else if (json.has("message")) {
+                            errorMessage = json.getString("message")
+                        } else {
+                            errorMessage = errorBody
+                        }
+                    } catch (e: Exception) {
+                        errorMessage = errorBody
+                    }
+                }
+                Result.failure(IOException(errorMessage))
             }
         } catch (e: Exception) {
             Result.failure(e)
