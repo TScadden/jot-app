@@ -172,8 +172,6 @@ class LoginViewModel @Inject constructor(
                 if (response.isSuccessful && body != null && body.token?.isNotBlank() == true) {
                     preferences.setAuthToken(body.token!!)
                     preferences.setLoggedIn(true)
-                    preferences.setUserBalance(1.00f) // Start with free $1 credits
-                    preferences.setShowFreeCreditPopup(true) // Trigger pop up
                     onboardingCompleteByServer = false // New users always start with onboarding
                     isLoggedIn = true
                 } else {

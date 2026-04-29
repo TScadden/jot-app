@@ -345,32 +345,7 @@ fun QuickLogScreen(
             )
         }
 
-        // Free Trial Bonus Dialog
-        if (state.showFreeCreditPopup) {
-            AlertDialog(
-                onDismissRequest = { viewModel.dismissBonusPopup() },
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Star, null, tint = NotelPrimary)
-                        Spacer(Modifier.width(12.dp))
-                        Text("3-Day Free Trial!", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
-                    }
-                },
-                text = {
-                    Text(
-                        "To get you started, you can try Jot Premium completely free for 3 days! Unlock AI suggestions, professional reports, and deep advice in the Settings.",
-                        color = NotelTextSecondary
-                    )
-                },
-                confirmButton = {
-                    TextButton(onClick = { viewModel.dismissBonusPopup() }) {
-                        Text("Awesome!", color = NotelPrimary, fontWeight = FontWeight.Bold)
-                    }
-                },
-                containerColor = NotelSurface,
-                shape = RoundedCornerShape(20.dp)
-            )
-        }
+        // Free Trial Bonus Dialog removed as users must sign up manually
 
         // Compare Documents Dialog
         if (state.showComparisonDialog) {
