@@ -163,7 +163,8 @@ class MainActivity : ComponentActivity() {
                                 quickLogViewModel = quickLogViewModel,
                                 onBack = { /* Root */ },
                                 onNavigateToConnections = { navController.navigate("data_connections") },
-                                onNavigateToHeart = { navController.navigate("fitbit") }
+                                onNavigateToHeart = { navController.navigate("fitbit") },
+                                onNavigateToMembership = { navController.navigate("settings?menu=MEMBERSHIP") }
                             )
                         }
                         composable("data_connections") {
@@ -180,6 +181,7 @@ class MainActivity : ComponentActivity() {
                                 viewModel = quickLogViewModel,
                                 onNavigateToHistory = { navController.navigate("history") },
                                 onNavigateToSettings = { navController.navigate("settings") },
+                                onNavigateToMembership = { navController.navigate("settings?menu=MEMBERSHIP") },
                                 onNavigateToTrends = { /* trends Lego piece coming soon */ },
                                 onNavigateToFitbit = { /* fitbit Lego piece coming soon */ },
                                 onNavigateToSleep = { /* sleep Lego piece coming soon */ },
@@ -196,9 +198,19 @@ class MainActivity : ComponentActivity() {
                                 onBack = { navController.popBackStack() }
                             )
                         }
-                        composable("settings") {
+                        composable(
+                            route = "settings?menu={menu}",
+                            arguments = listOf(navArgument("menu") { type = NavType.StringType; nullable = true })
+                        ) { backStack ->
+                            val menuStr = backStack.arguments?.getString("menu")
+                            val initialMenu = if (menuStr != null) {
+                                try { com.notel.notel.ui.screen.SettingsMenu.valueOf(menuStr) } catch(e: Exception) { com.notel.notel.ui.screen.SettingsMenu.MAIN }
+                            } else com.notel.notel.ui.screen.SettingsMenu.MAIN
+                            
                             val settingsViewModel: com.notel.notel.ui.viewmodel.SettingsViewModel = hiltViewModel()
                             SettingsScreen(
+                                initialMenu = initialMenu,
+                                viewModel = settingsViewModel,
                                 onBack = { navController.popBackStack() },
                                 onRestartOnboarding = {
                                     navController.navigate("profile_setup") {
@@ -471,6 +483,7 @@ fun NotelNavGraph() {
                 QuickLogScreen(
                     onNavigateToHistory = { navController.navigate("history") },
                     onNavigateToSettings = { navController.navigate("settings") },
+                    onNavigateToMembership = { navController.navigate("settings?menu=MEMBERSHIP") },
                     onNavigateToTrends = { navController.navigate("trends") },
                     onNavigateToFitbit = { navController.navigate("fitbit") },
                     onNavigateToSleep = { navController.navigate("sleep") },
@@ -497,8 +510,17 @@ fun NotelNavGraph() {
                     onBack = { navController.popBackStack() }
                 )
             }
-            composable("settings") {
+            composable(
+                route = "settings?menu={menu}",
+                arguments = listOf(navArgument("menu") { type = NavType.StringType; nullable = true })
+            ) { backStack ->
+                val menuStr = backStack.arguments?.getString("menu")
+                val initialMenu = if (menuStr != null) {
+                    try { com.notel.notel.ui.screen.SettingsMenu.valueOf(menuStr) } catch(e: Exception) { com.notel.notel.ui.screen.SettingsMenu.MAIN }
+                } else com.notel.notel.ui.screen.SettingsMenu.MAIN
+                
                 SettingsScreen(
+                    initialMenu = initialMenu,
                     onBack = { navController.popBackStack() },
                     onRestartOnboarding = {
                         navController.navigate("profile_setup") {
@@ -530,7 +552,10 @@ fun NotelNavGraph() {
                 FitbitScreen(viewModel = fitbitViewModel, onBack = { navController.popBackStack() })
             }
             composable("body_load") {
-                BodyLoadScreen(onBack = { navController.popBackStack() })
+                BodyLoadScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigateToMembership = { navController.navigate("settings?menu=MEMBERSHIP") }
+                )
             }
         }
 

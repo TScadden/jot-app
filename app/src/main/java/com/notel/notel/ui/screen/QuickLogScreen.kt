@@ -41,6 +41,7 @@ fun QuickLogScreen(
     viewModel: QuickLogViewModel = hiltViewModel(),
     onNavigateToHistory: () -> Unit,
     onNavigateToSettings: () -> Unit,
+    onNavigateToMembership: () -> Unit = {},
     onNavigateToTrends: () -> Unit,
     onNavigateToFitbit: () -> Unit,
     onNavigateToSleep: () -> Unit,
@@ -172,7 +173,7 @@ fun QuickLogScreen(
                         ) {
                             Text("You do not have a membership", color = NotelTextSecondary, fontSize = 12.sp)
                             Spacer(Modifier.height(8.dp))
-                            TextButton(onClick = onNavigateToSettings) {
+                            TextButton(onClick = onNavigateToMembership) {
                                 Text("Click here to start Free Trial", color = NotelTextSecondary.copy(alpha = 0.5f), fontWeight = FontWeight.Bold)
                             }
                         }

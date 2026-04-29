@@ -57,6 +57,7 @@ enum class SettingsMenu {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
+    initialMenu: SettingsMenu = SettingsMenu.MAIN,
     viewModel: SettingsViewModel = hiltViewModel(),
     onBack: () -> Unit,
     onRestartOnboarding: () -> Unit,
@@ -162,7 +163,7 @@ fun SettingsScreen(
             save = { it.name },
             restore = { SettingsMenu.valueOf(it) }
         )
-    ) { mutableStateOf(SettingsMenu.MAIN) }
+    ) { mutableStateOf(initialMenu) }
     
     BackHandler(enabled = currentMenu != SettingsMenu.MAIN) {
         currentMenu = SettingsMenu.MAIN

@@ -40,6 +40,7 @@ fun BodyLoadScreen(
     viewModel: BodyLoadViewModel = hiltViewModel(),
     onBack: () -> Unit,
     onNavigateToConnections: () -> Unit = {},
+    onNavigateToMembership: () -> Unit = {},
     onNavigateToHeart: () -> Unit = {},
     quickLogViewModel: QuickLogViewModel = hiltViewModel(),
     habitViewModel: HabitViewModel = hiltViewModel()
@@ -238,7 +239,7 @@ fun BodyLoadScreen(
                         ) {
                             Text("You do not have a membership", color = NotelTextSecondary, fontSize = 12.sp)
                             Spacer(Modifier.height(8.dp))
-                            TextButton(onClick = { /* User can navigate via bottom bar */ }) {
+                            TextButton(onClick = onNavigateToMembership) {
                                 Text("Go to Settings to start Free Trial", color = NotelTextSecondary.copy(alpha = 0.5f), fontWeight = FontWeight.Bold)
                             }
                         }
