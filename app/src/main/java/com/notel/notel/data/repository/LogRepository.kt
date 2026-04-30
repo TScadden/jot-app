@@ -419,7 +419,7 @@ class LogRepository @Inject constructor(
         
         // Removed knowledgeBase from chip suggestions to prevent hitting the TPM (Tokens Per Minute) limit.
         // The userContext (summary) is sufficient for generating 1-3 word chips.
-        return geminiService.getSuggestions(category, recent, userContext = context, knowledgeBase = null, weatherContext = weather).onSuccess { list ->
+        return geminiService.getSuggestions(category, recent, userContext = context, knowledgeBase = "", weatherContext = weather).onSuccess { list ->
             suggestionCache[category.id] = list
             preferences.deductBalance(0.01f)
         }
