@@ -113,10 +113,8 @@ fun FileViewerScreen(
         ) {
             // ── File preview ──────────────────────────────────────────────
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 200.dp, max = 520.dp),
-                contentAlignment = Alignment.Center
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.TopCenter
             ) {
                 if (!file.exists()) {
                     Text(
@@ -130,7 +128,7 @@ fun FileViewerScreen(
                             AsyncImage(
                                 model = file,
                                 contentDescription = fileName,
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 200.dp, max = 520.dp),
                                 contentScale = ContentScale.Fit
                             )
                         }
