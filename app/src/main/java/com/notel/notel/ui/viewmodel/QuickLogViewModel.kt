@@ -149,9 +149,6 @@ class QuickLogViewModel @Inject constructor(
         viewModelScope.launch {
             preferences.autoAiSuggestions.collect { auto ->
                 _uiState.update { it.copy(autoAiSuggestions = auto) }
-                if (auto && _uiState.value.chips.isEmpty() && !_uiState.value.isLoadingChips && _uiState.value.selectedCategory != null) {
-                    fetchSuggestions()
-                }
             }
         }
         viewModelScope.launch {
@@ -373,9 +370,8 @@ class QuickLogViewModel @Inject constructor(
             
             val finalSelected = _uiState.value.selectedCategory
             val state = _uiState.value
-            if (state.autoAiSuggestions && finalSelected != null && state.chips.isEmpty() && !state.isLoadingChips && state.chipsError == null) {
-                fetchSuggestions(finalSelected)
-            }
+            // Auto-fetch on rank recalculation is disabled per user request.
+            // It will only fetch when explicitly clicked.
             
             checkForSmartActions(recentEntries)
         }
