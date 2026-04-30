@@ -51,8 +51,16 @@ fun QuickLogScreen(
     val isGeneratingWeeklyRecap by viewModel.isGeneratingWeeklyRecap.collectAsState()
     val isGeneratingDeepResearch by viewModel.isGeneratingDeepResearch.collectAsState()
 
-    // Auto-fetch disabled per user request. Suggestions are now ONLY fetched
-    // when the user explicitly clicks/selects a category via selectCategory().
+    // Auto-fetch chips for the currently selected card (first card by default)
+    // if the "Auto Ping" (autoAiSuggestions) setting is turned ON.
+    LaunchedEffect(state.selectedCategory, state.isUnlimited, state.autoAiSuggestions) {
+        val hasAccess = state.isUnlimited
+        if (state.autoAiSuggestions && state.selectedCategory != null && hasAccess &&
+            state.chips.isEmpty() && !state.isLoadingChips && state.chipsError == null
+        ) {
+            viewModel.fetchSuggestions()
+        }
+    }
 
     // Reset saveSuccess without showing snackbar
     LaunchedEffect(state.saveSuccess) {
