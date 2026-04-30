@@ -363,8 +363,8 @@ class QuickLogViewModel @Inject constructor(
                 .take(5) // Only top 5
 
             _uiState.update { state ->
-                // If auto AI is on and user hasn't manually clicked one, always default to the first recommended tile
-                val newlySelected = if (state.autoAiSuggestions && finalSmart.isNotEmpty() && !hasUserManuallySelectedCategory) {
+                // Always default to the first recommended tile if the user hasn't manually clicked one yet
+                val newlySelected = if (finalSmart.isNotEmpty() && !hasUserManuallySelectedCategory) {
                     finalSmart.first()
                 } else {
                     state.selectedCategory ?: categories.firstOrNull()
