@@ -415,10 +415,11 @@ class LogRepository @Inject constructor(
             "6. Priorities matching current user data (HR spikes, sleep debt, past logs).\n" +
             "Example: 'Brain Fog', 'Chest Pain', 'High HR Spike', 'Restless Legs'."
         
-        val kb = getEnrichedKnowledgeBase()
         val weather = getWeatherContext()
         
-        return geminiService.getSuggestions(category, recent, userContext = context, knowledgeBase = kb, weatherContext = weather).onSuccess { list ->
+        // Removed knowledgeBase from chip suggestions to prevent hitting the TPM (Tokens Per Minute) limit.
+        // The userContext (summary) is sufficient for generating 1-3 word chips.
+        return geminiService.getSuggestions(category, recent, userContext = context, knowledgeBase = null, weatherContext = weather).onSuccess { list ->
             suggestionCache[category.id] = list
             preferences.deductBalance(0.01f)
         }
