@@ -82,6 +82,7 @@ class QuickLogViewModel @Inject constructor(
     /** Debounce job — cancels any in-flight category switch before starting a new one */
     private var fetchJob: Job? = null
     private var debounceJob: Job? = null
+    private var hasUserManuallySelectedCategory = false
 
     /** In-memory cache: category ID → chip list. Persists for the lifetime of the ViewModel. */
     private val chipCache = mutableMapOf<Int, List<String>>()
@@ -171,6 +172,7 @@ class QuickLogViewModel @Inject constructor(
     }
 
     fun selectCategory(category: Category) {
+        hasUserManuallySelectedCategory = true
         val cached = chipCache[category.id]
         _uiState.update {
             it.copy(
@@ -361,9 +363,12 @@ class QuickLogViewModel @Inject constructor(
                 .take(5) // Only top 5
 
             _uiState.update { state ->
-                // If auto AI is on, default to the first recommended tile instead of the plain first category
-                val isDefaultSelected = state.selectedCategory == null || state.selectedCategory.id == categories.firstOrNull()?.id
-                val newlySelected = if (state.autoAiSuggestions && finalSmart.isNotEmpty() && isDefaultSelected) finalSmart.first() else state.selectedCategory
+                // If auto AI is on and user hasn't manually clicked one, always default to the first recommended tile
+                val newlySelected = if (state.autoAiSuggestions && finalSmart.isNotEmpty() && !hasUserManuallySelectedCategory) {
+                    finalSmart.first()
+                } else {
+                    state.selectedCategory ?: categories.firstOrNull()
+                }
                 
                 state.copy(smartCategories = finalSmart, selectedCategory = newlySelected)
             }
