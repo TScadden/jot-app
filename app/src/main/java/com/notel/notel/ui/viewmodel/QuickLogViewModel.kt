@@ -372,7 +372,8 @@ class QuickLogViewModel @Inject constructor(
             }
             
             val finalSelected = _uiState.value.selectedCategory
-            if (_uiState.value.autoAiSuggestions && finalSelected != null && _uiState.value.chips.isEmpty()) {
+            val state = _uiState.value
+            if (state.autoAiSuggestions && finalSelected != null && state.chips.isEmpty() && !state.isLoadingChips && state.chipsError == null) {
                 fetchSuggestions(finalSelected)
             }
             
