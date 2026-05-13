@@ -16,3 +16,16 @@ frontend:
   cache:
     paths:
       - website/node_modules/**/*
+customHttpConfigs:
+  - httpHeaders:
+      - entries:
+          - key: Cache-Control
+            value: public, max-age=0, must-revalidate
+    pattern: '**/*.html'
+redirects:
+  - source: '/learn-more'
+    target: '/learn-more.html'
+    status: '200'
+  - source: '/<*>'
+    target: '/index.html'
+    status: '404-200'
