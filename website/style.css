@@ -669,11 +669,11 @@ footer {
     }
 
     nav.glass {
-        background: rgba(10, 10, 14, 0.85); /* Much more opaque on mobile */
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(10, 10, 14, 0.9) !important; /* Nearly solid on mobile for maximum contrast */
+        backdrop-filter: blur(25px) !important;
+        -webkit-backdrop-filter: blur(25px) !important;
+        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.8) !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2) !important;
     }
 
     .footer-content {
