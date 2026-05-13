@@ -1,12 +1,12 @@
 :root {
     --bg-color: #0A0A0E;
-    --primary-color: #7C6EFF;
-    --primary-glow: rgba(124, 110, 255, 0.4);
+    --primary-color: #2ECC71;
+    --primary-glow: rgba(46, 204, 113, 0.4);
     --secondary-color: #FF7E6E;
     --text-main: #FFFFFF;
     --text-muted: #A0A0B0;
-    --glass-bg: rgba(255, 255, 255, 0.03);
-    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-bg: rgba(0, 0, 0, 0.95);
+    --glass-border: rgba(255, 255, 255, 0.1);
     --container-width: 1400px;
     --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
