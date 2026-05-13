@@ -5,10 +5,12 @@ frontend:
     preBuild:
       commands:
         - cd website
+        - rm -rf dist
         - npm ci
     build:
       commands:
         - npm run build
+        - ls -R dist # Log the build output to verify file existence
   artifacts:
     baseDirectory: website/dist
     files:
