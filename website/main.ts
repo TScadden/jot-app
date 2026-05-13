@@ -75,14 +75,41 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Hero Slider Logic
     const sliderImages = document.querySelectorAll('.hero-slider .screenshot');
+    const dots = document.querySelectorAll('.dot');
     let currentImageIndex = 0;
+    let sliderInterval: number | undefined;
+
+    const showImage = (index: number) => {
+        // Remove active class from current image and dot
+        sliderImages[currentImageIndex].classList.remove('active');
+        dots[currentImageIndex].classList.remove('active');
+        
+        // Update index and add active class to new image and dot
+        currentImageIndex = index;
+        sliderImages[currentImageIndex].classList.add('active');
+        dots[currentImageIndex].classList.add('active');
+    };
+
+    const startSlider = () => {
+        if (sliderInterval) clearInterval(sliderInterval);
+        sliderInterval = window.setInterval(() => {
+            const nextIndex = (currentImageIndex + 1) % sliderImages.length;
+            showImage(nextIndex);
+        }, 4000);
+    };
 
     if (sliderImages.length > 0) {
-        setInterval(() => {
-            sliderImages[currentImageIndex].classList.remove('active');
-            currentImageIndex = (currentImageIndex + 1) % sliderImages.length;
-            sliderImages[currentImageIndex].classList.add('active');
-        }, 4000); // Rotate every 4 seconds
+        startSlider();
+
+        // Add click events to dots
+        dots.forEach((dot, index) => {
+            dot.addEventListener('click', () => {
+                if (currentImageIndex !== index) {
+                    showImage(index);
+                    startSlider(); // Restart the clock
+                }
+            });
+        });
     }
 });
 
