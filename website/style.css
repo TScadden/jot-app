@@ -7,7 +7,7 @@
     --text-muted: #A0A0B0;
     --glass-bg: rgba(255, 255, 255, 0.03);
     --glass-border: rgba(255, 255, 255, 0.08);
-    --container-width: 1200px;
+    --container-width: 1400px;
     --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -28,7 +28,7 @@ body {
 .container {
     max-width: var(--container-width);
     margin: 0 auto;
-    padding: 0 2rem;
+    padding: 0 4rem;
 }
 
 a {
@@ -131,12 +131,12 @@ nav {
 .hero-grid {
     display: grid;
     grid-template-columns: 1.2fr 0.8fr;
-    gap: 4rem;
+    gap: 6rem;
     align-items: center;
 }
 
 .gradient-text {
-    font-size: 4.5rem;
+    font-size: 5.5rem;
     font-weight: 800;
     line-height: 1.1;
     margin-bottom: 1.5rem;
@@ -166,11 +166,11 @@ nav {
 }
 
 .floating-phone {
-    width: 300px;
+    width: 350px;
     animation: float 6s ease-in-out infinite;
     filter: drop-shadow(0 20px 50px rgba(0,0,0,0.5));
     position: relative;
-    height: 600px; /* Adjust based on your screenshot aspect ratio */
+    height: 700px; /* Adjust based on your screenshot aspect ratio */
 }
 
 .hero-slider .screenshot {
