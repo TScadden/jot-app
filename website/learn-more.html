@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Learn More | Jot AI Wellness</title>
+    <meta name="description" content="Discover the science behind Jot. Learn about the Cup Theory, Body Load analytics, and how our AI-powered wellness tracking helps you live a more balanced life.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <nav class="glass">
+        <div class="container nav-content">
+            <a href="/" class="logo">
+                <img src="/jot_app_icon_1773090172459.png" alt="Jot Logo" class="app-icon">
+                <span>Jot</span>
+            </a>
+            <div class="nav-links">
+                <a href="/#features">Features</a>
+                <a href="javascript:void(0)" class="btn-primary btn-download">Download</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="learn-more-content">
+        <header class="page-header container">
+            <h1 class="gradient-text">The Science of Jot</h1>
+            <p class="subtitle">Understanding your body's capacity through data-driven insights.</p>
+        </header>
+
+        <section class="theory-section container">
+            <div class="theory-grid">
+                <div class="theory-text">
+                    <h2>The Cup Theory</h2>
+                    <p>Think of your body's capacity as a "Cup". Every stressor—poor sleep, dehydration, high heart rate spikes, or physical exertion—adds "water" to that cup.</p>
+                    <div class="capacity-levels">
+                        <div class="level-item">
+                            <span class="range">15-40</span>
+                            <div class="level-info">
+                                <strong>High Resilience</strong>
+                                <p>Your cup is mostly empty; you have plenty of room for activity.</p>
+                            </div>
+                        </div>
+                        <div class="level-item">
+                            <span class="range">41-65</span>
+                            <div class="level-info">
+                                <strong>Managing Load</strong>
+                                <p>You have used a fair amount of your daily capacity.</p>
+                            </div>
+                        </div>
+                        <div class="level-item">
+                            <span class="range">66-90+</span>
+                            <div class="level-info">
+                                <strong>High Strain</strong>
+                                <p>Your cup is nearly full. Even small stressors could cause an "overflow" or flare.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="theory-visual glass">
+                    <h3>Metric Weighting</h3>
+                    <canvas id="weightChart" width="300" height="300" class="weight-pie"></canvas>
+                    <p class="caption">Jot uses clinical biometric markers to calculate your real-time Body Load.</p>
+<script>
+const ctx = document.getElementById('weightChart').getContext('2d');
+new Chart(ctx, {
+  type: 'pie',
+  data: {
+    labels: ['HRV','Context','ACWR','Strain'],
+    datasets: [{
+      data: [50,30,15,5],
+      backgroundColor: ['#ff6384','#4bc0c0','#36a2eb','#ffce56']
+    }]
+  },
+  options: {
+    responsive: true,
+    rotation: Math.PI,
+    plugins: {
+      legend: {
+        display: false
+      }
+    }
+  }
+});
+</script>
+<div class="chart-legend">
+  <div class="legend-item" style="background:#ff6384;">HRV</div>
+  <div class="legend-item" style="background:#4bc0c0;">Context</div>
+  <div class="legend-item" style="background:#36a2eb;">ACWR</div>
+  <div class="legend-item" style="background:#ffce56;">Strain</div>
+</div>
+                </div>
+            </div>
+        </section>
+
+        <section class="detail-features container">
+            <div class="feature-detail-grid">
+                <div class="detail-card glass">
+                    <div class="icon">🎙️</div>
+                    <h3>AI Voice Cleansing</h3>
+                    <p>Our proprietary AI doesn't just transcribe; it understands. It cleans up the "ums" and "ahs", extracting the clinical essence of your symptoms and moods to create actionable logs.</p>
+                </div>
+                <div class="detail-card glass">
+                    <div class="icon">☀️</div>
+                    <h3>Environmental Tracking</h3>
+                    <p>From UV Index monitoring for skin longevity to weather-based symptom correlations, Jot looks at the world around you to explain how you feel inside.</p>
+                </div>
+                <div class="detail-card glass">
+                    <div class="icon">🔒</div>
+                    <h3>Privacy First</h3>
+                    <p>Your health data is sensitive. Jot is designed with privacy at its core, ensuring your logs and biometrics are stored securely and handled with the highest standards of encryption.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="cta-section container">
+            <div class="cta-card glass">
+                <h2>Ready to start your journey?</h2>
+                <p>Join the private beta and be the first to experience the future of wellness tracking.</p>
+                <a href="javascript:void(0)" class="btn-primary btn-large btn-download">Join the Beta</a>
+            </div>
+        </section>
+    </main>
+
+    <footer class="glass">
+        <div class="container footer-content">
+            <div class="footer-left">
+                <div class="logo">
+                    <img src="/jot_app_icon_1773090172459.png" alt="Jot Logo" class="app-icon-small">
+                    <span>Jot</span>
+                </div>
+                <p>© 2026 Jot App. Built for your wellness.</p>
+            </div>
+            <div class="footer-right">
+                <a href="/">Home</a>
+                <a href="/#features">Features</a>
+                <a href="#">Support</a>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Beta Notice Modal (Same as index.html) -->
+    <div id="beta-modal" class="modal-overlay">
+        <div class="modal-content glass">
+            <button class="modal-close">&times;</button>
+            <div class="modal-body">
+                <div class="beta-badge">BETA</div>
+                <h2>Coming Soon to Public</h2>
+                <p>Jot is currently in **private beta testing** to ensure the best possible experience for our users.</p>
+                <p>We are working hard to polish the AI voice features and health integrations before our public launch.</p>
+                <div class="modal-actions">
+                    <button class="btn-primary btn-close-modal">I'll wait!</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="./main.ts"></script>
+</body>
+</html>

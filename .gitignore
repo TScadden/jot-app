@@ -62,3 +62,7 @@ captures/
 
 # Kotlin
 .kotlin/
+
+# Website
+website/node_modules/
+website/dist/
