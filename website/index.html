@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="./style.css?v=1.6">
+    <link rel="stylesheet" href="./style.css?v=1.7">
     <link rel="icon" type="image/png" href="/jot_app_icon_1773090172459.png">
     <style>
         nav.glass {
@@ -40,7 +40,7 @@
                     <a href="/learn-more">Learn More</a>
                     <a href="javascript:void(0)" class="btn-primary btn-download">Download</a>
                 </div>
-                <button class="mobile-nav-toggle" id="mobile-toggle" aria-label="Toggle Navigation">
+                <button class="mobile-nav-toggle" id="mobile-toggle" onclick="toggleMobileMenu()" aria-label="Toggle Navigation">
                     <span></span>
                     <span></span>
                     <span></span>
@@ -148,7 +148,17 @@
         </div>
     </div>
 
-    <script type="module" src="./main.ts"></script>
+    <script>
+        function toggleMobileMenu() {
+            const toggle = document.getElementById('mobile-toggle');
+            const nav = document.getElementById('nav-links');
+            toggle.classList.toggle('active');
+            nav.classList.toggle('active');
+            document.body.classList.toggle('mobile-menu-open');
+            document.body.style.overflow = nav.classList.contains('active') ? 'hidden' : '';
+        }
+    </script>
+    <script type="module" src="/main.ts"></script>
 </body>
 
 </html>
