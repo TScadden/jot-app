@@ -72,6 +72,18 @@ document.addEventListener('DOMContentLoaded', () => {
             glow.style.transform = `translate(${x * 50}px, ${y * 50}px)`;
         }
     });
+
+    // Hero Slider Logic
+    const sliderImages = document.querySelectorAll('.hero-slider .screenshot');
+    let currentImageIndex = 0;
+
+    if (sliderImages.length > 0) {
+        setInterval(() => {
+            sliderImages[currentImageIndex].classList.remove('active');
+            currentImageIndex = (currentImageIndex + 1) % sliderImages.length;
+            sliderImages[currentImageIndex].classList.add('active');
+        }, 4000); // Rotate every 4 seconds
+    }
 });
 
 // Add these styles dynamically for reveal effect
