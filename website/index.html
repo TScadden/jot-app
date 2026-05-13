@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="./style.css?v=1.5">
+    <link rel="stylesheet" href="./style.css?v=1.6">
     <link rel="icon" type="image/png" href="/jot_app_icon_1773090172459.png">
     <style>
         nav.glass {
@@ -19,6 +19,10 @@
             -webkit-backdrop-filter: blur(10px) !important;
             box-shadow: 0 4px 30px rgba(0, 0, 0, 0.8) !important;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+        }
+        body.mobile-menu-open main {
+            filter: blur(15px) brightness(0.5) !important;
+            transition: all 0.3s ease;
         }
     </style>
 </head>
@@ -45,69 +49,69 @@
         </div>
     </nav>
 
-    <header class="hero">
-        <div class="container">
-            <div class="hero-grid">
-                <div class="hero-text">
-                    <h1 class="gradient-text">Capture Everything.<br>Track Anything.</h1>
-                    <p>Jot uses advanced AI to clean up your voice logs, track your body load, and reveal hidden trends
-                        in your wellness journey.</p>
-                    <div class="hero-actions">
-                        <a href="javascript:void(0)" class="btn-primary btn-large btn-download">Get Started</a>
-                        <a href="/learn-more" class="btn-secondary btn-large">Learn More</a>
+    <main>
+        <header class="hero">
+            <div class="container">
+                <div class="hero-grid">
+                    <div class="hero-text">
+                        <h1 class="gradient-text">Capture Everything.<br>Track Anything.</h1>
+                        <p>Jot uses advanced AI to clean up your voice logs, track your body load, and reveal hidden trends
+                            in your wellness journey.</p>
+                        <div class="hero-actions">
+                            <a href="javascript:void(0)" class="btn-primary btn-large btn-download">Get Started</a>
+                            <a href="/learn-more" class="btn-secondary btn-large">Learn More</a>
+                        </div>
                     </div>
-                </div>
-                <div class="hero-visual">
-                    <div class="floating-phone hero-slider">
-                        <img src="/new_home.png" alt="Jot App Home" class="screenshot active">
-                        <img src="/new_voice.png" alt="Voice AI Log" class="screenshot">
-                        <img src="/new_history.png" alt="History" class="screenshot">
-                        <img src="/new_heart.png" alt="Daily Heart Rate" class="screenshot">
-                    </div>
-                    <div class="slider-dots">
-                        <div class="dot active"></div>
-                        <div class="dot"></div>
-                        <div class="dot"></div>
-                        <div class="dot"></div>
+                    <div class="hero-visual">
+                        <div class="floating-phone hero-slider">
+                            <img src="/new_home.png" alt="Jot App Home" class="screenshot active">
+                            <img src="/new_voice.png" alt="Voice AI Log" class="screenshot">
+                            <img src="/new_history.png" alt="History" class="screenshot">
+                            <img src="/new_heart.png" alt="Daily Heart Rate" class="screenshot">
+                        </div>
+                        <div class="slider-dots">
+                            <div class="dot active"></div>
+                            <div class="dot"></div>
+                            <div class="dot"></div>
+                            <div class="dot"></div>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-        <div class="hero-bg">
-            <div class="glow"></div>
-        </div>
-    </header>
+            <div class="hero-bg">
+                <div class="glow"></div>
+            </div>
+        </header>
 
-    <section id="features" class="features">
-        <div class="container">
-            <h2 class="section-title">Designed for Your Flow</h2>
-            <div class="feature-grid">
-                <div class="feature-card glass">
-                    <div class="icon">🎙️</div>
-                    <h3>AI Voice Logs</h3>
-                    <p>Speak naturally. Our AI cleans up the transcripts, extracting the essence of your thoughts
-                        automatically.</p>
-                </div>
-                <div class="feature-card glass">
-                    <div class="icon">📈</div>
-                    <h3>Health Trends</h3>
-                    <p>Visualize your progress with deep analytics on body load, sleep, and activity patterns.</p>
-                </div>
-                <div class="feature-card glass">
-                    <div class="icon">⌚</div>
-                    <h3>Seamless Sync</h3>
-                    <p>Full integration with Fitbit and Health Connect to keep all your wellness data in one place.</p>
-                </div>
-                <div class="feature-card glass">
-                    <div class="icon">⚡</div>
-                    <h3>Quick Entry</h3>
-                    <p>Log entries in seconds with our optimized Quick Log interface. Never lose a thought again.</p>
+        <section id="features" class="features">
+            <div class="container">
+                <h2 class="section-title">Designed for Your Flow</h2>
+                <div class="feature-grid">
+                    <div class="feature-card glass">
+                        <div class="icon">🎙️</div>
+                        <h3>AI Voice Logs</h3>
+                        <p>Speak naturally. Our AI cleans up the transcripts, extracting the essence of your thoughts
+                            automatically.</p>
+                    </div>
+                    <div class="feature-card glass">
+                        <div class="icon">📈</div>
+                        <h3>Health Trends</h3>
+                        <p>Visualize your progress with deep analytics on body load, sleep, and activity patterns.</p>
+                    </div>
+                    <div class="feature-card glass">
+                        <div class="icon">⌚</div>
+                        <h3>Seamless Sync</h3>
+                        <p>Full integration with Fitbit and Health Connect to keep all your wellness data in one place.</p>
+                    </div>
+                    <div class="feature-card glass">
+                        <div class="icon">⚡</div>
+                        <h3>Quick Entry</h3>
+                        <p>Log entries in seconds with our optimized Quick Log interface. Never lose a thought again.</p>
+                    </div>
                 </div>
             </div>
-        </div>
-    </section>
-
-
+        </section>
+    </main>
 
     <footer class="glass">
         <div class="container footer-content">
