@@ -79,6 +79,11 @@ nav {
     border-radius: 10px;
 }
 
+.nav-actions {
+    display: flex;
+    align-items: center;
+}
+
 .nav-links {
     display: flex;
     align-items: center;
