@@ -10,7 +10,8 @@ const observer = new IntersectionObserver((entries) => {
             
             // Trigger stats animation if this is the stats section
             if (entry.target.classList.contains('stats-section')) {
-                animateStats();
+                const realStats = (window as any).realStats;
+                animateStats(realStats);
             }
             
             observer.unobserve(entry.target);
@@ -18,21 +19,30 @@ const observer = new IntersectionObserver((entries) => {
     });
 }, observerOptions);
 
-const animateStats = () => {
+const animateStats = (data?: { jots: number, insights: number, accuracy: number }) => {
     const stats = document.querySelectorAll('.stat-number');
     stats.forEach(stat => {
-        const target = parseInt(stat.getAttribute('data-target') || '0');
+        const type = stat.parentElement?.querySelector('.stat-label')?.textContent?.toLowerCase();
+        let target = parseInt(stat.getAttribute('data-target') || '0');
+        
+        // Override with real data if available
+        if (data) {
+            if (type?.includes('notes')) target = data.jots;
+            if (type?.includes('trends')) target = data.insights;
+            if (type?.includes('accuracy')) target = data.accuracy;
+        }
+
         let count = 0;
-        const duration = 2000; // 2 seconds
-        const increment = target / (duration / 16); // 60fps
+        const duration = 2000;
+        const increment = target / (duration / 16);
         
         const updateCount = () => {
             count += increment;
             if (count < target) {
-                stat.textContent = Math.floor(count).toLocaleString();
+                stat.textContent = type?.includes('accuracy') ? count.toFixed(1) : Math.floor(count).toLocaleString();
                 requestAnimationFrame(updateCount);
             } else {
-                stat.textContent = target.toLocaleString();
+                stat.textContent = type?.includes('accuracy') ? target.toFixed(1) : target.toLocaleString();
             }
         };
         updateCount();
@@ -40,6 +50,15 @@ const animateStats = () => {
 };
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Fetch Real Stats from Server
+    fetch('/api/public/stats')
+        .then(res => res.json())
+        .then(data => {
+            // Stats will be triggered by observer, but we store the data globally or pass it
+            window['realStats'] = data;
+        })
+        .catch(err => console.error('Failed to fetch real stats:', err));
+
     // Reveal animations
     const revealElements = document.querySelectorAll('.reveal');
     revealElements.forEach(el => observer.observe(el));
@@ -54,15 +73,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     demoBtns.forEach(btn => {
         btn.addEventListener('click', () => {
+            if (btn.classList.contains('active')) return;
             demoBtns.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             const mode = btn.getAttribute('data-mode') || 'raw';
             if (demoText) {
                 demoText.style.opacity = '0';
                 setTimeout(() => {
-                    demoText.textContent = demoScenarios[mode];
+                    demoText.innerText = demoScenarios[mode];
                     demoText.style.opacity = '1';
-                }, 200);
+                }, 300);
             }
         });
     });
