@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="./style.css?v=1.7">
+    <link rel="stylesheet" href="./style.css?v=1.5">
     <link rel="icon" type="image/png" href="/jot_app_icon_1773090172459.png">
     <style>
         nav.glass {
@@ -17,10 +17,6 @@
             -webkit-backdrop-filter: blur(10px) !important;
             box-shadow: 0 4px 30px rgba(0, 0, 0, 0.8) !important;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
-        }
-        body.mobile-menu-open main {
-            filter: blur(15px) brightness(0.5) !important;
-            transition: all 0.3s ease;
         }
     </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -180,29 +176,6 @@ new Chart(ctx, {
         </div>
     </div>
 
-    <script>
-        function toggleMobileMenu() {
-            const toggle = document.getElementById('mobile-toggle');
-            const nav = document.getElementById('nav-links');
-            const isActive = nav.classList.toggle('active');
-            toggle.classList.toggle('active');
-            
-            // Force visibility using inline styles to bypass cache issues
-            if (isActive) {
-                nav.style.display = 'flex';
-                nav.style.visibility = 'visible';
-                nav.style.opacity = '1';
-                document.body.style.overflow = 'hidden';
-                document.body.classList.add('mobile-menu-open');
-            } else {
-                nav.style.display = '';
-                nav.style.visibility = '';
-                nav.style.opacity = '';
-                document.body.style.overflow = '';
-                document.body.classList.remove('mobile-menu-open');
-            }
-        }
-    </script>
-    <script type="module" src="/main.ts"></script>
+    <script type="module" src="./main.ts"></script>
 </body>
 </html>
