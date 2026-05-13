@@ -180,6 +180,29 @@ new Chart(ctx, {
         </div>
     </div>
 
-    <script type="module" src="./main.ts"></script>
+    <script>
+        function toggleMobileMenu() {
+            const toggle = document.getElementById('mobile-toggle');
+            const nav = document.getElementById('nav-links');
+            const isActive = nav.classList.toggle('active');
+            toggle.classList.toggle('active');
+            
+            // Force visibility using inline styles to bypass cache issues
+            if (isActive) {
+                nav.style.display = 'flex';
+                nav.style.visibility = 'visible';
+                nav.style.opacity = '1';
+                document.body.style.overflow = 'hidden';
+                document.body.classList.add('mobile-menu-open');
+            } else {
+                nav.style.display = '';
+                nav.style.visibility = '';
+                nav.style.opacity = '';
+                document.body.style.overflow = '';
+                document.body.classList.remove('mobile-menu-open');
+            }
+        }
+    </script>
+    <script type="module" src="/main.ts"></script>
 </body>
 </html>

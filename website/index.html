@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="./style.css?v=1.7">
+    <link rel="stylesheet" href="./style.css?v=1.9">
     <link rel="icon" type="image/png" href="/jot_app_icon_1773090172459.png">
     <style>
         nav.glass {
@@ -35,11 +35,6 @@
                 <span>Jot</span>
             </a>
             <div class="nav-actions">
-                <div class="nav-links" id="nav-links">
-                    <a href="#features">Features</a>
-                    <a href="/learn-more">Learn More</a>
-                    <a href="javascript:void(0)" class="btn-primary btn-download">Download</a>
-                </div>
                 <button class="mobile-nav-toggle" id="mobile-toggle" onclick="toggleMobileMenu()" aria-label="Toggle Navigation">
                     <span></span>
                     <span></span>
@@ -48,6 +43,12 @@
             </div>
         </div>
     </nav>
+
+    <div class="nav-links" id="nav-links">
+        <a href="#features">Features</a>
+        <a href="/learn-more">Learn More</a>
+        <a href="javascript:void(0)" class="btn-primary btn-download">Download</a>
+    </div>
 
     <main>
         <header class="hero">
@@ -152,10 +153,23 @@
         function toggleMobileMenu() {
             const toggle = document.getElementById('mobile-toggle');
             const nav = document.getElementById('nav-links');
+            const isActive = nav.classList.toggle('active');
             toggle.classList.toggle('active');
-            nav.classList.toggle('active');
-            document.body.classList.toggle('mobile-menu-open');
-            document.body.style.overflow = nav.classList.contains('active') ? 'hidden' : '';
+            
+            // Force visibility using inline styles to bypass cache issues
+            if (isActive) {
+                nav.style.display = 'flex';
+                nav.style.visibility = 'visible';
+                nav.style.opacity = '1';
+                document.body.style.overflow = 'hidden';
+                document.body.classList.add('mobile-menu-open');
+            } else {
+                nav.style.display = '';
+                nav.style.visibility = '';
+                nav.style.opacity = '';
+                document.body.style.overflow = '';
+                document.body.classList.remove('mobile-menu-open');
+            }
         }
     </script>
     <script type="module" src="/main.ts"></script>
