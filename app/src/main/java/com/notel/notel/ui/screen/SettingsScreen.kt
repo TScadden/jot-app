@@ -311,7 +311,7 @@ fun SettingsScreen(
                             onClick = { currentMenu = SettingsMenu.MEMBERSHIP },
                             modifier = Modifier.onGloballyPositioned { coordWallet = it }
                         ) {
-                            Icon(Icons.Default.Star, "Membership", tint = NotelPrimary)
+                            Icon(Icons.Default.Wallet, "Membership", tint = NotelPrimary)
                         }
                     }
                 },
