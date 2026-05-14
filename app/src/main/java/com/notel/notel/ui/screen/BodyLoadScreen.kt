@@ -34,7 +34,7 @@ import com.notel.notel.data.local.entity.Category
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun BodyLoadScreen(
     viewModel: BodyLoadViewModel = hiltViewModel(),

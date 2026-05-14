@@ -100,7 +100,7 @@ fun QuickLogScreen(
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     placeholder = { Text("Add a custom note…", color = NotelTextSecondary) },
                     trailingIcon = {
-                        if (state.manualText.isNotBlank()) {
+                        if (state.manualText.isNotBlank() || state.selectedChips.isNotEmpty()) {
                             IconButton(onClick = viewModel::saveEntry) {
                                 if (state.isSaving) {
                                     GlassySpinner(size = 20.dp)

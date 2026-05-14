@@ -98,6 +98,27 @@ fun SettingsScreen(
     val userContextHidden by viewModel.userContextHidden.collectAsState()
     val tutorialSeen by viewModel.settingsTutorialSeen.collectAsState()  // null = loading, false = not seen, true = seen
 
+    val context = LocalContext.current
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        // No-op, the collectAsState will refresh
+    }
+
+    fun checkAndToggle(enabled: Boolean, onToggle: (Boolean) -> Unit) {
+        if (enabled) {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                val status = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
+                if (status != PackageManager.PERMISSION_GRANTED) {
+                    permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    return
+                }
+            }
+        }
+        onToggle(enabled)
+    }
+
     // Screen dimensions for smart tooltip placement
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
@@ -153,7 +174,6 @@ fun SettingsScreen(
     }
     
     val snackbarHostState = remember { SnackbarHostState() }
-    val context = LocalContext.current
     val activity = context as? android.app.Activity
     val fitbitViewModel: com.notel.notel.ui.viewmodel.FitbitViewModel = hiltViewModel()
     val fitbitState by fitbitViewModel.state.collectAsState()
@@ -1958,7 +1978,7 @@ fun SettingsScreen(
                             }
                             Switch(
                                 checked = bodyLoadRemindersEnabled,
-                                onCheckedChange = { viewModel.setBodyLoadRemindersEnabled(it) },
+                                onCheckedChange = { checkAndToggle(it) { enabled -> viewModel.setBodyLoadRemindersEnabled(enabled) } },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = NotelPrimary,
                                     checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
@@ -1981,7 +2001,7 @@ fun SettingsScreen(
                             }
                             Switch(
                                 checked = dailyCupUpdatesEnabled,
-                                onCheckedChange = { viewModel.setDailyCupUpdatesEnabled(it) },
+                                onCheckedChange = { checkAndToggle(it) { enabled -> viewModel.setDailyCupUpdatesEnabled(enabled) } },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = NotelPrimary,
                                     checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
@@ -2004,7 +2024,7 @@ fun SettingsScreen(
                             }
                             Switch(
                                 checked = habitReminderEnabled,
-                                onCheckedChange = { viewModel.setHabitReminderEnabled(it) },
+                                onCheckedChange = { checkAndToggle(it) { enabled -> viewModel.setHabitReminderEnabled(enabled) } },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = NotelPrimary,
                                     checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
@@ -2040,11 +2060,13 @@ fun SettingsScreen(
                                 }
                                 Switch(
                                     checked = hrSpikeAlertsEnabled,
-                                    onCheckedChange = { 
-                                        viewModel.setHrSpikeAlertsEnabled(it)
-                                        if (it && (tempSpikeThreshold.isBlank() || (tempSpikeThreshold.toIntOrNull() ?: 0) < 40)) {
-                                            tempSpikeThreshold = "110"
-                                            viewModel.setSpikeThreshold(110)
+                                    onCheckedChange = { checked ->
+                                        checkAndToggle(checked) { it ->
+                                            viewModel.setHrSpikeAlertsEnabled(it)
+                                            if (it && (tempSpikeThreshold.isBlank() || (tempSpikeThreshold.toIntOrNull() ?: 0) < 40)) {
+                                                tempSpikeThreshold = "110"
+                                                viewModel.setSpikeThreshold(110)
+                                            }
                                         }
                                     },
                                     colors = SwitchDefaults.colors(
@@ -2176,6 +2198,27 @@ fun SettingsScreen(
 
             if (currentMenu == SettingsMenu.MAIN) {
                 Spacer(Modifier.height(16.dp))
+                
+                val isSyncingRecover by viewModel.isSyncing.collectAsState()
+                
+                GlassyButton(
+                    onClick = { viewModel.recoverAccountData() },
+                    modifier = Modifier.fillMaxWidth(),
+                    containerColor = NotelSurfaceHigh,
+                    enabled = !isSyncingRecover
+                ) {
+                    if (isSyncingRecover) {
+                        GlassySpinner(size = 20.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Recovering...", color = NotelTextSecondary, fontWeight = FontWeight.Bold)
+                    } else {
+                        Icon(Icons.Default.Sync, "Recover", tint = NotelPrimary)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Recover Account Data", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
 
                 GlassyButton(
                     onClick = { showLogoutDialog = true },
@@ -2221,22 +2264,36 @@ fun SettingsScreen(
             
 
             if (showLogoutDialog) {
+                val logoutError by viewModel.logoutError.collectAsState()
+                
                 AlertDialog(
-                    onDismissRequest = { showLogoutDialog = false },
+                    onDismissRequest = { showLogoutDialog = false; viewModel.clearLogoutError() },
                     title = { Text("Logout?", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
-                    text = { Text("Are you sure you want to log out?", color = NotelTextSecondary) },
+                    text = { 
+                        Column {
+                            Text("Your data will be synced to the cloud before logging out.", color = NotelTextSecondary)
+                            if (logoutError != null) {
+                                Spacer(Modifier.height(12.dp))
+                                Text(
+                                    logoutError!!,
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    },
                     confirmButton = {
                         TextButton(onClick = {
                             viewModel.logout {
                                 onLogout()
                             }
-                            showLogoutDialog = false
                         }) {
                             Text("Logout", color = NotelPrimary)
                         }
                     },
                     dismissButton = {
-                        TextButton(onClick = { showLogoutDialog = false }) {
+                        TextButton(onClick = { showLogoutDialog = false; viewModel.clearLogoutError() }) {
                             Text("Cancel", color = NotelTextSecondary)
                         }
                     },

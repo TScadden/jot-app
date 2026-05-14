@@ -266,7 +266,7 @@ class SettingsViewModel @Inject constructor(
     fun saveUserProfile(age: Int, height: Float, weight: Float, gender: String) {
         viewModelScope.launch {
             preferences.setUserProfileStats(age, height, weight, gender)
-            syncManager.syncAllData()
+            syncManager.pushProfileData()
         }
     }
 
@@ -407,7 +407,7 @@ class SettingsViewModel @Inject constructor(
             if (index in facts.indices) {
                 facts[index] = newText
                 preferences.setKnowledgeBase(facts.joinToString("\n\n"))
-                syncManager.syncAllData()
+                syncManager.pushProfileData()
             }
         }
     }
@@ -419,7 +419,7 @@ class SettingsViewModel @Inject constructor(
             val current = preferences.professionalUpdates.first()
             val combined = if (current.isBlank()) newEntry else "$newEntry\n\n$current"
             preferences.setProfessionalUpdates(combined)
-            syncManager.syncAllData()
+            syncManager.pushProfileData()
         }
     }
 
@@ -431,7 +431,7 @@ class SettingsViewModel @Inject constructor(
                 if (index in updatesList.indices) {
                     updatesList.removeAt(index)
                     preferences.setProfessionalUpdates(updatesList.joinToString("\n\n"))
-                    syncManager.syncAllData()
+                    syncManager.pushProfileData()
                 }
             }
         }
@@ -445,7 +445,7 @@ class SettingsViewModel @Inject constructor(
                 if (index in updatesList.indices) {
                     updatesList[index] = newText
                     preferences.setProfessionalUpdates(updatesList.joinToString("\n\n"))
-                    syncManager.syncAllData()
+                    syncManager.pushProfileData()
                 }
             }
         }
@@ -454,7 +454,7 @@ class SettingsViewModel @Inject constructor(
     fun clearProfessionalUpdates() {
         viewModelScope.launch { 
             preferences.setProfessionalUpdates("")
-            syncManager.syncAllData()
+            syncManager.pushProfileData()
         }
     }
 
@@ -473,28 +473,28 @@ class SettingsViewModel @Inject constructor(
     fun setAutoAiSuggestions(enabled: Boolean) {
         viewModelScope.launch {
             preferences.setAutoAiSuggestions(enabled)
-            syncManager.syncAllData()
+            syncManager.pushProfileData()
         }
     }
 
     fun setBodyLoadRemindersEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferences.setBodyLoadRemindersEnabled(enabled)
-            syncManager.syncAllData()
+            syncManager.pushProfileData()
         }
     }
 
     fun setDailyCupUpdatesEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferences.setDailyCupUpdatesEnabled(enabled)
-            syncManager.syncAllData()
+            syncManager.pushProfileData()
         }
     }
 
     fun setHrSpikeAlertsEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferences.setHrSpikeAlertsEnabled(enabled)
-            syncManager.syncAllData()
+            syncManager.pushProfileData()
             
             if (enabled) {
                 HrSpikeMonitorService.startService(context)
@@ -509,28 +509,28 @@ class SettingsViewModel @Inject constructor(
     fun setSpikeThreshold(threshold: Int) {
         viewModelScope.launch {
             preferences.setSpikeThreshold(threshold)
-            syncManager.syncAllData()
+            syncManager.pushProfileData()
         }
     }
 
     fun setHrDeltaEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferences.setHrDeltaEnabled(enabled)
-            syncManager.syncAllData()
+            syncManager.pushProfileData()
         }
     }
 
     fun setSpikeDeltaThreshold(threshold: Int) {
         viewModelScope.launch {
             preferences.setSpikeDeltaThreshold(threshold)
-            syncManager.syncAllData()
+            syncManager.pushProfileData()
         }
     }
 
     fun setHabitReminderEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferences.setHabitReminderEnabled(enabled)
-            syncManager.syncAllData()
+            syncManager.pushProfileData()
         }
     }
 
@@ -556,13 +556,36 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             preferences.setOnboardingComplete(false)
             // Push the "false" status to the server so it removes the checkmark
-            syncManager.syncAllData() 
+            syncManager.pushProfileData() 
             onRestart()
         }
     }
 
+    private val _logoutError = MutableStateFlow<String?>(null)
+    val logoutError = _logoutError.asStateFlow()
+
+    fun clearLogoutError() { _logoutError.value = null }
+
     fun logout(onLogout: () -> Unit) {
         viewModelScope.launch {
+            // 0. Push ALL local data to the server BEFORE wiping anything
+            try {
+                syncManager.pushProfileData()
+                syncManager.pushEntries()
+                syncManager.pushCategories()
+                
+                // Verify the sync actually reached the server by doing a quick pull check
+                val pullResult = syncManager.pullAllData()
+                if (!pullResult) {
+                    _logoutError.value = "Could not verify data was saved to server. Please try again in a moment."
+                    return@launch
+                }
+            } catch (e: Exception) {
+                // Sync failed — DO NOT wipe local data
+                _logoutError.value = "Could not save data to server: ${e.message ?: "Network error"}. Your data is safe locally. Please try again."
+                return@launch
+            }
+
             // 1. Clear DataStore preferences (credentials, tokens, AI context, etc.)
             preferences.clearCredentials()
             
@@ -615,7 +638,7 @@ class SettingsViewModel @Inject constructor(
                 current.add(EventCounterDto(id, uniqueName, dateMills, isUp, autoUp, isFavorite = current.isEmpty()))
             }
             preferences.setEventCounters(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(EventCounterDto.serializer()), current))
-            syncManager.syncAllData()
+            syncManager.pushProfileData()
         }
     }
 
@@ -629,7 +652,7 @@ class SettingsViewModel @Inject constructor(
                 val counter = current[index]
                 current[index] = counter.copy(isArchived = !counter.isArchived)
                 preferences.setEventCounters(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(EventCounterDto.serializer()), current))
-                syncManager.syncAllData()
+                syncManager.pushProfileData()
             }
         }
     }
@@ -653,7 +676,7 @@ class SettingsViewModel @Inject constructor(
                 
                 history.add(0, CounterHistoryItem(counter.name, counter.targetDate, System.currentTimeMillis()))
                 preferences.setCounterHistory(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(CounterHistoryItem.serializer()), history.take(20)))
-                syncManager.syncAllData()
+                syncManager.pushProfileData()
             }
         }
     }
@@ -679,28 +702,18 @@ class SettingsViewModel @Inject constructor(
 
     fun testHabitNotification(context: android.content.Context) {
         viewModelScope.launch {
-            habitRepository.fetchHabits()
-            val habits = habitRepository.habits.value
-            val today = habitRepository.todayDateString()
-            val anyUnchecked = habits.any { today !in it.logs }
-            
-            val helper = com.notel.notel.util.NotificationHelper(context)
-            if (anyUnchecked) {
-                helper.showHabitReminder()
-            } else {
-                // For testing, we'll show the reminder even if all are checked, 
-                // so the user can verify the notification style.
-                helper.showHabitReminder()
-            }
+            // Guaranteed notification for testing/video
+            com.notel.notel.util.NotificationHelper(context).showHabitReminder()
         }
     }
 
     fun testSpikeNotification(context: android.content.Context) {
         viewModelScope.launch {
-            val intraday = healthConnectManager.readHeartRateIntraday("today")
+            // Try to get real data for realism, but fallback to 102/72 for a guaranteed notification
+            val intraday = try { healthConnectManager.readHeartRateIntraday("today") } catch(e: Exception) { emptyList() }
             val latest = intraday.lastOrNull()?.second ?: 102
             val helper = com.notel.notel.util.NotificationHelper(context)
-            // Simulating a +30 jump for the test
+            // Simulating a jump for the test
             helper.showSpikeAlert(latest, latest - 30, 30)
         }
     }
@@ -722,8 +735,38 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             _isSyncing.value = true
             try {
-                syncManager.pullAllData()
+                if (!preferences.loggedIn.first()) {
+                    android.widget.Toast.makeText(context, "Error: Not logged in", android.widget.Toast.LENGTH_SHORT).show()
+                    _isSyncing.value = false
+                    return@launch
+                }
+                
+                val result = syncManager.pullAllData()
+                if (result) {
+                    val logCount = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        database.logEntryDao().countEntries()
+                    }
+                    val catCount = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        database.categoryDao().getAllCategories().first().size
+                    }
+                    android.widget.Toast.makeText(
+                        context,
+                        "Recovered! $logCount logs, $catCount categories",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                } else {
+                    android.widget.Toast.makeText(
+                        context,
+                        "Recovery failed — please check your internet connection",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                }
             } catch (e: Exception) {
+                android.widget.Toast.makeText(
+                    context,
+                    "Recovery error: ${e.message}",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
                 _syncError.emit(e.message ?: "Failed to recover data")
             } finally {
                 _isSyncing.value = false

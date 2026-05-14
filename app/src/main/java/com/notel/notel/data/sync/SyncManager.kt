@@ -112,6 +112,36 @@ class SyncManager @Inject constructor(
         }
     }
 
+    suspend fun pushEntries() = withContext(Dispatchers.IO) {
+        try {
+            if (!preferences.loggedIn.first()) return@withContext
+            val entries = logEntryDao.getAllEntries().first()
+            if (entries.isNotEmpty()) {
+                val entryDtos = entries.map {
+                    LogEntryDtoModel(it.id, it.categoryId, it.body, it.chips, it.manualText, it.timestamp)
+                }
+                jotApi.syncEntries(SyncEntriesRequest(entryDtos))
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "pushEntries failed: ${e.message}")
+        }
+    }
+
+    suspend fun pushCategories() = withContext(Dispatchers.IO) {
+        try {
+            if (!preferences.loggedIn.first()) return@withContext
+            val categories = categoryDao.getAllCategories().first()
+            if (categories.isNotEmpty()) {
+                val categoryDtos = categories.map {
+                    CategoryDtoModel(it.id, it.name, it.icon, it.colorHex, it.isDefault, it.sortOrder)
+                }
+                jotApi.syncCategories(SyncCategoriesRequest(categoryDtos))
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "pushCategories failed: ${e.message}")
+        }
+    }
+
     suspend fun pullAllData(): Boolean = withContext(Dispatchers.IO) {
         try {
             if (!preferences.loggedIn.first()) return@withContext false
@@ -186,8 +216,29 @@ class SyncManager @Inject constructor(
                     profile.gender?.let { preferences.setUserGender(it) }
                     profile.onboardingComplete?.let { if (it) preferences.setOnboardingComplete(true) }
                     profile.autoAiSuggestions?.let { preferences.setAutoAiSuggestions(it) }
-                    profile.eventCounters?.let { if (it.isNotBlank()) preferences.setEventCounters(it) }
-                    profile.counterHistory?.let { if (it.isNotBlank()) preferences.setCounterHistory(it) }
+                    // C. Restore AI Context/Doctor's Notes (with Smarter Merging for counters)
+                    profile.eventCounters?.let { serverJson ->
+                        if (serverJson.isNotBlank()) {
+                            val localJson = preferences.eventCounters.first()
+                            val localList = try { if (localJson.isNotBlank()) Json.decodeFromString<List<com.notel.notel.ui.viewmodel.EventCounterDto>>(localJson) else emptyList() } catch(e: Exception) { emptyList() }
+                            val serverList = try { Json.decodeFromString<List<com.notel.notel.ui.viewmodel.EventCounterDto>>(serverJson) } catch(e: Exception) { emptyList() }
+                            
+                            // Merge: Server items update local ones, but we keep local items that aren't on server yet
+                            val merged = (localList + serverList).distinctBy { it.id }
+                            preferences.setEventCounters(Json.encodeToString(merged))
+                        }
+                    }
+                    profile.counterHistory?.let { serverJson ->
+                        if (serverJson.isNotBlank()) {
+                            val localJson = preferences.counterHistory.first()
+                            val localList = try { if (localJson.isNotBlank()) Json.decodeFromString<List<com.notel.notel.ui.viewmodel.CounterHistoryItem>>(localJson) else emptyList() } catch(e: Exception) { emptyList() }
+                            val serverList = try { Json.decodeFromString<List<com.notel.notel.ui.viewmodel.CounterHistoryItem>>(serverJson) } catch(e: Exception) { emptyList() }
+                            
+                            // Merge history and take latest 20
+                            val merged = (localList + serverList).distinctBy { it.name + it.endedAt }.sortedByDescending { it.endedAt }.take(20)
+                            preferences.setCounterHistory(Json.encodeToString(merged))
+                        }
+                    }
                     profile.redditSubreddits?.let { if (it.isNotBlank()) preferences.setRedditSubreddits(it) }
                     profile.redditSummaries?.let { if (it.isNotBlank()) preferences.setRedditSummaries(it) }
                     profile.currentStreak?.let { preferences.setCurrentStreak(it) }
@@ -241,7 +292,10 @@ class SyncManager @Inject constructor(
                 true
             } else {
                 val errorMsg = response.errorBody()?.string() ?: "Unknown Error"
-                log("Sync Rejected: $errorMsg")
+                log("Sync Rejected (HTTP ${response.code()}): $errorMsg")
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    android.widget.Toast.makeText(context, "Server: HTTP ${response.code()} — $errorMsg", android.widget.Toast.LENGTH_LONG).show()
+                }
                 false
             }
         } catch (e: Exception) {

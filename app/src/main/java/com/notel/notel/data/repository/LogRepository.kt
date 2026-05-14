@@ -650,7 +650,8 @@ class LogRepository @Inject constructor(
         val fitbitToken = preferences.fitbitToken.first()
         
         val fitbitData = getFitbitDataSummary()
-        val habitData = getHabitDataSummary()
+        // Habits are UI-only for personal tracking; excluded from the PDF report.
+        val habitData = ""
         
         val isUnlimited = preferences.isUnlimited.first()
         val balance = preferences.userBalance.first()

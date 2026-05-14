@@ -52,19 +52,18 @@ class LoginViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            preferences.loggedIn.collect { status ->
-                if (status) {
-                    // If already logged in (app restart), fetch the real status from server before proceeding
-                    try {
-                        syncManager.pullAllData()
-                        onboardingCompleteByServer = preferences.onboardingComplete.first()
-                    } catch (e: Exception) {
-                        // Fallback to local if network fails on app start
-                        onboardingCompleteByServer = preferences.onboardingComplete.first()
-                    }
+            // Use first() to check once on init — avoids re-triggering pullAllData
+            // every time the loggedIn preference is written during the session.
+            val alreadyLoggedIn = preferences.loggedIn.first()
+            if (alreadyLoggedIn) {
+                try {
+                    syncManager.pullAllData()
+                    onboardingCompleteByServer = preferences.onboardingComplete.first()
+                } catch (e: Exception) {
+                    onboardingCompleteByServer = preferences.onboardingComplete.first()
                 }
-                isLoggedIn = status
             }
+            isLoggedIn = alreadyLoggedIn
         }
     }
 

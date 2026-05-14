@@ -49,6 +49,29 @@ object AppModule {
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .addInterceptor(authInterceptor)
+        .addInterceptor { chain ->
+            // Global rate-limit retry interceptor: retries 429s with exponential backoff
+            // Skip auth endpoints — retrying login/register makes rate limiting worse
+            val request = chain.request()
+            var response = chain.proceed(request)
+            val path = request.url.encodedPath
+            val isAuthEndpoint = path.contains("/api/auth/")
+            
+            if (!isAuthEndpoint) {
+                var retryCount = 0
+                val maxRetries = 2
+                var backoffMs = 2000L
+                
+                while (response.code == 429 && retryCount < maxRetries) {
+                    response.close()
+                    Thread.sleep(backoffMs)
+                    backoffMs *= 2
+                    retryCount++
+                    response = chain.proceed(request)
+                }
+            }
+            response
+        }
         .addInterceptor(HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BASIC
         })

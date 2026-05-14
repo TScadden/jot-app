@@ -320,7 +320,9 @@ class QuickLogViewModel @Inject constructor(
             calculateSmartRanking()
             
             // Final push to ensure profile data (logged days, counters) is updated
-            syncManager.syncAllData()
+            // Lightweight push — only send the new entries and updated profile (for streaks/logged days)
+            syncManager.pushEntries()
+            syncManager.pushProfileData()
         }
     }
 
@@ -509,7 +511,7 @@ class QuickLogViewModel @Inject constructor(
         _uiState.update { it.copy(loggedDays = updatedDays) }
         viewModelScope.launch {
             preferences.setLoggedDays(Json.encodeToString(updatedDays))
-            syncManager.syncAllData()
+            syncManager.pushProfileData()
         }
     }
 

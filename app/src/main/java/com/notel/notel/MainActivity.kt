@@ -318,25 +318,34 @@ class MainActivity : ComponentActivity() {
                                         isSelected = currentRoute == "history",
                                         onClick = { navController.navigate("history") }
                                     )
-                                    
-                                    // Simple Purple Pencil Note Button
-                                    IconButton(onClick = { 
-                                        if (currentRoute != "quick_log") {
-                                            navController.navigate("quick_log") {
-                                                popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                                launchSingleTop = true
-                                                restoreState = true
+                                    // Center Pencil Button — no label, always purple, slightly larger
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier
+                                            .clickable {
+                                                if (currentRoute != "quick_log") {
+                                                    navController.navigate("quick_log") {
+                                                        popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                                        launchSingleTop = true
+                                                        restoreState = true
+                                                    }
+                                                }
                                             }
-                                        }
-                                    }) {
+                                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                                    ) {
                                         Icon(
                                             imageVector = Icons.Default.Edit,
                                             contentDescription = "New Note",
                                             tint = NotelPrimary,
-                                            modifier = Modifier.size(26.dp)
+                                            modifier = Modifier.size(24.dp).offset(y = 5.dp)
+                                        )
+                                        // Invisible text to match NavIcon height so everything stays leveled
+                                        Text(
+                                            text = "",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontSize = 9.sp
                                         )
                                     }
-
                                     NavIcon(
                                         icon = Icons.Default.Favorite,
                                         label = "Heart",

@@ -214,7 +214,7 @@ fun BodyLoadCard(
                         contentAlignment = Alignment.Center
                      ) {
                         Text(
-                            text = if (historicalScore >= 0) historicalScore.toString() else "-",
+                            text = if (historicalScore > 0) historicalScore.toString() else "-",
                             color = if (isSelected) NotelTextPrimary else NotelTextSecondary,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                             fontSize = 13.sp
@@ -287,7 +287,7 @@ fun BodyLoadCard(
                             CircularProgressIndicator(color = NotelPrimary, strokeWidth = 1.dp, modifier = Modifier.size(20.dp))
                         } else {
                             Text(
-                                text = if (score >= 0) score.toString() else "-",
+                                text = if (score > 0) score.toString() else "-",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Black,
                                 color = NotelTextPrimary
@@ -313,7 +313,6 @@ fun BodyLoadCard(
                                 value = if (state.avgHeartRate > 0) "${state.avgHeartRate}" else "--",
                                 color = NotelPrimary
                             )
-                            Text("Avg HR", color = NotelTextSecondary, fontSize = 8.sp, fontWeight = FontWeight.Medium)
                         }
 
                         VerticalDivider(modifier = Modifier.height(16.dp), color = Color.White.copy(alpha = 0.05f))
