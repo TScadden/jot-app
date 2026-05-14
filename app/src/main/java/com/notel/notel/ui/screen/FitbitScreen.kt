@@ -388,6 +388,25 @@ fun FitbitScreen(
                                 )
                             }
                         }
+
+                        if (state.currentHrv > 0) {
+                            Spacer(Modifier.height(8.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.Timeline, 
+                                    null, 
+                                    tint = Color(0xFF4FC3F7), 
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    "HRV (RMSSD): ${state.currentHrv.toInt()} ms",
+                                    color = NotelTextPrimary.copy(alpha = 0.9f),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                         Spacer(Modifier.height(12.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Whatshot, null, tint = Color(0xFFFF5252), modifier = Modifier.size(14.dp))

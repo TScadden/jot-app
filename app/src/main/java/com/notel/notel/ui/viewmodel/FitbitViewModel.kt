@@ -47,7 +47,9 @@ data class FitbitState(
     val caloriesBurned: Int = 0,
     val isFitbitConnected: Boolean = false,
     val errorMessage: String? = null,
-    val historicalSpikes: List<DailyHeartRateSummary> = emptyList()
+    val historicalSpikes: List<DailyHeartRateSummary> = emptyList(),
+    val currentHrv: Double = 0.0,
+    val hrvData: List<Pair<String, Double>> = emptyList()
 )
 
 
@@ -186,6 +188,7 @@ class FitbitViewModel @Inject constructor(
          val sleepDeferred = async { healthConnectManager.readSleepSession(_state.value.selectedSleepDate) }
          val activeCalDeferred = async { healthConnectManager.readActiveCalories(_state.value.selectedHeartRateDate) }
          val histCalDeferred = async { healthConnectManager.readHistoricalCalories() }
+         val hrvDeferred = async { healthConnectManager.readHeartRateVariability() }
 
          val intradayHR = try { intradayHRDeferred.await() } catch(e: Exception) { emptyList() }
          val zoneId = java.time.ZoneId.systemDefault()
@@ -205,6 +208,8 @@ class FitbitViewModel @Inject constructor(
          val sleepData = try { sleepDeferred.await() } catch(e: Exception) { null }
          val activeCal = try { activeCalDeferred.await() } catch(e: Exception) { 0 }
          val histCal = try { histCalDeferred.await() } catch(e: Exception) { emptyList() }
+         val hrvData = try { hrvDeferred.await() } catch(e: Exception) { emptyList() }
+         val currentHrv = hrvData.find { it.first == _state.value.selectedHeartRateDate }?.second ?: 0.0
 
          var latest = intradayHR.lastOrNull()?.second ?: 0
          val latestTime = intradayHR.lastOrNull()?.first ?: 0L
@@ -228,6 +233,8 @@ class FitbitViewModel @Inject constructor(
                  historicalCalories = histCal,
                  sleepData = sleepData,
                  caloriesBurned = activeCal,
+                 hrvData = hrvData,
+                 currentHrv = currentHrv,
                  errorMessage = if (latest == 0 && avgHR == 0) "No recent HC data found" else null
              )
          }
@@ -369,6 +376,7 @@ class FitbitViewModel @Inject constructor(
             var avgHR = 0
             var asleepHR = 0
             var activeCal = 0
+            var currentHrv = 0.0
 
             if (hasHC) {
                 intradayHR = healthConnectManager.readHeartRateIntraday(date)
@@ -384,6 +392,8 @@ class FitbitViewModel @Inject constructor(
                 avgHR = if (awake.isNotEmpty()) awake.map{it.second}.average().toInt() else 0
                 asleepHR = if (asleep.isNotEmpty()) asleep.map{it.second}.average().toInt() else 0
                 activeCal = healthConnectManager.readActiveCalories(date)
+                val hrvList = healthConnectManager.readHeartRateVariability()
+                currentHrv = hrvList.find { it.first == date }?.second ?: 0.0
             }
             
             var latest = intradayHR.lastOrNull()?.second ?: 0
@@ -405,6 +415,7 @@ class FitbitViewModel @Inject constructor(
                     latestHeartRate = latest,
                     latestHeartRateTime = formattedTime,
                     caloriesBurned = activeCal,
+                    currentHrv = currentHrv,
                     // historicalSpikes is populated from the DataStore preferences flow in init{}
                     errorMessage = if (intradayHR.isEmpty() && activeCal == 0) "No data found for this date." else null
                 )
