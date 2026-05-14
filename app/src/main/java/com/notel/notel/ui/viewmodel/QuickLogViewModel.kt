@@ -281,8 +281,11 @@ class QuickLogViewModel @Inject constructor(
             
             // Mark today as logged
             val todayStr = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
-            val updatedDays = state.loggedDays + todayStr
+            val updatedDays = (state.loggedDays + todayStr).distinct()
             preferences.setLoggedDays(Json.encodeToString(updatedDays))
+            
+            // Immediately recalculate streak so UI updates
+            preferences.updateStreak()
 
             logRepository.insertEntry(
                 LogEntry(
