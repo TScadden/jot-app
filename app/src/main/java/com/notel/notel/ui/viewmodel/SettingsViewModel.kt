@@ -167,9 +167,6 @@ class SettingsViewModel @Inject constructor(
     val isUnlimited = preferences.isUnlimited
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
-    val userBalance = preferences.userBalance
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0f)
-
     val autoAiSuggestions = preferences.autoAiSuggestions
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
@@ -190,6 +187,7 @@ class SettingsViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
     val reportReadyEvent = logRepository.reportReadyEvent
+    val aiInsightReadyEvent = logRepository.aiInsightReadyEvent
 
     fun resetGeneratedReport() {
         logRepository.resetGeneratedReport()
@@ -237,13 +235,6 @@ class SettingsViewModel @Inject constructor(
     val billingEvents = billingManager.billingEvents
 
 
-    fun topUpBalance(amount: Float) {
-        // This was the old simulation method
-        viewModelScope.launch {
-            val current = preferences.userBalance.first()
-            preferences.setUserBalance(current + amount)
-        }
-    }
 
     fun purchaseCredits(activity: android.app.Activity, productId: String, quantity: Int = 1) {
         billingManager.launchPurchaseFlow(activity, productId, quantity)

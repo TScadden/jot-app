@@ -102,7 +102,6 @@ data class AuthResponse(
     val token: String? = null,
     val userId: String? = null,
     val email: String? = null,
-    val balance: Float? = null,
     val isUnlimited: Boolean? = null,
     val onboardingComplete: Boolean? = null,
     val error: String? = null
@@ -222,8 +221,7 @@ data class SyncPullResponse(
     val profile: ProfileDtoModel? = null,
     val insights: List<InsightDtoModel> = emptyList(),
     val documents: List<KnowledgeDocumentDtoModel> = emptyList(),
-    val isUnlimited: Boolean? = null,
-    val balance: Float? = null
+    val isUnlimited: Boolean? = null
 )
 
 @Serializable
@@ -236,7 +234,7 @@ data class BillingVerificationRequest(
 @Serializable
 data class BillingVerificationResponse(
     val success: Boolean,
-    val balance: Float? = null,
+    val isUnlimited: Boolean? = null,
     val error: String? = null
 )
 

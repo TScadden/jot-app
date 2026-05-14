@@ -68,7 +68,6 @@ fun SettingsScreen(
     val knowledgeBase by viewModel.knowledgeBase.collectAsState()
     val professionalUpdates by viewModel.professionalUpdates.collectAsState()
     val processedFiles by viewModel.processedFiles.collectAsState()
-    val userBalance by viewModel.userBalance.collectAsState()
     val isUnlimited by viewModel.isUnlimited.collectAsState()
     val isProcessing by viewModel.isProcessingFile.collectAsState()
     val processError by viewModel.processError.collectAsState()
@@ -312,7 +311,7 @@ fun SettingsScreen(
                             onClick = { currentMenu = SettingsMenu.MEMBERSHIP },
                             modifier = Modifier.onGloballyPositioned { coordWallet = it }
                         ) {
-                            Icon(Icons.Default.AccountBalanceWallet, "Membership", tint = NotelPrimary)
+                            Icon(Icons.Default.Star, "Membership", tint = NotelPrimary)
                         }
                     }
                 },
@@ -378,33 +377,37 @@ fun SettingsScreen(
                             }
                         }
 
-                        Spacer(Modifier.height(20.dp))
-                        HorizontalDivider(color = NotelSurfaceHigh, thickness = 0.5.dp)
-                        Spacer(Modifier.height(20.dp))
-
-                        // Pricing display
+                        // Access Level Display
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.Bottom
+                            horizontalArrangement = Arrangement.Center
                         ) {
-                            Text(
-                                "\$3",
-                                color = NotelPrimary,
-                                fontSize = 36.sp,
-                                fontWeight = FontWeight.Black
-                            )
-                            Text(
-                                " / month",
-                                color = NotelTextSecondary,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium
-                            )
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    if (isUnlimited) "Unlimited" else "Standard",
+                                    color = NotelPrimary,
+                                    fontSize = 32.sp,
+                                    fontWeight = FontWeight.Black
+                                )
+                                Text(
+                                    "MEMBERSHIP LEVEL",
+                                    color = NotelTextSecondary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp
+                                )
+                            }
                         }
-                        Spacer(Modifier.height(4.dp))
+                        
+                        Spacer(Modifier.height(12.dp))
+                        
                         Text(
-                            "Includes 3-day free trial · Cancel anytime",
+                            if (isUnlimited) "You have full unlimited access to all AI features." 
+                            else "Standard account. Upgrade for unlimited AI insights and clinical reports.",
                             color = NotelTextSecondary,
-                            fontSize = 12.sp
+                            fontSize = 13.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
                         )
 
                         if (!isUnlimited) {
@@ -414,9 +417,9 @@ fun SettingsScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 containerColor = NotelPrimary
                             ) {
-                                Icon(Icons.Default.AccountBalanceWallet, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Default.Wallet, null, tint = Color.White, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
-                                Text("Start Free Trial · \$3/month", color = Color.White, fontWeight = FontWeight.Bold)
+                                Text("Get Unlimited Access · $3/mo", color = Color.White, fontWeight = FontWeight.Bold)
                             }
                         } else {
                             Spacer(Modifier.height(20.dp))
@@ -2425,7 +2428,13 @@ fun InsightTile(insight: com.notel.notel.data.local.entity.AiInsight, onDelete: 
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                text = insight.text,
+                text = insight.text
+                    .replace("[SECTION]", "")
+                    .replace("[BULLET]", "•")
+                    .replace("[ITALIC]", "")
+                    .replace("[BOLD]", "")
+                    .replace("*", "")
+                    .trim(),
                 color = NotelTextPrimary,
                 fontSize = 14.sp,
                 lineHeight = 20.sp,

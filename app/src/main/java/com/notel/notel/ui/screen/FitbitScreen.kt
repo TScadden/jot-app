@@ -66,6 +66,116 @@ fun FitbitScreen(
     var showCalendar by remember { mutableStateOf(false) }
     var compareMode by remember { mutableStateOf("Days") }
     var selectedCompareDate by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    var showHrvInfo by remember { mutableStateOf(false) }
+    var showHrInfo by remember { mutableStateOf(false) }
+    
+    if (showHrInfo) {
+        AlertDialog(
+            onDismissRequest = { showHrInfo = false },
+            confirmButton = {
+                TextButton(onClick = { showHrInfo = false }) {
+                    Text("Got it", color = NotelPrimary)
+                }
+            },
+            title = {
+                Text("Heart Rate Insights", fontWeight = FontWeight.Bold, color = NotelTextPrimary)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        "Jot tracks your 'Awake Average' to better understand your physiological load throughout the day.",
+                        fontSize = 14.sp,
+                        color = NotelTextSecondary
+                    )
+                    
+                    Text(
+                        "Clinical Benchmarks:",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = NotelTextPrimary
+                    )
+                    
+                    Text(
+                        "• Resting (RHR): 60 - 80 bpm\n" +
+                        "• Tachycardia: >100 bpm at rest\n" +
+                        "• Bradycardia: <60 bpm at rest",
+                        fontSize = 14.sp,
+                        color = NotelTextSecondary
+                    )
+                    
+                    Surface(
+                        color = NotelPrimary.copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            "NOTE: For clinical management (POTS/Autonomic), we focus on 'Spikes' (jumps of 30+ bpm) rather than just the average. If your average is high, check the 'Spike Analysis' card below.",
+                            modifier = Modifier.padding(8.dp),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = NotelPrimary
+                        )
+                    }
+                }
+            },
+            containerColor = NotelSurface,
+            shape = RoundedCornerShape(24.dp)
+        )
+    }
+    
+    if (showHrvInfo) {
+        AlertDialog(
+            onDismissRequest = { showHrvInfo = false },
+            confirmButton = {
+                TextButton(onClick = { showHrvInfo = false }) {
+                    Text("Got it", color = NotelPrimary)
+                }
+            },
+            title = {
+                Text("Understanding HRV (RMSSD)", fontWeight = FontWeight.Bold, color = NotelTextPrimary)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        "Heart Rate Variability (HRV) measures the variation in time between each heartbeat. In Jot, we use RMSSD, which is the gold standard for measuring autonomic recovery.",
+                        fontSize = 14.sp,
+                        color = NotelTextSecondary
+                    )
+                    
+                    Text(
+                        "Typical Ranges:",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = NotelTextPrimary
+                    )
+                    
+                    Text(
+                        "• Athletes/Young Adults: 60ms - 100ms+\n" +
+                        "• Healthy Adults: 30ms - 60ms\n" +
+                        "• Higher Stress/Recovery: 10ms - 30ms",
+                        fontSize = 14.sp,
+                        color = NotelTextSecondary
+                    )
+                    
+                    Surface(
+                        color = NotelPrimary.copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            "NOTE: HRV is highly individual. Your personal baseline is more important than these averages. A significant drop from YOUR norm usually indicates high physiological load or pending illness.",
+                            modifier = Modifier.padding(8.dp),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = NotelPrimary
+                        )
+                    }
+                }
+            },
+            containerColor = NotelSurface,
+            shape = RoundedCornerShape(24.dp)
+        )
+    }
     
     if (showCalendar && state.isConnected) {
         val initialDateMillis = remember(state.selectedHeartRateDate) {
@@ -323,7 +433,9 @@ fun FitbitScreen(
                 }
                 
                 GlassyCard(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showHrInfo = true },
                     color = NotelSurface
                 ) {
                     Column(
@@ -389,25 +501,6 @@ fun FitbitScreen(
                             }
                         }
 
-                        if (state.currentHrv > 0) {
-                            Spacer(Modifier.height(8.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    Icons.Default.Timeline, 
-                                    null, 
-                                    tint = Color(0xFF4FC3F7), 
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    "HRV (RMSSD): ${state.currentHrv.toInt()} ms",
-                                    color = NotelTextPrimary.copy(alpha = 0.9f),
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                        Spacer(Modifier.height(12.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Whatshot, null, tint = Color(0xFFFF5252), modifier = Modifier.size(14.dp))
                             Spacer(Modifier.width(4.dp))
@@ -417,6 +510,35 @@ fun FitbitScreen(
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium
                             )
+                        }
+
+                        if (state.averageHeartRate > 0 || state.currentHrv > 0) {
+                            Spacer(Modifier.height(8.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.clickable { showHrvInfo = true }
+                            ) {
+                                Icon(
+                                    Icons.Default.Timeline, 
+                                    null, 
+                                    tint = Color(0xFF4FC3F7), 
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    "HRV (RMSSD): ${if (state.currentHrv > 0) state.currentHrv.toInt().toString() + " ms" else "-- ms"}",
+                                    color = NotelTextPrimary.copy(alpha = 0.9f),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Icon(
+                                    Icons.Default.Info, 
+                                    null, 
+                                    tint = NotelTextSecondary.copy(alpha = 0.5f), 
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
                         }
                         if (state.latestHeartRate > 0) {
                             Text(

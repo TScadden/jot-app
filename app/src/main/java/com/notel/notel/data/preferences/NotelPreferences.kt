@@ -52,8 +52,6 @@ class NotelPreferences @Inject constructor(
         val USER_HEIGHT = floatPreferencesKey("user_height")
         val USER_WEIGHT = floatPreferencesKey("user_weight")
         val USER_GENDER = stringPreferencesKey("user_gender")
-        val USER_BALANCE = floatPreferencesKey("user_balance")
-        val SHOW_FREE_CREDIT_POPUP = booleanPreferencesKey("show_free_credit_popup")
         val IS_UNLIMITED = booleanPreferencesKey("is_unlimited")
         val AUTO_AI_SUGGESTIONS = booleanPreferencesKey("auto_ai_suggestions")
 
@@ -221,14 +219,6 @@ class NotelPreferences @Inject constructor(
 
     val userGender: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[USER_GENDER] ?: ""
-    }
-
-    val userBalance: Flow<Float> = context.dataStore.data.map { prefs ->
-        prefs[USER_BALANCE] ?: 0f
-    }
-
-    val showFreeCreditPopup: Flow<Boolean> = context.dataStore.data.map { prefs ->
-        prefs[SHOW_FREE_CREDIT_POPUP] ?: false
     }
 
     val isUnlimited: Flow<Boolean> = context.dataStore.data.map { prefs ->
@@ -434,13 +424,6 @@ class NotelPreferences @Inject constructor(
         context.dataStore.edit { it[USER_GENDER] = gender }
     }
 
-    suspend fun setUserBalance(balance: Float) {
-        context.dataStore.edit { it[USER_BALANCE] = balance }
-    }
-
-    suspend fun setShowFreeCreditPopup(show: Boolean) {
-        context.dataStore.edit { it[SHOW_FREE_CREDIT_POPUP] = show }
-    }
 
     suspend fun setIsUnlimited(unlimited: Boolean) {
         context.dataStore.edit { it[IS_UNLIMITED] = unlimited }
@@ -453,15 +436,6 @@ class NotelPreferences @Inject constructor(
         context.dataStore.edit { it[USER_CONTEXT_HIDDEN] = hidden }
     }
 
-    suspend fun deductBalance(amount: Float) {
-        val prefs = context.dataStore.data.first()
-        if (prefs[IS_UNLIMITED] == true) return
-        
-        context.dataStore.edit { p: MutablePreferences ->
-            val current = p[USER_BALANCE] ?: 0f
-            p[USER_BALANCE] = (current - amount).coerceAtLeast(0f)
-        }
-    }
 
     suspend fun setUserProfileStats(age: Int, height: Float, weight: Float, gender: String) {
         context.dataStore.edit {

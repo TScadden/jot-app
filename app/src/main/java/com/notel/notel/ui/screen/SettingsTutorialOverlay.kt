@@ -51,9 +51,9 @@ val settingsTutorialSteps = listOf(
         arrowDirection = ArrowDirection.DOWN
     ),
     TutorialStep(
-        title = "Wallet & Credits",
-        description = "Your AI credit balance lives here. Each action costs \$0.01. Tap the wallet icon any time to top-up or check usage — tap 'Add \$5' to get started!",
-        icon = Icons.Default.AccountBalanceWallet,
+        title = "Membership & Access",
+        description = "This icon shows your current membership level. 'Unlimited' unlocks all AI chips, advice, and clinical reports. 'Standard' accounts can upgrade anytime to get full unlimited access!",
+        icon = Icons.Default.Wallet,
         arrowDirection = ArrowDirection.DOWN
     ),
     TutorialStep(

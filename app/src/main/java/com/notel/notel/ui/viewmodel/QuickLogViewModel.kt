@@ -51,8 +51,6 @@ data class QuickLogUiState(
     val comparisonResult: String? = null,
     val comparisonError: String? = null,
     val showComparisonDialog: Boolean = false,
-    val userBalance: Float = 0f,
-    val showFreeCreditPopup: Boolean = false,
     val isUnlimited: Boolean = false,
     val smartCategories: List<Category> = emptyList(),
     val smartAction: SmartAction? = null,
@@ -130,16 +128,6 @@ class QuickLogViewModel @Inject constructor(
         viewModelScope.launch {
             preferences.knowledgeBase.collect { kb ->
                 _uiState.update { it.copy(hasKnowledgeDocs = kb.isNotBlank()) }
-            }
-        }
-        viewModelScope.launch {
-            preferences.userBalance.collect { bal ->
-                _uiState.update { it.copy(userBalance = bal) }
-            }
-        }
-        viewModelScope.launch {
-            preferences.showFreeCreditPopup.collect { show ->
-                _uiState.update { it.copy(showFreeCreditPopup = show) }
             }
         }
         viewModelScope.launch {
@@ -515,11 +503,6 @@ class QuickLogViewModel @Inject constructor(
         }
     }
 
-    fun dismissBonusPopup() {
-        viewModelScope.launch {
-            preferences.setShowFreeCreditPopup(false)
-        }
-    }
 
     fun toggleHabit(habitId: String, isCompleted: Boolean) {
         viewModelScope.launch {

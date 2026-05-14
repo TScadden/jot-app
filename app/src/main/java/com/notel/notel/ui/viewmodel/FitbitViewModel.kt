@@ -74,6 +74,39 @@ class FitbitViewModel @Inject constructor(
                 }
                 launch {
                     val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                    preferences.historicalHeartRate.collect { str ->
+                        if (str.isNotBlank()) {
+                            try {
+                                val list = json.decodeFromString<List<BiomarkerPoint>>(str)
+                                _state.update { it.copy(historicalHeartRate = list.map { p -> p.date to p.value.toInt() }) }
+                            } catch(e: Exception) {}
+                        }
+                    }
+                }
+                launch {
+                    val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                    preferences.historicalSleep.collect { str ->
+                        if (str.isNotBlank()) {
+                            try {
+                                val list = json.decodeFromString<List<BiomarkerPoint>>(str)
+                                _state.update { it.copy(historicalSleep = list.map { p -> p.date to p.value.toInt() }) }
+                            } catch(e: Exception) {}
+                        }
+                    }
+                }
+                launch {
+                    val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                    preferences.historicalCalories.collect { str ->
+                        if (str.isNotBlank()) {
+                            try {
+                                val list = json.decodeFromString<List<BiomarkerPoint>>(str)
+                                _state.update { it.copy(historicalCalories = list.map { p -> p.date to p.value.toInt() }) }
+                            } catch(e: Exception) {}
+                        }
+                    }
+                }
+                launch {
+                    val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
                     preferences.historicalHrSpikes.collect { spikesStr ->
                         if (spikesStr.isNotBlank()) {
                             try {
@@ -91,7 +124,7 @@ class FitbitViewModel @Inject constructor(
             try {
                 if (healthConnectManager.hasAllPermissions()) {
                     _state.update { it.copy(isConnected = true) }
-                    sync(force = true)
+                    sync(force = false)
                 } else {
                     _state.update { it.copy(isConnected = false) }
                 }
@@ -162,7 +195,7 @@ class FitbitViewModel @Inject constructor(
                 
                 if (hasHC) {
                     try {
-                        syncFromHealthConnect()
+                        syncFromHealthConnect(fetchHistory = force)
                     } catch (e: Exception) {
                         _state.update { it.copy(errorMessage = "Health Connect sync failed") }
                     }
@@ -177,18 +210,13 @@ class FitbitViewModel @Inject constructor(
                 _state.update { it.copy(isLoading = false) }
             }
         }
-    }
-
-    private suspend fun syncFromHealthConnect() = coroutineScope {
+    }    private suspend fun syncFromHealthConnect(fetchHistory: Boolean = false) = coroutineScope {
+         // PHASE 1: Current Day Metrics (Instant Update)
          val intradayHRDeferred = async { healthConnectManager.readHeartRateIntraday(_state.value.selectedHeartRateDate) }
          val avgHRDeferred = async { healthConnectManager.readHeartRateAverage(_state.value.selectedHeartRateDate) }
-         val histHRDeferred = async { healthConnectManager.readHistoricalHeartRate() }
-         val histSpikeDeferred = async { healthConnectManager.readHistoricalHeartRateWithSpikes(180) }
-         val histSleepDeferred = async { healthConnectManager.readHistoricalSleep() }
          val sleepDeferred = async { healthConnectManager.readSleepSession(_state.value.selectedSleepDate) }
          val activeCalDeferred = async { healthConnectManager.readActiveCalories(_state.value.selectedHeartRateDate) }
-         val histCalDeferred = async { healthConnectManager.readHistoricalCalories() }
-         val hrvDeferred = async { healthConnectManager.readHeartRateVariability() }
+         val hrvDeferred = async { healthConnectManager.readHeartRateVariability(days = 2) }
 
          val intradayHR = try { intradayHRDeferred.await() } catch(e: Exception) { emptyList() }
          val zoneId = java.time.ZoneId.systemDefault()
@@ -202,14 +230,11 @@ class FitbitViewModel @Inject constructor(
          }
          val avgHR = if (awake.isNotEmpty()) awake.map{it.second}.average().toInt() else 0
          val asleepHR = if (asleep.isNotEmpty()) asleep.map{it.second}.average().toInt() else 0
-         val histHR = try { histHRDeferred.await() } catch(e: Exception) { emptyList() }
-         val histSpikes = try { histSpikeDeferred.await() } catch(e: Exception) { emptyList<DailyHeartRateSummary>() }
-         val histSleep = try { histSleepDeferred.await() } catch(e: Exception) { emptyList() }
+         
          val sleepData = try { sleepDeferred.await() } catch(e: Exception) { null }
          val activeCal = try { activeCalDeferred.await() } catch(e: Exception) { 0 }
-         val histCal = try { histCalDeferred.await() } catch(e: Exception) { emptyList() }
          val hrvData = try { hrvDeferred.await() } catch(e: Exception) { emptyList() }
-         val currentHrv = hrvData.find { it.first == _state.value.selectedHeartRateDate }?.second ?: 0.0
+         val currentHrv = hrvData.find { it.first == _state.value.selectedHeartRateDate }?.second ?: hrvData.lastOrNull()?.second ?: 0.0
 
          var latest = intradayHR.lastOrNull()?.second ?: 0
          val latestTime = intradayHR.lastOrNull()?.first ?: 0L
@@ -221,6 +246,7 @@ class FitbitViewModel @Inject constructor(
              } catch(e: Exception) { latestTime.toString() }
          } else ""
 
+         // Immediate UI update for today's metrics
          _state.update { 
              it.copy(
                  heartRateData = intradayHR,
@@ -228,9 +254,6 @@ class FitbitViewModel @Inject constructor(
                  asleepHeartRate = asleepHR,
                  latestHeartRate = latest,
                  latestHeartRateTime = formattedTime,
-                 historicalHeartRate = histHR,
-                 historicalSleep = histSleep,
-                 historicalCalories = histCal,
                  sleepData = sleepData,
                  caloriesBurned = activeCal,
                  hrvData = hrvData,
@@ -238,22 +261,33 @@ class FitbitViewModel @Inject constructor(
                  errorMessage = if (latest == 0 && avgHR == 0) "No recent HC data found" else null
              )
          }
+         
+         if (_state.value.selectedHeartRateDate == "today" && avgHR > 0) {
+             preferences.setTodayAwakeAvgHr(avgHR)
+         }
 
-         // Save to preferences for long-term AI report access
-         val json = Json { ignoreUnknownKeys = true }
-         preferences.setHistoricalHeartRate(json.encodeToString(histHR.map { BiomarkerPoint(it.first, it.second) }))
-         preferences.setHistoricalSleep(json.encodeToString(histSleep.map { BiomarkerPoint(it.first, it.second) }))
-         preferences.setHistoricalCalories(json.encodeToString(histCal.map { BiomarkerPoint(it.first, it.second) }))
-        // Save POTS spike data separately
-        if (_state.value.selectedHeartRateDate == "today" && avgHR > 0) {
-            preferences.setTodayAwakeAvgHr(avgHR)
-        }
-        if (histSpikes.isNotEmpty()) {
-             preferences.setHistoricalHrSpikes(
-                 kotlinx.serialization.json.Json.encodeToString(
-                     kotlinx.serialization.serializer<List<DailyHeartRateSummary>>(), histSpikes
+         // PHASE 2: Historical Metrics (Background Background)
+         if (fetchHistory) {
+             val histHR = try { healthConnectManager.readHistoricalHeartRate(30) } catch(e: Exception) { _state.value.historicalHeartRate }
+             val histSpikes = try { healthConnectManager.readHistoricalHeartRateWithSpikes(90) } catch(e: Exception) { _state.value.historicalSpikes }
+             val histSleep = try { healthConnectManager.readHistoricalSleep(30) } catch(e: Exception) { _state.value.historicalSleep }
+             val histCal = try { healthConnectManager.readHistoricalCalories(30) } catch(e: Exception) { _state.value.historicalCalories }
+
+             _state.update { 
+                 it.copy(
+                     historicalHeartRate = histHR,
+                     historicalSleep = histSleep,
+                     historicalCalories = histCal,
+                     historicalSpikes = histSpikes
                  )
-             )
+             }
+
+             // Background persistence
+             val json = Json { ignoreUnknownKeys = true }
+             preferences.setHistoricalHeartRate(json.encodeToString(histHR.map { BiomarkerPoint(it.first, it.second) }))
+             preferences.setHistoricalSleep(json.encodeToString(histSleep.map { BiomarkerPoint(it.first, it.second) }))
+             preferences.setHistoricalCalories(json.encodeToString(histCal.map { BiomarkerPoint(it.first, it.second) }))
+             preferences.setHistoricalHrSpikes(json.encodeToString(histSpikes))
          }
     }
 
@@ -559,7 +593,7 @@ class FitbitViewModel @Inject constructor(
     fun onPermissionsGranted() {
         viewModelScope.launch {
             _state.update { it.copy(isConnected = true) }
-            sync()
+            sync(force = true)
         }
     }
 

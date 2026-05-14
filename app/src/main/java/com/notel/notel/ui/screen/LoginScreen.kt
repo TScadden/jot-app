@@ -125,9 +125,8 @@ class LoginViewModel @Inject constructor(
                     preferences.setAuthToken(body.token!!)
                     preferences.setLoggedIn(true)
                     
-                    // Handle Admin/Friend status and initial balance from server
+                    // Handle Admin/Friend status from server
                     body.isUnlimited?.let { preferences.setIsUnlimited(it) }
-                    body.balance?.let { preferences.setUserBalance(it) }
                     body.onboardingComplete?.let { if (it) preferences.setOnboardingComplete(true) }
                     
                     syncManager.pullAllData() // Pull existing data on successful login

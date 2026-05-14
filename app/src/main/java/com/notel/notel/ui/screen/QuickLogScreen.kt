@@ -172,10 +172,10 @@ fun QuickLogScreen(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text("You do not have a membership", color = NotelTextSecondary, fontSize = 12.sp)
+                            Text("Standard Access", color = NotelTextSecondary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(8.dp))
                             TextButton(onClick = onNavigateToMembership) {
-                                Text("Click here to start Free Trial", color = NotelTextSecondary.copy(alpha = 0.5f), fontWeight = FontWeight.Bold)
+                                Text("Click here to start Free Trial", color = NotelPrimary, fontWeight = FontWeight.Bold)
                             }
                         }
                         state.isLoadingChips -> Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
@@ -488,27 +488,6 @@ private fun ChipGrid(chips: List<String>, selected: List<String>, onToggle: (Str
     }
 }
 
-@Composable
-private fun NoBalancePrompt(onGoToSettings: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(
-            Icons.Default.AccountBalanceWallet, contentDescription = null,
-            tint = NotelPrimary, modifier = Modifier.size(48.dp)
-        )
-        Spacer(Modifier.height(16.dp))
-        Text("No credits remaining", color = NotelTextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(8.dp))
-        Text("Top up your wallet in settings to enable AI suggestions and insights.", color = NotelTextSecondary, fontSize = 14.sp, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(24.dp))
-        GlassyButton(onClick = onGoToSettings, containerColor = NotelPrimary) {
-            Text("Go to Wallet", color = Color.White)
-        }
-    }
-}
 
 @Composable
 fun ProductivityDashboard(

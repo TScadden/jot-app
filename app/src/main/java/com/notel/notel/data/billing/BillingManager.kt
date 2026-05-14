@@ -164,8 +164,7 @@ class BillingManager @Inject constructor(
                 )
 
                 if (response.isSuccessful && response.body()?.success == true) {
-                    val newBalance = response.body()?.balance ?: 0f
-                    preferences.setUserBalance(newBalance)
+                    response.body()?.isUnlimited?.let { preferences.setIsUnlimited(it) }
                     
                     // Acknowledge the purchase if it hasn't been yet
                     if (!purchase.isAcknowledged) {
@@ -175,7 +174,7 @@ class BillingManager @Inject constructor(
                         billingClient.acknowledgePurchase(acknowledgeParams) { result ->
                             if (result.responseCode == BillingClient.BillingResponseCode.OK) {
                                 Log.d(tag, "Purchase acknowledged successfully")
-                                scope.launch { _billingEvents.emit("Success! Credits added.") }
+                                scope.launch { _billingEvents.emit("Success! Unlimited membership activated.") }
                             }
                         }
                     } else {

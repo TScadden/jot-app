@@ -364,7 +364,6 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-        }
     }
 }
 
@@ -417,17 +416,25 @@ fun NotelNavGraph() {
         }
     }
 
-    // Global banner for PDF professional reports
+    // Global banner states
     var reportFile by remember { mutableStateOf<java.io.File?>(null) }
+    var aiInsight by remember { mutableStateOf<com.notel.notel.data.local.entity.AiInsight?>(null) }
     val reportViewModel: com.notel.notel.ui.viewmodel.SettingsViewModel = hiltViewModel()
 
     LaunchedEffect(Unit) {
         reportViewModel.reportReadyEvent.collect { file: java.io.File ->
             val route = navController.currentBackStackEntry?.destination?.route
-            // Only show the global banner if we AREN'T on the settings screen.
-            // The settings screen handles its own context-aware (AI vs other) notification.
             if (route != "settings") {
                 reportFile = file
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        reportViewModel.aiInsightReadyEvent.collect { insight ->
+            val route = navController.currentBackStackEntry?.destination?.route
+            if (route != "settings") {
+                aiInsight = insight
             }
         }
     }
@@ -622,5 +629,50 @@ fun NotelNavGraph() {
                 }
             }
         }
+
+        // Global Top Banner Overlay (AI Insight Notification)
+        androidx.compose.animation.AnimatedVisibility(
+            visible = aiInsight != null,
+            enter = androidx.compose.animation.slideInVertically(initialOffsetY = { -it }) + androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { -it }) + androidx.compose.animation.fadeOut(),
+            modifier = Modifier.align(Alignment.TopCenter).padding(16.dp).statusBarsPadding()
+        ) {
+            val insight = aiInsight
+            if (insight != null) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = NotelSurface,
+                    tonalElevation = 12.dp,
+                    shadowElevation = 12.dp,
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        navController.navigate("settings?menu=AI_AND_KNOWLEDGE")
+                        aiInsight = null
+                    }.liquidGlass(shape = RoundedCornerShape(16.dp), color = NotelSurface, alpha = 0.9f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "AI Audit Complete! ✨",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = NotelPrimary,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            Text(
+                                "${insight.type} ready. Tap to view history.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = NotelTextPrimary.copy(alpha = 0.9f)
+                            )
+                        }
+                        IconButton(onClick = { aiInsight = null }) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = NotelTextSecondary)
+                        }
+                    }
+                }
+            }
+        }
     }
-}
+}}

@@ -31,6 +31,13 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
+data class DailyBiometricData(
+    val hr: Int? = null,
+    val sleep: Int? = null,
+    val cal: Int? = null,
+    val hrv: Int? = null
+)
+
 @Singleton
 class LogRepository @Inject constructor(
     private val logEntryDao: LogEntryDao,
@@ -62,6 +69,9 @@ class LogRepository @Inject constructor(
 
     private val _isComparingDocuments = MutableStateFlow(false)
     val isComparingDocuments = _isComparingDocuments.asStateFlow()
+
+    private val _aiInsightReadyEvent = MutableSharedFlow<AiInsight>()
+    val aiInsightReadyEvent = _aiInsightReadyEvent.asSharedFlow()
 
     private val _processError = MutableStateFlow<String?>(null)
     val processError = _processError.asStateFlow()
@@ -400,8 +410,7 @@ class LogRepository @Inject constructor(
         }
 
         val isUnlimited = preferences.isUnlimited.first()
-        val balance = preferences.userBalance.first()
-        if (!isUnlimited && balance < 0.01f) return Result.failure(IllegalStateException("Insufficient credits. Please top up in Settings."))
+        if (!isUnlimited) return Result.failure(IllegalStateException("Unlimited membership required for AI features. Please check Membership in Settings."))
 
         val recent = logEntryDao.getRecentEntries(category.id, limit = 20)
         val context = getEnrichedUserContext() + 
@@ -421,20 +430,17 @@ class LogRepository @Inject constructor(
         // The userContext (summary) is sufficient for generating 1-3 word chips.
         return geminiService.getSuggestions(category, recent, userContext = context, knowledgeBase = "", weatherContext = weather).onSuccess { list ->
             suggestionCache[category.id] = list
-            preferences.deductBalance(0.01f)
         }
     }
 
     suspend fun getSmartCategorySuggestion(existingCategories: List<String>): Result<com.notel.notel.data.remote.SmartCategorySuggestion?> {
         val isUnlimited = preferences.isUnlimited.first()
-        val balance = preferences.userBalance.first()
-        if (!isUnlimited && balance < 0.01f) return Result.success(null) // Silently fail if low on credits
+        if (!isUnlimited) return Result.success(null) // Silently fail if no access
 
         val recent = logEntryDao.getRecentEntriesAll(limit = 50)
         val context = getEnrichedUserContext()
         
         return geminiService.getSmartCategorySuggestion(recent, existingCategories).onSuccess {
-            preferences.deductBalance(0.01f)
         }
     }
 
@@ -616,15 +622,13 @@ class LogRepository @Inject constructor(
         val habitData = getHabitDataSummary()
         
         val isUnlimited = preferences.isUnlimited.first()
-        val balance = preferences.userBalance.first()
-        if (!isUnlimited && balance < 0.01f) return Result.failure(IllegalStateException("Insufficient credits. Please top up in Settings."))
+        if (!isUnlimited) return Result.failure(IllegalStateException("Unlimited membership required for AI features. Please check Membership in Settings."))
 
         val documents = getEnrichedDocuments()
         val weather = getWeatherContext()
 
         val result = geminiService.getAdvice(recent, catMap, userContext = context, knowledgeBase = kb, pastInsights = pastInsights, fitbitData = fitbitData, habitData = habitData, weatherContext = weather, documents = documents)
         result.onSuccess { text ->
-            preferences.deductBalance(0.01f)
             saveAiInsight(text, "Advice")
         }
         return result
@@ -654,8 +658,7 @@ class LogRepository @Inject constructor(
         val habitData = ""
         
         val isUnlimited = preferences.isUnlimited.first()
-        val balance = preferences.userBalance.first()
-        if (!isUnlimited && balance < 0.05f) return Result.failure(IllegalStateException("Insufficient credits ($0.05 required). Please top up in Settings."))
+        if (!isUnlimited) return Result.failure(IllegalStateException("Unlimited membership required for AI features. Please check Membership in Settings."))
 
         val bodyLoadHistory = getBodyLoadHistorySummary()
 
@@ -683,7 +686,6 @@ class LogRepository @Inject constructor(
         }
 
         finalResult.onSuccess { text ->
-            preferences.deductBalance(0.05f)
             saveAiInsight(text, "Report")
         }
         return finalResult
@@ -705,7 +707,6 @@ class LogRepository @Inject constructor(
 
         val result = geminiService.getWeeklyRecap(recent, catMap, userContext = context, knowledgeBase = kb, fitbitData = fitbitData, habitData = habitData, weatherContext = weather, documents = getEnrichedDocuments())
         result.onSuccess { text ->
-            preferences.deductBalance(0.05f)
             saveAiInsight(text, "Weekly Recap")
         }
         return result
@@ -728,7 +729,6 @@ class LogRepository @Inject constructor(
 
         val result = geminiService.getDeepResearch(recent, catMap, userContext = context, knowledgeBase = kb, pastInsights = pastInsights, fitbitData = fitbitData, habitData = habitData, weatherContext = weather, documents = getEnrichedDocuments())
         result.onSuccess { text ->
-            preferences.deductBalance(0.10f)
             saveAiInsight(text, "Deep Advice")
         }
         return result
@@ -752,7 +752,6 @@ class LogRepository @Inject constructor(
 
         val result = geminiService.getDocumentComparison(recent, catMap, userContext = context, knowledgeBase = kb, pastInsights = pastInsights, fitbitData = fitbitData, habitData = habitData, weatherContext = weather, documents = getEnrichedDocuments())
         result.onSuccess { text ->
-            preferences.deductBalance(0.05f)
             saveAiInsight(text, "Document Comparison")
         }
         return result
@@ -817,8 +816,12 @@ class LogRepository @Inject constructor(
         } catch(e: Exception) { mutableListOf() }
         
         val ts = timestamp ?: System.currentTimeMillis()
-        insights.add(0, AiInsight(java.util.UUID.randomUUID().toString(), text, ts, type))
+        val newInsight = AiInsight(java.util.UUID.randomUUID().toString(), text, ts, type)
+        insights.add(0, newInsight)
         preferences.setAiInsights(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(AiInsight.serializer()), insights.take(20))) // Keep last 20
+        
+        _aiInsightReadyEvent.emit(newInsight)
+        
         triggerSync()
     }
 
@@ -841,8 +844,7 @@ class LogRepository @Inject constructor(
 
     suspend fun ingestDocumentFile(fileName: String, mimeType: String, base64Data: String): Result<Unit> {
         val isUnlimited = preferences.isUnlimited.first()
-        val balance = preferences.userBalance.first()
-        if (!isUnlimited && balance < 0.05f) return Result.failure(IllegalStateException("Insufficient credits ($0.05 required). Please top up in Settings."))
+        if (!isUnlimited) return Result.failure(IllegalStateException("Unlimited membership required for AI features. Please check Membership in Settings."))
 
         return try {
             val dir = File(context.filesDir, "knowledge_docs")
@@ -858,8 +860,6 @@ class LogRepository @Inject constructor(
                 filePath = file.absolutePath
             )
             knowledgeDocumentDao.insertDocument(doc)
-            
-            preferences.deductBalance(0.05f)
             
             // Track that we processed this file in old format too for compatibility if needed
             val currentFiles = preferences.processedFiles.first()
@@ -1012,6 +1012,11 @@ class LogRepository @Inject constructor(
             else emptyList()
         } catch (e: Exception) { emptyList() }
 
+        val hrvHist = try {
+            if (hasHealthConnect) healthConnectManager.readHeartRateVariability(180)
+            else emptyList()
+        } catch (e: Exception) { emptyList() }
+
         val summary = StringBuilder()
 
         if (targetDate != null) {
@@ -1019,6 +1024,7 @@ class LogRepository @Inject constructor(
             heartHist.find { it.first == targetDate }?.let { summary.append("- Avg HR: ${it.second} bpm\n") }
             sleepHist.find { it.first == targetDate }?.let { summary.append("- Sleep: ${formatSleep(it.second)} \n") }
             calHist.find { it.first == targetDate }?.let { summary.append("- Active Energy: ${it.second} kcal\n") }
+            hrvHist.find { it.first == targetDate }?.let { summary.append("- HRV (RMSSD): ${it.second.toInt()} ms\n") }
             spikeHistory.find { it.date == targetDate }?.let {
                 summary.append("- HR Spikes: ${it.spikeCount} events | Max Delta: +${it.maxDelta} bpm | Range: ${it.baseline}-${it.max} bpm\n")
             }
@@ -1043,33 +1049,39 @@ class LogRepository @Inject constructor(
             summary.append("\n")
         }
 
-        // ── SECTION 2: Longer-range daily data (sleep, calories, avg HR) ─────
-        val dailyMap = mutableMapOf<String, Triple<Int?, Int?, Int?>>()
+        // ── SECTION 2: Longer-range daily data (sleep, calories, avg HR, HRV) ─────
+        val dailyMap = mutableMapOf<String, DailyBiometricData>()
         val cutOffDate = java.time.LocalDate.now().minusDays(31).toString()
         heartHist.filter { it.first >= cutOffDate }.take(31).forEach { (date, value) ->
-            val current = dailyMap[date] ?: Triple(null, null, null)
-            dailyMap[date] = current.copy(first = value)
+            val current = dailyMap[date] ?: DailyBiometricData()
+            dailyMap[date] = current.copy(hr = value)
         }
         sleepHist.filter { it.first >= cutOffDate }.take(31).forEach { (date, value) ->
-            val current = dailyMap[date] ?: Triple(null, null, null)
-            dailyMap[date] = current.copy(second = value)
+            val current = dailyMap[date] ?: DailyBiometricData()
+            dailyMap[date] = current.copy(sleep = value)
         }
         calHist.filter { it.first >= cutOffDate }.take(31).forEach { (date, value) ->
-            val current = dailyMap[date] ?: Triple(null, null, null)
-            dailyMap[date] = current.copy(third = value)
+            val current = dailyMap[date] ?: DailyBiometricData()
+            dailyMap[date] = current.copy(cal = value)
+        }
+        hrvHist.filter { it.first >= cutOffDate }.take(31).forEach { (date, value) ->
+            val current = dailyMap[date] ?: DailyBiometricData()
+            dailyMap[date] = current.copy(hrv = value.toInt())
         }
 
         val sortedDates = dailyMap.keys.sortedDescending()
         summary.append("DETAILED DAILY HISTORY (Last 30 Days):\n")
-        summary.append("Format: Date | Avg HR | Sleep | Calories\n")
+        summary.append("Format: Date | Avg HR | Sleep | Calories | HRV\n")
         sortedDates.forEach { date ->
-            val (hr, sleep, cal) = dailyMap[date]!!
+            val data = dailyMap[date]!!
             summary.append("- $date: ")
-            summary.append(if (hr != null) "$hr bpm" else "N/A")
+            summary.append(if (data.hr != null) "${data.hr} bpm" else "N/A")
             summary.append(" | ")
-            summary.append(if (sleep != null) "$sleep min" else "N/A")
+            summary.append(if (data.sleep != null) "${data.sleep} min" else "N/A")
             summary.append(" | ")
-            summary.append(if (cal != null) "$cal kcal" else "N/A")
+            summary.append(if (data.cal != null) "${data.cal} kcal" else "N/A")
+            summary.append(" | ")
+            summary.append(if (data.hrv != null) "${data.hrv} ms" else "N/A")
             summary.append("\n")
         }
 
