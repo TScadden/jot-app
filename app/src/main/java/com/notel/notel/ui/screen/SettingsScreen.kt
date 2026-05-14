@@ -1445,7 +1445,7 @@ fun SettingsScreen(
                 Spacer(Modifier.height(8.dp))
 
                 if (aiInsights.isEmpty()) {
-                    Text("No AI insights generated yet. Click 'Learn More' on the Jot screen to start.", color = NotelTextSecondary, fontSize = 14.sp)
+                    Text("No AI insights generated yet. Perform an AI action to see it here.", color = NotelTextSecondary, fontSize = 14.sp)
                 } else {
                     if (!showInsightsHistory) {
                         GlassyButton(
