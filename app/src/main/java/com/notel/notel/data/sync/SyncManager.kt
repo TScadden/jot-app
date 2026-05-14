@@ -289,6 +289,10 @@ class SyncManager @Inject constructor(
                 if (logsFound > 0 && localLogCount == 0) {
                     log("Account Restored: $logsFound logs & $categoriesFound categories!")
                 }
+                
+                // CRITICAL: Recalculate streak now that we have data
+                preferences.updateStreak()
+                
                 true
             } else {
                 val errorMsg = response.errorBody()?.string() ?: "Unknown Error"
