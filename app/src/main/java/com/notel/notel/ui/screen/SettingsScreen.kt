@@ -291,7 +291,7 @@ fun SettingsScreen(
                         SettingsMenu.MAIN -> "Settings"
                         SettingsMenu.USER_PROFILE -> "User Profile"
                         SettingsMenu.CONNECTED_APPS -> "Connected Apps"
-                        SettingsMenu.AI_AND_KNOWLEDGE -> "AI & Knowledge Base"
+                        SettingsMenu.AI_AND_KNOWLEDGE -> "AI & Clinical Advocate"
                         SettingsMenu.EVENT_COUNTERS -> "Event Counters"
                         SettingsMenu.MEMBERSHIP -> "Membership"
                         SettingsMenu.NOTIFICATIONS -> "Notifications"
@@ -511,7 +511,7 @@ fun SettingsScreen(
 
                     SettingsMenuCard("User Profile", Icons.Default.Person, modifier = Modifier.onGloballyPositioned { coordUserProfile = it }) { currentMenu = SettingsMenu.USER_PROFILE }
                     SettingsMenuCard("Connected Apps", Icons.Default.Favorite, modifier = Modifier.onGloballyPositioned { coordConnectedApps = it }) { currentMenu = SettingsMenu.CONNECTED_APPS }
-                    SettingsMenuCard("AI & Knowledge Base", Icons.Default.AutoAwesome, modifier = Modifier.onGloballyPositioned { coordAiKnowledge = it }) { currentMenu = SettingsMenu.AI_AND_KNOWLEDGE }
+                    SettingsMenuCard("AI & Clinical Advocate", Icons.Default.AutoAwesome, modifier = Modifier.onGloballyPositioned { coordAiKnowledge = it }) { currentMenu = SettingsMenu.AI_AND_KNOWLEDGE }
                     SettingsMenuCard("Event Counters", Icons.Default.Timer, modifier = Modifier.onGloballyPositioned { coordEventCounters = it }) { currentMenu = SettingsMenu.EVENT_COUNTERS }
                     SettingsMenuCard("Notifications", Icons.Default.Notifications) { currentMenu = SettingsMenu.NOTIFICATIONS }
                 }
@@ -758,7 +758,7 @@ fun SettingsScreen(
                         lowerCtx.contains("therapist") || lowerKB.contains("therapist") -> "Therapist"
                         else -> "Professional"
                     }
-                    Text("PROFESSIONAL UPDATES", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+                    Text("PHYSICIAN PROTOCOLS", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(8.dp))
 
                     var showProfessionalDialog by remember { mutableStateOf(false) }
@@ -767,10 +767,10 @@ fun SettingsScreen(
                         shape = RoundedCornerShape(16.dp),
                         color = NotelSurface
                     ) {
-                        Text("$professionalType Check-in", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                        Text("New Physician Protocol", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            "Did your $professionalType suggest any new protocols, dose changes, or routines? Add them here so the AI can track your compliance.",
+                            "Did your doctor or specialist suggest a new protocol, medication change, or routine? Add it here for AI compliance tracking.",
                             color = NotelTextSecondary,
                             fontSize = 12.sp
                         )
@@ -797,7 +797,7 @@ fun SettingsScreen(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Column {
-                                        Text("New $professionalType Update", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = NotelTextPrimary)
+                                        Text("New Clinical Protocol", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = NotelTextPrimary)
                                         Spacer(Modifier.height(16.dp))
                                         OutlinedTextField(
                                             value = updateNote,
@@ -1323,17 +1323,17 @@ fun SettingsScreen(
 
                 Spacer(Modifier.height(24.dp))
 
-                Text("PROFESSIONAL DIAGNOSTICS", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+                Text("CLINICAL ADVOCACY", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(8.dp))
 
                 GlassyCard(
                     shape = RoundedCornerShape(16.dp),
                     color = NotelSurface
                 ) {
-                    Text("Professional report (PDF)", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                    Text("Clinical Audit (PDF)", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "Generate a professional PDF summary of your trends and logs for personal review or sharing.",
+                        "Generate a data-dense PDF summary of your trends, spikes, and compliance for your physician.",
                         color = NotelTextSecondary,
                         fontSize = 12.sp
                     )
@@ -1377,11 +1377,58 @@ fun SettingsScreen(
                             )
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                "Export Professional Report",
+                                "Export Clinical Audit",
                                 color = if (hasLogs) NotelTextPrimary else NotelTextSecondary.copy(alpha = 0.4f)
                             )
                         }
                     }
+
+                    Spacer(Modifier.height(16.dp))
+                    HorizontalDivider(color = NotelSurfaceHigh, thickness = 0.5.dp)
+                    Spacer(Modifier.height(16.dp))
+
+                    // NEW: Deep Research & Protocol Comparison
+                    Text("AI Research Terminal", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Run advanced multi-point analysis on your long-term data and uploaded protocols.",
+                        color = NotelTextSecondary,
+                        fontSize = 12.sp
+                    )
+                    Spacer(Modifier.height(16.dp))
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        val isDeepBusy by viewModel.isGeneratingDeepResearch.collectAsState()
+                        GlassyButton(
+                            onClick = { viewModel.generateDeepResearch() },
+                            modifier = Modifier.weight(1f),
+                            enabled = !isDeepBusy && hasLogs,
+                            containerColor = NotelSurfaceHigh
+                        ) {
+                            if (isDeepBusy) GlassySpinner(size = 18.dp)
+                            else {
+                                Icon(Icons.Default.Science, null, tint = NotelPrimary, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Deep Audit", color = NotelTextPrimary, fontSize = 13.sp)
+                            }
+                        }
+
+                        val isProtocolBusy by viewModel.isGeneratingWeeklyRecap.collectAsState() // Reusing recap state for simplicity if needed, or specific state
+                        GlassyButton(
+                            onClick = { viewModel.generateWeeklyRecap() },
+                            modifier = Modifier.weight(1f),
+                            enabled = !isProtocolBusy && hasLogs,
+                            containerColor = NotelSurfaceHigh
+                        ) {
+                            if (isProtocolBusy) GlassySpinner(size = 18.dp)
+                            else {
+                                Icon(Icons.Default.AssignmentTurnedIn, null, tint = NotelPrimary, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Weekly Recap", color = NotelTextPrimary, fontSize = 13.sp)
+                            }
+                        }
+                    }
+
                     if (!hasLogs) {
                         Spacer(Modifier.height(6.dp))
                         Text(
