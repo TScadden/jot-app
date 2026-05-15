@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -144,7 +146,8 @@ fun QuickLogScreen(
                         CategoryChip(
                             category = cat,
                             isSelected = cat.id == state.selectedCategory?.id,
-                            onClick = { viewModel.selectCategory(cat) }
+                            onClick = { viewModel.selectCategory(cat) },
+                            onLongClick = { viewModel.requestDeleteCategory(cat) }
                         )
                     }
                     item {
@@ -430,6 +433,27 @@ fun QuickLogScreen(
             }
         }
 
+        // Delete Category Confirmation Dialog
+        state.categoryToDelete?.let { category ->
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissDeleteConfirmation() },
+                title = { Text("Delete Subject?", color = NotelTextPrimary) },
+                text = { Text("Are you sure you want to delete '${category.name}'? This will remove the subject from your quick logging list.", color = NotelTextSecondary) },
+                confirmButton = {
+                    TextButton(onClick = { viewModel.confirmDeleteCategory() }) {
+                        Text("Delete", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.dismissDeleteConfirmation() }) {
+                        Text("Cancel", color = NotelTextPrimary)
+                    }
+                },
+                containerColor = NotelSurface,
+                shape = RoundedCornerShape(16.dp)
+            )
+        }
+
         // Add Category AI Dialog
         if (state.showAddCategoryDialog) {
             Dialog(onDismissRequest = { viewModel.dismissAddCategory() }) {
@@ -454,6 +478,34 @@ fun QuickLogScreen(
                             fontSize = 13.sp,
                             textAlign = TextAlign.Center
                         )
+                        Spacer(Modifier.height(16.dp))
+                        
+                        // Manual Entry Field
+                        OutlinedTextField(
+                            value = state.customCategoryName,
+                            onValueChange = viewModel::updateCustomCategoryName,
+                            placeholder = { Text("Or type your own...", color = NotelTextSecondary, fontSize = 14.sp) },
+                            modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = {
+                                if (state.isValidatingCategory) {
+                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), color = NotelPrimary, strokeWidth = 2.dp)
+                                } else if (state.customCategoryName.isNotBlank()) {
+                                    IconButton(onClick = viewModel::addCustomCategory) {
+                                        Icon(Icons.Default.Check, null, tint = NotelPrimary)
+                                    }
+                                }
+                            },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = NotelPrimary,
+                                unfocusedBorderColor = NotelPrimary.copy(alpha = 0.3f),
+                                cursorColor = NotelPrimary,
+                                focusedTextColor = NotelTextPrimary,
+                                unfocusedTextColor = NotelTextPrimary
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            singleLine = true
+                        )
+                        
                         Spacer(Modifier.height(16.dp))
                         
                         when {
@@ -545,8 +597,9 @@ fun QuickLogScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun CategoryChip(category: Category, isSelected: Boolean, onClick: () -> Unit) {
+fun CategoryChip(category: Category, isSelected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit = {}) {
     val catColor = remember(category) {
         try { Color(android.graphics.Color.parseColor(category.colorHex)) }
         catch (e: Exception) { NotelPrimary }
@@ -560,7 +613,10 @@ fun CategoryChip(category: Category, isSelected: Boolean, onClick: () -> Unit) {
                 color = if (isSelected) catColor else catColor.copy(alpha = 0.35f),
                 shape = RoundedCornerShape(10.dp)
             )
-            .clickable { onClick() }
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
             .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
         Text(

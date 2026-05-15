@@ -62,7 +62,10 @@ data class QuickLogUiState(
     val selectedSuggestedCategories: List<String> = emptyList(),
     val isLoadingSuggestions: Boolean = false,
     val suggestionsError: String? = null,
-    val showAddCategoryDialog: Boolean = false
+    val showAddCategoryDialog: Boolean = false,
+    val customCategoryName: String = "",
+    val isValidatingCategory: Boolean = false,
+    val categoryToDelete: Category? = null
 )
 
 @HiltViewModel
@@ -465,7 +468,60 @@ class QuickLogViewModel @Inject constructor(
         }
     }
 
-    fun dismissAddCategory() = _uiState.update { it.copy(showAddCategoryDialog = false, suggestedCategories = emptyList(), selectedSuggestedCategories = emptyList()) }
+    fun dismissAddCategory() = _uiState.update { it.copy(showAddCategoryDialog = false, suggestedCategories = emptyList(), selectedSuggestedCategories = emptyList(), customCategoryName = "") }
+
+    fun updateCustomCategoryName(name: String) {
+        _uiState.update { it.copy(customCategoryName = name) }
+    }
+
+    fun addCustomCategory() {
+        val name = _uiState.value.customCategoryName
+        if (name.isBlank()) return
+
+        _uiState.update { it.copy(isValidatingCategory = true) }
+        viewModelScope.launch {
+            val result = logRepository.validateCategoryName(name)
+            result.onSuccess { cleanedName ->
+                _uiState.update { state ->
+                    state.copy(
+                        isValidatingCategory = false,
+                        customCategoryName = "",
+                        selectedSuggestedCategories = state.selectedSuggestedCategories + cleanedName,
+                        suggestedCategories = state.suggestedCategories + com.notel.notel.data.remote.SmartCategorySuggestion(cleanedName, "Manually added")
+                    )
+                }
+            }.onFailure { err ->
+                _uiState.update { state ->
+                    state.copy(
+                        isValidatingCategory = false,
+                        customCategoryName = "",
+                        selectedSuggestedCategories = state.selectedSuggestedCategories + name,
+                        suggestedCategories = state.suggestedCategories + com.notel.notel.data.remote.SmartCategorySuggestion(name, "Manually added")
+                    )
+                }
+            }
+        }
+    }
+
+    fun requestDeleteCategory(category: Category) {
+        // Prevent deleting built-in categories if necessary, or just allow it
+        _uiState.update { it.copy(categoryToDelete = category) }
+    }
+
+    fun dismissDeleteConfirmation() {
+        _uiState.update { it.copy(categoryToDelete = null) }
+    }
+
+    fun confirmDeleteCategory() {
+        val category = _uiState.value.categoryToDelete ?: return
+        viewModelScope.launch {
+            categoryRepository.deleteCategory(category)
+            _uiState.update { state ->
+                val newSelected = if (state.selectedCategory?.id == category.id) null else state.selectedCategory
+                state.copy(categoryToDelete = null, selectedCategory = newSelected)
+            }
+        }
+    }
 
     fun resetSaveSuccess() = _uiState.update { it.copy(saveSuccess = false) }
 

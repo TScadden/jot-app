@@ -52,6 +52,16 @@ data class SmartCategorySuggestion(
 )
 
 @Serializable
+data class CategoryValidationRequest(
+    val categoryName: String
+)
+
+@Serializable
+data class CategoryValidationResponse(
+    val cleaned: String
+)
+
+@Serializable
 data class BodyLoadEnrichedRequest(
     val targetDate: String? = null,
     val entries: List<LogEntryDtoModel> = emptyList(),
@@ -326,6 +336,9 @@ interface JotApi {
 
     @POST("api/ai/smart-category-suggestion")
     suspend fun getSmartCategorySuggestion(@Body request: SmartCategorySuggestionRequest): Response<AiResponse<List<SmartCategorySuggestion>>>
+
+    @POST("api/ai/validate-category")
+    suspend fun validateCategory(@Body request: CategoryValidationRequest): Response<AiResponse<CategoryValidationResponse>>
 
     @POST("api/ai/advice")
     suspend fun getAdvice(@Body request: AiRequest): Response<AiResponse<String>>

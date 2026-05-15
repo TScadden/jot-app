@@ -132,6 +132,28 @@ class GeminiService @Inject constructor(
         }
     }
 
+    suspend fun validateCategoryName(name: String): Result<String> {
+        return try {
+            val response = jotApi.validateCategory(CategoryValidationRequest(name))
+            val result = response.body()?.result
+            if (response.isSuccessful && result != null) {
+                Result.success(result.cleaned)
+            } else {
+                val errorBody = response.errorBody()?.string()
+                var errorMessage = "Validation failed"
+                if (errorBody != null) {
+                    try {
+                        val json = org.json.JSONObject(errorBody)
+                        errorMessage = json.optString("error", "Validation failed")
+                    } catch (e: Exception) {}
+                }
+                Result.failure(IOException(errorMessage))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun getAdvice(
         recentEntries: List<LogEntry>,
         categories: Map<Int, String>,

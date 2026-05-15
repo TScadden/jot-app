@@ -459,6 +459,10 @@ class LogRepository @Inject constructor(
         return geminiService.getSmartCategorySuggestion(recent, existingCategories)
     }
 
+    suspend fun validateCategoryName(name: String): Result<String> {
+        return geminiService.validateCategoryName(name)
+    }
+
     private suspend fun getWeatherContext(): String? {
         return try {
             val lat = preferences.lastKnownLat.first()
