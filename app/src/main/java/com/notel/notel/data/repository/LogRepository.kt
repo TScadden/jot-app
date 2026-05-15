@@ -289,6 +289,23 @@ class LogRepository @Inject constructor(
         val sleepHistoryRecords = if (isAvailable) try { healthConnectManager.readHistoricalSleep(42, targetDay) } catch(e: Exception) { emptyList() } else emptyList()
         val calorieHistory = if (isAvailable) try { healthConnectManager.readHistoricalCalories(42) } catch(e: Exception) { emptyList() } else emptyList()
 
+        // UPDATE PREFERENCES TO FIX UI SYNC FOR 7 DAY RECAP
+        try {
+            val json = Json { ignoreUnknownKeys = true }
+            val histHrList = historyHr.map { BiomarkerPoint(it.date, it.awakeAvg.toDouble()) }
+            if (histHrList.isNotEmpty()) preferences.setHistoricalHeartRate(json.encodeToString(histHrList))
+            
+            val sleepList = sleepHistoryRecords.map { BiomarkerPoint(it.first, it.second.toDouble()) }
+            if (sleepList.isNotEmpty()) preferences.setHistoricalSleep(json.encodeToString(sleepList))
+            
+            val calList = calorieHistory.map { BiomarkerPoint(it.first, it.second.toDouble()) }
+            if (calList.isNotEmpty()) preferences.setHistoricalCalories(json.encodeToString(calList))
+            
+            if (historyHr.isNotEmpty()) preferences.setHistoricalHrSpikes(json.encodeToString(historyHr))
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
         // Update cache
         biometricCache = mapOf(
             "hrvHistory" to hrvHistory, 

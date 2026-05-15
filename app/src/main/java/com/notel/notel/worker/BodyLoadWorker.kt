@@ -44,11 +44,6 @@ class BodyLoadWorker @AssistedInject constructor(
              }
         }
 
-        // Safety check: Don't run AI fetch if refreshed within last 2.5 hours
-        if ((now - lastRefresh) < (2.5 * 60 * 60 * 1000L)) {
-            return Result.success()
-        }
-
         try {
             // Update weather using persistent location
             val lat = preferences.lastKnownLat.first().takeIf { it != 0.0 }
@@ -57,6 +52,18 @@ class BodyLoadWorker @AssistedInject constructor(
             
             if (lat != null && lon != null) {
                 weatherApi.getDetailedWeather(lat, lon, city)
+            }
+
+            // Sync Health Connect Data (Every 30 minutes)
+            try {
+                logRepository.getDailyStatsSummary(todayStr, forceRefresh = true)
+            } catch (e: Exception) {
+                // Ignore health connect sync error
+            }
+
+            // Safety check: Don't run AI fetch if refreshed within last 2.5 hours
+            if ((now - lastRefresh) < (2.5 * 60 * 60 * 1000L)) {
+                return Result.success()
             }
 
             val categories = categoryRepository.getAllCategories().first()
@@ -84,7 +91,7 @@ class BodyLoadWorker @AssistedInject constructor(
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
 
-            val request = PeriodicWorkRequestBuilder<BodyLoadWorker>(3, TimeUnit.HOURS)
+            val request = PeriodicWorkRequestBuilder<BodyLoadWorker>(30, TimeUnit.MINUTES)
                 .setConstraints(constraints)
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
                 .addTag("BODY_LOAD_REFRESH")

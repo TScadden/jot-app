@@ -158,7 +158,16 @@ class BodyLoadViewModel @Inject constructor(
     private data class MetricsUpdate(val hr: Int, val cal: Int, val sleep: Int, val jots: Int)
 
     fun refresh(force: Boolean = false) {
-        // No logic here yet.
+        val dateStr = _uiState.value.selectedDate
+        _uiState.update { it.copy(isLoading = true) }
+        viewModelScope.launch {
+            try {
+                logRepository.getDailyStatsSummary(dateStr, forceRefresh = true)
+            } catch (e: Exception) {
+            } finally {
+                _uiState.update { it.copy(isLoading = false) }
+            }
+        }
     }
 
     fun selectDay(dateStr: String) {

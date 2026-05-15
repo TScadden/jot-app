@@ -1,0 +1,57 @@
+# Jot Database Terminal Cheat Sheet (Numbered)
+
+To run a command, just tell me the number in this format "./data.sh {number}"
+
+---
+
+## SERVER DATABASE (Postgres)
+
+1: **List All Tables**
+   `psql "$DATABASE_URL" -c "\dt"`
+
+2: **List All Users (Access & Admin Status)**
+   `psql "$DATABASE_URL" -c "SELECT email, CASE WHEN (subscription_expiry > NOW() OR is_admin = true) THEN 1 ELSE 0 END as access, CASE WHEN is_admin = true THEN 'admin' ELSE COALESCE(subscription_expiry::text, 'none') END as expiry, created_at FROM users ORDER BY created_at DESC;"`
+
+3: **Show Last 10 Sync Logs**
+   `psql "$DATABASE_URL" -c "SELECT user_id, category_id, body, timestamp FROM log_entries ORDER BY id DESC LIMIT 10;"`
+
+4: **Check AI Insights History**
+   `psql "$DATABASE_URL" -c "SELECT type, insight_timestamp, LEFT(text, 50) AS snippet FROM ai_insights ORDER BY insight_timestamp DESC LIMIT 5;"`
+
+5: **Count Total Users**
+   `psql "$DATABASE_URL" -c "SELECT count(*) FROM users;"`
+
+---
+
+## APP DATABASE (SQLite via ADB)
+
+6: **List Database Files on Phone**
+   `adb shell "run-as com.notel.notel ls /data/data/com.notel.notel/databases/"`
+
+7: **Show All Local Log Entries**
+   `adb shell "run-as com.notel.notel sqlite3 /data/data/com.notel.notel/databases/notel_db 'SELECT * FROM log_entries;'"`
+
+8: **Check Local Habit Progress**
+   `adb shell "run-as com.notel.notel sqlite3 /data/data/com.notel.notel/databases/notel_db 'SELECT * FROM habits JOIN habit_logs ON habits.id = habit_logs.habit_id;'"`
+
+9: **Count Rows in App Database**
+   `adb shell "run-as com.notel.notel sqlite3 /data/data/com.notel.notel/databases/notel_db 'SELECT \"logs\", count(*) FROM log_entries UNION SELECT \"insights\", count(*) FROM ai_insights;'"`
+
+---
+
+## MAINTENANCE
+
+10: **Restart Local Postgres Service**
+    `brew services restart postgresql`
+
+11: **Delete Duplicate Sync Entries (Maintenance)**
+    `psql "$DATABASE_URL" -c "DELETE FROM log_entries WHERE user_id NOT IN (SELECT id FROM users);"`
+
+12: **Make User an Admin**
+    `psql "$DATABASE_URL" -c "UPDATE users SET is_admin = true WHERE email = '$2';"`
+
+13: **Remove Admin Status**
+    `psql "$DATABASE_URL" -c "UPDATE users SET is_admin = false WHERE email = '$2';"`
+
+14: **Launch Admin Dashboard (Web UI)**
+    `node "Admin Coding/Dashboard/server.js"`

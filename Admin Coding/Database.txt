@@ -1,0 +1,49 @@
+# Jot Database Schema Overview
+
+## 1. users
+- id (UUID, PK)
+- email (TEXT, UNIQUE)
+- password_hash (TEXT)
+- balance (FLOAT)
+- created_at (TIMESTAMPTZ)
+
+## 2. user_profiles
+- user_id (UUID, FK -> users.id)
+- user_context (TEXT)
+- knowledge_base (TEXT)
+- professional_updates (TEXT)
+- age (INT)
+- height_cm (FLOAT)
+- weight_kg (FLOAT)
+- gender (TEXT)
+- onboarding_complete (BOOLEAN)
+- event_counters (TEXT/JSON)
+- current_streak (INT)
+- best_streak (INT)
+
+## 3. log_entries
+- id (SERIAL, PK)
+- user_id (UUID, FK -> users.id)
+- local_id (BIGINT)
+- category_id (INT)
+- body (TEXT)
+- chips (TEXT/JSON)
+- timestamp (BIGINT)
+
+## 4. ai_insights
+- insight_id (TEXT, PK)
+- user_id (UUID, FK -> users.id)
+- text (TEXT)
+- type (TEXT)
+- insight_timestamp (BIGINT)
+
+## 5. habits
+- id (UUID, PK)
+- user_id (UUID, FK -> users.id)
+- title (TEXT)
+- target_time (TEXT)
+
+## 6. habit_logs
+- id (UUID, PK)
+- habit_id (UUID, FK -> habits.id)
+- completed_date (TEXT)
