@@ -292,13 +292,13 @@ class LogRepository @Inject constructor(
         // UPDATE PREFERENCES TO FIX UI SYNC FOR 7 DAY RECAP
         try {
             val json = Json { ignoreUnknownKeys = true }
-            val histHrList = historyHr.map { BiomarkerPoint(it.date, it.awakeAvg.toDouble()) }
+            val histHrList = historyHr.map { BiomarkerPoint(it.date, it.awakeAvg) }
             if (histHrList.isNotEmpty()) preferences.setHistoricalHeartRate(json.encodeToString(histHrList))
             
-            val sleepList = sleepHistoryRecords.map { BiomarkerPoint(it.first, it.second.toDouble()) }
+            val sleepList = sleepHistoryRecords.map { BiomarkerPoint(it.first, it.second) }
             if (sleepList.isNotEmpty()) preferences.setHistoricalSleep(json.encodeToString(sleepList))
             
-            val calList = calorieHistory.map { BiomarkerPoint(it.first, it.second.toDouble()) }
+            val calList = calorieHistory.map { BiomarkerPoint(it.first, it.second) }
             if (calList.isNotEmpty()) preferences.setHistoricalCalories(json.encodeToString(calList))
             
             if (historyHr.isNotEmpty()) preferences.setHistoricalHrSpikes(json.encodeToString(historyHr))
