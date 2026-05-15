@@ -29,7 +29,7 @@ class CategoryRepository @Inject constructor(
 
     suspend fun deleteCategory(category: Category) {
         categoryDao.deleteCategory(category)
-        triggerSync()
+        syncManager.deleteCategoryRemote(category.id)
     }
 
     suspend fun clearCustomCategories() {

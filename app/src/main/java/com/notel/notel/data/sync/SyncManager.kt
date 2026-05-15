@@ -141,6 +141,16 @@ class SyncManager @Inject constructor(
             Log.e(tag, "pushCategories failed: ${e.message}")
         }
     }
+    
+    suspend fun deleteCategoryRemote(categoryId: Int) = withContext(Dispatchers.IO) {
+        try {
+            if (!preferences.loggedIn.first()) return@withContext
+            jotApi.deleteRemoteCategory(categoryId)
+        } catch (e: Exception) {
+            Log.e(tag, "deleteCategoryRemote failed: ${e.message}")
+        }
+    }
+
 
     suspend fun pullAllData(): Boolean = withContext(Dispatchers.IO) {
         try {

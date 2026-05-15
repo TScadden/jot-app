@@ -395,6 +395,9 @@ interface JotApi {
     @retrofit2.http.DELETE("api/sync/entries/{localId}")
     suspend fun deleteEntry(@retrofit2.http.Path("localId") localId: Long): Response<GenericResponse>
 
+    @retrofit2.http.DELETE("api/sync/categories/{localId}")
+    suspend fun deleteRemoteCategory(@retrofit2.http.Path("localId") localId: Int): Response<GenericResponse>
+
     @retrofit2.http.DELETE("api/sync/documents/{id}")
     suspend fun deleteDocument(@retrofit2.http.Path("id") id: String): Response<GenericResponse>
 
