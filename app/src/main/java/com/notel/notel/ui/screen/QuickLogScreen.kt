@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.foundation.clickable
@@ -145,6 +146,32 @@ fun QuickLogScreen(
                             isSelected = cat.id == state.selectedCategory?.id,
                             onClick = { viewModel.selectCategory(cat) }
                         )
+                    }
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(NotelSurface)
+                                .border(
+                                    width = 1.dp,
+                                    color = NotelPrimary.copy(alpha = 0.35f),
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                                .clickable { viewModel.requestCategorySuggestions() }
+                                .padding(horizontal = 16.dp, vertical = 10.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Add, null, tint = NotelPrimary, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    text = "ADD",
+                                    color = NotelTextSecondary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.6.sp
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -349,6 +376,7 @@ fun QuickLogScreen(
 
         // Free Trial Bonus Dialog removed as users must sign up manually
 
+
         // Compare Documents Dialog
         if (state.showComparisonDialog) {
             Dialog(onDismissRequest = { viewModel.dismissComparison() }) {
@@ -402,11 +430,123 @@ fun QuickLogScreen(
             }
         }
 
+        // Add Category AI Dialog
+        if (state.showAddCategoryDialog) {
+            Dialog(onDismissRequest = { viewModel.dismissAddCategory() }) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                        .liquidGlass(shape = RoundedCornerShape(24.dp), color = NotelBackground, alpha = 0.9f)
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = NotelPrimary, modifier = Modifier.size(22.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("New Category Ideas", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = NotelTextPrimary)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "AI analyzed your notes to find new tracking opportunities.",
+                            color = NotelTextSecondary,
+                            fontSize = 13.sp,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        
+                        when {
+                            state.isLoadingSuggestions -> {
+                                GlassySpinner(size = 48.dp)
+                                Spacer(Modifier.height(12.dp))
+                                Text("Analyzing your notes…", color = NotelTextSecondary, fontSize = 14.sp, textAlign = TextAlign.Center)
+                            }
+                            state.suggestionsError != null -> {
+                                Text(state.suggestionsError!!, color = MaterialTheme.colorScheme.error, fontSize = 14.sp, textAlign = TextAlign.Center)
+                                Spacer(Modifier.height(12.dp))
+                                GlassyButton(onClick = { viewModel.requestCategorySuggestions() }) { Text("Retry") }
+                            }
+                            state.suggestedCategories.isNotEmpty() -> {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 350.dp)
+                                        .verticalScroll(rememberScrollState())
+                                ) {
+                                    @OptIn(ExperimentalLayoutApi::class)
+                                    FlowRow(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        state.suggestedCategories.forEach { suggestion ->
+                                            val name = suggestion.category ?: "Unknown"
+                                            val isSelected = name in state.selectedSuggestedCategories
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(14.dp))
+                                                    .background(if (isSelected) NotelPrimary else NotelSurface)
+                                                    .border(
+                                                        width = 1.dp,
+                                                        color = if (isSelected) NotelPrimary else NotelPrimary.copy(alpha = 0.20f),
+                                                        shape = RoundedCornerShape(14.dp)
+                                                    )
+                                                    .clickable { viewModel.toggleSuggestedCategory(name) }
+                                                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                                            ) {
+                                                Column {
+                                                    Text(
+                                                        text = name,
+                                                        color = if (isSelected) Color.White else NotelTextPrimary,
+                                                        fontSize = 14.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                    if (suggestion.reason != null) {
+                                                        Text(
+                                                            text = suggestion.reason!!,
+                                                            color = if (isSelected) Color.White.copy(alpha = 0.8f) else NotelTextSecondary,
+                                                            fontSize = 11.sp,
+                                                            lineHeight = 14.sp
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            else -> {
+                                Text("No new category ideas found yet. Keep logging more detailed notes!", color = NotelTextSecondary, fontSize = 14.sp, textAlign = TextAlign.Center)
+                            }
+                        }
+                        
+                        Spacer(Modifier.height(24.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            GlassyButton(
+                                onClick = { viewModel.dismissAddCategory() },
+                                modifier = Modifier.weight(1f),
+                                containerColor = NotelSurfaceHigh
+                            ) { Text("Cancel", color = NotelTextPrimary) }
+                            
+                            if (state.selectedSuggestedCategories.isNotEmpty()) {
+                                GlassyButton(
+                                    onClick = { viewModel.addSelectedCategories() },
+                                    modifier = Modifier.weight(1f),
+                                    containerColor = NotelPrimary
+                                ) { Text("Add Subject", color = Color.White) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
     }
 }
 
 @Composable
-private fun CategoryChip(category: Category, isSelected: Boolean, onClick: () -> Unit) {
+fun CategoryChip(category: Category, isSelected: Boolean, onClick: () -> Unit) {
     val catColor = remember(category) {
         try { Color(android.graphics.Color.parseColor(category.colorHex)) }
         catch (e: Exception) { NotelPrimary }

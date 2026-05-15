@@ -97,7 +97,7 @@ class GeminiService @Inject constructor(
     suspend fun getSmartCategorySuggestion(
         recentEntries: List<LogEntry>,
         existingCategories: List<String>
-    ): Result<SmartCategorySuggestion?> {
+    ): Result<List<SmartCategorySuggestion>> {
         return try {
             val response = jotApi.getSmartCategorySuggestion(
                 SmartCategorySuggestionRequest(
@@ -106,7 +106,7 @@ class GeminiService @Inject constructor(
                 )
             )
             val result = response.body()?.result
-            if (response.isSuccessful) {
+            if (response.isSuccessful && result != null) {
                 Result.success(result)
             } else {
                 val errorBody = response.errorBody()?.string()

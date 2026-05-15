@@ -450,15 +450,13 @@ class LogRepository @Inject constructor(
         }
     }
 
-    suspend fun getSmartCategorySuggestion(existingCategories: List<String>): Result<com.notel.notel.data.remote.SmartCategorySuggestion?> {
+    suspend fun getSmartCategorySuggestion(existingCategories: List<String>): Result<List<com.notel.notel.data.remote.SmartCategorySuggestion>> {
         val isUnlimited = preferences.isUnlimited.first()
-        if (!isUnlimited) return Result.success(null) // Silently fail if no access
+        if (!isUnlimited) return Result.success(emptyList()) // Silently fail if no access
 
         val recent = logEntryDao.getRecentEntriesAll(limit = 50)
-        val context = getEnrichedUserContext()
         
-        return geminiService.getSmartCategorySuggestion(recent, existingCategories).onSuccess {
-        }
+        return geminiService.getSmartCategorySuggestion(recent, existingCategories)
     }
 
     private suspend fun getWeatherContext(): String? {

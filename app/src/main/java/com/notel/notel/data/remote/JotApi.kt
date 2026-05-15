@@ -325,7 +325,7 @@ interface JotApi {
     suspend fun generateCategories(@Body request: GenerateCategoriesRequest): Response<AiResponse<List<String>>>
 
     @POST("api/ai/smart-category-suggestion")
-    suspend fun getSmartCategorySuggestion(@Body request: SmartCategorySuggestionRequest): Response<AiResponse<SmartCategorySuggestion>>
+    suspend fun getSmartCategorySuggestion(@Body request: SmartCategorySuggestionRequest): Response<AiResponse<List<SmartCategorySuggestion>>>
 
     @POST("api/ai/advice")
     suspend fun getAdvice(@Body request: AiRequest): Response<AiResponse<String>>

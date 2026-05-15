@@ -56,7 +56,13 @@ data class QuickLogUiState(
     val smartAction: SmartAction? = null,
     val autoAiSuggestions: Boolean = false,
     val eventCounters: List<com.notel.notel.ui.viewmodel.EventCounterDto> = emptyList(),
-    val habits: List<HabitDtoModel> = emptyList()
+    val habits: List<HabitDtoModel> = emptyList(),
+    // AI Category Suggestions
+    val suggestedCategories: List<com.notel.notel.data.remote.SmartCategorySuggestion> = emptyList(),
+    val selectedSuggestedCategories: List<String> = emptyList(),
+    val isLoadingSuggestions: Boolean = false,
+    val suggestionsError: String? = null,
+    val showAddCategoryDialog: Boolean = false
 )
 
 @HiltViewModel
@@ -383,14 +389,18 @@ class QuickLogViewModel @Inject constructor(
         viewModelScope.launch {
             if (action.type == "CATEGORY_SUGGESTION") {
                 val name = action.metadata
-                val maxId = categoryRepository.getMaxCategoryId()
+                val currentCategories = _uiState.value.categories
+                var nextId = (categoryRepository.getMaxCategoryId()).coerceAtLeast(7) + 1
+                val colors = listOf("#FF6B6B", "#FFB347", "#6BCB77", "#4ECDC4", "#4D96FF", "#A566FF", "#FFD93D")
+                val icons = listOf("Favorite", "Restaurant", "MonitorWeight", "Medication", "EmojiEvents", "Bedtime", "Mood")
+
                 val newCategory = Category(
-                    id = maxId + 1,
+                    id = nextId,
                     name = name.replaceFirstChar { it.uppercase() },
-                    icon = "Label", // Default icon
-                    colorHex = "#4ECDC4", // Fresh teal
+                    icon = icons[0], // Use first icon as default
+                    colorHex = colors[0], // Use first color as default
                     isDefault = false,
-                    sortOrder = (_uiState.value.categories.minOfOrNull { it.sortOrder } ?: 0) - 1
+                    sortOrder = (currentCategories.maxOfOrNull { it.sortOrder } ?: 0) + 1
                 )
                 categoryRepository.insertCategory(newCategory)
                 dismissedActions.add(name.lowercase())
@@ -406,6 +416,56 @@ class QuickLogViewModel @Inject constructor(
         }
         _uiState.update { it.copy(smartAction = null) }
     }
+
+    fun requestCategorySuggestions() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingSuggestions = true, suggestionsError = null, showAddCategoryDialog = true, selectedSuggestedCategories = emptyList()) }
+            val existing = _uiState.value.categories.map { it.name }
+            logRepository.getSmartCategorySuggestion(existing).fold(
+                onSuccess = { suggestions ->
+                    _uiState.update { it.copy(isLoadingSuggestions = false, suggestedCategories = suggestions) }
+                },
+                onFailure = { err ->
+                    _uiState.update { it.copy(isLoadingSuggestions = false, suggestionsError = err.message ?: "Failed to get suggestions") }
+                }
+            )
+        }
+    }
+
+    fun toggleSuggestedCategory(name: String) {
+        _uiState.update { state ->
+            val current = state.selectedSuggestedCategories.toMutableList()
+            if (name in current) current.remove(name) else current.add(name)
+            state.copy(selectedSuggestedCategories = current)
+        }
+    }
+
+    fun addSelectedCategories() {
+        val selected = _uiState.value.selectedSuggestedCategories
+        if (selected.isEmpty()) return
+
+        viewModelScope.launch {
+            val currentCategories = _uiState.value.categories
+            var nextId = (categoryRepository.getMaxCategoryId()).coerceAtLeast(7) + 1
+            val colors = listOf("#FF6B6B", "#FFB347", "#6BCB77", "#4ECDC4", "#4D96FF", "#A566FF", "#FFD93D")
+            val icons = listOf("Favorite", "Restaurant", "MonitorWeight", "Medication", "EmojiEvents", "Bedtime", "Mood")
+
+            selected.forEachIndexed { index, name ->
+                val newCategory = Category(
+                    id = nextId++,
+                    name = name.replaceFirstChar { it.uppercase() },
+                    icon = icons[index % icons.size],
+                    colorHex = colors[index % colors.size],
+                    isDefault = false,
+                    sortOrder = (currentCategories.maxOfOrNull { it.sortOrder } ?: 0) + 1
+                )
+                categoryRepository.insertCategory(newCategory)
+            }
+            _uiState.update { it.copy(showAddCategoryDialog = false, selectedSuggestedCategories = emptyList(), suggestedCategories = emptyList()) }
+        }
+    }
+
+    fun dismissAddCategory() = _uiState.update { it.copy(showAddCategoryDialog = false, suggestedCategories = emptyList(), selectedSuggestedCategories = emptyList()) }
 
     fun resetSaveSuccess() = _uiState.update { it.copy(saveSuccess = false) }
 
