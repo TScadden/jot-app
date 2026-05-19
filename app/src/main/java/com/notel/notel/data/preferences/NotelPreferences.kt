@@ -104,7 +104,13 @@ class NotelPreferences @Inject constructor(
 
     val authToken: Flow<String> = context.dataStore.data.map { prefs ->
         val encrypted = prefs[AUTH_TOKEN] ?: ""
-        NotelCrypto.decrypt(encrypted)
+        if (encrypted.isEmpty()) return@map ""
+        if (!NotelCrypto.isLikelyCiphertext(encrypted)) {
+            encrypted
+        } else {
+            val decrypted = NotelCrypto.decrypt(encrypted)
+            if (decrypted.isNotEmpty()) decrypted else ""
+        }
     }
 
     val professionalUpdates: Flow<String> = context.dataStore.data.map { prefs ->
@@ -177,12 +183,24 @@ class NotelPreferences @Inject constructor(
 
     val fitbitToken: Flow<String> = context.dataStore.data.map { prefs ->
         val encrypted = prefs[FITBIT_TOKEN] ?: ""
-        NotelCrypto.decrypt(encrypted)
+        if (encrypted.isEmpty()) return@map ""
+        if (!NotelCrypto.isLikelyCiphertext(encrypted)) {
+            encrypted
+        } else {
+            val decrypted = NotelCrypto.decrypt(encrypted)
+            if (decrypted.isNotEmpty()) decrypted else ""
+        }
     }
 
     val fitbitRefreshToken: Flow<String> = context.dataStore.data.map { prefs ->
         val encrypted = prefs[FITBIT_REFRESH_TOKEN] ?: ""
-        NotelCrypto.decrypt(encrypted)
+        if (encrypted.isEmpty()) return@map ""
+        if (!NotelCrypto.isLikelyCiphertext(encrypted)) {
+            encrypted
+        } else {
+            val decrypted = NotelCrypto.decrypt(encrypted)
+            if (decrypted.isNotEmpty()) decrypted else ""
+        }
     }
 
     val apiSpendingLimit: Flow<Float> = context.dataStore.data.map { prefs ->
@@ -604,7 +622,7 @@ object NotelCrypto {
             combined[0] = iv.size.toByte()
             System.arraycopy(iv, 0, combined, 1, iv.size)
             System.arraycopy(encryptedBytes, 0, combined, 1 + iv.size, encryptedBytes.size)
-            Base64.encodeToString(combined, Base64.DEFAULT)
+            Base64.encodeToString(combined, Base64.NO_WRAP)
         } catch (e: Exception) {
             ""
         }
@@ -613,7 +631,11 @@ object NotelCrypto {
     fun decrypt(cipherText: String): String {
         if (cipherText.isEmpty()) return ""
         return try {
-            val combined = Base64.decode(cipherText, Base64.DEFAULT)
+            val combined = try {
+                Base64.decode(cipherText, Base64.NO_WRAP)
+            } catch (e: Exception) {
+                Base64.decode(cipherText, Base64.DEFAULT)
+            }
             val ivSize = combined[0].toInt()
             val iv = ByteArray(ivSize)
             System.arraycopy(combined, 1, iv, 0, ivSize)
@@ -625,6 +647,20 @@ object NotelCrypto {
             String(cipher.doFinal(encryptedBytes), Charsets.UTF_8)
         } catch (e: Exception) {
             ""
+        }
+    }
+
+    fun isLikelyCiphertext(value: String): Boolean {
+        if (value.isEmpty()) return false
+        return try {
+            val decoded = try {
+                Base64.decode(value, Base64.NO_WRAP)
+            } catch (e: Exception) {
+                Base64.decode(value, Base64.DEFAULT)
+            }
+            decoded.size >= 30 && decoded[0].toInt() == 12
+        } catch (e: Exception) {
+            false
         }
     }
 }
