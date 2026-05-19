@@ -58,9 +58,20 @@ class VoiceLogActivity : ComponentActivity() {
     lateinit var logRepository: LogRepository
 
     private var speechRecognizer: SpeechRecognizer? = null
+    
+    // Manage speech state at the activity level using Compose state properties
+    private var isListening by mutableStateOf(false)
+    private var recognizedText by mutableStateOf("")
+    private var partialText by mutableStateOf("")
+    private var errorMessage by mutableStateOf<String?>(null)
+
+    // Flag to track active/foreground status to prevent background restarts
+    private var isActivityActive = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        initSpeechRecognizer()
 
         setContent {
             val scope = rememberCoroutineScope()
@@ -68,6 +79,11 @@ class VoiceLogActivity : ComponentActivity() {
 
             VoiceLogScreen(
                 isProcessing = isProcessing,
+                isListening = isListening,
+                recognizedText = recognizedText,
+                partialText = partialText,
+                errorMessage = errorMessage,
+                onStartListening = { startListening() },
                 onFinish = { finish() },
                 onSendToAI = { text, useAI ->
                     isProcessing = useAI
@@ -86,25 +102,131 @@ class VoiceLogActivity : ComponentActivity() {
         }
     }
 
+    private fun initSpeechRecognizer() {
+        if (speechRecognizer == null) {
+            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
+                setRecognitionListener(object : RecognitionListener {
+                    override fun onReadyForSpeech(params: Bundle?) {
+                        isListening = true
+                        errorMessage = null
+                    }
+                    override fun onBeginningOfSpeech() {
+                        isListening = true
+                    }
+                    override fun onRmsChanged(rmsdB: Float) {}
+                    override fun onBufferReceived(buffer: ByteArray?) {}
+                    override fun onEndOfSpeech() {
+                        isListening = false
+                    }
+                    override fun onError(error: Int) {
+                        isListening = false
+                        // Only restart if the activity is explicitly active in the foreground
+                        if (isActivityActive && (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT)) {
+                            startListening()
+                        } else {
+                            if (error != SpeechRecognizer.ERROR_CLIENT) {
+                                errorMessage = "Recognition issue. Try again."
+                            }
+                        }
+                    }
+                    override fun onResults(results: Bundle?) {
+                        val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        if (!matches.isNullOrEmpty()) {
+                            val newText = matches[0]
+                            recognizedText = if (recognizedText.isEmpty()) newText else "$recognizedText $newText"
+                        }
+                        partialText = ""
+                        // Only restart if the activity is explicitly active in the foreground
+                        if (isActivityActive) {
+                            startListening()
+                        }
+                    }
+                    override fun onPartialResults(partialResults: Bundle?) {
+                        val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        if (!matches.isNullOrEmpty()) {
+                            partialText = matches[0]
+                        }
+                    }
+                    override fun onEvent(eventType: Int, params: Bundle?) {}
+                })
+            }
+        }
+    }
+
+    private fun startListening() {
+        if (!isActivityActive) return
+        
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            initSpeechRecognizer()
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 30000L)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 30000L)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 30000L)
+            }
+            try {
+                speechRecognizer?.startListening(intent)
+                isListening = true
+            } catch (e: Exception) {
+                errorMessage = "Failed to start listening."
+            }
+        }
+    }
+
+    private fun stopListening() {
+        try {
+            speechRecognizer?.stopListening()
+        } catch (e: Exception) {
+            // Ignore
+        }
+        isListening = false
+    }
+
+    override fun onStart() {
+        super.onStart()
+        isActivityActive = true
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            startListening()
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        isActivityActive = false
+        stopListening()
+        destroySpeechRecognizer()
+    }
+
+    private fun destroySpeechRecognizer() {
+        try {
+            speechRecognizer?.destroy()
+        } catch (e: Exception) {
+            // Ignore
+        }
+        speechRecognizer = null
+    }
+
     override fun onDestroy() {
         super.onDestroy()
-        speechRecognizer?.destroy()
+        destroySpeechRecognizer()
     }
 }
 
 @Composable
 fun VoiceLogScreen(
     isProcessing: Boolean = false,
+    isListening: Boolean,
+    recognizedText: String,
+    partialText: String,
+    errorMessage: String?,
+    onStartListening: () -> Unit,
     onFinish: () -> Unit,
     onSendToAI: (String, Boolean) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var isListening by remember { mutableStateOf(false) }
-    var recognizedText by remember { mutableStateOf("") }
-    var partialText by remember { mutableStateOf("") }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
     
-    // UI Logic ...
     if (isProcessing) {
         // AI Thinking State
         Box(
@@ -133,94 +255,20 @@ fun VoiceLogScreen(
         return
     }
     
-    // Standard Speech UI Logic ... 
-
-    val speechRecognizer = remember { SpeechRecognizer.createSpeechRecognizer(context) }
-    
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            // Start listening once permission is granted
-            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 30000L)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 30000L)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 30000L)
-            }
-            speechRecognizer.startListening(intent)
-            isListening = true
-        } else {
-            errorMessage = "Microphone permission required"
+            onStartListening()
         }
     }
 
     LaunchedEffect(Unit) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 30000L)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 30000L)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 30000L)
-            }
-            speechRecognizer.startListening(intent)
-            isListening = true
+            onStartListening()
         } else {
             permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
-    }
-
-    DisposableEffect(Unit) {
-        val listener = object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) {
-                isListening = true
-                errorMessage = null
-            }
-            override fun onBeginningOfSpeech() { isListening = true }
-            override fun onRmsChanged(rmsdB: Float) {}
-            override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() { isListening = false }
-            override fun onError(error: Int) {
-                isListening = false
-                if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
-                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-                        putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                    }
-                    speechRecognizer.startListening(intent)
-                } else {
-                    errorMessage = "Recognition issue. Try again."
-                }
-            }
-            override fun onResults(results: Bundle?) {
-                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                if (!matches.isNullOrEmpty()) {
-                    val newText = matches[0]
-                    recognizedText = if (recognizedText.isEmpty()) newText else "$recognizedText $newText"
-                }
-                partialText = ""
-                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                }
-                speechRecognizer.startListening(intent)
-            }
-            override fun onPartialResults(partialResults: Bundle?) {
-                val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                if (!matches.isNullOrEmpty()) {
-                    partialText = matches[0]
-                }
-            }
-            override fun onEvent(eventType: Int, params: Bundle?) {}
-        }
-        speechRecognizer.setRecognitionListener(listener)
-        onDispose { speechRecognizer.destroy() }
     }
 
     val infiniteTransition = rememberInfiniteTransition(label = "ripple")
@@ -298,7 +346,7 @@ fun VoiceLogScreen(
                 Text(
                     text = buildAnnotatedString {
                         if (errorMessage != null) {
-                            append(errorMessage!!)
+                            append(errorMessage)
                         } else {
                             append(recognizedText)
                             if (partialText.isNotBlank()) {

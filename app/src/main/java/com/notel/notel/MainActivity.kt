@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.geometry.Size
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.*
 import androidx.compose.ui.Alignment
@@ -121,6 +122,46 @@ class MainActivity : ComponentActivity() {
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route
 
+                // Notification Permission Handling (mandatory for Android 13+)
+                val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                    contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+                    onResult = { }
+                )
+                LaunchedEffect(Unit) {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                        val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+                            context,
+                            android.Manifest.permission.POST_NOTIFICATIONS
+                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                        if (!hasPermission) {
+                            permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                    }
+                }
+
+                // Global banner states
+                var reportFile by remember { mutableStateOf<java.io.File?>(null) }
+                var aiInsight by remember { mutableStateOf<com.notel.notel.data.local.entity.AiInsight?>(null) }
+                val reportViewModel: com.notel.notel.ui.viewmodel.SettingsViewModel = hiltViewModel()
+
+                LaunchedEffect(Unit) {
+                    reportViewModel.reportReadyEvent.collect { file: java.io.File ->
+                        val route = navController.currentBackStackEntry?.destination?.route
+                        if (route != "settings") {
+                            reportFile = file
+                        }
+                    }
+                }
+
+                LaunchedEffect(Unit) {
+                    reportViewModel.aiInsightReadyEvent.collect { insight ->
+                        val route = navController.currentBackStackEntry?.destination?.route
+                        if (route != "settings") {
+                            aiInsight = insight
+                        }
+                    }
+                }
+
                 Box(modifier = Modifier.fillMaxSize()) {
                     // Main Content
                     NavHost(
@@ -174,6 +215,13 @@ class MainActivity : ComponentActivity() {
                             HistoryScreen(
                                 onBack = { navController.popBackStack() },
                                 onEntryClick = { id -> navController.navigate("detail/$id") }
+                            )
+                        }
+                        composable("info") {
+                            InfoScreen(
+                                onBack = { navController.popBackStack() },
+                                onSleepClick = { navController.navigate("sleep") },
+                                onKeyMetricsClick = { navController.navigate("key_metrics") }
                             )
                         }
                         composable("quick_log") {
@@ -234,6 +282,12 @@ class MainActivity : ComponentActivity() {
                         composable("fitbit") {
                             val fitbitViewModel: com.notel.notel.ui.viewmodel.FitbitViewModel = hiltViewModel()
                             FitbitScreen(viewModel = fitbitViewModel, onBack = { navController.popBackStack() })
+                        }
+                        composable("sleep") {
+                            SleepScreen(onBack = { navController.popBackStack() })
+                        }
+                        composable("key_metrics") {
+                            KeyMetricsScreen(onBack = { navController.popBackStack() })
                         }
                         composable(
                             route = "file_viewer?name={name}&path={path}&mime={mime}&docId={docId}",
@@ -313,10 +367,10 @@ class MainActivity : ComponentActivity() {
                                         }
                                     )
                                     NavIcon(
-                                        icon = Icons.Default.List,
-                                        label = "History",
-                                        isSelected = currentRoute == "history",
-                                        onClick = { navController.navigate("history") }
+                                        icon = Icons.Default.Assignment,
+                                        label = "Info",
+                                        isSelected = currentRoute == "info",
+                                        onClick = { navController.navigate("info") }
                                     )
                                     // Center Pencil Button — no label, always purple, slightly larger
                                     Column(
@@ -362,6 +416,106 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
+
+                    // Global Top Banner Overlay (Medical Report Notification)
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = reportFile != null,
+                        enter = androidx.compose.animation.slideInVertically(initialOffsetY = { -it }) + androidx.compose.animation.fadeIn(),
+                        exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { -it }) + androidx.compose.animation.fadeOut(),
+                        modifier = Modifier.align(Alignment.TopCenter).padding(16.dp).statusBarsPadding()
+                    ) {
+                        val file = reportFile
+                        if (file != null) {
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = NotelPrimary,
+                                tonalElevation = 12.dp,
+                                shadowElevation = 12.dp,
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    val uri = androidx.core.content.FileProvider.getUriForFile(
+                                        context,
+                                        "${context.packageName}.provider",
+                                        file
+                                    )
+                                    val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                        type = "application/pdf"
+                                        putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    context.startActivity(android.content.Intent.createChooser(intent, "Share Report"))
+                                    reportFile = null
+                                }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            "Medical Report Ready! ✓",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.ExtraBold
+                                        )
+                                        Text(
+                                            "Downloaded to phone. Tap to share.",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = Color.White.copy(alpha = 0.9f)
+                                        )
+                                    }
+                                    IconButton(onClick = { reportFile = null }) {
+                                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Global Top Banner Overlay (AI Insight Notification)
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = aiInsight != null,
+                        enter = androidx.compose.animation.slideInVertically(initialOffsetY = { -it }) + androidx.compose.animation.fadeIn(),
+                        exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { -it }) + androidx.compose.animation.fadeOut(),
+                        modifier = Modifier.align(Alignment.TopCenter).padding(16.dp).statusBarsPadding()
+                    ) {
+                        val insight = aiInsight
+                        if (insight != null) {
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = NotelSurface,
+                                tonalElevation = 12.dp,
+                                shadowElevation = 12.dp,
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    navController.navigate("settings?menu=AI_AND_KNOWLEDGE")
+                                    aiInsight = null
+                                }.liquidGlass(shape = RoundedCornerShape(16.dp), color = NotelSurface, alpha = 0.9f)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            "AI Audit Complete! ✨",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = NotelPrimary,
+                                            fontWeight = FontWeight.ExtraBold
+                                        )
+                                        Text(
+                                            "${insight.type} ready. Tap to view history.",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = NotelTextPrimary.copy(alpha = 0.9f)
+                                        )
+                                    }
+                                    IconButton(onClick = { aiInsight = null }) {
+                                        Icon(Icons.Default.Close, contentDescription = "Close", tint = NotelTextSecondary)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
     }
@@ -394,285 +548,4 @@ fun NavIcon(
     }
 }
 
-@Composable
-fun NotelNavGraph() {
-    val navController = rememberNavController()
-    val context = LocalContext.current
-
-    // Notification Permission Handling (mandatory for Android 13+)
-    val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
-        onResult = { }
-    )
-    LaunchedEffect(Unit) {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
-                context,
-                android.Manifest.permission.POST_NOTIFICATIONS
-            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-            if (!hasPermission) {
-                permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-            }
-        }
-    }
-
-    // Global banner states
-    var reportFile by remember { mutableStateOf<java.io.File?>(null) }
-    var aiInsight by remember { mutableStateOf<com.notel.notel.data.local.entity.AiInsight?>(null) }
-    val reportViewModel: com.notel.notel.ui.viewmodel.SettingsViewModel = hiltViewModel()
-
-    LaunchedEffect(Unit) {
-        reportViewModel.reportReadyEvent.collect { file: java.io.File ->
-            val route = navController.currentBackStackEntry?.destination?.route
-            if (route != "settings") {
-                reportFile = file
-            }
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        reportViewModel.aiInsightReadyEvent.collect { insight ->
-            val route = navController.currentBackStackEntry?.destination?.route
-            if (route != "settings") {
-                aiInsight = insight
-            }
-        }
-    }
-
-    Box(modifier = Modifier.fillMaxSize()) {
-        NavHost(navController = navController, startDestination = "login") {
-            composable("login") {
-                val loginViewModel: com.notel.notel.ui.screen.LoginViewModel = hiltViewModel()
-                LoginScreen(
-                    onLoginSuccess = { isComplete ->
-                        if (isComplete) {
-                            navController.navigate("quick_log") { popUpTo("login") { inclusive = true } }
-                        } else {
-                            navController.navigate("profile_setup") { popUpTo("login") { inclusive = true } }
-                        }
-                    }
-                )
-            }
-            composable("profile_setup") {
-                ProfileSetupScreen(onNavigateNext = { navController.navigate("connections") })
-            }
-            composable("connections") {
-                ConnectionsScreen(onNavigateNext = { navController.navigate("setup_loading") })
-            }
-            composable("setup_loading") {
-                SetupLoadingScreen(onNavigateMain = { 
-                    navController.navigate("quick_log") {
-                        popUpTo("setup_loading") { inclusive = true }
-                    }
-                })
-            }
-            composable(
-                "quick_log",
-                deepLinks = listOf(navDeepLink { uriPattern = "potscube://callback.*" })
-            ) { backStackEntry ->
-                val fitbitViewModel: FitbitViewModel = hiltViewModel()
-                val syncViewModel: com.notel.notel.ui.viewmodel.SyncViewModel = hiltViewModel()
-
-                val lifecycleOwner = LocalLifecycleOwner.current
-                DisposableEffect(lifecycleOwner) {
-                    val observer = LifecycleEventObserver { _, event ->
-                        if (event == Lifecycle.Event.ON_RESUME) {
-                            fitbitViewModel.sync()
-                            syncViewModel.triggerSync()
-                        }
-                    }
-                    lifecycleOwner.lifecycle.addObserver(observer)
-                    onDispose {
-                        lifecycleOwner.lifecycle.removeObserver(observer)
-                    }
-                }
-
-                val intent = (LocalContext.current as? androidx.activity.ComponentActivity)?.intent
-                val code = intent?.data?.getQueryParameter("code")
-                LaunchedEffect(code) {
-                    if (code != null) {
-                        fitbitViewModel.exchangeCodeForToken(code)
-                        intent?.data = null
-                    }
-                }
-
-                QuickLogScreen(
-                    onNavigateToHistory = { navController.navigate("history") },
-                    onNavigateToSettings = { navController.navigate("settings") },
-                    onNavigateToMembership = { navController.navigate("settings?menu=MEMBERSHIP") },
-                    onNavigateToTrends = { navController.navigate("trends") },
-                    onNavigateToFitbit = { navController.navigate("fitbit") },
-                    onNavigateToSleep = { navController.navigate("sleep") },
-                    onNavigateToBodyLoad = { navController.navigate("body_load") }
-                )
-            }
-            composable("sleep") {
-                val fitbitViewModel: FitbitViewModel = hiltViewModel()
-                SleepScreen(viewModel = fitbitViewModel, onBack = { navController.popBackStack() })
-            }
-            composable("history") {
-                HistoryScreen(
-                    onBack = { navController.popBackStack() },
-                    onEntryClick = { id -> navController.navigate("detail/$id") }
-                )
-            }
-            composable(
-                route = "detail/{entryId}",
-                arguments = listOf(navArgument("entryId") { type = NavType.LongType })
-            ) { backStack ->
-                val id = backStack.arguments?.getLong("entryId") ?: return@composable
-                EntryDetailScreen(
-                    entryId = id,
-                    onBack = { navController.popBackStack() }
-                )
-            }
-            composable(
-                route = "settings?menu={menu}",
-                arguments = listOf(navArgument("menu") { type = NavType.StringType; nullable = true })
-            ) { backStack ->
-                val menuStr = backStack.arguments?.getString("menu")
-                val initialMenu = if (menuStr != null) {
-                    try { com.notel.notel.ui.screen.SettingsMenu.valueOf(menuStr) } catch(e: Exception) { com.notel.notel.ui.screen.SettingsMenu.MAIN }
-                } else com.notel.notel.ui.screen.SettingsMenu.MAIN
-                
-                SettingsScreen(
-                    initialMenu = initialMenu,
-                    onBack = { navController.popBackStack() },
-                    onRestartOnboarding = {
-                        navController.navigate("profile_setup") {
-                            popUpTo("quick_log") { inclusive = true }
-                        }
-                    },
-                    onLogout = {
-                        navController.navigate("login") {
-                            popUpTo(0) { inclusive = true }
-                        }
-                    },
-                    onNavigateToFile = { name, path, mime, docId ->
-                        val encName = java.net.URLEncoder.encode(name, "UTF-8")
-                        val encPath = java.net.URLEncoder.encode(path, "UTF-8")
-                        val encMime = java.net.URLEncoder.encode(mime, "UTF-8")
-                        val encDocId = java.net.URLEncoder.encode(docId, "UTF-8")
-                        navController.navigate("file_viewer?name=$encName&path=$encPath&mime=$encMime&docId=$encDocId")
-                    }
-                )
-            }
-            composable("trends") {
-                TrendsScreen(
-                    onBack = { navController.popBackStack() },
-                    onNavigateToEntry = { id -> navController.navigate("detail/$id") }
-                )
-            }
-            composable("fitbit") {
-                val fitbitViewModel: FitbitViewModel = hiltViewModel()
-                FitbitScreen(viewModel = fitbitViewModel, onBack = { navController.popBackStack() })
-            }
-            composable("body_load") {
-                BodyLoadScreen(
-                    onBack = { navController.popBackStack() },
-                    onNavigateToMembership = { navController.navigate("settings?menu=MEMBERSHIP") }
-                )
-            }
-        }
-
-        // Global Top Banner Overlay (Medical Report Notification)
-        androidx.compose.animation.AnimatedVisibility(
-            visible = reportFile != null,
-            enter = androidx.compose.animation.slideInVertically(initialOffsetY = { -it }) + androidx.compose.animation.fadeIn(),
-            exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { -it }) + androidx.compose.animation.fadeOut(),
-            modifier = Modifier.align(Alignment.TopCenter).padding(16.dp).statusBarsPadding()
-        ) {
-            val file = reportFile
-            if (file != null) {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = NotelPrimary,
-                    tonalElevation = 12.dp,
-                    shadowElevation = 12.dp,
-                    modifier = Modifier.fillMaxWidth().clickable {
-                        val uri = androidx.core.content.FileProvider.getUriForFile(
-                            context,
-                            "${context.packageName}.provider",
-                            file
-                        )
-                        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                            type = "application/pdf"
-                            putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }
-                        context.startActivity(android.content.Intent.createChooser(intent, "Share Report"))
-                        reportFile = null
-                    }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                "Medical Report Ready! ✓",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = Color.White,
-                                fontWeight = FontWeight.ExtraBold
-                            )
-                            Text(
-                                "Downloaded to phone. Tap to share.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = Color.White.copy(alpha = 0.9f)
-                            )
-                        }
-                        IconButton(onClick = { reportFile = null }) {
-                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
-                        }
-                    }
-                }
-            }
-        }
-
-        // Global Top Banner Overlay (AI Insight Notification)
-        androidx.compose.animation.AnimatedVisibility(
-            visible = aiInsight != null,
-            enter = androidx.compose.animation.slideInVertically(initialOffsetY = { -it }) + androidx.compose.animation.fadeIn(),
-            exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { -it }) + androidx.compose.animation.fadeOut(),
-            modifier = Modifier.align(Alignment.TopCenter).padding(16.dp).statusBarsPadding()
-        ) {
-            val insight = aiInsight
-            if (insight != null) {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = NotelSurface,
-                    tonalElevation = 12.dp,
-                    shadowElevation = 12.dp,
-                    modifier = Modifier.fillMaxWidth().clickable {
-                        navController.navigate("settings?menu=AI_AND_KNOWLEDGE")
-                        aiInsight = null
-                    }.liquidGlass(shape = RoundedCornerShape(16.dp), color = NotelSurface, alpha = 0.9f)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                "AI Audit Complete! ✨",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = NotelPrimary,
-                                fontWeight = FontWeight.ExtraBold
-                            )
-                            Text(
-                                "${insight.type} ready. Tap to view history.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = NotelTextPrimary.copy(alpha = 0.9f)
-                            )
-                        }
-                        IconButton(onClick = { aiInsight = null }) {
-                            Icon(Icons.Default.Close, contentDescription = "Close", tint = NotelTextSecondary)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}}
+}

@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.notel.notel.R
+import kotlinx.coroutines.launch
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.FitbitViewModel
 
@@ -41,11 +42,17 @@ fun DataConnectionsScreen(
     val context = LocalContext.current
     var selectedAppForManagement by remember { mutableStateOf<AppInfo?>(null) }
 
+    LaunchedEffect(Unit) {
+        fitbitViewModel.checkConnectionStatus()
+    }
+
+    val scope = rememberCoroutineScope()
     val healthConnectLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = fitbitViewModel.healthConnectManager.requestPermissionsActivityContract()
-    ) { granted ->
-        if (granted.containsAll(fitbitViewModel.healthConnectManager.permissions)) {
-            fitbitViewModel.onPermissionsGranted()
+    ) { _ ->
+        // Re-check status regardless of 'granted' list to catch partial states
+        scope.launch {
+            fitbitViewModel.checkConnectionStatus()
         }
     }
 

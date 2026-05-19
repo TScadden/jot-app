@@ -59,6 +59,9 @@ class HealthConnectManager(private val context: Context) {
             HealthPermission.getReadPermission(WeightRecord::class),
             HealthPermission.getReadPermission(HeightRecord::class),
             HealthPermission.getReadPermission(HeartRateVariabilityRmssdRecord::class),
+            HealthPermission.getReadPermission(RespiratoryRateRecord::class),
+            HealthPermission.getReadPermission(OxygenSaturationRecord::class),
+            HealthPermission.getReadPermission(RestingHeartRateRecord::class),
             HealthPermission.getReadPermission(PowerRecord::class)
         )
     }
@@ -71,6 +74,16 @@ class HealthConnectManager(private val context: Context) {
         if (checkAvailability() != HealthConnectClient.SDK_AVAILABLE) return false
         val granted = healthConnectClient.permissionController.getGrantedPermissions()
         return granted.containsAll(permissions)
+    }
+
+    suspend fun hasBasicPermissions(): Boolean {
+        if (checkAvailability() != HealthConnectClient.SDK_AVAILABLE) return false
+        val granted = healthConnectClient.permissionController.getGrantedPermissions()
+        val basic = setOf(
+            HealthPermission.getReadPermission(HeartRateRecord::class),
+            HealthPermission.getReadPermission(SleepSessionRecord::class)
+        )
+        return granted.containsAll(basic)
     }
 
     private fun startOfDate(dateStr: String): Instant {
@@ -506,17 +519,20 @@ class HealthConnectManager(private val context: Context) {
         }
     }
 
-    suspend fun readLatestWeight(): Float? {
+    suspend fun readLatestWeight(dateStr: String): Float? {
         try {
+            val start = startOfDate(dateStr)
+            val end = endOfDate(dateStr)
             val response = healthConnectClient.readRecords(
                 ReadRecordsRequest(
                     recordType = WeightRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(Instant.now().minus(365, ChronoUnit.DAYS), Instant.now()),
-                    ascendingOrder = false
+                    timeRangeFilter = TimeRangeFilter.between(start, end),
+                    ascendingOrder = false,
+                    pageSize = 1
                 )
             )
-            val latest = response.records.firstOrNull() ?: return null
-            return latest.weight.inPounds.toFloat()
+            val weightKg = response.records.firstOrNull()?.weight?.inKilograms ?: return null
+            return (weightKg * 2.20462).toFloat()
         } catch(e: Exception) { return null }
     }
 
@@ -550,7 +566,6 @@ class HealthConnectManager(private val context: Context) {
                 timeZone = java.util.TimeZone.getTimeZone(java.time.ZoneId.systemDefault())
             }
             
-            // Group by day, take mean of RMSSD for the day (ideally nocturnal but depends on wearable source)
             val dailyValues = response.records.groupBy { 
                 formatter.format(java.util.Date(it.time.toEpochMilli()))
             }.mapValues { entry ->
@@ -561,6 +576,77 @@ class HealthConnectManager(private val context: Context) {
         } catch(e: Exception) {
             return emptyList()
         }
+    }
+
+    suspend fun readRespiratoryRate(dateStr: String): Double? {
+        try {
+            val end = endOfDate(dateStr)
+            val start = startOfDate(dateStr)
+            
+            // Try to find a sleep session that overlaps with this day to get a better window
+            val sleepSession = healthConnectClient.readRecords(
+                ReadRecordsRequest(
+                    recordType = SleepSessionRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(start.minus(12, ChronoUnit.HOURS), end)
+                )
+            ).records.lastOrNull { it.endTime.isAfter(start) }
+
+            val queryStart = sleepSession?.startTime ?: start
+            val queryEnd = sleepSession?.endTime ?: end
+
+            val response = healthConnectClient.readRecords(
+                ReadRecordsRequest(
+                    recordType = RespiratoryRateRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(queryStart, queryEnd),
+                    ascendingOrder = false,
+                    pageSize = 1
+                )
+            )
+            return response.records.firstOrNull()?.rate
+        } catch(e: Exception) { return null }
+    }
+
+    suspend fun readOxygenSaturation(dateStr: String): Double? {
+        try {
+            val end = endOfDate(dateStr)
+            val start = startOfDate(dateStr)
+
+            val sleepSession = healthConnectClient.readRecords(
+                ReadRecordsRequest(
+                    recordType = SleepSessionRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(start.minus(12, ChronoUnit.HOURS), end)
+                )
+            ).records.lastOrNull { it.endTime.isAfter(start) }
+
+            val queryStart = sleepSession?.startTime ?: start
+            val queryEnd = sleepSession?.endTime ?: end
+
+            val response = healthConnectClient.readRecords(
+                ReadRecordsRequest(
+                    recordType = OxygenSaturationRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(queryStart, queryEnd),
+                    ascendingOrder = false,
+                    pageSize = 1
+                )
+            )
+            return response.records.firstOrNull()?.percentage?.value
+        } catch(e: Exception) { return null }
+    }
+
+    suspend fun readRestingHeartRate(dateStr: String): Int? {
+        try {
+            val start = startOfDate(dateStr)
+            val end = endOfDate(dateStr)
+            val response = healthConnectClient.readRecords(
+                ReadRecordsRequest(
+                    recordType = RestingHeartRateRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(start, end),
+                    ascendingOrder = false,
+                    pageSize = 1
+                )
+            )
+            return response.records.firstOrNull()?.beatsPerMinute?.toInt()
+        } catch(e: Exception) { return null }
     }
 
     fun requestPermissionsActivityContract(): androidx.activity.result.contract.ActivityResultContract<Set<String>, Set<String>> {

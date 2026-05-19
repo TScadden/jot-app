@@ -275,7 +275,7 @@ class SettingsViewModel @Inject constructor(
 
                 // 1. Try Health Connect first for Weight and Height
                 if (healthConnectManager.hasAllPermissions()) {
-                    val hcWeight = healthConnectManager.readLatestWeight()
+                    val hcWeight = healthConnectManager.readLatestWeight("today")
                     val hcHeight = healthConnectManager.readLatestHeight()
                     if (hcWeight != null && hcWeight > 0f) newWeight = Math.round(hcWeight * 10) / 10f
                     if (hcHeight != null && hcHeight > 0f) newHeight = Math.round(hcHeight * 10) / 10f

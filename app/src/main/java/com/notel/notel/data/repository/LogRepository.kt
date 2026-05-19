@@ -365,21 +365,35 @@ class LogRepository @Inject constructor(
         val chronicCalories = caloriesUpToDay.takeLast(28).map { it.second }.average()
         val acwr = if (chronicCalories > 100) acuteCalories / chronicCalories else 1.0
         
-        // 5. Sleep Debt Bank calculation
-        var runningBank = 0.0
-        val bankHistory = mutableListOf<Triple<String, Double, Double>>()
+        // 5. Sleep Debt calculation based on user script
+        var totalDebt = 0.0
+        val targetHours = 8.0
+        val debtHistory = mutableListOf<Triple<String, Double, Double>>()
+        
         sleepHistoryRecords
             .filter { it.first <= targetDay }
             .sortedBy { it.first }
+            .takeLast(10) // Rolling 10-day window
             .forEach { (day, minutes) ->
-            val actualHours = minutes / 60.0
-            val delta = actualHours - 8.0 
-            runningBank += delta
-            bankHistory.add(Triple(day, delta, runningBank))
-        }
+                val actualHours = minutes / 60.0
+                if (actualHours < targetHours) {
+                    // Add to the debt
+                    totalDebt += (targetHours - actualHours)
+                } else {
+                    // Surplus reduces debt slightly, capped at 1.5h per night
+                    val surplus = actualHours - targetHours
+                    totalDebt -= Math.min(surplus, 1.5)
+                }
+                // Debt cannot drop below zero
+                totalDebt = Math.max(0.0, totalDebt)
+                
+                // We'll store (date, dailyDelta, runningBalance)
+                // Negate totalDebt for UI balance consistency (negative = deficit)
+                debtHistory.add(Triple(day, actualHours - targetHours, -totalDebt))
+            }
         
-        val sleepDebt = runningBank
-        val sleepDebtHistory = bankHistory
+        val sleepDebt = -totalDebt
+        val sleepDebtHistory = debtHistory
         
         // Jots for the 7 days
         val dateObj = if (targetDay != null) try { java.time.LocalDate.parse(targetDay) } catch(e: Exception) { java.time.LocalDate.now() } else java.time.LocalDate.now()

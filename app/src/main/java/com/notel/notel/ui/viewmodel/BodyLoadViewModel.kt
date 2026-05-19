@@ -125,11 +125,36 @@ class BodyLoadViewModel @Inject constructor(
                     cal = points.find { it.date == date }?.value?.toInt() ?: 0
                 } catch(e: Exception) {}
 
-                // 3. Sleep
+                // 3. Sleep & Debt
                 var sleep = 0
+                var debt = 0.0
+                var debtHistory = emptyList<Triple<String, Double, Double>>()
                 try {
                     val points = json.decodeFromString<List<com.notel.notel.data.model.BiomarkerPoint>>(sleepStr)
                     sleep = points.find { it.date == date }?.value?.toInt() ?: 0
+                    
+                    // Rolling calculation based on user logic
+                    var runningDebt = 0.0
+                    val targetHours = 8.0
+                    val sortedPoints = points.sortedBy { it.date }
+                    
+                    // We calculate the debt progression up to the selected 'date'
+                    val historyList = mutableListOf<Triple<String, Double, Double>>()
+                    val relevantPoints = sortedPoints.filter { it.date <= date }.takeLast(10)
+                    
+                    relevantPoints.forEach { pt ->
+                        val actualHours = pt.value / 60.0
+                        if (actualHours < targetHours) {
+                            runningDebt += (targetHours - actualHours)
+                        } else {
+                            val surplus = actualHours - targetHours
+                            runningDebt -= Math.min(surplus, 1.5)
+                        }
+                        runningDebt = Math.max(0.0, runningDebt)
+                        historyList.add(Triple(pt.date, actualHours - targetHours, -runningDebt))
+                    }
+                    debt = -runningDebt
+                    debtHistory = historyList
                 } catch(e: Exception) {}
 
                 // 4. Jots
@@ -141,13 +166,15 @@ class BodyLoadViewModel @Inject constructor(
                     logRepository.getJotCountInRange(start, end)
                 }
 
-                MetricsUpdate(hr, cal, sleep, count)
+                MetricsUpdate(hr, cal, sleep, count, (debt * 60).toInt(), debtHistory)
             }.collect { update ->
                 _uiState.update { it.copy(
                     avgHeartRate = update.hr,
                     activeCalories = update.cal,
                     sleepMinutes = update.sleep,
-                    jotCountDaily = update.jots
+                    jotCountDaily = update.jots,
+                    sleepDebtMins = update.debtMins,
+                    sleepDebtHistory = update.debtHistory
                 ) }
             }
         }
@@ -155,7 +182,14 @@ class BodyLoadViewModel @Inject constructor(
         fetchWeather()
     }
 
-    private data class MetricsUpdate(val hr: Int, val cal: Int, val sleep: Int, val jots: Int)
+    private data class MetricsUpdate(
+        val hr: Int, 
+        val cal: Int, 
+        val sleep: Int, 
+        val jots: Int, 
+        val debtMins: Int, 
+        val debtHistory: List<Triple<String, Double, Double>>
+    )
 
     fun refresh(force: Boolean = false) {
         val dateStr = _uiState.value.selectedDate

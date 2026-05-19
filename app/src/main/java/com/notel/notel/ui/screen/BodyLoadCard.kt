@@ -52,7 +52,6 @@ fun BodyLoadCard(
     val score = state.score
     val isLoading = state.isLoading
     val todayStr = java.time.LocalDate.now().toString()
-    var showDebtHistory by remember { mutableStateOf(false) }
     
     val activeCounters = counters.filter { !it.isArchived }
     val infinitePageCount = if (activeCounters.size > 1) 10000 else activeCounters.size
@@ -111,12 +110,6 @@ fun BodyLoadCard(
         onRefresh()
     }
 
-    if (showDebtHistory) {
-        SleepDebtHistoryDialog(
-            history = state.sleepDebtHistory,
-            onDismiss = { showDebtHistory = false }
-        )
-    }
 
     Column(
         modifier = Modifier
@@ -335,34 +328,12 @@ fun BodyLoadCard(
 
                         VerticalDivider(modifier = Modifier.height(16.dp), color = Color.White.copy(alpha = 0.05f))
 
-                        // Sleep + Debt
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.clickable { showDebtHistory = true }
-                        ) {
-                            MetricItem(
-                                icon = Icons.Default.Nightlight,
-                                value = formatSleep(state.sleepMinutes),
-                                color = Color(0xFF42A5F5)
-                            )
-                            
-                            val debtMins = state.sleepDebtMins
-                            if (!isLoading && debtMins != 0) {
-                                val isDeficit = debtMins < 0
-                                val h = Math.abs(debtMins) / 60
-                                val m = Math.abs(debtMins) % 60
-                                val dStr = if (isDeficit) "-${h}h ${m}m" else "+${h}h ${m}m"
-                                val bColor = if (!isDeficit) Color(0xFF66BB6A) else if (Math.abs(debtMins) > 600) Color(0xFFFF5252) else Color(0xFFFFB74D)
-
-                                Text(
-                                    text = dStr,
-                                    color = bColor,
-                                    fontSize = 8.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.offset(y = (-2).dp)
-                                )
-                            }
-                        }
+                        // Sleep
+                        MetricItem(
+                            icon = Icons.Default.Nightlight,
+                            value = formatSleep(state.sleepMinutes),
+                            color = Color(0xFF42A5F5)
+                        )
                     }
                 }
             }
@@ -628,111 +599,5 @@ private fun getFactorColor(name: String): Color {
         lowName.contains("cardio") || lowName.contains("pots") || lowName.contains("hr") || lowName.contains("spike") -> Color(0xFF7C6EFF) // Purple
         lowName.contains("mcas") || lowName.contains("histamine") || lowName.contains("allergy") -> Color(0xFFFFB74D) // Orange
         else -> NotelPrimary
-    }
-}
-@Composable
-fun SleepDebtHistoryDialog(
-    history: List<Triple<String, Double, Double>>,
-    onDismiss: () -> Unit
-) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth(0.9f)
-                .fillMaxHeight(0.7f),
-            shape = RoundedCornerShape(16.dp),
-            color = NotelBackground
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp)
-            ) {
-                val oldestDate = history.firstOrNull()?.first ?: "N/A"
-                Text(
-                    text = "Sleep Debt",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = Color.White
-                )
-                Text(
-                    text = "Target: 8h",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray
-                )
-                Text(
-                    text = "History from $oldestDate",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-                
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(history.reversed()) { triple ->
-                        val (date, delta, balanceHours) = triple
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .liquidGlass(shape = RoundedCornerShape(8.dp), alpha = 0.1f)
-                                .padding(12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(date, color = Color.Gray, fontSize = 10.sp)
-                                val isSurplus = balanceHours >= 0
-                                val balanceColor = if (isSurplus) Color(0xFF66BB6A) else Color(0xFFFF5252)
-                                val h = Math.abs(balanceHours).toInt()
-                                val m = ((Math.abs(balanceHours) - h) * 60).toInt()
-                                val balanceStr = (if (isSurplus) "+" else "-") + "${h}h ${m}m"
-                                
-                                Text(
-                                    text = if (isSurplus) "$balanceStr Surplus" else "$balanceStr Deficit",
-                                    color = balanceColor,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "Total Bank",
-                                    color = Color.Gray,
-                                    fontSize = 9.sp
-                                )
-                            }
-                            
-                            // Daily Delta on the right
-                            Column(horizontalAlignment = Alignment.End) {
-                                val isPosDelta = delta >= 0
-                                val deltaColor = if (isPosDelta) Color(0xFF66BB6A).copy(alpha = 0.8f) else Color(0xFFFFB74D).copy(alpha = 0.8f)
-                                val dh = Math.abs(delta).toInt()
-                                val dm = ((Math.abs(delta) - dh) * 60).toInt()
-                                val deltaStr = (if (isPosDelta) "+" else "-") + "${dh}h ${dm}m"
-                                
-                                Text(
-                                    text = deltaStr,
-                                    color = deltaColor,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Text(
-                                    text = "Daily Impact",
-                                    color = Color.Gray,
-                                    fontSize = 9.sp
-                                )
-                            }
-                        }
-                    }
-                }
-                
-                Button(
-                    onClick = onDismiss,
-                    modifier = Modifier.align(Alignment.End).padding(top = 16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.1f))
-                ) {
-                    Text("Close", color = Color.White)
-                }
-            }
-        }
     }
 }

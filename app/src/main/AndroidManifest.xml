@@ -14,6 +14,9 @@
     <uses-permission android:name="android.permission.health.READ_WEIGHT"/>
     <uses-permission android:name="android.permission.health.READ_HEIGHT"/>
     <uses-permission android:name="android.permission.health.READ_HEART_RATE_VARIABILITY"/>
+    <uses-permission android:name="android.permission.health.READ_RESPIRATORY_RATE"/>
+    <uses-permission android:name="android.permission.health.READ_OXYGEN_SATURATION"/>
+    <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE"/>
     <uses-permission android:name="android.permission.health.READ_POWER"/>
     <uses-permission android:name="com.android.vending.BILLING" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -117,6 +120,20 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Debug broadcast receiver for terminal notification testing -->
+        <receiver
+            android:name=".service.DebugReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.notel.notel.TEST_BODY_LOAD" />
+                <action android:name="com.notel.notel.TEST_MIDDAY_BODY_LOAD" />
+                <action android:name="com.notel.notel.TEST_BODY_LOAD_REMINDER" />
+                <action android:name="com.notel.notel.TEST_HABIT" />
+                <action android:name="com.notel.notel.TEST_SPIKE" />
             </intent-filter>
         </receiver>
 

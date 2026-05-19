@@ -19,6 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.notel.notel.data.model.BiomarkerPoint
 
+@kotlinx.serialization.Serializable
 data class SleepData(
     val minutesAsleep: Int = 0,
     val timeInBed: Int = 0,
@@ -44,12 +45,19 @@ data class FitbitState(
     val sleepData: SleepData? = null,
     val selectedSleepDate: String = "today",
     val selectedHeartRateDate: String = "today",
+    val selectedKeyMetricsDate: String = "today",
     val caloriesBurned: Int = 0,
     val isFitbitConnected: Boolean = false,
     val errorMessage: String? = null,
     val historicalSpikes: List<DailyHeartRateSummary> = emptyList(),
     val currentHrv: Double = 0.0,
-    val hrvData: List<Pair<String, Double>> = emptyList()
+    val hrvData: List<Pair<String, Double>> = emptyList(),
+    val sleepDebtMins: Int = 0,
+    val respiratoryRate: Double = 0.0,
+    val bloodOxygen: Double = 0.0,
+    val restingHeartRate: Int = 0,
+    val weightPounds: Float = 0f,
+    val todayHRV: Double = 0.0
 )
 
 
@@ -121,16 +129,20 @@ class FitbitViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            try {
-                if (healthConnectManager.hasAllPermissions()) {
-                    _state.update { it.copy(isConnected = true) }
-                    sync(force = false)
-                } else {
-                    _state.update { it.copy(isConnected = false) }
-                }
-            } catch (e: Exception) {
-                _state.update { it.copy(errorMessage = "Init Sync failed") }
+            checkConnectionStatus()
+        }
+    }
+
+    suspend fun checkConnectionStatus() {
+        try {
+            if (healthConnectManager.hasBasicPermissions()) {
+                _state.update { it.copy(isConnected = true) }
+                sync(force = false)
+            } else {
+                _state.update { it.copy(isConnected = false) }
             }
+        } catch (e: Exception) {
+            _state.update { it.copy(errorMessage = "Connection check failed") }
         }
     }
 
@@ -211,12 +223,14 @@ class FitbitViewModel @Inject constructor(
             }
         }
     }    private suspend fun syncFromHealthConnect(fetchHistory: Boolean = false) = coroutineScope {
+         val targetDate = if (_state.value.selectedKeyMetricsDate == "today") java.time.LocalDate.now().toString() else _state.value.selectedKeyMetricsDate
+         
          // PHASE 1: Current Day Metrics (Instant Update)
-         val intradayHRDeferred = async { healthConnectManager.readHeartRateIntraday(_state.value.selectedHeartRateDate) }
-         val avgHRDeferred = async { healthConnectManager.readHeartRateAverage(_state.value.selectedHeartRateDate) }
-         val sleepDeferred = async { healthConnectManager.readSleepSession(_state.value.selectedSleepDate) }
-         val activeCalDeferred = async { healthConnectManager.readActiveCalories(_state.value.selectedHeartRateDate) }
-         val hrvDeferred = async { healthConnectManager.readHeartRateVariability(days = 2) }
+         val intradayHRDeferred = async { healthConnectManager.readHeartRateIntraday(targetDate) }
+         val avgHRDeferred = async { healthConnectManager.readHeartRateAverage(targetDate) }
+         val sleepDeferred = async { healthConnectManager.readSleepSession(targetDate) }
+         val activeCalDeferred = async { healthConnectManager.readActiveCalories(targetDate) }
+         val hrvDeferred = async { healthConnectManager.readHeartRateVariability(days = 7) }
 
          val intradayHR = try { intradayHRDeferred.await() } catch(e: Exception) { emptyList() }
          val zoneId = java.time.ZoneId.systemDefault()
@@ -246,6 +260,12 @@ class FitbitViewModel @Inject constructor(
              } catch(e: Exception) { latestTime.toString() }
          } else ""
 
+         val respRate = healthConnectManager.readRespiratoryRate(targetDate) ?: 0.0
+         val oxySat = healthConnectManager.readOxygenSaturation(targetDate) ?: 0.0
+         val rhrValue = healthConnectManager.readRestingHeartRate(targetDate) ?: 0
+         val weightVal = healthConnectManager.readLatestWeight(targetDate) ?: 0f
+         val hrvTodayVal = healthConnectManager.readHeartRateVariability(days = 1).find { it.first == targetDate }?.second ?: 0.0
+
          // Immediate UI update for today's metrics
          _state.update { 
              it.copy(
@@ -258,12 +278,17 @@ class FitbitViewModel @Inject constructor(
                  caloriesBurned = activeCal,
                  hrvData = hrvData,
                  currentHrv = currentHrv,
+                 sleepDebtMins = calculateDebtAtDate(_state.value.selectedSleepDate, _state.value.historicalSleep),
+                 respiratoryRate = respRate,
+                 bloodOxygen = oxySat,
+                 restingHeartRate = rhrValue,
+                 weightPounds = weightVal,
+                 todayHRV = hrvTodayVal,
                  errorMessage = if (latest == 0 && avgHR == 0) "No recent HC data found" else null
              )
          }
-         
          if (_state.value.selectedHeartRateDate == "today" && avgHR > 0) {
-             preferences.setTodayAwakeAvgHr(avgHR)
+              preferences.setTodayAwakeAvgHr(avgHR)
          }
 
          // PHASE 2: Historical Metrics (Background Background)
@@ -278,7 +303,8 @@ class FitbitViewModel @Inject constructor(
                      historicalHeartRate = histHR,
                      historicalSleep = histSleep,
                      historicalCalories = histCal,
-                     historicalSpikes = histSpikes
+                     historicalSpikes = histSpikes,
+                     sleepDebtMins = calculateDebtAtDate(_state.value.selectedSleepDate, histSleep)
                  )
              }
 
@@ -509,6 +535,15 @@ class FitbitViewModel @Inject constructor(
         }
     }
 
+    fun fetchMetricsForDate(date: String) {
+        _state.update { it.copy(
+            selectedKeyMetricsDate = date,
+            selectedHeartRateDate = date,
+            selectedSleepDate = date
+        ) }
+        sync(force = true)
+    }
+
     fun fetchSleepForDate(date: String) {
         viewModelScope.launch {
             val hasHC = healthConnectManager.hasAllPermissions()
@@ -522,10 +557,30 @@ class FitbitViewModel @Inject constructor(
             // Only fetch from Health Connect
             sleepData = healthConnectManager.readSleepSession(date)
 
+            // Calculate debt for the selected date
+            val targetHours = 8.0
+            var runningDebt = 0.0
+            val rolling = state.value.historicalSleep
+                .filter { it.first <= date }
+                .sortedBy { it.first }
+                .takeLast(10)
+            
+            rolling.forEach { (_, mins) ->
+                val actualHours = mins / 60.0
+                if (actualHours < targetHours) {
+                    runningDebt += (targetHours - actualHours)
+                } else {
+                    val surplus = actualHours - targetHours
+                    runningDebt -= Math.min(surplus, 1.5)
+                }
+                runningDebt = Math.max(0.0, runningDebt)
+            }
+
             _state.update { 
                 it.copy(
                     isLoading = false,
                     sleepData = sleepData,
+                    sleepDebtMins = (-runningDebt * 60).toInt(),
                     errorMessage = if (sleepData == null) "No sleep data found for this date." else null
                 )
             }
@@ -658,5 +713,26 @@ class FitbitViewModel @Inject constructor(
                 _state.update { it.copy(isLoading = false, errorMessage = "Fitbit Login Error: ${e.message}") }
             }
         }
+    }
+
+    private fun calculateDebtAtDate(date: String, history: List<Pair<String, Int>>): Int {
+        val targetHours = 8.0
+        var runningDebt = 0.0
+        val rolling = history
+            .filter { it.first <= date }
+            .sortedBy { it.first }
+            .takeLast(10)
+        
+        rolling.forEach { (_, mins) ->
+            val actualHours = mins / 60.0
+            if (actualHours < targetHours) {
+                runningDebt += (targetHours - actualHours)
+            } else {
+                val surplus = actualHours - targetHours
+                runningDebt -= Math.min(surplus, 1.5)
+            }
+            runningDebt = Math.max(0.0, runningDebt)
+        }
+        return (-runningDebt * 60).toInt()
     }
 }

@@ -18,6 +18,14 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import javax.inject.Inject
 import javax.inject.Singleton
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
+import android.util.Base64
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "notel_prefs")
 
@@ -95,7 +103,8 @@ class NotelPreferences @Inject constructor(
     suspend fun setHasHistoricalBodyLoad(v: Boolean) { context.dataStore.edit { it[HAS_HISTORICAL_BODY_LOAD] = v } }
 
     val authToken: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[AUTH_TOKEN] ?: ""
+        val encrypted = prefs[AUTH_TOKEN] ?: ""
+        NotelCrypto.decrypt(encrypted)
     }
 
     val professionalUpdates: Flow<String> = context.dataStore.data.map { prefs ->
@@ -167,11 +176,13 @@ class NotelPreferences @Inject constructor(
     }
 
     val fitbitToken: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[FITBIT_TOKEN] ?: ""
+        val encrypted = prefs[FITBIT_TOKEN] ?: ""
+        NotelCrypto.decrypt(encrypted)
     }
 
     val fitbitRefreshToken: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[FITBIT_REFRESH_TOKEN] ?: ""
+        val encrypted = prefs[FITBIT_REFRESH_TOKEN] ?: ""
+        NotelCrypto.decrypt(encrypted)
     }
 
     val apiSpendingLimit: Flow<Float> = context.dataStore.data.map { prefs ->
@@ -230,7 +241,8 @@ class NotelPreferences @Inject constructor(
     }
 
     suspend fun setAuthToken(token: String) {
-        context.dataStore.edit { it[AUTH_TOKEN] = token }
+        val encrypted = NotelCrypto.encrypt(token)
+        context.dataStore.edit { it[AUTH_TOKEN] = encrypted }
     }
 
     suspend fun setOnboardingComplete(complete: Boolean) {
@@ -370,11 +382,13 @@ class NotelPreferences @Inject constructor(
     }
 
     suspend fun setFitbitToken(token: String) {
-        context.dataStore.edit { it[FITBIT_TOKEN] = token }
+        val encrypted = NotelCrypto.encrypt(token)
+        context.dataStore.edit { it[FITBIT_TOKEN] = encrypted }
     }
 
     suspend fun setFitbitRefreshToken(token: String) {
-        context.dataStore.edit { it[FITBIT_REFRESH_TOKEN] = token }
+        val encrypted = NotelCrypto.encrypt(token)
+        context.dataStore.edit { it[FITBIT_REFRESH_TOKEN] = encrypted }
     }
 
     suspend fun setApiSpendingLimit(limit: Float) {
@@ -548,6 +562,69 @@ class NotelPreferences @Inject constructor(
             it[LAST_KNOWN_LAT] = lat
             it[LAST_KNOWN_LON] = lon
             it[LAST_KNOWN_CITY] = city
+        }
+    }
+}
+
+object NotelCrypto {
+    private const val ANDROID_KEYSTORE = "AndroidKeyStore"
+    private const val KEY_ALIAS = "NotelPrefsKey"
+    private const val TRANSFORMATION = "AES/GCM/NoPadding"
+
+    private fun getSecretKey(): SecretKey {
+        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+        val secretKey = keyStore.getKey(KEY_ALIAS, null) as? SecretKey
+        if (secretKey != null) {
+            return secretKey
+        }
+
+        val keyGenerator = KeyGenerator.getInstance(
+            KeyProperties.KEY_ALGORITHM_AES,
+            ANDROID_KEYSTORE
+        )
+        val spec = KeyGenParameterSpec.Builder(
+            KEY_ALIAS,
+            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+        )
+            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+            .build()
+        keyGenerator.init(spec)
+        return keyGenerator.generateKey()
+    }
+
+    fun encrypt(plainText: String): String {
+        if (plainText.isEmpty()) return ""
+        return try {
+            val cipher = Cipher.getInstance(TRANSFORMATION)
+            cipher.init(Cipher.ENCRYPT_MODE, getSecretKey())
+            val iv = cipher.iv
+            val encryptedBytes = cipher.doFinal(plainText.toByteArray(Charsets.UTF_8))
+            val combined = ByteArray(1 + iv.size + encryptedBytes.size)
+            combined[0] = iv.size.toByte()
+            System.arraycopy(iv, 0, combined, 1, iv.size)
+            System.arraycopy(encryptedBytes, 0, combined, 1 + iv.size, encryptedBytes.size)
+            Base64.encodeToString(combined, Base64.DEFAULT)
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    fun decrypt(cipherText: String): String {
+        if (cipherText.isEmpty()) return ""
+        return try {
+            val combined = Base64.decode(cipherText, Base64.DEFAULT)
+            val ivSize = combined[0].toInt()
+            val iv = ByteArray(ivSize)
+            System.arraycopy(combined, 1, iv, 0, ivSize)
+            val encryptedBytes = ByteArray(combined.size - 1 - ivSize)
+            System.arraycopy(combined, 1 + ivSize, encryptedBytes, 0, encryptedBytes.size)
+
+            val cipher = Cipher.getInstance(TRANSFORMATION)
+            cipher.init(Cipher.DECRYPT_MODE, getSecretKey(), GCMParameterSpec(128, iv))
+            String(cipher.doFinal(encryptedBytes), Charsets.UTF_8)
+        } catch (e: Exception) {
+            ""
         }
     }
 }

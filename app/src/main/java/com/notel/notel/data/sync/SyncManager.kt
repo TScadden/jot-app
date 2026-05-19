@@ -2,7 +2,6 @@ package com.notel.notel.data.sync
 
 import android.content.Context
 import android.util.Log
-import android.widget.Toast
 import com.notel.notel.data.local.dao.CategoryDao
 import com.notel.notel.data.local.dao.LogEntryDao
 import com.notel.notel.data.preferences.NotelPreferences
@@ -307,9 +306,6 @@ class SyncManager @Inject constructor(
             } else {
                 val errorMsg = response.errorBody()?.string() ?: "Unknown Error"
                 log("Sync Rejected (HTTP ${response.code()}): $errorMsg")
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    android.widget.Toast.makeText(context, "Server: HTTP ${response.code()} — $errorMsg", android.widget.Toast.LENGTH_LONG).show()
-                }
                 false
             }
         } catch (e: Exception) {

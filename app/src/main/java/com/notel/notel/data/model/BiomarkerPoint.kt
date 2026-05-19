@@ -7,3 +7,9 @@ data class BiomarkerPoint(
     val date: String,
     val value: Int
 )
+
+@Serializable
+data class IntradayPoint(
+    val time: Long,
+    val value: Int
+)

@@ -504,7 +504,7 @@ class QuickLogViewModel @Inject constructor(
     }
 
     fun requestDeleteCategory(category: Category) {
-        // Prevent deleting built-in categories if necessary, or just allow it
+        if (category.id == 7 || category.isDefault) return
         _uiState.update { it.copy(categoryToDelete = category) }
     }
 

@@ -79,7 +79,15 @@ fun QuickLogScreen(
             TopAppBar(
                 title = { },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = NotelBackground),
-                actions = { }
+                actions = {
+                    IconButton(onClick = onNavigateToHistory) {
+                        Icon(
+                            imageVector = Icons.Default.History,
+                            contentDescription = "History",
+                            tint = NotelTextPrimary
+                        )
+                    }
+                }
             )
         }
     ) { padding ->
@@ -147,7 +155,7 @@ fun QuickLogScreen(
                             category = cat,
                             isSelected = cat.id == state.selectedCategory?.id,
                             onClick = { viewModel.selectCategory(cat) },
-                            onLongClick = { viewModel.requestDeleteCategory(cat) }
+                            onLongClick = if (cat.id != 7 && !cat.isDefault) { { viewModel.requestDeleteCategory(cat) } } else null
                         )
                     }
                     item {
@@ -599,7 +607,7 @@ fun QuickLogScreen(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun CategoryChip(category: Category, isSelected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit = {}) {
+fun CategoryChip(category: Category, isSelected: Boolean, onClick: () -> Unit, onLongClick: (() -> Unit)? = null) {
     val catColor = remember(category) {
         try { Color(android.graphics.Color.parseColor(category.colorHex)) }
         catch (e: Exception) { NotelPrimary }
