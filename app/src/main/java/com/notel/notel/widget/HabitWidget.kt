@@ -2,6 +2,7 @@ package com.notel.notel.widget
 
 import android.content.Context
 import android.content.Intent
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
@@ -37,15 +38,17 @@ class HabitWidget : GlanceAppWidget() {
             Column(
                 modifier = GlanceModifier
                     .fillMaxSize()
-                    .background(ColorProvider(android.graphics.Color.parseColor("#12122A")))
-                    .clickable(actionStartActivity(Intent(context, MainActivity::class.java)))
+                    .background(ColorProvider(Color(0xFF12122A)))
+                    .clickable(actionStartActivity(Intent(context, MainActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }))
                     .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
                 Text(
                     text = "Daily Habits · $checkedCount/${habits.size}",
                     style = TextStyle(
                         fontWeight = FontWeight.Bold,
-                        color = ColorProvider(android.graphics.Color.WHITE)
+                        color = ColorProvider(Color.White)
                     )
                 )
                 Spacer(GlanceModifier.height(6.dp))
@@ -53,7 +56,7 @@ class HabitWidget : GlanceAppWidget() {
                     Text(
                         text = "Open Jot to add habits!",
                         style = TextStyle(
-                            color = ColorProvider(android.graphics.Color.parseColor("#888888"))
+                            color = ColorProvider(Color(0xFF888888))
                         )
                     )
                 } else {
@@ -73,8 +76,8 @@ class HabitWidget : GlanceAppWidget() {
                                 text = habit.title,
                                 style = TextStyle(
                                     color = ColorProvider(
-                                        if (isDone) android.graphics.Color.WHITE
-                                        else android.graphics.Color.parseColor("#AAAAAA")
+                                        if (isDone) Color.White
+                                        else Color(0xFFAAAAAA)
                                     )
                                 )
                             )

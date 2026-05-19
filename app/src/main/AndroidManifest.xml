@@ -98,6 +98,7 @@
         <!-- Habit Home Screen Widget -->
         <receiver
             android:name=".widget.HabitWidgetReceiver"
+            android:label="@string/habit_widget_label"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
