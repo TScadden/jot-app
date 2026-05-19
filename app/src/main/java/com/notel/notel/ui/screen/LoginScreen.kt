@@ -56,14 +56,22 @@ class LoginViewModel @Inject constructor(
             // every time the loggedIn preference is written during the session.
             val alreadyLoggedIn = preferences.loggedIn.first()
             if (alreadyLoggedIn) {
-                try {
-                    syncManager.pullAllData()
-                    onboardingCompleteByServer = preferences.onboardingComplete.first()
-                } catch (e: Exception) {
-                    onboardingCompleteByServer = preferences.onboardingComplete.first()
+                // Instantly let the user in by reading the cached onboarding state
+                val cachedOnboarding = preferences.onboardingComplete.first()
+                onboardingCompleteByServer = cachedOnboarding
+                isLoggedIn = true
+                
+                // Sync data asynchronously in the background so it doesn't block startup
+                viewModelScope.launch {
+                    try {
+                        syncManager.pullAllData()
+                    } catch (e: Exception) {
+                        // Background sync failed/timed out, safe to ignore as we have local cache
+                    }
                 }
+            } else {
+                isLoggedIn = false
             }
-            isLoggedIn = alreadyLoggedIn
         }
     }
 
