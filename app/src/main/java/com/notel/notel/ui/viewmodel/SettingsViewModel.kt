@@ -775,6 +775,29 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun manualSync() {
+        viewModelScope.launch {
+            _isSyncing.value = true
+            try {
+                if (!preferences.loggedIn.first()) {
+                    android.widget.Toast.makeText(context, "Error: Not logged in", android.widget.Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+                syncManager.syncAllData()
+                android.widget.Toast.makeText(context, "Sync complete!", android.widget.Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                android.widget.Toast.makeText(
+                    context,
+                    "Sync failed: ${e.message}",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+                _syncError.emit(e.message ?: "Sync failed")
+            } finally {
+                _isSyncing.value = false
+            }
+        }
+    }
+
     private val _redditRefreshQueue = MutableStateFlow<List<String>>(emptyList())
     val redditRefreshQueue = _redditRefreshQueue.asStateFlow()
     private var isProcessingQueue = false

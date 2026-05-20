@@ -51,7 +51,7 @@ import androidx.compose.ui.draw.alpha
 import kotlinx.coroutines.*
 
 enum class SettingsMenu {
-    MAIN, USER_PROFILE, CONNECTED_APPS, AI_AND_KNOWLEDGE, EVENT_COUNTERS, MEMBERSHIP, NOTIFICATIONS, DEBUG
+    MAIN, USER_PROFILE, CONNECTED_APPS, AI_AND_KNOWLEDGE, EVENT_COUNTERS, MEMBERSHIP, NOTIFICATIONS, SYNC_SETTINGS, DEBUG
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -295,6 +295,7 @@ fun SettingsScreen(
                         SettingsMenu.EVENT_COUNTERS -> "Event Counters"
                         SettingsMenu.MEMBERSHIP -> "Membership"
                         SettingsMenu.NOTIFICATIONS -> "Notifications"
+                        SettingsMenu.SYNC_SETTINGS -> "Sync Settings"
                         SettingsMenu.DEBUG -> "Developer Terminal"
                     }
                     Text(titleText, fontWeight = FontWeight.Bold, color = NotelTextPrimary) 
@@ -534,6 +535,7 @@ fun SettingsScreen(
                     SettingsMenuCard("AI & Clinical Advocate", Icons.Default.AutoAwesome, modifier = Modifier.onGloballyPositioned { coordAiKnowledge = it }) { currentMenu = SettingsMenu.AI_AND_KNOWLEDGE }
                     SettingsMenuCard("Event Counters", Icons.Default.Timer, modifier = Modifier.onGloballyPositioned { coordEventCounters = it }) { currentMenu = SettingsMenu.EVENT_COUNTERS }
                     SettingsMenuCard("Notifications", Icons.Default.Notifications) { currentMenu = SettingsMenu.NOTIFICATIONS }
+                    SettingsMenuCard("Sync Settings", Icons.Default.Sync) { currentMenu = SettingsMenu.SYNC_SETTINGS }
                 }
 
 
@@ -2263,29 +2265,79 @@ fun SettingsScreen(
                 }
             }
 
-            if (currentMenu == SettingsMenu.MAIN) {
-                Spacer(Modifier.height(16.dp))
-                
-                val isSyncingRecover by viewModel.isSyncing.collectAsState()
-                
-                GlassyButton(
-                    onClick = { viewModel.recoverAccountData() },
-                    modifier = Modifier.fillMaxWidth(),
-                    containerColor = NotelSurfaceHigh,
-                    enabled = !isSyncingRecover
-                ) {
-                    if (isSyncingRecover) {
-                        GlassySpinner(size = 20.dp)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Recovering...", color = NotelTextSecondary, fontWeight = FontWeight.Bold)
-                    } else {
-                        Icon(Icons.Default.Sync, "Recover", tint = NotelPrimary)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Recover Account Data", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
+            // ── Sync Settings Screen ─────────────────────────────────────
+            if (currentMenu == SettingsMenu.SYNC_SETTINGS) {
+                val isSyncingNow by viewModel.isSyncing.collectAsState()
+                val lastSyncTimeSync by viewModel.lastSyncTime.collectAsState()
+
+                Text("MANUAL SYNC", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                GlassyCard(shape = RoundedCornerShape(16.dp), color = NotelSurface) {
+                    Text(
+                        "Manually push all your local data to the cloud and pull the latest from the server. This happens automatically in the background, but you can trigger it here anytime.",
+                        color = NotelTextSecondary,
+                        fontSize = 12.sp
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    GlassyButton(
+                        onClick = { viewModel.manualSync() },
+                        modifier = Modifier.fillMaxWidth(),
+                        containerColor = NotelPrimary,
+                        enabled = !isSyncingNow
+                    ) {
+                        if (isSyncingNow) {
+                            GlassySpinner(size = 20.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Syncing...", color = Color.White, fontWeight = FontWeight.Bold)
+                        } else {
+                            Icon(Icons.Default.CloudUpload, "Sync", tint = Color.White)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Sync Now", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    if (lastSyncTimeSync > 0L) {
+                        Spacer(Modifier.height(8.dp))
+                        val formatted = java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.getDefault())
+                            .format(java.util.Date(lastSyncTimeSync))
+                        Text(
+                            "Last synced: $formatted",
+                            color = NotelTextSecondary.copy(alpha = 0.6f),
+                            fontSize = 11.sp
+                        )
                     }
                 }
 
+                Spacer(Modifier.height(24.dp))
+                Text("RECOVERY", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(8.dp))
+                GlassyCard(shape = RoundedCornerShape(16.dp), color = NotelSurface) {
+                    Text(
+                        "If your data appears missing or out of date, use this to pull a fresh copy from the server and restore everything.",
+                        color = NotelTextSecondary,
+                        fontSize = 12.sp
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    GlassyButton(
+                        onClick = { viewModel.recoverAccountData() },
+                        modifier = Modifier.fillMaxWidth(),
+                        containerColor = NotelSurfaceHigh,
+                        enabled = !isSyncingNow
+                    ) {
+                        if (isSyncingNow) {
+                            GlassySpinner(size = 20.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Recovering...", color = NotelTextSecondary, fontWeight = FontWeight.Bold)
+                        } else {
+                            Icon(Icons.Default.CloudDownload, "Recover", tint = NotelPrimary)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Recover Account Data", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            if (currentMenu == SettingsMenu.MAIN) {
+                Spacer(Modifier.height(16.dp))
 
                 GlassyButton(
                     onClick = { showLogoutDialog = true },
