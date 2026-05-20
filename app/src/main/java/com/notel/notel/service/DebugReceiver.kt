@@ -52,6 +52,9 @@ class DebugReceiver : BroadcastReceiver() {
             "com.notel.notel.TEST_SPIKE" -> {
                 helper.showSpikeAlert(102, 72, 30)
             }
+            "com.notel.notel.TEST_REMINDER" -> {
+                helper.showTestReminder("Drink a glass of water")
+            }
         }
     }
 }

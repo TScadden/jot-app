@@ -8,21 +8,24 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.notel.notel.data.local.dao.CategoryDao
 import com.notel.notel.data.local.dao.LogEntryDao
+import com.notel.notel.data.local.dao.ReminderDao
 import com.notel.notel.data.local.entity.Category
 import com.notel.notel.data.local.entity.LogEntry
+import com.notel.notel.data.local.entity.Reminder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @Database(
-    entities = [LogEntry::class, Category::class, com.notel.notel.data.local.entity.KnowledgeDocument::class],
-    version = 14, 
+    entities = [LogEntry::class, Category::class, com.notel.notel.data.local.entity.KnowledgeDocument::class, Reminder::class],
+    version = 15,
     exportSchema = false
 )
 abstract class NotelDatabase : RoomDatabase() {
     abstract fun logEntryDao(): LogEntryDao
     abstract fun categoryDao(): CategoryDao
     abstract fun knowledgeDocumentDao(): com.notel.notel.data.local.dao.KnowledgeDocumentDao
+    abstract fun reminderDao(): ReminderDao
 
     companion object {
         @Volatile private var INSTANCE: NotelDatabase? = null
@@ -36,6 +39,26 @@ abstract class NotelDatabase : RoomDatabase() {
         private val MIGRATION_13_14 = object : Migration(13, 14) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE knowledge_documents ADD COLUMN extractedText TEXT")
+            }
+        }
+
+        private val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS reminders (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        title TEXT NOT NULL,
+                        type TEXT NOT NULL,
+                        fixedHour INTEGER NOT NULL DEFAULT 12,
+                        fixedMinute INTEGER NOT NULL DEFAULT 0,
+                        intervalHours INTEGER NOT NULL DEFAULT 2,
+                        startHour INTEGER NOT NULL DEFAULT 8,
+                        startMinute INTEGER NOT NULL DEFAULT 0,
+                        endHour INTEGER NOT NULL DEFAULT 21,
+                        endMinute INTEGER NOT NULL DEFAULT 0,
+                        isEnabled INTEGER NOT NULL DEFAULT 1
+                    )
+                """.trimIndent())
             }
         }
 
@@ -63,7 +86,7 @@ abstract class NotelDatabase : RoomDatabase() {
                     "notel_db"
                 )
                     .fallbackToDestructiveMigration()
-                    .addMigrations(MIGRATION_1_2, MIGRATION_11_12, MIGRATION_13_14)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15)
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)

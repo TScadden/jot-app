@@ -841,6 +841,37 @@ class LogRepository @Inject constructor(
             "Recent Body Load Trend: Range $min/100 to $max/100 (Average: $avg/100).$commonStr"
         }
     }
+    suspend fun sendCoachMessage(
+        messages: List<com.notel.notel.data.remote.CoachMessageDto>,
+        userContext: String? = null,
+        knowledgeBase: String? = null,
+        recentEntries: List<LogEntry> = emptyList()
+    ): Result<String> {
+        return try {
+            if (!preferences.loggedIn.first()) return Result.failure(Exception("Not logged in"))
+            
+            val bodyLoadHistory = getBodyLoadHistorySummary()
+            
+            val request = com.notel.notel.data.remote.CoachRequest(
+                messages = messages,
+                userContext = userContext,
+                knowledgeBase = knowledgeBase,
+                recentEntries = recentEntries.map { com.notel.notel.data.remote.LogEntryDtoModel(it.id, it.categoryId, it.body, it.chips, it.manualText, it.timestamp) },
+                bodyLoadHistory = bodyLoadHistory
+            )
+            
+            val response = jotApi.getCoachReply(request)
+            if (response.isSuccessful) {
+                response.body()?.result?.let {
+                    Result.success(it)
+                } ?: Result.failure(Exception("Empty reply from server"))
+            } else {
+                Result.failure(Exception(response.errorBody()?.string() ?: "Unknown error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
     
     suspend fun saveAiInsight(text: String, type: String, timestamp: Long? = null) {
         val insightsStr = preferences.aiInsights.first()

@@ -47,6 +47,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalContext
 import com.notel.notel.ui.screen.*
+import com.notel.notel.ui.screen.CoachScreen
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.BodyLoadViewModel
 import com.notel.notel.ui.viewmodel.FitbitViewModel
@@ -205,8 +206,16 @@ class MainActivity : ComponentActivity() {
                                 onBack = { /* Root */ },
                                 onNavigateToConnections = { navController.navigate("data_connections") },
                                 onNavigateToHeart = { navController.navigate("fitbit") },
-                                onNavigateToMembership = { navController.navigate("settings?menu=MEMBERSHIP") }
+                                onNavigateToMembership = { navController.navigate("settings?menu=MEMBERSHIP") },
+                                onNavigateToHabits = { navController.navigate("habits") },
+                                onNavigateToReminders = { navController.navigate("reminders") }
                             )
+                        }
+                        composable("habits") {
+                            HabitsScreen(onBack = { navController.popBackStack() })
+                        }
+                        composable("reminders") {
+                            RemindersScreen(onBack = { navController.popBackStack() })
                         }
                         composable("data_connections") {
                             DataConnectionsScreen(onBack = { navController.popBackStack() })
@@ -221,8 +230,12 @@ class MainActivity : ComponentActivity() {
                             InfoScreen(
                                 onBack = { navController.popBackStack() },
                                 onSleepClick = { navController.navigate("sleep") },
-                                onKeyMetricsClick = { navController.navigate("key_metrics") }
+                                onKeyMetricsClick = { navController.navigate("key_metrics") },
+                                onCoachClick = { navController.navigate("coach") }
                             )
+                        }
+                        composable("coach") {
+                            CoachScreen(onBack = { navController.popBackStack() })
                         }
                         composable("quick_log") {
                             QuickLogScreen(

@@ -89,6 +89,21 @@ data class AiResponse<T>(
 )
 
 @Serializable
+data class CoachMessageDto(
+    val role: String,
+    val content: String
+)
+
+@Serializable
+data class CoachRequest(
+    val messages: List<CoachMessageDto>,
+    val userContext: String? = null,
+    val knowledgeBase: String? = null,
+    val recentEntries: List<LogEntryDtoModel> = emptyList(),
+    val bodyLoadHistory: String? = null
+)
+
+@Serializable
 data class AuthRequest(
     val email: String,
     val password: String
@@ -369,6 +384,9 @@ interface JotApi {
 
     @POST("api/ai/fetch-subreddit")
     suspend fun fetchSubreddit(@Body request: FetchSubredditRequest): Response<FetchSubredditResponse>
+
+    @POST("api/ai/coach")
+    suspend fun getCoachReply(@Body request: CoachRequest): Response<AiResponse<String>>
 
     // ── SYNC ─────────────────────────────────────────────
     @retrofit2.http.GET("api/sync/pull")

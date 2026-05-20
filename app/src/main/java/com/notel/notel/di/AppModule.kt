@@ -45,6 +45,11 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideReminderDao(db: NotelDatabase): com.notel.notel.data.local.dao.ReminderDao =
+        db.reminderDao()
+
+    @Provides
+    @Singleton
     fun provideOkHttpClient(authInterceptor: AuthInterceptor): OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)

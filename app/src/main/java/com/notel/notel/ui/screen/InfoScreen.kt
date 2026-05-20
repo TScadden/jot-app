@@ -14,6 +14,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -31,7 +32,8 @@ data class InfoTile(
 fun InfoScreen(
     onBack: () -> Unit = {},
     onSleepClick: () -> Unit = {},
-    onKeyMetricsClick: () -> Unit = {}
+    onKeyMetricsClick: () -> Unit = {},
+    onCoachClick: () -> Unit = {}
 ) {
     val tiles = listOf(
         InfoTile("Sleep", Icons.Default.Bedtime, "Analysis & Debt"),
@@ -76,7 +78,7 @@ fun InfoScreen(
                 modifier = Modifier.fillMaxSize()
             ) {
                 items(tiles) { tile ->
-                    InfoTileCard(tile, onSleepClick, onKeyMetricsClick)
+                    InfoTileCard(tile, onSleepClick, onKeyMetricsClick, onCoachClick)
                 }
             }
         }
@@ -84,7 +86,7 @@ fun InfoScreen(
 }
 
 @Composable
-fun InfoTileCard(tile: InfoTile, onSleepClick: () -> Unit, onKeyMetricsClick: () -> Unit) {
+fun InfoTileCard(tile: InfoTile, onSleepClick: () -> Unit, onKeyMetricsClick: () -> Unit, onCoachClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -100,18 +102,20 @@ fun InfoTileCard(tile: InfoTile, onSleepClick: () -> Unit, onKeyMetricsClick: ()
                 color = NotelPrimary.copy(alpha = 0.04f),
                 shape = RoundedCornerShape(28.dp)
             )
+            .clip(RoundedCornerShape(24.dp))
+            .clickable { 
+                when (tile.title) {
+                    "Sleep" -> onSleepClick()
+                    "Key Metrics" -> onKeyMetricsClick()
+                    "Health Coach" -> onCoachClick()
+                }
+            }
             .liquidGlass(
                 shape = RoundedCornerShape(24.dp),
                 color = NotelSurface,
                 alpha = 0.8f,
                 showBorder = true
             )
-            .clickable { 
-                when (tile.title) {
-                    "Sleep" -> onSleepClick()
-                    "Key Metrics" -> onKeyMetricsClick()
-                }
-            }
             .padding(20.dp)
     ) {
         Column(

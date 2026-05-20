@@ -154,20 +154,42 @@ class HabitRepository @Inject constructor(
         if (logs.isEmpty()) return 0
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
         val sorted = logs.mapNotNull { runCatching { sdf.parse(it) }.getOrNull() }.sortedDescending()
+        if (sorted.isEmpty()) return 0
         val today = sdf.parse(todayDateString()) ?: return 0
 
+        // Streak is still alive if the last log was today OR yesterday
+        val cal = java.util.Calendar.getInstance()
+        cal.time = today
+        cal.add(java.util.Calendar.DAY_OF_YEAR, -1)
+        val yesterday = cal.time
+
+        val mostRecent = sorted.first()
+        val startDate = when (sdf.format(mostRecent)) {
+            sdf.format(today)     -> today
+            sdf.format(yesterday) -> yesterday
+            else                  -> return 0   // streak broken
+        }
+
         var streak = 0
-        var expected = today
+        var expected = startDate
         for (date in sorted) {
             if (sdf.format(date) == sdf.format(expected)) {
                 streak++
-                val cal = java.util.Calendar.getInstance()
-                cal.time = expected
-                cal.add(java.util.Calendar.DAY_OF_YEAR, -1)
-                expected = cal.time
+                val c = java.util.Calendar.getInstance()
+                c.time = expected
+                c.add(java.util.Calendar.DAY_OF_YEAR, -1)
+                expected = c.time
             } else break
         }
         return streak
+    }
+
+    /** Days in a row where EVERY habit was completed */
+    fun calculateOverallStreak(habits: List<HabitDtoModel>): Int {
+        if (habits.isEmpty()) return 0
+        val allLogSets = habits.map { it.logs.toSet() }
+        val commonDates = allLogSets.reduce { acc, set -> acc.intersect(set) }.toList()
+        return calculateStreak(commonDates)
     }
     private fun saveWidgetCache(habits: List<HabitDtoModel>) {
         try {

@@ -709,6 +709,13 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun testReminderNotification(context: android.content.Context) {
+        val intent = android.content.Intent("com.notel.notel.TEST_REMINDER").apply {
+            setPackage(context.packageName)
+        }
+        context.sendBroadcast(intent)
+    }
+
     fun deleteAiInsight(id: String) {
         viewModelScope.launch {
             val currentStr = preferences.aiInsights.first()

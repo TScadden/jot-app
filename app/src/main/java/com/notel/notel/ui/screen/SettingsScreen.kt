@@ -2531,6 +2531,11 @@ fun DebugScreen(
                 }
             }
             item {
+                GlassyButton(onClick = { viewModel.testReminderNotification(context) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Reminder", color = NotelTextPrimary, fontSize = 10.sp)
+                }
+            }
+            item {
                 GlassyButton(onClick = { viewModel.recoverAccountData() }, modifier = Modifier.fillMaxWidth(), containerColor = NotelSurfaceHigh) {
                     Text("Force Sync", color = NotelTextPrimary, fontSize = 10.sp)
                 }
