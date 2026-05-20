@@ -25,7 +25,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
@@ -396,7 +400,7 @@ private fun ChatBubble(
                     } else {
                         Column {
                             Text(
-                                text = message.content,
+                                text = parseMarkdownToAnnotatedString(message.content),
                                 color = textColor,
                                 fontSize = 15.sp,
                                 lineHeight = 22.sp
@@ -659,5 +663,35 @@ private fun TypingIndicator() {
         Dot(0)
         Dot(150)
         Dot(300)
+    }
+}
+
+private fun parseMarkdownToAnnotatedString(text: String): AnnotatedString {
+    return buildAnnotatedString {
+        var currentIndex = 0
+        // Regex to match **bold** or *italic*
+        val regex = Regex("\\*\\*(.*?)\\*\\*|\\*(.*?)\\*")
+        
+        regex.findAll(text).forEach { matchResult ->
+            // Append text before the match
+            append(text.substring(currentIndex, matchResult.range.first))
+            
+            if (matchResult.groups[1] != null) {
+                // **bold**
+                withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
+                    append(matchResult.groups[1]!!.value)
+                }
+            } else if (matchResult.groups[2] != null) {
+                // *italic*
+                withStyle(style = SpanStyle(fontStyle = FontStyle.Italic)) {
+                    append(matchResult.groups[2]!!.value)
+                }
+            }
+            currentIndex = matchResult.range.last + 1
+        }
+        // Append remaining text
+        if (currentIndex < text.length) {
+            append(text.substring(currentIndex))
+        }
     }
 }
