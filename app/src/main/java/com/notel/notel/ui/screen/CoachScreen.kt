@@ -31,7 +31,14 @@ import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.CoachMessage
 import com.notel.notel.ui.viewmodel.CoachViewModel
 import com.notel.notel.ui.viewmodel.NoteStatus
+import com.notel.notel.ui.viewmodel.FileStatus
 import kotlinx.coroutines.launch
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.platform.LocalContext
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,6 +51,13 @@ fun CoachScreen(
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
+    val context = LocalContext.current
+
+    val filePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let { viewModel.uploadFile(it, context.contentResolver) }
+    }
 
     // Auto-scroll to bottom when new messages arrive
     LaunchedEffect(messages.size, messages.lastOrNull()?.isLoading) {
@@ -109,10 +123,13 @@ fun CoachScreen(
                     ChatBubble(
                         message = message,
                         onApprove = { viewModel.approveProposedNote(message.id, message.proposedNoteText ?: "") },
-                        onDeny = { viewModel.denyProposedNote(message.id) }
+                        onDeny = { viewModel.denyProposedNote(message.id) },
+                        onApproveFile = { viewModel.approveProposedFile(message.id, message.proposedFileName ?: "") },
+                        onDenyFile = { viewModel.denyProposedFile(message.id) }
                     )
                 }
             }
+
 
             // Input Area
             val density = androidx.compose.ui.platform.LocalDensity.current
@@ -130,6 +147,17 @@ fun CoachScreen(
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.Bottom
                 ) {
+                    IconButton(
+                        onClick = { filePicker.launch("*/*") },
+                        modifier = Modifier
+                            .padding(end = 6.dp, bottom = 0.dp)
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(NotelSurfaceHigh.copy(alpha = 0.1f))
+                    ) {
+                        Text("📎", fontSize = 20.sp)
+                    }
+
                     OutlinedTextField(
                         value = inputText,
                         onValueChange = { inputText = it },
@@ -191,7 +219,9 @@ fun CoachScreen(
 private fun ChatBubble(
     message: CoachMessage,
     onApprove: () -> Unit,
-    onDeny: () -> Unit
+    onDeny: () -> Unit,
+    onApproveFile: () -> Unit,
+    onDenyFile: () -> Unit
 ) {
     val isUser = message.role == "user"
     val bubbleShape = if (isUser) {
@@ -218,26 +248,106 @@ private fun ChatBubble(
             }
         }
 
-        Surface(
-            shape = bubbleShape,
-            color = backgroundColor,
-            modifier = Modifier.widthIn(max = 300.dp)
-        ) {
-            Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                if (message.isLoading) {
-                    TypingIndicator()
-                } else {
-                    Text(
-                        text = message.content,
-                        color = textColor,
-                        fontSize = 15.sp,
-                        lineHeight = 22.sp
-                    )
+        val isFileAttachment = message.role == "user" && message.content.startsWith("📄 Uploaded file:")
+
+        if (isFileAttachment) {
+            val fileName = message.content.substringAfter("📄 Uploaded file:").substringBefore("\n").trim()
+            val fileContent = message.content.substringAfter("\n\n").trim()
+            var isExpanded by remember { mutableStateOf(false) }
+
+            Surface(
+                shape = bubbleShape,
+                color = backgroundColor,
+                modifier = Modifier.widthIn(max = 300.dp)
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = NotelPrimary.copy(alpha = 0.2f),
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text("📄", fontSize = 18.sp)
+                            }
+                        }
+                        Column {
+                            Text(
+                                text = fileName,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = NotelTextPrimary
+                            )
+                            Text(
+                                text = "Document uploaded & text extracted",
+                                fontSize = 11.sp,
+                                color = NotelTextSecondary
+                            )
+                        }
+                    }
+
+                    if (fileContent.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        TextButton(
+                            onClick = { isExpanded = !isExpanded },
+                            contentPadding = PaddingValues(0.dp),
+                            modifier = Modifier.height(28.dp)
+                        ) {
+                            Text(
+                                text = if (isExpanded) "Hide Extracted Text ↑" else "Show Extracted Text ↓",
+                                fontSize = 12.sp,
+                                color = NotelPrimary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        if (isExpanded) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color.Black.copy(alpha = 0.2f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = fileContent,
+                                    fontSize = 12.sp,
+                                    color = NotelTextSecondary,
+                                    lineHeight = 18.sp,
+                                    modifier = Modifier
+                                        .padding(10.dp)
+                                        .heightIn(max = 200.dp)
+                                        .verticalScroll(rememberScrollState())
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            Surface(
+                shape = bubbleShape,
+                color = backgroundColor,
+                modifier = Modifier.widthIn(max = 300.dp)
+            ) {
+                Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    if (message.isLoading) {
+                        TypingIndicator()
+                    } else {
+                        Text(
+                            text = message.content,
+                            color = textColor,
+                            fontSize = 15.sp,
+                            lineHeight = 22.sp
+                        )
+                    }
                 }
             }
         }
 
-        // Suggestion Card or Badges
+        // Suggestion Card or Badges for notes
         if (!isUser && message.proposedNoteText != null) {
             Spacer(modifier = Modifier.height(8.dp))
             when (message.noteStatus) {
@@ -327,6 +437,105 @@ private fun ChatBubble(
                     ) {
                         Text(
                             text = "✗ Suggestion Dismissed",
+                            color = Color(0xFFFF5252),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+                else -> {}
+            }
+        }
+
+        // Suggestion Card or Badges for files
+        if (!isUser && message.proposedFileName != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            when (message.fileStatus) {
+                FileStatus.PENDING -> {
+                    Surface(
+                        modifier = Modifier
+                            .widthIn(max = 300.dp)
+                            .padding(start = 8.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.White.copy(alpha = 0.05f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text("📁", fontSize = 16.sp)
+                                Text(
+                                    text = "Save Document to Jot DB?",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = NotelPrimary
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Would you like to save \"${message.proposedFileName}\" to your permanent Jot database?",
+                                fontSize = 14.sp,
+                                color = NotelTextPrimary,
+                                lineHeight = 20.sp
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = onDenyFile,
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = Color(0xFFFF5252)
+                                    ),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF5252).copy(alpha = 0.4f))
+                                ) {
+                                    Text("Deny", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                }
+
+                                Button(
+                                    onClick = onApproveFile,
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFF00E676),
+                                        contentColor = Color(0xFF080E1A)
+                                    )
+                                ) {
+                                    Text("Approve", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+                FileStatus.APPROVED -> {
+                    Row(
+                        modifier = Modifier.padding(start = 12.dp, top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "✓ Document Saved to Jot DB",
+                            color = Color(0xFF00E676),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                FileStatus.DENIED -> {
+                    Row(
+                        modifier = Modifier.padding(start = 12.dp, top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "✗ Save Suggestion Dismissed",
                             color = Color(0xFFFF5252),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold

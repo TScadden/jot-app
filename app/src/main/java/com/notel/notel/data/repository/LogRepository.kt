@@ -974,6 +974,44 @@ class LogRepository @Inject constructor(
         }
     }
 
+    suspend fun ingestPreExtractedDocumentFile(
+        fileName: String,
+        mimeType: String,
+        base64Data: String,
+        extractedText: String
+    ): Result<Unit> {
+        val isUnlimited = preferences.isUnlimited.first()
+        if (!isUnlimited) return Result.failure(IllegalStateException("Unlimited membership required for AI features. Please check Membership in Settings."))
+
+        return try {
+            val dir = File(context.filesDir, "knowledge_docs")
+            if (!dir.exists()) dir.mkdirs()
+            
+            val file = File(dir, "${UUID.randomUUID()}_$fileName")
+            val bytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
+            file.writeBytes(bytes)
+            
+            val doc = com.notel.notel.data.local.entity.KnowledgeDocument(
+                name = fileName,
+                mimeType = mimeType,
+                filePath = file.absolutePath,
+                extractedText = extractedText
+            )
+            knowledgeDocumentDao.insertDocument(doc)
+            
+            // Track that we processed this file in old format too for compatibility if needed
+            val currentFiles = preferences.processedFiles.first()
+            val updatedFiles = if (currentFiles.isBlank()) fileName else "$fileName, $currentFiles"
+            preferences.setProcessedFiles(updatedFiles)
+            
+            triggerSync()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+
     private suspend fun getEnrichedDocuments(): List<com.notel.notel.data.remote.ProcessDocumentRequest> {
         val docs = knowledgeDocumentDao.getAllDocuments().first()
         return docs.mapNotNull { doc ->
