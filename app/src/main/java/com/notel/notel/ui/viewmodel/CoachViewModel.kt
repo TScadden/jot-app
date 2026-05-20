@@ -241,6 +241,15 @@ class CoachViewModel @Inject constructor(
 
     private val pendingFiles = java.util.concurrent.ConcurrentHashMap<String, PendingUploadFile>()
 
+    // Pending attachment: a file that has been extracted but NOT yet sent.
+    // The UI shows it as a chip in the input area until the user hits Send.
+    private val _pendingAttachment = MutableStateFlow<PendingUploadFile?>(null)
+    val pendingAttachment: StateFlow<PendingUploadFile?> = _pendingAttachment.asStateFlow()
+
+    fun clearPendingAttachment() {
+        _pendingAttachment.value = null
+    }
+
     private fun getFileName(uri: android.net.Uri, contentResolver: android.content.ContentResolver): String? {
         var name: String? = null
         val cursor = contentResolver.query(uri, null, null, null, null)
@@ -253,31 +262,14 @@ class CoachViewModel @Inject constructor(
         return name
     }
 
-    fun uploadFile(uri: android.net.Uri, contentResolver: android.content.ContentResolver) {
+    /**
+     * Attaches a file to the pending input area WITHOUT sending.
+     * Extracts the text and stores it as a [pendingAttachment] chip.
+     * The user can add their own text and then hit Send to include it.
+     */
+    fun attachFile(uri: android.net.Uri, contentResolver: android.content.ContentResolver) {
         viewModelScope.launch {
             try {
-                var sessionId = _currentSessionId.value
-                if (sessionId == null) {
-                    val newSessionId = UUID.randomUUID().toString()
-                    sessionId = newSessionId
-                    
-                    // Save session
-                    val tempSession = CoachSession(id = newSessionId, title = "New Chat")
-                    coachSessionDao.insertSession(tempSession)
-
-                    // Save the initial greeting message to DB
-                    coachMessageDao.insertMessage(
-                        CoachMessageEntity(
-                            sessionId = newSessionId,
-                            role = "coach",
-                            content = welcomeMessage.content
-                        )
-                    )
-
-                    // Update StateFlow
-                    _currentSessionId.value = newSessionId
-                }
-
                 // 1. Read file metadata and bytes
                 val fileName = getFileName(uri, contentResolver) ?: "unknown_file"
                 val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
@@ -286,88 +278,42 @@ class CoachViewModel @Inject constructor(
                 } ?: throw Exception("Could not read file content")
                 val base64 = android.util.Base64.encodeToString(fileBytes, android.util.Base64.NO_WRAP)
 
-                // 2. Show loading message in chat
+                // 2. Show a transient extraction indicator (not a persistent chat message)
                 val loadingId = UUID.randomUUID().toString()
-                _loadingMessage.value = CoachMessage(id = loadingId, role = "coach", content = "Extracting text from $fileName...", isLoading = true)
+                _loadingMessage.value = CoachMessage(id = loadingId, role = "coach", content = "Reading $fileName...", isLoading = true)
 
-                // 3. Call text extraction via Gemini API
+                // 3. Extract text
                 val extractionResult = geminiService.processDocumentFile(mimeType, base64)
-                
                 _loadingMessage.value = null
 
                 extractionResult.fold(
                     onSuccess = { extractedText ->
-                        // Cache file details for saving upon approval
-                        pendingFiles[fileName] = PendingUploadFile(
+                        // Stage as pending attachment — do NOT send yet
+                        val attachment = PendingUploadFile(
                             name = fileName,
                             mimeType = mimeType,
                             base64Data = base64,
                             extractedText = extractedText
                         )
-
-                        // Save the user message in DB with formatted file tag
-                        val userMsgId = UUID.randomUUID().toString()
-                        val userMsgContent = "📄 Uploaded file: $fileName\n\n$extractedText"
-                        coachSessionDao.updateSession(coachSessionDao.getSessionById(sessionId!!)!!.copy(updatedAt = System.currentTimeMillis(), isSynced = false))
-                        coachMessageDao.insertMessage(
-                            CoachMessageEntity(
-                                id = userMsgId,
-                                sessionId = sessionId,
-                                role = "user",
-                                content = userMsgContent
-                            )
-                        )
-
-                        // Show loader for the AI coach's reply
-                        val replyLoadingId = UUID.randomUUID().toString()
-                        _loadingMessage.value = CoachMessage(id = replyLoadingId, role = "coach", content = "", isLoading = true)
-
-                        // 4. Retrieve complete chat history and request reply from AI Coach
-                        val dbEntities = coachMessageDao.getMessagesForSession(sessionId).first()
-                        val currentHistory = dbEntities.map {
-                            CoachMessageDto(
-                                id = it.id,
-                                sessionId = sessionId,
-                                role = it.role,
-                                content = it.content,
-                                timestamp = it.timestamp
-                            )
-                        }
-                        
-                        val userCtx = preferences.userContext.first()
-                        val kb = preferences.knowledgeBase.first()
-                        val recentEntries = logRepository.getRecentEntriesAll(10)
-
-                        val coachReplyResult = logRepository.sendCoachMessage(
-                            messages = currentHistory,
-                            userContext = userCtx.ifBlank { null },
-                            knowledgeBase = kb.ifBlank { null },
-                            recentEntries = recentEntries
-                        )
-
-                        coachReplyResult.fold(
-                            onSuccess = { replyText ->
-                                _loadingMessage.value = null
-                                coachMessageDao.insertMessage(
-                                    CoachMessageEntity(
-                                        sessionId = sessionId,
-                                        role = "coach",
-                                        content = replyText
-                                    )
-                                )
-                            },
-                            onFailure = { error ->
-                                _loadingMessage.value = CoachMessage(id = replyLoadingId, role = "coach", content = "Sorry, I had trouble connecting: ${error.message}", isLoading = false)
-                            }
-                        )
+                        pendingFiles[fileName] = attachment
+                        _pendingAttachment.value = attachment
                     },
                     onFailure = { error ->
-                        _loadingMessage.value = CoachMessage(id = loadingId, role = "coach", content = "Extraction failed: ${error.message}", isLoading = false)
+                        _loadingMessage.value = CoachMessage(
+                            id = loadingId,
+                            role = "coach",
+                            content = "Couldn't read that file: ${error.message}",
+                            isLoading = false
+                        )
                     }
                 )
-
             } catch (e: Exception) {
-                _loadingMessage.value = CoachMessage(id = UUID.randomUUID().toString(), role = "coach", content = "An error occurred while uploading: ${e.message}", isLoading = false)
+                _loadingMessage.value = CoachMessage(
+                    id = UUID.randomUUID().toString(),
+                    role = "coach",
+                    content = "An error occurred while reading the file: ${e.message}",
+                    isLoading = false
+                )
             }
         }
     }
@@ -446,10 +392,27 @@ class CoachViewModel @Inject constructor(
     }
 
     fun sendMessage(text: String) {
-        if (text.isBlank()) return
+        // Allow sending if there is either typed text OR a pending attachment
+        val attachment = _pendingAttachment.value
+        if (text.isBlank() && attachment == null) return
 
         val userMsgId = UUID.randomUUID().toString()
-        val userText = text.trim()
+
+        // Build the final message content: file block (if any) + optional user text
+        val userText = buildString {
+            if (attachment != null) {
+                append("📄 Uploaded file: ${attachment.name}\n\n${attachment.extractedText}")
+                if (text.isNotBlank()) {
+                    append("\n\n")
+                    append(text.trim())
+                }
+            } else {
+                append(text.trim())
+            }
+        }
+
+        // Clear the staged attachment immediately
+        _pendingAttachment.value = null
 
         val lastMsg = messages.value.lastOrNull { !it.isLoading }
         if (lastMsg != null) {

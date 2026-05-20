@@ -13,6 +13,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,6 +25,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -47,6 +49,7 @@ fun CoachScreen(
     viewModel: CoachViewModel = hiltViewModel()
 ) {
     val messages by viewModel.messages.collectAsState()
+    val pendingAttachment by viewModel.pendingAttachment.collectAsState()
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
@@ -56,7 +59,7 @@ fun CoachScreen(
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
-        uri?.let { viewModel.uploadFile(it, context.contentResolver) }
+        uri?.let { viewModel.attachFile(it, context.contentResolver) }
     }
 
     // Auto-scroll to bottom when new messages arrive
@@ -141,73 +144,124 @@ fun CoachScreen(
                 modifier = Modifier.fillMaxWidth().padding(bottom = bottomPadding),
                 tonalElevation = 8.dp
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.Bottom
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
                 ) {
-                    IconButton(
-                        onClick = { filePicker.launch("*/*") },
-                        modifier = Modifier
-                            .padding(end = 6.dp, bottom = 0.dp)
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .background(NotelSurfaceHigh.copy(alpha = 0.1f))
-                    ) {
-                        Text("📎", fontSize = 20.sp)
+                    // ── Pending attachment chip ──────────────────────────────────
+                    if (pendingAttachment != null) {
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = NotelPrimary.copy(alpha = 0.15f),
+                            modifier = Modifier
+                                .padding(bottom = 8.dp)
+                                .wrapContentWidth()
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text("📎", fontSize = 14.sp)
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = pendingAttachment!!.name,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = NotelPrimary,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.widthIn(max = 220.dp)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                IconButton(
+                                    onClick = { viewModel.clearPendingAttachment() },
+                                    modifier = Modifier.size(20.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = "Remove attachment",
+                                        tint = NotelTextSecondary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
+                        }
                     }
 
-                    OutlinedTextField(
-                        value = inputText,
-                        onValueChange = { inputText = it },
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(end = 8.dp),
-                        placeholder = { Text("Ask Coach anything...", color = NotelTextSecondary) },
-                        shape = RoundedCornerShape(24.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = NotelPrimary.copy(alpha = 0.5f),
-                            unfocusedBorderColor = NotelSurfaceHigh.copy(alpha = 0.2f),
-                            focusedContainerColor = NotelSurfaceHigh.copy(alpha = 0.1f),
-                            unfocusedContainerColor = NotelSurfaceHigh.copy(alpha = 0.1f),
-                            focusedTextColor = NotelTextPrimary,
-                            unfocusedTextColor = NotelTextPrimary
-                        ),
-                        maxLines = 4,
-                        keyboardOptions = KeyboardOptions(
-                            capitalization = KeyboardCapitalization.Sentences,
-                            imeAction = ImeAction.Send
-                        ),
-                        keyboardActions = KeyboardActions(
-                            onSend = {
-                                if (inputText.isNotBlank()) {
+                    // ── Input row ────────────────────────────────────────────────
+                    val canSend = inputText.isNotBlank() || pendingAttachment != null
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        IconButton(
+                            onClick = { filePicker.launch("*/*") },
+                            modifier = Modifier
+                                .padding(end = 6.dp, bottom = 0.dp)
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(NotelSurfaceHigh.copy(alpha = 0.1f))
+                        ) {
+                            Text("📎", fontSize = 20.sp)
+                        }
+
+                        OutlinedTextField(
+                            value = inputText,
+                            onValueChange = { inputText = it },
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 8.dp),
+                            placeholder = {
+                                Text(
+                                    if (pendingAttachment != null) "Add a message (optional)..."
+                                    else "Ask Coach anything...",
+                                    color = NotelTextSecondary
+                                )
+                            },
+                            shape = RoundedCornerShape(24.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = NotelPrimary.copy(alpha = 0.5f),
+                                unfocusedBorderColor = NotelSurfaceHigh.copy(alpha = 0.2f),
+                                focusedContainerColor = NotelSurfaceHigh.copy(alpha = 0.1f),
+                                unfocusedContainerColor = NotelSurfaceHigh.copy(alpha = 0.1f),
+                                focusedTextColor = NotelTextPrimary,
+                                unfocusedTextColor = NotelTextPrimary
+                            ),
+                            maxLines = 4,
+                            keyboardOptions = KeyboardOptions(
+                                capitalization = KeyboardCapitalization.Sentences,
+                                imeAction = ImeAction.Send
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onSend = {
+                                    if (canSend) {
+                                        viewModel.sendMessage(inputText)
+                                        inputText = ""
+                                        focusManager.clearFocus()
+                                    }
+                                }
+                            )
+                        )
+
+                        FilledIconButton(
+                            onClick = {
+                                if (canSend) {
                                     viewModel.sendMessage(inputText)
                                     inputText = ""
                                     focusManager.clearFocus()
                                 }
-                            }
-                        )
-                    )
-
-                    val canSend = inputText.isNotBlank()
-                    FilledIconButton(
-                        onClick = {
-                            if (canSend) {
-                                viewModel.sendMessage(inputText)
-                                inputText = ""
-                                focusManager.clearFocus()
-                            }
-                        },
-                        modifier = Modifier.size(48.dp),
-                        shape = CircleShape,
-                        colors = IconButtonDefaults.filledIconButtonColors(
-                            containerColor = if (canSend) NotelPrimary else NotelSurfaceHigh,
-                            contentColor = if (canSend) Color.White else NotelTextSecondary
-                        ),
-                        enabled = canSend
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.Send, "Send")
+                            },
+                            modifier = Modifier.size(48.dp),
+                            shape = CircleShape,
+                            colors = IconButtonDefaults.filledIconButtonColors(
+                                containerColor = if (canSend) NotelPrimary else NotelSurfaceHigh,
+                                contentColor = if (canSend) Color.White else NotelTextSecondary
+                            ),
+                            enabled = canSend
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.Send, "Send")
+                        }
                     }
                 }
             }
