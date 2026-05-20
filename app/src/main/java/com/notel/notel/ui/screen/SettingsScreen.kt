@@ -2267,7 +2267,8 @@ fun SettingsScreen(
 
             // ── Sync Settings Screen ─────────────────────────────────────
             if (currentMenu == SettingsMenu.SYNC_SETTINGS) {
-                val isSyncingNow by viewModel.isSyncing.collectAsState()
+                val isManualSyncing by viewModel.isManualSyncing.collectAsState()
+                val isRecovering by viewModel.isRecovering.collectAsState()
                 val lastSyncTimeSync by viewModel.lastSyncTime.collectAsState()
 
                 Text("MANUAL SYNC", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
@@ -2283,9 +2284,9 @@ fun SettingsScreen(
                         onClick = { viewModel.manualSync() },
                         modifier = Modifier.fillMaxWidth(),
                         containerColor = NotelPrimary,
-                        enabled = !isSyncingNow
+                        enabled = !isManualSyncing && !isRecovering
                     ) {
-                        if (isSyncingNow) {
+                        if (isManualSyncing) {
                             GlassySpinner(size = 20.dp)
                             Spacer(Modifier.width(8.dp))
                             Text("Syncing...", color = Color.White, fontWeight = FontWeight.Bold)
@@ -2321,9 +2322,9 @@ fun SettingsScreen(
                         onClick = { viewModel.recoverAccountData() },
                         modifier = Modifier.fillMaxWidth(),
                         containerColor = NotelSurfaceHigh,
-                        enabled = !isSyncingNow
+                        enabled = !isRecovering && !isManualSyncing
                     ) {
-                        if (isSyncingNow) {
+                        if (isRecovering) {
                             GlassySpinner(size = 20.dp)
                             Spacer(Modifier.width(8.dp))
                             Text("Recovering...", color = NotelTextSecondary, fontWeight = FontWeight.Bold)

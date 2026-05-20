@@ -102,6 +102,13 @@ class SettingsViewModel @Inject constructor(
     private val _redditSynced = MutableSharedFlow<String>()
     val redditSynced = _redditSynced.asSharedFlow()
 
+    private val _isRecovering = MutableStateFlow(false)
+    val isRecovering = _isRecovering.asStateFlow()
+
+    private val _isManualSyncing = MutableStateFlow(false)
+    val isManualSyncing = _isManualSyncing.asStateFlow()
+
+    // Kept for recoverAccountData compatibility in logout flow
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing = _isSyncing.asStateFlow()
 
@@ -734,11 +741,11 @@ class SettingsViewModel @Inject constructor(
 
     fun recoverAccountData() {
         viewModelScope.launch {
+            _isRecovering.value = true
             _isSyncing.value = true
             try {
                 if (!preferences.loggedIn.first()) {
                     android.widget.Toast.makeText(context, "Error: Not logged in", android.widget.Toast.LENGTH_SHORT).show()
-                    _isSyncing.value = false
                     return@launch
                 }
                 
@@ -770,6 +777,7 @@ class SettingsViewModel @Inject constructor(
                 ).show()
                 _syncError.emit(e.message ?: "Failed to recover data")
             } finally {
+                _isRecovering.value = false
                 _isSyncing.value = false
             }
         }
@@ -777,7 +785,7 @@ class SettingsViewModel @Inject constructor(
 
     fun manualSync() {
         viewModelScope.launch {
-            _isSyncing.value = true
+            _isManualSyncing.value = true
             try {
                 if (!preferences.loggedIn.first()) {
                     android.widget.Toast.makeText(context, "Error: Not logged in", android.widget.Toast.LENGTH_SHORT).show()
@@ -793,7 +801,7 @@ class SettingsViewModel @Inject constructor(
                 ).show()
                 _syncError.emit(e.message ?: "Sync failed")
             } finally {
-                _isSyncing.value = false
+                _isManualSyncing.value = false
             }
         }
     }
