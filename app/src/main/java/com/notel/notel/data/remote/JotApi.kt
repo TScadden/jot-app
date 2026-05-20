@@ -343,6 +343,11 @@ data class ClassifyAndCleanResponse(
 )
 
 @Serializable
+data class ClassifyCoachNoteResponse(
+    val categoryId: Int
+)
+
+@Serializable
 data class RedditPost(
     val title: String,
     val author: String? = null,
@@ -414,6 +419,9 @@ interface JotApi {
 
     @POST("api/ai/classify-and-clean")
     suspend fun classifyAndClean(@Body request: ClassifyAndCleanRequest): Response<AiResponse<ClassifyAndCleanResponse>>
+
+    @POST("api/ai/classify-coach-note")
+    suspend fun classifyCoachNote(@Body request: ClassifyAndCleanRequest): Response<AiResponse<ClassifyCoachNoteResponse>>
 
     @POST("api/ai/fetch-subreddit")
     suspend fun fetchSubreddit(@Body request: FetchSubredditRequest): Response<FetchSubredditResponse>

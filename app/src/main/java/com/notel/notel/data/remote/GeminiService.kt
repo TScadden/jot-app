@@ -582,4 +582,37 @@ class GeminiService @Inject constructor(
             Result.failure(e)
         }
     }
+
+    suspend fun classifyCoachNoteCategory(
+        noteText: String,
+        categories: Map<Int, String>
+    ): Result<Int> {
+        return try {
+            val response = jotApi.classifyCoachNote(ClassifyAndCleanRequest(noteText, categories))
+            val result = response.body()?.result
+            if (response.isSuccessful && result != null) {
+                Result.success(result.categoryId)
+            } else {
+                val errorBody = response.errorBody()?.string()
+                var errorMessage = "Unknown API Error"
+                if (errorBody != null) {
+                    try {
+                        val json = org.json.JSONObject(errorBody)
+                        if (json.has("error")) {
+                            errorMessage = json.getString("error")
+                        } else if (json.has("message")) {
+                            errorMessage = json.getString("message")
+                        } else {
+                            errorMessage = errorBody
+                        }
+                    } catch (e: Exception) {
+                        errorMessage = errorBody
+                    }
+                }
+                Result.failure(IOException(errorMessage))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }

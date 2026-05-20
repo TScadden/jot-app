@@ -115,7 +115,7 @@ class CoachViewModel @Inject constructor(
                 val sessionId = _currentSessionId.value ?: return@launch
                 
                 // 1. Save the note to history
-                logRepository.handleVoiceNote(noteText, useAI = true)
+                logRepository.handleCoachNote(noteText)
                 
                 // 2. Update the proposed message tag in SQLite to APPROVED_NOTE
                 val dbEntities = coachMessageDao.getMessagesForSession(sessionId).first()

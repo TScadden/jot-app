@@ -1308,4 +1308,40 @@ class LogRepository @Inject constructor(
             }
         )
     }
+
+    /**
+     * Entry point for coach-suggested approved notes.
+     * Keeps the text EXACTLY as-is, categorizes it, and saves it.
+     */
+    suspend fun handleCoachNote(noteText: String): Result<String> {
+        val categories = categoryRepository.getAllCategories().first()
+        val catMap = categories.associate { it.id to it.name }
+        
+        // Use Gemini to classify the note without cleaning/modifying the text
+        return geminiService.classifyCoachNoteCategory(noteText, catMap).fold(
+            onSuccess = { categoryId ->
+                insertEntry(
+                    LogEntry(
+                        categoryId = categoryId,
+                        body = noteText,
+                        manualText = "",
+                        source = "Jot Coach"
+                    )
+                )
+                Result.success("Note saved to ${catMap[categoryId] ?: "General"}")
+            },
+            onFailure = { 
+                // Fallback to General (ID 7) if AI classification fails
+                insertEntry(
+                    LogEntry(
+                        categoryId = 7, 
+                        body = noteText,
+                        manualText = "",
+                        source = "Jot Coach"
+                    )
+                )
+                Result.success("Note saved to General")
+            }
+        )
+    }
 }
