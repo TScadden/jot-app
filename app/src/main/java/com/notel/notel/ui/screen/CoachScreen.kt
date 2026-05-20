@@ -102,16 +102,19 @@ fun CoachScreen(
             }
 
             // Input Area
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            val imeBottom = WindowInsets.ime.getBottom(density)
+            val bottomPadding = maxOf(100.dp, with(density) { imeBottom.toDp() })
+
             Surface(
                 color = NotelBackground,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(bottom = bottomPadding),
                 tonalElevation = 8.dp
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
-                        .windowInsetsPadding(WindowInsets.ime),
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.Bottom
                 ) {
                     OutlinedTextField(
