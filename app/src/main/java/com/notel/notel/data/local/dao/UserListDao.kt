@@ -35,4 +35,10 @@ interface UserListDao {
 
     @Query("SELECT COUNT(*) FROM user_list_items WHERE listId = :listId")
     suspend fun countItemsForList(listId: Int): Int
+
+    @Query("DELETE FROM user_lists")
+    suspend fun clearAllLists()
+
+    @Query("DELETE FROM user_list_items")
+    suspend fun clearAllListItems()
 }

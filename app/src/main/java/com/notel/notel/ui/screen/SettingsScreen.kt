@@ -65,6 +65,7 @@ fun SettingsScreen(
     onNavigateToFile: (name: String, path: String, mime: String, docId: String) -> Unit
 ) {
     val userContext by viewModel.userContext.collectAsState()
+    val lastSyncTime by viewModel.lastSyncTime.collectAsState()
     val knowledgeBase by viewModel.knowledgeBase.collectAsState()
     val professionalUpdates by viewModel.professionalUpdates.collectAsState()
     val processedFiles by viewModel.processedFiles.collectAsState()
@@ -506,6 +507,22 @@ fun SettingsScreen(
                                 }
                             }
                         }
+                    }
+
+                    Spacer(Modifier.height(4.dp))
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.CenterEnd
+                    ) {
+                        val lastSyncStr = if (lastSyncTime > 0L) {
+                            java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.getDefault())
+                                .format(java.util.Date(lastSyncTime))
+                        } else "never"
+                        Text(
+                            text = "Last synced: $lastSyncStr",
+                            color = NotelTextSecondary.copy(alpha = 0.6f),
+                            fontSize = 11.sp
+                        )
                     }
 
                     Spacer(Modifier.height(24.dp))

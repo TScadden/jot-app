@@ -13,7 +13,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class ListsViewModel @Inject constructor(
-    private val repository: UserListRepository
+    private val repository: UserListRepository,
+    private val syncManager: com.notel.notel.data.sync.SyncManager
 ) : ViewModel() {
 
     val lists: StateFlow<List<UserList>> = repository.lists
@@ -44,6 +45,7 @@ class ListsViewModel @Inject constructor(
             val created = repository.createList(name)
             // Auto-select the new list
             _selectedList.value = created
+            syncManager.pushProfileData()
         }
     }
 
@@ -51,6 +53,7 @@ class ListsViewModel @Inject constructor(
         viewModelScope.launch {
             if (_selectedList.value?.id == list.id) _selectedList.value = null
             repository.deleteList(list)
+            syncManager.pushProfileData()
         }
     }
 
@@ -59,12 +62,14 @@ class ListsViewModel @Inject constructor(
         if (text.isBlank()) return
         viewModelScope.launch {
             repository.addItem(listId, text)
+            syncManager.pushProfileData()
         }
     }
 
     fun deleteItem(item: UserListItem) {
         viewModelScope.launch {
             repository.deleteItem(item)
+            syncManager.pushProfileData()
         }
     }
 
@@ -72,6 +77,7 @@ class ListsViewModel @Inject constructor(
         if (newText.isBlank()) return
         viewModelScope.launch {
             repository.updateItem(item, newText)
+            syncManager.pushProfileData()
         }
     }
 }

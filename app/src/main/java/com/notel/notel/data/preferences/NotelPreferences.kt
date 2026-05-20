@@ -97,6 +97,7 @@ class NotelPreferences @Inject constructor(
         val HIGHEST_CUP_DAILY = intPreferencesKey("highest_cup_daily")
         val USER_CONTEXT_HIDDEN = booleanPreferencesKey("user_context_hidden")
         val HAS_HISTORICAL_BODY_LOAD = booleanPreferencesKey("has_historical_body_load")
+        val LAST_SYNC_TIME = longPreferencesKey("last_sync_time")
     }
 
     val hasHistoricalBodyLoad: Flow<Boolean> = context.dataStore.data.map { it[HAS_HISTORICAL_BODY_LOAD] ?: false }
@@ -135,6 +136,7 @@ class NotelPreferences @Inject constructor(
     val habitReminderUserDisabled: Flow<Boolean> = context.dataStore.data.map { it[HABIT_REMINDER_USER_DISABLED] ?: false }
     val userContextLastUpdate: Flow<Long> = context.dataStore.data.map { it[USER_CONTEXT_LAST_UPDATE] ?: 0L }
     val lastBodyLoadRefresh: Flow<Long> = context.dataStore.data.map { it[LAST_BODY_LOAD_REFRESH] ?: 0L }
+    val lastSyncTime: Flow<Long> = context.dataStore.data.map { it[LAST_SYNC_TIME] ?: 0L }
     val lastBodyLoadScore: Flow<Int> = context.dataStore.data.map { it[LAST_BODY_LOAD_SCORE] ?: 0 }
     val lastBodyLoadFactors: Flow<String> = context.dataStore.data.map { it[LAST_BODY_LOAD_FACTORS] ?: "" }
     val lastBodyLoadAdvice: Flow<String?> = context.dataStore.data.map { it[LAST_BODY_LOAD_ADVICE] }
@@ -269,6 +271,9 @@ class NotelPreferences @Inject constructor(
 
     suspend fun setUserContextLastUpdate(timestamp: Long) {
         context.dataStore.edit { prefs -> prefs[USER_CONTEXT_LAST_UPDATE] = timestamp }
+    }
+    suspend fun setLastSyncTime(timestamp: Long) {
+        context.dataStore.edit { prefs -> prefs[LAST_SYNC_TIME] = timestamp }
     }
     suspend fun setLastBodyLoadRefresh(timestamp: Long) {
         context.dataStore.edit { prefs -> prefs[LAST_BODY_LOAD_REFRESH] = timestamp }

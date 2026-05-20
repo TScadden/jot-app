@@ -109,7 +109,8 @@ fun ListsScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding),
+                    .padding(padding)
+                    .padding(bottom = 80.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -144,6 +145,7 @@ fun ListsScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
+                    .padding(bottom = 80.dp)
             ) {
                 // ── Left panel: list sidebar ──────────────────────────────────
                 Column(

@@ -2,6 +2,8 @@ package com.notel.notel.data.sync
 
 import android.content.Context
 import android.util.Log
+import com.notel.notel.data.local.entity.UserList
+import com.notel.notel.data.local.entity.UserListItem
 import com.notel.notel.data.local.dao.CategoryDao
 import com.notel.notel.data.local.dao.LogEntryDao
 import com.notel.notel.data.preferences.NotelPreferences
@@ -26,6 +28,7 @@ class SyncManager @Inject constructor(
     private val knowledgeDocumentDao: com.notel.notel.data.local.dao.KnowledgeDocumentDao,
     private val coachSessionDao: com.notel.notel.data.local.dao.CoachSessionDao,
     private val coachMessageDao: com.notel.notel.data.local.dao.CoachMessageDao,
+    private val userListDao: com.notel.notel.data.local.dao.UserListDao,
     private val preferences: NotelPreferences,
     @ApplicationContext private val context: Context
 ) {
@@ -83,6 +86,7 @@ class SyncManager @Inject constructor(
                 }
 
                 // Profile is handled at the start for optimistic local updates.
+                preferences.setLastSyncTime(System.currentTimeMillis())
                 Log.d(tag, "Sync cycle complete!")
             } catch (e: Exception) {
                 Log.e(tag, "Sync cycle failed: ${e.message}")
@@ -93,7 +97,16 @@ class SyncManager @Inject constructor(
     suspend fun pushProfileData() = withContext(Dispatchers.IO) {
         try {
             if (!preferences.loggedIn.first()) return@withContext
-            jotApi.syncProfile(
+            
+            // Serialize User Lists
+            val localLists = userListDao.getAllLists().first()
+            val syncDtos = localLists.map { list ->
+                val items = userListDao.getItemsForList(list.id).first().map { it.text }
+                UserListSyncDto(list.name, items)
+            }
+            val userListsJson = Json.encodeToString(syncDtos)
+
+            val response = jotApi.syncProfile(
                 SyncProfileRequest(
                     userContext = preferences.userContext.first(),
                     knowledgeBase = preferences.knowledgeBase.first(),
@@ -107,9 +120,13 @@ class SyncManager @Inject constructor(
                     redditSubreddits = preferences.redditSubreddits.first(),
                     redditSummaries = preferences.redditSummaries.first(),
                     currentStreak = preferences.currentStreak.first(),
-                    bestStreak = preferences.bestStreak.first()
+                    bestStreak = preferences.bestStreak.first(),
+                    userLists = userListsJson
                 )
             )
+            if (response.isSuccessful) {
+                preferences.setLastSyncTime(System.currentTimeMillis())
+            }
         } catch (e: Exception) {
             Log.e(tag, "pushProfileData failed: ${e.message}")
         }
@@ -256,6 +273,19 @@ class SyncManager @Inject constructor(
                     profile.redditSummaries?.let { if (it.isNotBlank()) preferences.setRedditSummaries(it) }
                     profile.currentStreak?.let { preferences.setCurrentStreak(it) }
                     profile.bestStreak?.let { preferences.setBestStreak(it) }
+                    profile.userLists?.let { serverJson ->
+                        if (serverJson.isNotBlank()) {
+                            val pulledLists = try { Json.decodeFromString<List<UserListSyncDto>>(serverJson) } catch(e: Exception) { emptyList() }
+                            userListDao.clearAllLists()
+                            userListDao.clearAllListItems()
+                            pulledLists.forEach { listDto ->
+                                val insertedListId = userListDao.insertList(UserList(name = listDto.name)).toInt()
+                                listDto.items.forEachIndexed { index, text ->
+                                    userListDao.insertItem(UserListItem(listId = insertedListId, text = text, sortOrder = index))
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // D. Restore Documents

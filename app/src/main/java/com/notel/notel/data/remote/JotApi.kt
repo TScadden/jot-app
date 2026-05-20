@@ -185,6 +185,12 @@ data class SyncCategoriesRequest(
 )
 
 @Serializable
+data class UserListSyncDto(
+    val name: String,
+    val items: List<String> = emptyList()
+)
+
+@Serializable
 data class SyncProfileRequest(
     val userContext: String? = null,
     val knowledgeBase: String? = null,
@@ -202,7 +208,8 @@ data class SyncProfileRequest(
     val redditSubreddits: String? = null,
     val redditSummaries: String? = null,
     val currentStreak: Int? = null,
-    val bestStreak: Int? = null
+    val bestStreak: Int? = null,
+    val userLists: String? = null
 )
 
 @Serializable
@@ -257,7 +264,8 @@ data class ProfileDtoModel(
     val redditSubreddits: String? = null,
     val redditSummaries: String? = null,
     val currentStreak: Int? = null,
-    val bestStreak: Int? = null
+    val bestStreak: Int? = null,
+    val userLists: String? = null
 )
 
 @Serializable
