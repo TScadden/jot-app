@@ -15,6 +15,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,6 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -277,6 +280,7 @@ private fun ChatBubble(
     onApproveFile: () -> Unit,
     onDenyFile: () -> Unit
 ) {
+    val clipboardManager = LocalClipboardManager.current
     val isUser = message.role == "user"
     val bubbleShape = if (isUser) {
         RoundedCornerShape(20.dp, 20.dp, 4.dp, 20.dp)
@@ -390,12 +394,34 @@ private fun ChatBubble(
                     if (message.isLoading) {
                         TypingIndicator()
                     } else {
-                        Text(
-                            text = message.content,
-                            color = textColor,
-                            fontSize = 15.sp,
-                            lineHeight = 22.sp
-                        )
+                        Column {
+                            Text(
+                                text = message.content,
+                                color = textColor,
+                                fontSize = 15.sp,
+                                lineHeight = 22.sp
+                            )
+                            if (!isUser && message.content.isNotBlank()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                    horizontalArrangement = Arrangement.End
+                                ) {
+                                    IconButton(
+                                        onClick = {
+                                            clipboardManager.setText(AnnotatedString(message.content))
+                                        },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.ContentCopy,
+                                            contentDescription = "Copy message",
+                                            tint = NotelTextSecondary,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
