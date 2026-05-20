@@ -13,6 +13,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,6 +30,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.CoachMessage
 import com.notel.notel.ui.viewmodel.CoachViewModel
+import com.notel.notel.ui.viewmodel.NoteStatus
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -79,6 +81,13 @@ fun CoachScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = NotelTextPrimary)
                     }
                 },
+                actions = {
+                    if (messages.size > 1) {
+                        IconButton(onClick = { viewModel.deleteCurrentSession(onDeleted = onBack) }) {
+                            Icon(Icons.Default.Delete, "Delete Chat", tint = Color(0xFFFF5252))
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = NotelBackground)
             )
         }
@@ -97,7 +106,11 @@ fun CoachScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 items(messages, key = { it.id }) { message ->
-                    ChatBubble(message = message)
+                    ChatBubble(
+                        message = message,
+                        onApprove = { viewModel.approveProposedNote(message.id, message.proposedNoteText ?: "") },
+                        onDeny = { viewModel.denyProposedNote(message.id) }
+                    )
                 }
             }
 
@@ -175,7 +188,11 @@ fun CoachScreen(
 }
 
 @Composable
-private fun ChatBubble(message: CoachMessage) {
+private fun ChatBubble(
+    message: CoachMessage,
+    onApprove: () -> Unit,
+    onDeny: () -> Unit
+) {
     val isUser = message.role == "user"
     val bubbleShape = if (isUser) {
         RoundedCornerShape(20.dp, 20.dp, 4.dp, 20.dp)
@@ -200,7 +217,7 @@ private fun ChatBubble(message: CoachMessage) {
                 Text("✨ Jot Coach", fontSize = 12.sp, color = NotelPrimary, fontWeight = FontWeight.SemiBold)
             }
         }
-        
+
         Surface(
             shape = bubbleShape,
             color = backgroundColor,
@@ -219,13 +236,113 @@ private fun ChatBubble(message: CoachMessage) {
                 }
             }
         }
+
+        // Suggestion Card or Badges
+        if (!isUser && message.proposedNoteText != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            when (message.noteStatus) {
+                NoteStatus.PENDING -> {
+                    Surface(
+                        modifier = Modifier
+                            .widthIn(max = 300.dp)
+                            .padding(start = 8.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.White.copy(alpha = 0.05f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text("📝", fontSize = 16.sp)
+                                Text(
+                                    text = "Suggested Note Log",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = NotelPrimary
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "\"${message.proposedNoteText}\"",
+                                fontSize = 14.sp,
+                                color = NotelTextPrimary,
+                                style = androidx.compose.ui.text.TextStyle(fontStyle = androidx.compose.ui.text.FontStyle.Italic),
+                                lineHeight = 20.sp
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = onDeny,
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = Color(0xFFFF5252)
+                                    ),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF5252).copy(alpha = 0.4f))
+                                ) {
+                                    Text("Deny", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                }
+
+                                Button(
+                                    onClick = onApprove,
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFF00E676),
+                                        contentColor = Color(0xFF080E1A)
+                                    )
+                                ) {
+                                    Text("Approve", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+                NoteStatus.APPROVED -> {
+                    Row(
+                        modifier = Modifier.padding(start = 12.dp, top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "✓ Note Saved",
+                            color = Color(0xFF00E676),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                NoteStatus.DENIED -> {
+                    Row(
+                        modifier = Modifier.padding(start = 12.dp, top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "✗ Suggestion Dismissed",
+                            color = Color(0xFFFF5252),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+                else -> {}
+            }
+        }
     }
 }
 
 @Composable
 private fun TypingIndicator() {
     val infiniteTransition = rememberInfiniteTransition(label = "typing")
-    
+
     @Composable
     fun Dot(delayMillis: Int) {
         val alpha by infiniteTransition.animateFloat(

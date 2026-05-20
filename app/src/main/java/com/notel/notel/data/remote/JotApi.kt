@@ -461,6 +461,9 @@ interface JotApi {
     @retrofit2.http.DELETE("api/sync/documents/{id}")
     suspend fun deleteDocument(@retrofit2.http.Path("id") id: String): Response<GenericResponse>
 
+    @retrofit2.http.DELETE("api/sync/coach_sessions/{id}")
+    suspend fun deleteCoachSession(@retrofit2.http.Path("id") id: String): Response<GenericResponse>
+
     // ── BILLING ──────────────────────────────────────────
     @POST("api/billing/verify")
     suspend fun verifyPurchase(@Body request: BillingVerificationRequest): Response<BillingVerificationResponse>

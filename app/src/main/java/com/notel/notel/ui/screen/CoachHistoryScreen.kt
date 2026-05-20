@@ -8,12 +8,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -64,7 +66,7 @@ fun CoachHistoryScreen(
             FloatingActionButton(
                 onClick = onNewChatClick,
                 containerColor = NotelPrimary,
-                contentColor = androidx.compose.ui.graphics.Color.White,
+                contentColor = Color.White,
                 modifier = Modifier.padding(bottom = 72.dp)
             ) {
                 Icon(Icons.Default.Add, contentDescription = "New Chat")
@@ -94,7 +96,11 @@ fun CoachHistoryScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(sessions, key = { it.id }) { session ->
-                    SessionCard(session = session, onClick = { onSessionClick(session.id) })
+                    SessionCard(
+                        session = session,
+                        onClick = { onSessionClick(session.id) },
+                        onDeleteClick = { viewModel.deleteSession(session) }
+                    )
                 }
             }
         }
@@ -102,7 +108,11 @@ fun CoachHistoryScreen(
 }
 
 @Composable
-fun SessionCard(session: CoachSession, onClick: () -> Unit) {
+fun SessionCard(
+    session: CoachSession,
+    onClick: () -> Unit,
+    onDeleteClick: () -> Unit
+) {
     val dateFormat = SimpleDateFormat("MMM d, h:mm a", Locale.getDefault())
     val dateString = dateFormat.format(Date(session.updatedAt))
 
@@ -113,25 +123,38 @@ fun SessionCard(session: CoachSession, onClick: () -> Unit) {
         colors = CardDefaults.cardColors(containerColor = NotelSurfaceHigh),
         shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(
-                text = session.title,
-                color = NotelTextPrimary,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = dateString,
-                color = NotelTextSecondary,
-                fontSize = 12.sp
-            )
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = session.title,
+                    color = NotelTextPrimary,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = dateString,
+                    color = NotelTextSecondary,
+                    fontSize = 12.sp
+                )
+            }
+            IconButton(onClick = onDeleteClick) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "Delete Chat",
+                    tint = Color(0xFFFF5252).copy(alpha = 0.8f)
+                )
+            }
         }
     }
 }
