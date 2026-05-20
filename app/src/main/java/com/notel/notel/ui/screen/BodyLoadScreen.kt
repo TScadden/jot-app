@@ -479,8 +479,8 @@ fun BodyLoadScreen(
                     Spacer(Modifier.height(12.dp))
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth(0.5f)
-                            .aspectRatio(2f)
+                            .fillMaxWidth()
+                            .aspectRatio(3f)
                             .border(
                                 width = 3.dp,
                                 color = NotelPrimary.copy(alpha = 0.12f),
