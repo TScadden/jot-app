@@ -51,6 +51,12 @@ fun BodyLoadCard(
 ) {
     val score = state.score
     val isLoading = state.isLoading
+    var userTriggeredRefresh by remember { mutableStateOf(false) }
+
+    // Clear the user-triggered flag once loading finishes
+    LaunchedEffect(isLoading) {
+        if (!isLoading) userTriggeredRefresh = false
+    }
     val todayStr = java.time.LocalDate.now().toString()
     
     val activeCounters = counters.filter { !it.isArchived }
@@ -276,12 +282,20 @@ fun BodyLoadCard(
                             }
                         }
 
-                        Text(
-                            text = if (score > 0) score.toString() else "-",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Black,
-                            color = NotelTextPrimary
-                        )
+                        if (isLoading && userTriggeredRefresh) {
+                            CircularProgressIndicator(
+                                color = NotelPrimary,
+                                strokeWidth = 1.5.dp,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        } else {
+                            Text(
+                                text = if (score > 0) score.toString() else "-",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Black,
+                                color = NotelTextPrimary
+                            )
+                        }
                     }
                     
                     VerticalDivider(modifier = Modifier.height(32.dp).padding(horizontal = 4.dp), color = Color.White.copy(alpha = 0.1f))
@@ -337,7 +351,10 @@ fun BodyLoadCard(
             // Small Sync Button in bottom right corner of the rectangle
             // Small Sync Button ALWAYS visible
             IconButton(
-                onClick = onRefresh,
+                onClick = {
+                    userTriggeredRefresh = true
+                    onRefresh()
+                },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(end = 16.dp, bottom = 9.dp)
