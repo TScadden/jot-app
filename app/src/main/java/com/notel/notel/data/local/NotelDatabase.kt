@@ -9,23 +9,28 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.notel.notel.data.local.dao.CategoryDao
 import com.notel.notel.data.local.dao.LogEntryDao
 import com.notel.notel.data.local.dao.ReminderDao
+import com.notel.notel.data.local.dao.UserListDao
 import com.notel.notel.data.local.entity.Category
 import com.notel.notel.data.local.entity.LogEntry
 import com.notel.notel.data.local.entity.Reminder
+import com.notel.notel.data.local.entity.UserList
+import com.notel.notel.data.local.entity.UserListItem
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @Database(
     entities = [
-        LogEntry::class, 
-        Category::class, 
-        com.notel.notel.data.local.entity.KnowledgeDocument::class, 
+        LogEntry::class,
+        Category::class,
+        com.notel.notel.data.local.entity.KnowledgeDocument::class,
         Reminder::class,
         com.notel.notel.data.local.entity.CoachSession::class,
-        com.notel.notel.data.local.entity.CoachMessageEntity::class
+        com.notel.notel.data.local.entity.CoachMessageEntity::class,
+        UserList::class,
+        UserListItem::class
     ],
-    version = 17,
+    version = 18,
     exportSchema = false
 )
 abstract class NotelDatabase : RoomDatabase() {
@@ -35,6 +40,7 @@ abstract class NotelDatabase : RoomDatabase() {
     abstract fun reminderDao(): ReminderDao
     abstract fun coachSessionDao(): com.notel.notel.data.local.dao.CoachSessionDao
     abstract fun coachMessageDao(): com.notel.notel.data.local.dao.CoachMessageDao
+    abstract fun userListDao(): UserListDao
 
     companion object {
         @Volatile private var INSTANCE: NotelDatabase? = null
@@ -105,6 +111,28 @@ abstract class NotelDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS user_lists (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        name TEXT NOT NULL,
+                        createdAt INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS user_list_items (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        listId INTEGER NOT NULL,
+                        text TEXT NOT NULL,
+                        sortOrder INTEGER NOT NULL DEFAULT 0,
+                        FOREIGN KEY(listId) REFERENCES user_lists(id) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_user_list_items_listId ON user_list_items(listId)")
+            }
+        }
+
         private val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // Insert new Medication category
@@ -129,7 +157,7 @@ abstract class NotelDatabase : RoomDatabase() {
                     "notel_db"
                 )
                     .fallbackToDestructiveMigration()
-                    .addMigrations(MIGRATION_1_2, MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)

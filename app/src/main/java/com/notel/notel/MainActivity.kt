@@ -208,7 +208,8 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToHeart = { navController.navigate("fitbit") },
                                 onNavigateToMembership = { navController.navigate("settings?menu=MEMBERSHIP") },
                                 onNavigateToHabits = { navController.navigate("habits") },
-                                onNavigateToReminders = { navController.navigate("reminders") }
+                                onNavigateToReminders = { navController.navigate("reminders") },
+                                onNavigateToLists = { navController.navigate("lists") }
                             )
                         }
                         composable("habits") {
@@ -216,6 +217,9 @@ class MainActivity : ComponentActivity() {
                         }
                         composable("reminders") {
                             RemindersScreen(onBack = { navController.popBackStack() })
+                        }
+                        composable("lists") {
+                            com.notel.notel.ui.screen.ListsScreen(onBack = { navController.popBackStack() })
                         }
                         composable("data_connections") {
                             DataConnectionsScreen(onBack = { navController.popBackStack() })

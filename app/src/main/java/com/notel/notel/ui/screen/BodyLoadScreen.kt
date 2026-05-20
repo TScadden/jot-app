@@ -45,6 +45,7 @@ fun BodyLoadScreen(
     onNavigateToHeart: () -> Unit = {},
     onNavigateToHabits: () -> Unit = {},
     onNavigateToReminders: () -> Unit = {},
+    onNavigateToLists: () -> Unit = {},
     quickLogViewModel: QuickLogViewModel = hiltViewModel(),
     habitViewModel: HabitViewModel = hiltViewModel(),
     reminderViewModel: ReminderViewModel = hiltViewModel()
@@ -472,6 +473,64 @@ fun BodyLoadScreen(
                 }
             }
 
+            // ── Lists Tile ───────────────────────────────────────────────
+            item {
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
+                    Spacer(Modifier.height(12.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.5f)
+                            .aspectRatio(2f)
+                            .border(
+                                width = 3.dp,
+                                color = NotelPrimary.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(26.dp)
+                            )
+                            .border(
+                                width = 6.dp,
+                                color = NotelPrimary.copy(alpha = 0.04f),
+                                shape = RoundedCornerShape(28.dp)
+                            )
+                            .liquidGlass(
+                                shape = RoundedCornerShape(24.dp),
+                                color = NotelSurface,
+                                alpha = 0.8f,
+                                showBorder = true
+                            )
+                            .clickable { onNavigateToLists() }
+                            .padding(20.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Start
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.List,
+                                contentDescription = null,
+                                tint = NotelPrimary,
+                                modifier = Modifier.size(28.dp)
+                            )
+                            Spacer(Modifier.width(14.dp))
+                            Column {
+                                Text(
+                                    text = "Lists",
+                                    color = NotelTextPrimary,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Manage your lists",
+                                    color = NotelTextSecondary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                }
+            }
             if (state.error != null) {
                 item {
                     Spacer(Modifier.height(16.dp))
