@@ -192,6 +192,7 @@ fun KeyMetricsScreen(
             } else {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
+                    contentPadding = PaddingValues(bottom = 100.dp),
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 16.dp),

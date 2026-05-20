@@ -495,6 +495,7 @@ fun SleepScreen(
                     }
                 }
             }
+            Spacer(Modifier.height(100.dp))
         }
     }
 }

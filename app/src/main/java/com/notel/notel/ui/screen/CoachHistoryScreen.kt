@@ -64,7 +64,8 @@ fun CoachHistoryScreen(
             FloatingActionButton(
                 onClick = onNewChatClick,
                 containerColor = NotelPrimary,
-                contentColor = androidx.compose.ui.graphics.Color.White
+                contentColor = androidx.compose.ui.graphics.Color.White,
+                modifier = Modifier.padding(bottom = 72.dp)
             ) {
                 Icon(Icons.Default.Add, contentDescription = "New Chat")
             }
@@ -89,7 +90,7 @@ fun CoachHistoryScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),
-                contentPadding = PaddingValues(16.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 100.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(sessions, key = { it.id }) { session ->

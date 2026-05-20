@@ -237,6 +237,7 @@ fun HabitsScreen(
             } else {
                 val rows = habits.chunked(2)
                 LazyColumn(
+                    contentPadding = PaddingValues(bottom = 100.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.weight(1f)
                 ) {

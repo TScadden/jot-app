@@ -2310,6 +2310,8 @@ fun SettingsScreen(
                         Text("Reset Account Status", color = Color.Red.copy(alpha = 0.6f), fontSize = 10.sp)
                     }
                 }
+                
+                Spacer(Modifier.height(100.dp))
             }
             
 
