@@ -17,8 +17,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @Database(
-    entities = [LogEntry::class, Category::class, com.notel.notel.data.local.entity.KnowledgeDocument::class, Reminder::class],
-    version = 15,
+    entities = [
+        LogEntry::class, 
+        Category::class, 
+        com.notel.notel.data.local.entity.KnowledgeDocument::class, 
+        Reminder::class,
+        com.notel.notel.data.local.entity.CoachSession::class,
+        com.notel.notel.data.local.entity.CoachMessageEntity::class
+    ],
+    version = 17,
     exportSchema = false
 )
 abstract class NotelDatabase : RoomDatabase() {
@@ -26,6 +33,8 @@ abstract class NotelDatabase : RoomDatabase() {
     abstract fun categoryDao(): CategoryDao
     abstract fun knowledgeDocumentDao(): com.notel.notel.data.local.dao.KnowledgeDocumentDao
     abstract fun reminderDao(): ReminderDao
+    abstract fun coachSessionDao(): com.notel.notel.data.local.dao.CoachSessionDao
+    abstract fun coachMessageDao(): com.notel.notel.data.local.dao.CoachMessageDao
 
     companion object {
         @Volatile private var INSTANCE: NotelDatabase? = null
@@ -62,6 +71,40 @@ abstract class NotelDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS coach_sessions (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        title TEXT NOT NULL,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        isSynced INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+                
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS coach_messages (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        sessionId TEXT NOT NULL,
+                        role TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        timestamp INTEGER NOT NULL,
+                        isSynced INTEGER NOT NULL DEFAULT 0,
+                        FOREIGN KEY(sessionId) REFERENCES coach_sessions(id) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_coach_messages_sessionId ON coach_messages(sessionId)")
+            }
+        }
+
+        private val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE reminders ADD COLUMN intervalMinutes INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         private val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // Insert new Medication category
@@ -86,7 +129,7 @@ abstract class NotelDatabase : RoomDatabase() {
                     "notel_db"
                 )
                     .fallbackToDestructiveMigration()
-                    .addMigrations(MIGRATION_1_2, MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)

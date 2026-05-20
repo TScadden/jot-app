@@ -25,6 +25,7 @@ class ReminderViewModel @Inject constructor(
         fixedHour: Int = 12,
         fixedMinute: Int = 0,
         intervalHours: Int = 2,
+        intervalMinutes: Int = 0,
         startHour: Int = 8,
         startMinute: Int = 0,
         endHour: Int = 21,
@@ -34,15 +35,16 @@ class ReminderViewModel @Inject constructor(
         viewModelScope.launch {
             repository.addReminder(
                 Reminder(
-                    title         = title.trim(),
-                    type          = type,
-                    fixedHour     = fixedHour,
-                    fixedMinute   = fixedMinute,
-                    intervalHours = intervalHours,
-                    startHour     = startHour,
-                    startMinute   = startMinute,
-                    endHour       = endHour,
-                    endMinute     = endMinute
+                    title           = title.trim(),
+                    type            = type,
+                    fixedHour       = fixedHour,
+                    fixedMinute     = fixedMinute,
+                    intervalHours   = intervalHours,
+                    intervalMinutes = intervalMinutes,
+                    startHour       = startHour,
+                    startMinute     = startMinute,
+                    endHour         = endHour,
+                    endMinute       = endMinute
                 )
             )
         }

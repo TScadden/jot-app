@@ -15,12 +15,13 @@ object ReminderScheduler {
     const val EXTRA_REMINDER_TYPE  = "reminder_type"
     const val EXTRA_FIXED_HOUR     = "fixed_hour"
     const val EXTRA_FIXED_MINUTE   = "fixed_minute"
-    const val EXTRA_INTERVAL_HOURS = "interval_hours"
-    const val EXTRA_START_HOUR     = "start_hour"
-    const val EXTRA_START_MINUTE   = "start_minute"
-    const val EXTRA_END_HOUR       = "end_hour"
-    const val EXTRA_END_MINUTE     = "end_minute"
-    const val EXTRA_SLOT_INDEX     = "slot_index"
+    const val EXTRA_INTERVAL_HOURS   = "interval_hours"
+    const val EXTRA_INTERVAL_MINUTES = "interval_minutes"
+    const val EXTRA_START_HOUR       = "start_hour"
+    const val EXTRA_START_MINUTE     = "start_minute"
+    const val EXTRA_END_HOUR         = "end_hour"
+    const val EXTRA_END_MINUTE       = "end_minute"
+    const val EXTRA_SLOT_INDEX       = "slot_index"
 
     /** Returns true if the app can schedule exact alarms (Android 12+ gating). */
     fun canScheduleExactAlarms(context: Context): Boolean {
@@ -83,6 +84,12 @@ object ReminderScheduler {
     /** Compute all wall-clock trigger times for today for an INTERVAL reminder. */
     fun computeSlots(reminder: Reminder): List<Long> {
         val slots = mutableListOf<Long>()
+        val addHours = reminder.intervalHours
+        val addMinutes = reminder.intervalMinutes
+        if (addHours == 0 && addMinutes == 0) {
+            return slots // Prevent infinite loop
+        }
+
         val cal = Calendar.getInstance().apply {
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
@@ -98,7 +105,8 @@ object ReminderScheduler {
 
         while (cal.timeInMillis <= endMs) {
             slots.add(cal.timeInMillis)
-            cal.add(Calendar.HOUR_OF_DAY, reminder.intervalHours)
+            cal.add(Calendar.HOUR_OF_DAY, addHours)
+            cal.add(Calendar.MINUTE, addMinutes)
         }
         return slots
     }
@@ -138,6 +146,7 @@ object ReminderScheduler {
             putExtra(EXTRA_FIXED_HOUR, reminder.fixedHour)
             putExtra(EXTRA_FIXED_MINUTE, reminder.fixedMinute)
             putExtra(EXTRA_INTERVAL_HOURS, reminder.intervalHours)
+            putExtra(EXTRA_INTERVAL_MINUTES, reminder.intervalMinutes)
             putExtra(EXTRA_START_HOUR, reminder.startHour)
             putExtra(EXTRA_START_MINUTE, reminder.startMinute)
             putExtra(EXTRA_END_HOUR, reminder.endHour)

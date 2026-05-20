@@ -50,6 +50,16 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideCoachSessionDao(db: NotelDatabase): com.notel.notel.data.local.dao.CoachSessionDao =
+        db.coachSessionDao()
+
+    @Provides
+    @Singleton
+    fun provideCoachMessageDao(db: NotelDatabase): com.notel.notel.data.local.dao.CoachMessageDao =
+        db.coachMessageDao()
+
+    @Provides
+    @Singleton
     fun provideOkHttpClient(authInterceptor: AuthInterceptor): OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)

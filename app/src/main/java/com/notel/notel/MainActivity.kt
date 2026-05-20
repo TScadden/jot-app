@@ -231,10 +231,20 @@ class MainActivity : ComponentActivity() {
                                 onBack = { navController.popBackStack() },
                                 onSleepClick = { navController.navigate("sleep") },
                                 onKeyMetricsClick = { navController.navigate("key_metrics") },
-                                onCoachClick = { navController.navigate("coach") }
+                                onCoachClick = { navController.navigate("coach_history") }
                             )
                         }
-                        composable("coach") {
+                        composable("coach_history") {
+                            com.notel.notel.ui.screen.CoachHistoryScreen(
+                                onBack = { navController.popBackStack() },
+                                onNewChatClick = { navController.navigate("coach") },
+                                onSessionClick = { sessionId -> navController.navigate("coach?sessionId=$sessionId") }
+                            )
+                        }
+                        composable(
+                            "coach?sessionId={sessionId}",
+                            arguments = listOf(androidx.navigation.navArgument("sessionId") { nullable = true })
+                        ) {
                             CoachScreen(onBack = { navController.popBackStack() })
                         }
                         composable("quick_log") {

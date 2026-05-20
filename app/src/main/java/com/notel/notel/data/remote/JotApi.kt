@@ -90,8 +90,29 @@ data class AiResponse<T>(
 
 @Serializable
 data class CoachMessageDto(
+    val id: String,
+    val sessionId: String,
     val role: String,
-    val content: String
+    val content: String,
+    val timestamp: Long
+)
+
+@Serializable
+data class CoachSessionDto(
+    val id: String,
+    val title: String,
+    val createdAt: Long,
+    val updatedAt: Long
+)
+
+@Serializable
+data class TitleRequest(
+    val firstMessage: String
+)
+
+@Serializable
+data class TitleResponse(
+    val title: String
 )
 
 @Serializable
@@ -246,7 +267,19 @@ data class SyncPullResponse(
     val profile: ProfileDtoModel? = null,
     val insights: List<InsightDtoModel> = emptyList(),
     val documents: List<KnowledgeDocumentDtoModel> = emptyList(),
+    val coachSessions: List<CoachSessionDto> = emptyList(),
+    val coachMessages: List<CoachMessageDto> = emptyList(),
     val isUnlimited: Boolean? = null
+)
+
+@Serializable
+data class SyncCoachSessionsRequest(
+    val sessions: List<CoachSessionDto>
+)
+
+@Serializable
+data class SyncCoachMessagesRequest(
+    val messages: List<CoachMessageDto>
 )
 
 @Serializable
@@ -388,6 +421,9 @@ interface JotApi {
     @POST("api/ai/coach")
     suspend fun getCoachReply(@Body request: CoachRequest): Response<AiResponse<String>>
 
+    @POST("api/ai/coach/title")
+    suspend fun getCoachTitle(@Body request: TitleRequest): Response<TitleResponse>
+
     // ── SYNC ─────────────────────────────────────────────
     @retrofit2.http.GET("api/sync/pull")
     suspend fun pullData(): Response<SyncPullResponse>
@@ -406,6 +442,12 @@ interface JotApi {
 
     @POST("api/sync/documents")
     suspend fun syncDocuments(@Body request: SyncDocumentsRequest): Response<SyncResponse>
+
+    @POST("api/sync/coach_sessions")
+    suspend fun syncCoachSessions(@Body request: SyncCoachSessionsRequest): Response<SyncResponse>
+
+    @POST("api/sync/coach_messages")
+    suspend fun syncCoachMessages(@Body request: SyncCoachMessagesRequest): Response<SyncResponse>
 
     @retrofit2.http.GET("api/sync/documents/{id}")
     suspend fun getDocumentData(@retrofit2.http.Path("id") id: String): Response<AiResponse<String>>

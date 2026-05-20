@@ -11,6 +11,7 @@ data class Reminder(
     val fixedHour: Int = 12,
     val fixedMinute: Int = 0,
     val intervalHours: Int = 2,
+    val intervalMinutes: Int = 0,
     val startHour: Int = 8,
     val startMinute: Int = 0,
     val endHour: Int = 21,

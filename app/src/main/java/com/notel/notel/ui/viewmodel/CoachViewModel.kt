@@ -1,20 +1,23 @@
 package com.notel.notel.ui.viewmodel
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.notel.notel.data.local.dao.CoachMessageDao
+import com.notel.notel.data.local.dao.CoachSessionDao
+import com.notel.notel.data.local.entity.CoachMessageEntity
+import com.notel.notel.data.local.entity.CoachSession
 import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.remote.CoachMessageDto
 import com.notel.notel.data.repository.LogRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.util.UUID
 import javax.inject.Inject
 
 data class CoachMessage(
-    val id: String = java.util.UUID.randomUUID().toString(),
+    val id: String = UUID.randomUUID().toString(),
     val role: String, // "user" or "coach"
     val content: String,
     val isLoading: Boolean = false
@@ -23,37 +26,96 @@ data class CoachMessage(
 @HiltViewModel
 class CoachViewModel @Inject constructor(
     private val logRepository: LogRepository,
-    private val preferences: NotelPreferences
+    private val preferences: NotelPreferences,
+    private val coachSessionDao: CoachSessionDao,
+    private val coachMessageDao: CoachMessageDao,
+    savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
-    private val _messages = MutableStateFlow<List<CoachMessage>>(
-        listOf(
-            CoachMessage(
-                role = "coach",
-                content = "Hi! I'm Jot Coach. I have context on your recent logs, body load history, and knowledge base. How can I help you today?"
-            )
-        )
+    private val _currentSessionId = MutableStateFlow(savedStateHandle.get<String>("sessionId"))
+
+    private val _loadingMessage = MutableStateFlow<CoachMessage?>(null)
+    
+    // Default greeting for new sessions
+    private val welcomeMessage = CoachMessage(
+        role = "coach",
+        content = "Hi! I'm Jot Coach. I have context on your recent logs, body load history, and knowledge base. How can I help you today?"
     )
-    val messages: StateFlow<List<CoachMessage>> = _messages.asStateFlow()
+
+    @kotlinx.coroutines.ExperimentalCoroutinesApi
+    val messages: StateFlow<List<CoachMessage>> = _currentSessionId.flatMapLatest { sessionId ->
+        if (sessionId == null) {
+            flowOf(listOf(welcomeMessage))
+        } else {
+            coachMessageDao.getMessagesForSession(sessionId).map { entities ->
+                entities.map { CoachMessage(id = it.id, role = it.role, content = it.content) }
+            }
+        }
+    }.combine(_loadingMessage) { dbMessages, loadingMsg ->
+        if (loadingMsg != null) {
+            dbMessages + loadingMsg
+        } else {
+            dbMessages
+        }
+    }.stateIn(viewModelScope, SharingStarted.Lazily, listOf(welcomeMessage))
 
     fun sendMessage(text: String) {
         if (text.isBlank()) return
 
-        // 1. Add user message
-        val userMsg = CoachMessage(role = "user", content = text.trim())
-        
-        // 2. Add loading placeholder for coach
-        val loadingId = java.util.UUID.randomUUID().toString()
-        val loadingMsg = CoachMessage(id = loadingId, role = "coach", content = "", isLoading = true)
+        val userMsgId = UUID.randomUUID().toString()
+        val userText = text.trim()
 
-        _messages.value = _messages.value + userMsg + loadingMsg
-
-        // 3. Fire API request
         viewModelScope.launch {
             try {
-                val currentHistory = _messages.value
-                    .filter { !it.isLoading && it.id != loadingId }
-                    .map { CoachMessageDto(role = it.role, content = it.content) }
+                // 1. Ensure Session exists
+                var sessionId = _currentSessionId.value
+                if (sessionId == null) {
+                    val newSessionId = UUID.randomUUID().toString()
+                    sessionId = newSessionId
+                    
+                    // Save session
+                    val tempSession = CoachSession(id = newSessionId, title = "New Chat")
+                    coachSessionDao.insertSession(tempSession)
+
+                    // Save the initial greeting message to DB
+                    coachMessageDao.insertMessage(
+                        CoachMessageEntity(
+                            sessionId = newSessionId,
+                            role = "coach",
+                            content = welcomeMessage.content
+                        )
+                    )
+
+                    // Update StateFlow
+                    _currentSessionId.value = newSessionId
+
+                    // Ask AI for a title in background
+                    launch {
+                        val titleRes = logRepository.generateCoachTitle(userText)
+                        val newTitle = titleRes.getOrNull() ?: "Chat"
+                        coachSessionDao.updateSession(tempSession.copy(title = newTitle, updatedAt = System.currentTimeMillis(), isSynced = false))
+                    }
+                }
+
+                // 2. Save user message to DB
+                coachSessionDao.updateSession(coachSessionDao.getSessionById(sessionId)!!.copy(updatedAt = System.currentTimeMillis(), isSynced = false))
+                coachMessageDao.insertMessage(
+                    CoachMessageEntity(
+                        id = userMsgId,
+                        sessionId = sessionId,
+                        role = "user",
+                        content = userText
+                    )
+                )
+
+                // 3. Show loading indicator
+                val loadingId = UUID.randomUUID().toString()
+                _loadingMessage.value = CoachMessage(id = loadingId, role = "coach", content = "", isLoading = true)
+
+                // 4. Fire API request
+                val currentHistory = messages.value
+                    .filter { !it.isLoading }
+                    .map { CoachMessageDto(id = it.id, sessionId = sessionId, role = it.role, content = it.content, timestamp = System.currentTimeMillis()) }
                 
                 val userCtx = preferences.userContext.first()
                 val kb = preferences.knowledgeBase.first()
@@ -68,22 +130,23 @@ class CoachViewModel @Inject constructor(
 
                 result.fold(
                     onSuccess = { replyText ->
-                        // Replace loading message with actual reply
-                        _messages.value = _messages.value.map {
-                            if (it.id == loadingId) it.copy(content = replyText, isLoading = false) else it
-                        }
+                        _loadingMessage.value = null
+                        val aiMsgId = UUID.randomUUID().toString()
+                        coachMessageDao.insertMessage(
+                            CoachMessageEntity(
+                                id = aiMsgId,
+                                sessionId = sessionId,
+                                role = "coach",
+                                content = replyText
+                            )
+                        )
                     },
                     onFailure = { error ->
-                        // Replace loading message with error
-                        _messages.value = _messages.value.map {
-                            if (it.id == loadingId) it.copy(content = "Sorry, I had trouble connecting: ${error.message}", isLoading = false) else it
-                        }
+                        _loadingMessage.value = CoachMessage(id = loadingId, role = "coach", content = "Sorry, I had trouble connecting: ${error.message}", isLoading = false)
                     }
                 )
             } catch (e: Exception) {
-                _messages.value = _messages.value.map {
-                    if (it.id == loadingId) it.copy(content = "An unexpected error occurred.", isLoading = false) else it
-                }
+                _loadingMessage.value = CoachMessage(id = UUID.randomUUID().toString(), role = "coach", content = "An unexpected error occurred.", isLoading = false)
             }
         }
     }

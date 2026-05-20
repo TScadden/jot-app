@@ -231,17 +231,18 @@ fun RemindersScreen(
         AddReminderSheet(
             sheetState = sheetState,
             onDismiss = { showAddSheet = false },
-            onSave = { title, type, fixedH, fixedM, intervalH, startH, startM, endH, endM ->
+            onSave = { title, type, fixedH, fixedM, intervalH, intervalM, startH, startM, endH, endM ->
                 viewModel.addReminder(
-                    title         = title,
-                    type          = type,
-                    fixedHour     = fixedH,
-                    fixedMinute   = fixedM,
-                    intervalHours = intervalH,
-                    startHour     = startH,
-                    startMinute   = startM,
-                    endHour       = endH,
-                    endMinute     = endM
+                    title           = title,
+                    type            = type,
+                    fixedHour       = fixedH,
+                    fixedMinute     = fixedM,
+                    intervalHours   = intervalH,
+                    intervalMinutes = intervalM,
+                    startHour       = startH,
+                    startMinute     = startM,
+                    endHour         = endH,
+                    endMinute       = endM
                 )
                 showAddSheet = false
             }
@@ -260,7 +261,12 @@ private fun ReminderCard(
     val timeLabel = if (reminder.type == "FIXED") {
         formatTime(reminder.fixedHour, reminder.fixedMinute)
     } else {
-        "Every ${reminder.intervalHours}h  •  ${formatTime(reminder.startHour, reminder.startMinute)} – ${formatTime(reminder.endHour, reminder.endMinute)}"
+        val intervalStr = if (reminder.intervalHours > 0) {
+            "Every ${reminder.intervalHours}h"
+        } else {
+            "Every ${reminder.intervalMinutes}m"
+        }
+        "$intervalStr  •  ${formatTime(reminder.startHour, reminder.startMinute)} – ${formatTime(reminder.endHour, reminder.endMinute)}"
     }
 
     Surface(
@@ -326,17 +332,18 @@ private fun ReminderCard(
 private fun AddReminderSheet(
     sheetState: SheetState,
     onDismiss: () -> Unit,
-    onSave: (String, String, Int, Int, Int, Int, Int, Int, Int) -> Unit
+    onSave: (String, String, Int, Int, Int, Int, Int, Int, Int, Int) -> Unit
 ) {
-    var title         by remember { mutableStateOf("") }
-    var type          by remember { mutableStateOf("FIXED") }   // "FIXED" | "INTERVAL"
-    var fixedHour     by remember { mutableIntStateOf(8) }
-    var fixedMinute   by remember { mutableIntStateOf(0) }
-    var intervalHours by remember { mutableIntStateOf(2) }
-    var startHour     by remember { mutableIntStateOf(8) }
-    var startMinute   by remember { mutableIntStateOf(0) }
-    var endHour       by remember { mutableIntStateOf(21) }
-    var endMinute     by remember { mutableIntStateOf(0) }
+    var title           by remember { mutableStateOf("") }
+    var type            by remember { mutableStateOf("FIXED") }   // "FIXED" | "INTERVAL"
+    var fixedHour       by remember { mutableIntStateOf(8) }
+    var fixedMinute     by remember { mutableIntStateOf(0) }
+    var intervalHours   by remember { mutableIntStateOf(2) }
+    var intervalMinutes by remember { mutableIntStateOf(0) }
+    var startHour       by remember { mutableIntStateOf(8) }
+    var startMinute     by remember { mutableIntStateOf(0) }
+    var endHour         by remember { mutableIntStateOf(21) }
+    var endMinute       by remember { mutableIntStateOf(0) }
 
     val canSave = title.isNotBlank()
 
@@ -403,7 +410,14 @@ private fun AddReminderSheet(
                             Column {
                                 Text("Repeat every", color = NotelTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                                 Spacer(Modifier.height(8.dp))
-                                IntervalPicker(hours = intervalHours, onHoursChange = { intervalHours = it })
+                                IntervalPicker(
+                                    intervalHours = intervalHours,
+                                    intervalMinutes = intervalMinutes,
+                                    onIntervalChange = { h, m ->
+                                        intervalHours = h
+                                        intervalMinutes = m
+                                    }
+                                )
                             }
                             // Start time
                             Column {
@@ -434,7 +448,7 @@ private fun AddReminderSheet(
 
             Button(
                 onClick = {
-                    onSave(title, type, fixedHour, fixedMinute, intervalHours, startHour, startMinute, endHour, endMinute)
+                    onSave(title, type, fixedHour, fixedMinute, intervalHours, intervalMinutes, startHour, startMinute, endHour, endMinute)
                 },
                 enabled = canSave,
                 modifier = Modifier.fillMaxWidth().height(52.dp),
@@ -479,46 +493,107 @@ private fun TimePickerRow(
     hour: Int, minute: Int,
     onHourChange: (Int) -> Unit, onMinuteChange: (Int) -> Unit
 ) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Hour dropdown
-        TimeDropdown(
-            value = hour,
-            options = (0..23).toList(),
-            label = "Hour",
-            display = { h ->
-                val amPm = if (h < 12) "AM" else "PM"
-                val h12 = when (h % 12) { 0 -> 12; else -> h % 12 }
-                "$h12 $amPm"
+    val context = LocalContext.current
+    val showTimePicker = {
+        android.app.TimePickerDialog(
+            context,
+            { _, selectedHour, selectedMinute ->
+                onHourChange(selectedHour)
+                onMinuteChange(selectedMinute)
             },
-            onSelect = onHourChange,
-            modifier = Modifier.weight(1f)
-        )
-        Text(":", color = NotelTextSecondary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        // Minute dropdown
-        TimeDropdown(
-            value = minute,
-            options = listOf(0, 15, 30, 45),
-            label = "Min",
-            display = { m -> "%02d".format(m) },
-            onSelect = onMinuteChange,
-            modifier = Modifier.weight(0.7f)
-        )
+            hour,
+            minute,
+            false // 12-hour format
+        ).show()
+    }
+
+    Surface(
+        onClick = showTimePicker,
+        shape = RoundedCornerShape(12.dp),
+        color = NotelSurfaceHigh.copy(alpha = 0.08f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
+        modifier = Modifier.fillMaxWidth().height(52.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Alarm,
+                    contentDescription = null,
+                    tint = NotelPrimary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    text = "Select Time",
+                    color = NotelTextSecondary,
+                    fontSize = 14.sp
+                )
+            }
+            Text(
+                text = formatTime(hour, minute),
+                color = NotelPrimary,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
     }
 }
 
 @Composable
-private fun IntervalPicker(hours: Int, onHoursChange: (Int) -> Unit) {
-    TimeDropdown(
-        value = hours,
-        options = listOf(1, 2, 3, 4, 6, 8, 12),
-        label = "Every",
-        display = { h -> if (h == 1) "1 hour" else "$h hours" },
-        onSelect = onHoursChange,
-        modifier = Modifier.fillMaxWidth(0.55f)
-    )
+private fun IntervalPicker(
+    intervalHours: Int,
+    intervalMinutes: Int,
+    onIntervalChange: (hours: Int, minutes: Int) -> Unit
+) {
+    var isMinutes by remember { mutableStateOf(intervalMinutes > 0 || intervalHours == 0) }
+    var value by remember { mutableIntStateOf(if (isMinutes) (if (intervalMinutes == 0) 30 else intervalMinutes) else intervalHours) }
+
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        // Value Picker
+        TimeDropdown(
+            value = value,
+            options = if (isMinutes) (1..60).toList() else (1..5).toList(),
+            label = "Value",
+            display = { "$it" },
+            onSelect = { newValue ->
+                value = newValue
+                if (isMinutes) {
+                    onIntervalChange(0, newValue)
+                } else {
+                    onIntervalChange(newValue, 0)
+                }
+            },
+            modifier = Modifier.weight(1f)
+        )
+
+        // Unit Picker
+        TimeDropdown(
+            value = if (isMinutes) 0 else 1,
+            options = listOf(0, 1),
+            label = "Unit",
+            display = { if (it == 0) "Minutes" else "Hours" },
+            onSelect = { unitIdx ->
+                val newIsMinutes = (unitIdx == 0)
+                isMinutes = newIsMinutes
+                if (newIsMinutes) {
+                    if (value > 60) value = 30
+                    onIntervalChange(0, value)
+                } else {
+                    if (value > 5) value = 2
+                    onIntervalChange(value, 0)
+                }
+            },
+            modifier = Modifier.weight(1f)
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

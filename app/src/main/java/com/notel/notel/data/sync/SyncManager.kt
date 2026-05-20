@@ -24,6 +24,8 @@ class SyncManager @Inject constructor(
     private val logEntryDao: LogEntryDao,
     private val categoryDao: CategoryDao,
     private val knowledgeDocumentDao: com.notel.notel.data.local.dao.KnowledgeDocumentDao,
+    private val coachSessionDao: com.notel.notel.data.local.dao.CoachSessionDao,
+    private val coachMessageDao: com.notel.notel.data.local.dao.CoachMessageDao,
     private val preferences: NotelPreferences,
     @ApplicationContext private val context: Context
 ) {
@@ -71,6 +73,8 @@ class SyncManager @Inject constructor(
                 }
 
                 syncDocuments()
+                syncCoachSessions()
+                syncCoachMessages()
 
                 val pullSuccess = pullAllData()
                 if (!pullSuccess) {
@@ -286,6 +290,22 @@ class SyncManager @Inject constructor(
                     }
                 }
 
+                // Restore Coach Sessions
+                if (body.coachSessions.isNotEmpty()) {
+                    val sessionEntities = body.coachSessions.map {
+                        com.notel.notel.data.local.entity.CoachSession(it.id, it.title, it.createdAt, it.updatedAt, true)
+                    }
+                    sessionEntities.forEach { coachSessionDao.insertSession(it) }
+                }
+
+                // Restore Coach Messages
+                if (body.coachMessages.isNotEmpty()) {
+                    val messageEntities = body.coachMessages.map {
+                        com.notel.notel.data.local.entity.CoachMessageEntity(it.id, it.sessionId, it.role, it.content, it.timestamp, true)
+                    }
+                    coachMessageDao.insertMessages(messageEntities)
+                }
+
                 // D. Restore AI Results (Productivity)
                 if (body.insights.isNotEmpty()) {
                     val insightsList = body.insights.map { 
@@ -339,6 +359,42 @@ class SyncManager @Inject constructor(
             }
         } catch (e: Exception) {
             Log.e(tag, "syncDocuments failed: ${e.message}")
+        }
+    }
+
+    suspend fun syncCoachSessions() = withContext(Dispatchers.IO) {
+        try {
+            if (!preferences.loggedIn.first()) return@withContext
+            val unsynced = coachSessionDao.getUnsyncedSessions()
+            if (unsynced.isNotEmpty()) {
+                val dtos = unsynced.map {
+                    CoachSessionDto(it.id, it.title, it.createdAt, it.updatedAt)
+                }
+                val response = jotApi.syncCoachSessions(SyncCoachSessionsRequest(dtos))
+                if (response.isSuccessful && response.body()?.synced != null) {
+                    unsynced.forEach { coachSessionDao.markSynced(it.id) }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "syncCoachSessions failed: ${e.message}")
+        }
+    }
+
+    suspend fun syncCoachMessages() = withContext(Dispatchers.IO) {
+        try {
+            if (!preferences.loggedIn.first()) return@withContext
+            val unsynced = coachMessageDao.getUnsyncedMessages()
+            if (unsynced.isNotEmpty()) {
+                val dtos = unsynced.map {
+                    CoachMessageDto(it.id, it.sessionId, it.role, it.content, it.timestamp)
+                }
+                val response = jotApi.syncCoachMessages(SyncCoachMessagesRequest(dtos))
+                if (response.isSuccessful && response.body()?.synced != null) {
+                    unsynced.forEach { coachMessageDao.markSynced(it.id) }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "syncCoachMessages failed: ${e.message}")
         }
     }
 }

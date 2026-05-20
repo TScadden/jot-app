@@ -872,6 +872,25 @@ class LogRepository @Inject constructor(
             Result.failure(e)
         }
     }
+
+    suspend fun generateCoachTitle(firstMessage: String): Result<String> {
+        return try {
+            if (!preferences.loggedIn.first()) return Result.failure(Exception("Not logged in"))
+            
+            val request = com.notel.notel.data.remote.TitleRequest(firstMessage)
+            val response = jotApi.getCoachTitle(request)
+            
+            if (response.isSuccessful) {
+                response.body()?.title?.let {
+                    Result.success(it)
+                } ?: Result.failure(Exception("Empty reply from server"))
+            } else {
+                Result.failure(Exception(response.errorBody()?.string() ?: "Unknown error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
     
     suspend fun saveAiInsight(text: String, type: String, timestamp: Long? = null) {
         val insightsStr = preferences.aiInsights.first()

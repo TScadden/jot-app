@@ -26,7 +26,8 @@ class ReminderReceiver : BroadcastReceiver() {
         val type          = intent.getStringExtra(ReminderScheduler.EXTRA_REMINDER_TYPE) ?: return
         val fixedHour     = intent.getIntExtra(ReminderScheduler.EXTRA_FIXED_HOUR, 12)
         val fixedMinute   = intent.getIntExtra(ReminderScheduler.EXTRA_FIXED_MINUTE, 0)
-        val intervalHours = intent.getIntExtra(ReminderScheduler.EXTRA_INTERVAL_HOURS, 2)
+        val intervalHours   = intent.getIntExtra(ReminderScheduler.EXTRA_INTERVAL_HOURS, 2)
+        val intervalMinutes = intent.getIntExtra(ReminderScheduler.EXTRA_INTERVAL_MINUTES, 0)
         val startHour     = intent.getIntExtra(ReminderScheduler.EXTRA_START_HOUR, 8)
         val startMinute   = intent.getIntExtra(ReminderScheduler.EXTRA_START_MINUTE, 0)
         val endHour       = intent.getIntExtra(ReminderScheduler.EXTRA_END_HOUR, 21)
@@ -44,6 +45,7 @@ class ReminderReceiver : BroadcastReceiver() {
             fixedHour     = fixedHour,
             fixedMinute   = fixedMinute,
             intervalHours = intervalHours,
+            intervalMinutes = intervalMinutes,
             startHour     = startHour,
             startMinute   = startMinute,
             endHour       = endHour,
@@ -139,6 +141,7 @@ class ReminderReceiver : BroadcastReceiver() {
             putExtra(ReminderScheduler.EXTRA_FIXED_HOUR, reminder.fixedHour)
             putExtra(ReminderScheduler.EXTRA_FIXED_MINUTE, reminder.fixedMinute)
             putExtra(ReminderScheduler.EXTRA_INTERVAL_HOURS, reminder.intervalHours)
+            putExtra(ReminderScheduler.EXTRA_INTERVAL_MINUTES, reminder.intervalMinutes)
             putExtra(ReminderScheduler.EXTRA_START_HOUR, reminder.startHour)
             putExtra(ReminderScheduler.EXTRA_START_MINUTE, reminder.startMinute)
             putExtra(ReminderScheduler.EXTRA_END_HOUR, reminder.endHour)
