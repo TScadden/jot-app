@@ -270,7 +270,7 @@ private fun ChatBubble(
                                 text = "\"${message.proposedNoteText}\"",
                                 fontSize = 14.sp,
                                 color = NotelTextPrimary,
-                                style = androidx.compose.ui.text.TextStyle(fontStyle = androidx.compose.ui.text.FontStyle.Italic),
+                                style = androidx.compose.ui.text.TextStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic),
                                 lineHeight = 20.sp
                             )
                             Spacer(modifier = Modifier.height(12.dp))
