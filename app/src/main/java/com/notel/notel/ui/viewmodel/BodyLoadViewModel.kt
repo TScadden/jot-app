@@ -88,14 +88,18 @@ class BodyLoadViewModel @Inject constructor(
             preferences.cupTheorySeen.collect { seen -> _uiState.update { it.copy(cupTheorySeen = seen) } }
         }
         viewModelScope.launch {
-            // Re-update metrics whenever selectedDate, HR history, calorie history, or sleep history changes
+            // Re-update metrics whenever selectedDate, HR history, calorie history, sleep history, or AI insights changes
             combine(
                 _uiState.map { it.selectedDate }.distinctUntilChanged(),
                 preferences.historicalHeartRate,
                 preferences.historicalCalories,
                 preferences.historicalSleep,
                 preferences.todayAwakeAvgHr,
-                logRepository.getAllEntries()
+                logRepository.getAllEntries(),
+                preferences.aiInsights,
+                preferences.lastBodyLoadScore,
+                preferences.lastBodyLoadFactors,
+                preferences.lastBodyLoadAdvice
             ) { array ->
                 val date = array[0] as String
                 val hrStr = array[1] as String
@@ -103,6 +107,10 @@ class BodyLoadViewModel @Inject constructor(
                 val sleepStr = array[3] as String
                 val todayAwake = array[4] as Int
                 // array[5] is logEntries
+                val insightsStr = array[6] as String
+                val lastScore = array[7] as Int
+                val lastFactors = array[8] as String
+                val lastAdvice = array[9] as String?
 
                 val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
                 val today = LocalDate.now().toString()
@@ -133,12 +141,10 @@ class BodyLoadViewModel @Inject constructor(
                     val points = json.decodeFromString<List<com.notel.notel.data.model.BiomarkerPoint>>(sleepStr)
                     sleep = points.find { it.date == date }?.value?.toInt() ?: 0
                     
-                    // Rolling calculation based on user logic
                     var runningDebt = 0.0
                     val targetHours = 8.0
                     val sortedPoints = points.sortedBy { it.date }
                     
-                    // We calculate the debt progression up to the selected 'date'
                     val historyList = mutableListOf<Triple<String, Double, Double>>()
                     val relevantPoints = sortedPoints.filter { it.date <= date }.takeLast(10)
                     
@@ -166,7 +172,134 @@ class BodyLoadViewModel @Inject constructor(
                     logRepository.getJotCountInRange(start, end)
                 }
 
-                MetricsUpdate(hr, cal, sleep, count, (debt * 60).toInt(), debtHistory)
+                // 5. Parse AI Insights to build historyScores and dailyScore/dailyFactors/dailyAdvice
+                val insights: List<com.notel.notel.data.local.entity.AiInsight> = try {
+                    if (insightsStr.isNotBlank()) json.decodeFromString(insightsStr) else emptyList()
+                } catch(e: Exception) { emptyList() }
+
+                val selectedLocalDate = try { java.time.LocalDate.parse(date) } catch(e: Exception) { java.time.LocalDate.now() }
+                
+                val dailyInsight = insights.find { insight ->
+                    insight.type == "BodyLoad" && try {
+                        java.time.Instant.ofEpochMilli(insight.timestamp)
+                            .atZone(java.time.ZoneId.systemDefault())
+                            .toLocalDate() == selectedLocalDate
+                    } catch(e: Exception) { false }
+                }
+
+                var dailyScore = -1
+                var dailyFactorsList = emptyList<FactorWeight>()
+                var dailyAdviceList = emptyList<String>()
+
+                if (dailyInsight != null) {
+                    val text = dailyInsight.text
+                    val parsedScore = if (text.contains("Cup %: ")) {
+                        text.substringAfter("Cup %: ").substringBefore(" |").trim().toIntOrNull()
+                    } else {
+                        text.substringAfter("Body Load: ").substringBefore(" |").trim().toIntOrNull()
+                    }
+                    if (parsedScore != null) dailyScore = parsedScore
+                    
+                    val factorsStr = text.substringAfter("Factors: ").substringBefore(" |").trim()
+                    dailyFactorsList = factorsStr.split(", ")
+                        .filter { it.isNotBlank() }
+                        .map { factorName ->
+                            val weight = if (factorName.contains("(") && factorName.contains("%")) {
+                                factorName.substringAfter("(").substringBefore("%").toFloatOrNull() ?: 1.0f
+                            } else 1.0f
+                            val cleanName = if (factorName.contains("(")) {
+                                factorName.substringBefore("(").trim()
+                            } else factorName.trim()
+                            FactorWeight(cleanName, weight)
+                        }
+                    
+                    val adviceStr = text.substringAfter("Advice: ").trim()
+                    if (adviceStr.isNotEmpty()) {
+                        dailyAdviceList = listOf(adviceStr)
+                    }
+                }
+
+                if (dailyScore == -1 && date == today && lastScore > 0) {
+                    dailyScore = lastScore
+                    dailyFactorsList = lastFactors.split(", ")
+                        .filter { it.isNotBlank() }
+                        .map { FactorWeight(it.trim(), 1.0f) }
+                    if (!lastAdvice.isNullOrBlank()) {
+                        dailyAdviceList = listOf(lastAdvice)
+                    }
+                }
+
+                // 6. Build historyScores for the last 7 days of the week view!
+                val last7DaysSnapshots = (0..6).map { dayOffset ->
+                    val d = java.time.LocalDate.now().minusDays(dayOffset.toLong())
+                    val dStr = d.toString()
+                    val dLabel = d.format(java.time.format.DateTimeFormatter.ofPattern("EEE"))
+                    
+                    val historicalInsight = insights.find { insight ->
+                        insight.type == "BodyLoad" && try {
+                            java.time.Instant.ofEpochMilli(insight.timestamp)
+                                .atZone(java.time.ZoneId.systemDefault())
+                                .toLocalDate() == d
+                        } catch(e: Exception) { false }
+                    }
+
+                    var histScore = 0
+                    var histFactorsList = emptyList<FactorWeight>()
+                    var histAdviceList = emptyList<String>()
+
+                    if (historicalInsight != null) {
+                        val text = historicalInsight.text
+                        val parsedScore = if (text.contains("Cup %: ")) {
+                            text.substringAfter("Cup %: ").substringBefore(" |").trim().toIntOrNull()
+                        } else {
+                            text.substringAfter("Body Load: ").substringBefore(" |").trim().toIntOrNull()
+                        }
+                        if (parsedScore != null) histScore = parsedScore
+                        
+                        val factorsStr = text.substringAfter("Factors: ").substringBefore(" |").trim()
+                        histFactorsList = factorsStr.split(", ")
+                            .filter { it.isNotBlank() }
+                            .map { factorName ->
+                                val weight = if (factorName.contains("(") && factorName.contains("%")) {
+                                    factorName.substringAfter("(").substringBefore("%").toFloatOrNull() ?: 1.0f
+                                } else 1.0f
+                                val cleanName = if (factorName.contains("(")) {
+                                    factorName.substringBefore("(").trim()
+                                } else factorName.trim()
+                                FactorWeight(cleanName, weight)
+                            }
+                        
+                        val adviceStr = text.substringAfter("Advice: ").trim()
+                        if (adviceStr.isNotEmpty()) {
+                            histAdviceList = listOf(adviceStr)
+                        }
+                    }
+
+                    if (histScore == 0 && dStr == today && lastScore > 0) {
+                        histScore = lastScore
+                        histFactorsList = lastFactors.split(", ")
+                            .filter { it.isNotBlank() }
+                            .map { FactorWeight(it.trim(), 1.0f) }
+                        if (!lastAdvice.isNullOrBlank()) {
+                            histAdviceList = listOf(lastAdvice)
+                        }
+                    }
+
+                    BodyLoadSnapshot(dStr, dLabel, histScore, histFactorsList, histAdviceList)
+                }.reversed()
+
+                MetricsUpdate(
+                    hr = hr, 
+                    cal = cal, 
+                    sleep = sleep, 
+                    jots = count, 
+                    debtMins = (debt * 60).toInt(), 
+                    debtHistory = debtHistory,
+                    score = dailyScore,
+                    factors = dailyFactorsList,
+                    adviceList = dailyAdviceList,
+                    historyScores = last7DaysSnapshots
+                )
             }.collect { update ->
                 _uiState.update { it.copy(
                     avgHeartRate = update.hr,
@@ -174,7 +307,11 @@ class BodyLoadViewModel @Inject constructor(
                     sleepMinutes = update.sleep,
                     jotCountDaily = update.jots,
                     sleepDebtMins = update.debtMins,
-                    sleepDebtHistory = update.debtHistory
+                    sleepDebtHistory = update.debtHistory,
+                    score = update.score,
+                    factors = update.factors,
+                    adviceList = update.adviceList,
+                    historyScores = update.historyScores
                 ) }
             }
         }
@@ -188,7 +325,11 @@ class BodyLoadViewModel @Inject constructor(
         val sleep: Int, 
         val jots: Int, 
         val debtMins: Int, 
-        val debtHistory: List<Triple<String, Double, Double>>
+        val debtHistory: List<Triple<String, Double, Double>>,
+        val score: Int,
+        val factors: List<FactorWeight>,
+        val adviceList: List<String>,
+        val historyScores: List<BodyLoadSnapshot>
     )
 
     fun refresh(force: Boolean = false) {
@@ -197,6 +338,18 @@ class BodyLoadViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 logRepository.getDailyStatsSummary(dateStr, forceRefresh = true)
+                
+                val categories = categoryRepository.getAllCategories().first()
+                if (categories.isNotEmpty()) {
+                    val result = logRepository.getBodyLoad(categories, dateStr)
+                    result.onSuccess { res ->
+                        preferences.setLastBodyLoadData(
+                            res.score,
+                            res.factors.joinToString(", "),
+                            res.advice ?: ""
+                        )
+                    }
+                }
             } catch (e: Exception) {
             } finally {
                 _uiState.update { it.copy(isLoading = false) }
@@ -210,10 +363,22 @@ class BodyLoadViewModel @Inject constructor(
         
         viewModelScope.launch {
             try {
-                // getDailyStatsSummary triggers the fetch/sync and updates local preferences.
-                // We don't need to manually update metrics here because the 'combine' block 
-                // in init observes the selectedDate and preference changes automatically.
                 logRepository.getDailyStatsSummary(dateStr, forceRefresh = (dateStr == today))
+                
+                val categories = categoryRepository.getAllCategories().first()
+                if (categories.isNotEmpty()) {
+                    val result = logRepository.getBodyLoad(categories, dateStr)
+                    result.onSuccess { res ->
+                        if (dateStr == today) {
+                            preferences.setLastBodyLoadData(
+                                res.score,
+                                res.factors.joinToString(", "),
+                                res.advice ?: ""
+                            )
+                        }
+                    }
+                }
+                
                 _uiState.update { it.copy(isLoading = false) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false) }

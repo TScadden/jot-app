@@ -899,6 +899,12 @@ class LogRepository @Inject constructor(
         } catch(e: Exception) { mutableListOf() }
         
         val ts = timestamp ?: System.currentTimeMillis()
+        
+        // Remove existing BodyLoad insight for the same day to prevent duplicates
+        if (type == "BodyLoad") {
+            insights.removeAll { it.type == "BodyLoad" && isSameDay(it.timestamp, ts) }
+        }
+        
         val newInsight = AiInsight(java.util.UUID.randomUUID().toString(), text, ts, type)
         insights.add(0, newInsight)
         preferences.setAiInsights(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(AiInsight.serializer()), insights.take(20))) // Keep last 20
@@ -1275,7 +1281,7 @@ class LogRepository @Inject constructor(
         val habitData = getHabitDataSummary(targetDay)
         val weather = getWeatherContext()
         
-        return geminiService.getBodyLoadEnriched(
+        val result = geminiService.getBodyLoadEnriched(
             targetDate = targetDay,
             recentEntries = recent,
             categories = catMap,
@@ -1286,6 +1292,13 @@ class LogRepository @Inject constructor(
             pastInsights = pastInsights,
             weatherContext = weather
         )
+        
+        result.onSuccess { res ->
+            val text = "Cup %: ${res.score} | Factors: ${res.factors.joinToString(", ")} | Advice: ${res.advice ?: ""}"
+            saveAiInsight(text, "BodyLoad", targetDayEndMillis)
+        }
+        
+        return result
     }
     
     private fun formatSleep(mins: Int): String {
@@ -1381,5 +1394,11 @@ class LogRepository @Inject constructor(
                 Result.success("Note saved to General")
             }
         )
+    }
+
+    private fun isSameDay(t1: Long, t2: Long): Boolean {
+        val d1 = java.time.Instant.ofEpochMilli(t1).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+        val d2 = java.time.Instant.ofEpochMilli(t2).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+        return d1 == d2
     }
 }
