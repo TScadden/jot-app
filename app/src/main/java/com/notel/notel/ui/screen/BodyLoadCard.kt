@@ -212,21 +212,12 @@ fun BodyLoadCard(
                             ),
                         contentAlignment = Alignment.Center
                      ) {
-                        if (historicalScore > 0) {
-                            Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = "Logged",
-                                tint = if (isSelected) NotelTextPrimary else NotelTextSecondary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        } else {
-                            Text(
-                                text = "-",
-                                color = if (isSelected) NotelTextPrimary else NotelTextSecondary,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                fontSize = 13.sp
-                            )
-                        }
+                        Text(
+                            text = "-",
+                            color = if (isSelected) NotelTextPrimary else NotelTextSecondary,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            fontSize = 13.sp
+                        )
                     }
                 }
             }
@@ -298,11 +289,11 @@ fun BodyLoadCard(
                                 modifier = Modifier.size(20.dp)
                             )
                         } else {
-                            Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = "Active",
-                                tint = NotelTextPrimary,
-                                modifier = Modifier.size(18.dp)
+                            Text(
+                                text = "-",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Black,
+                                color = NotelTextPrimary
                             )
                         }
                     }
