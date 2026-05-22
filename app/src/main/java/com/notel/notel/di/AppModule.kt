@@ -102,7 +102,7 @@ object AppModule {
     fun provideJotApi(okHttpClient: OkHttpClient): JotApi {
         val json = Json { ignoreUnknownKeys = true }
         return Retrofit.Builder()
-            .baseUrl("http://jot-server-env.eba-s3u88e3n.us-east-1.elasticbeanstalk.com/")
+            .baseUrl("http://3.138.56.92:3000/")
             .client(okHttpClient)
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()

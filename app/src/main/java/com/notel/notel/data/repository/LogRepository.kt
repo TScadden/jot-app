@@ -1260,45 +1260,14 @@ class LogRepository @Inject constructor(
      * Weights: 35% HRV, 30% Sleep, 20% Activity, 10% RHR, 5% Subjective (Jots).
      */
     suspend fun getBodyLoad(allCategories: List<Category>, dateStr: String? = null): Result<BodyLoadResponse> {
-        val targetDay = dateStr ?: java.time.LocalDate.now().toString()
-        
-        val targetDayEndMillis = try {
-            java.time.LocalDate.parse(targetDay)
-                .atTime(23, 59, 59)
-                .atZone(java.time.ZoneId.systemDefault())
-                .toInstant()
-                .toEpochMilli()
-        } catch (e: Exception) { System.currentTimeMillis() }
-        
-        val startMillis = targetDayEndMillis - (7L * 24 * 60 * 60 * 1000L)
-        val recent = logEntryDao.getRecentEntriesInRange(startMillis, targetDayEndMillis) 
-
-        val catMap = allCategories.associate { it.id to it.name }
-        val context = getEnrichedUserContext()
-        val kb = getEnrichedKnowledgeBase()
-        val pastInsights = getPastInsightsText()
-        val fitbitData = getFitbitDataSummary(targetDay) 
-        val habitData = getHabitDataSummary(targetDay)
-        val weather = getWeatherContext()
-        
-        val result = geminiService.getBodyLoadEnriched(
-            targetDate = targetDay,
-            recentEntries = recent,
-            categories = catMap,
-            userContext = context,
-            knowledgeBase = kb,
-            fitbitData = fitbitData,
-            habitData = habitData,
-            pastInsights = pastInsights,
-            weatherContext = weather
+        return Result.success(
+            BodyLoadResponse(
+                score = 0,
+                factors = emptyList(),
+                advice = "",
+                subjectiveImpact = 0.0
+            )
         )
-        
-        result.onSuccess { res ->
-            val text = "Cup %: ${res.score} | Factors: ${res.factors.joinToString(", ")} | Advice: ${res.advice ?: ""}"
-            saveAiInsight(text, "BodyLoad", targetDayEndMillis)
-        }
-        
-        return result
     }
     
     private fun formatSleep(mins: Int): String {

@@ -207,7 +207,7 @@ class FitbitViewModel @Inject constructor(
                 
                 if (hasHC) {
                     try {
-                        syncFromHealthConnect(fetchHistory = force)
+                        syncFromHealthConnect(fetchHistory = true)
                     } catch (e: Exception) {
                         _state.update { it.copy(errorMessage = "Health Connect sync failed") }
                     }

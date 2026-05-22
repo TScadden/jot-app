@@ -154,7 +154,7 @@ fun BodyLoadCard(
                 }
 
                 Text(
-                    "Score",
+                    "Daily",
                     fontWeight = FontWeight.Black,
                     fontSize = 14.sp,
                     color = pulseColor,
@@ -212,12 +212,21 @@ fun BodyLoadCard(
                             ),
                         contentAlignment = Alignment.Center
                      ) {
-                        Text(
-                            text = if (historicalScore > 0) historicalScore.toString() else "-",
-                            color = if (isSelected) NotelTextPrimary else NotelTextSecondary,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            fontSize = 13.sp
-                        )
+                        if (historicalScore > 0) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = "Logged",
+                                tint = if (isSelected) NotelTextPrimary else NotelTextSecondary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        } else {
+                            Text(
+                                text = "-",
+                                color = if (isSelected) NotelTextPrimary else NotelTextSecondary,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                fontSize = 13.sp
+                            )
+                        }
                     }
                 }
             }
@@ -289,11 +298,11 @@ fun BodyLoadCard(
                                 modifier = Modifier.size(20.dp)
                             )
                         } else {
-                            Text(
-                                text = if (score > 0) score.toString() else "-",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Black,
-                                color = NotelTextPrimary
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = "Active",
+                                tint = NotelTextPrimary,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
