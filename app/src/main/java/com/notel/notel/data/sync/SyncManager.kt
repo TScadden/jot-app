@@ -4,9 +4,11 @@ import android.content.Context
 import android.util.Log
 import com.notel.notel.data.local.entity.UserList
 import com.notel.notel.data.local.entity.UserListItem
+import com.notel.notel.data.local.entity.Reminder
 import com.notel.notel.data.local.dao.CategoryDao
 import com.notel.notel.data.local.dao.LogEntryDao
 import com.notel.notel.data.preferences.NotelPreferences
+import com.notel.notel.notifications.ReminderScheduler
 import com.notel.notel.data.remote.*
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -29,6 +31,7 @@ class SyncManager @Inject constructor(
     private val coachSessionDao: com.notel.notel.data.local.dao.CoachSessionDao,
     private val coachMessageDao: com.notel.notel.data.local.dao.CoachMessageDao,
     private val userListDao: com.notel.notel.data.local.dao.UserListDao,
+    private val reminderDao: com.notel.notel.data.local.dao.ReminderDao,
     private val preferences: NotelPreferences,
     @ApplicationContext private val context: Context
 ) {
@@ -106,6 +109,10 @@ class SyncManager @Inject constructor(
             }
             val userListsJson = Json.encodeToString(syncDtos)
 
+            // Serialize Reminders
+            val localReminders = reminderDao.getAllReminders().first()
+            val remindersJson = Json.encodeToString(localReminders)
+
             val response = jotApi.syncProfile(
                 SyncProfileRequest(
                     userContext = preferences.userContext.first(),
@@ -121,7 +128,8 @@ class SyncManager @Inject constructor(
                     redditSummaries = preferences.redditSummaries.first(),
                     currentStreak = preferences.currentStreak.first(),
                     bestStreak = preferences.bestStreak.first(),
-                    userLists = userListsJson
+                    userLists = userListsJson,
+                    reminders = remindersJson
                 )
             )
             if (response.isSuccessful) {
@@ -282,6 +290,25 @@ class SyncManager @Inject constructor(
                                 val insertedListId = userListDao.insertList(UserList(name = listDto.name)).toInt()
                                 listDto.items.forEachIndexed { index, text ->
                                     userListDao.insertItem(UserListItem(listId = insertedListId, text = text, sortOrder = index))
+                                }
+                            }
+                        }
+                    }
+                    profile.reminders?.let { serverJson ->
+                        if (serverJson.isNotBlank()) {
+                            val pulledReminders = try { Json.decodeFromString<List<Reminder>>(serverJson) } catch(e: Exception) { emptyList() }
+                            if (pulledReminders.isNotEmpty()) {
+                                // Cancel existing alarms
+                                val existing = reminderDao.getAllReminders().first()
+                                existing.forEach { ReminderScheduler.cancel(context, it) }
+
+                                // Overwrite local SQLite reminders
+                                reminderDao.clearAllReminders()
+                                pulledReminders.forEach { reminder ->
+                                    reminderDao.insert(reminder)
+                                    if (reminder.isEnabled) {
+                                        ReminderScheduler.schedule(context, reminder)
+                                    }
                                 }
                             }
                         }

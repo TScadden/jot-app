@@ -209,7 +209,8 @@ data class SyncProfileRequest(
     val redditSummaries: String? = null,
     val currentStreak: Int? = null,
     val bestStreak: Int? = null,
-    val userLists: String? = null
+    val userLists: String? = null,
+    val reminders: String? = null
 )
 
 @Serializable
@@ -265,7 +266,8 @@ data class ProfileDtoModel(
     val redditSummaries: String? = null,
     val currentStreak: Int? = null,
     val bestStreak: Int? = null,
-    val userLists: String? = null
+    val userLists: String? = null,
+    val reminders: String? = null
 )
 
 @Serializable

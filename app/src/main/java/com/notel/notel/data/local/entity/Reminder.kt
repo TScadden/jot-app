@@ -2,8 +2,10 @@ package com.notel.notel.data.local.entity
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import kotlinx.serialization.Serializable
 
 @Entity(tableName = "reminders")
+@Serializable
 data class Reminder(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val title: String,
