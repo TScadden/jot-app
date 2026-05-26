@@ -1375,17 +1375,24 @@ class LogRepository @Inject constructor(
                 }
             }
             
-            // Offline/Fail Fallback
+            // Offline/Fail Fallback OR if AI returned 0 but there is text
             if (subjectiveLoad == 0.0) {
                 var scoreSum = 0.0
-                val highStressCatIds = listOf(1, 2, 4, 6) // Heart Rate, Symptoms, Pain, Stress categories
+                val strainKeywords = listOf(
+                    "headache", "pain", "migraine", "nausea", "fatigue", "tired", "stress", 
+                    "anxiety", "flare", "crash", "hurt", "bad", "insomnia", "awake", "sleep", 
+                    "symptom", "dizzy", "pots", "mcas", "ache", "sore", "hard time"
+                )
                 dailyEntries.forEach { entry ->
-                    if (entry.categoryId in highStressCatIds) {
-                        scoreSum += 20.0
+                    val text = entry.body.lowercase() + " " + entry.manualText.lowercase()
+                    if (entry.categoryId == 1) {
+                        scoreSum += 25.0 // Direct Symptoms category
+                    } else if (strainKeywords.any { text.contains(it) }) {
+                        scoreSum += 25.0 // Keyword matched strain
                     }
                 }
                 subjectiveLoad = scoreSum.coerceAtMost(100.0)
-                subjectiveReason = "Determined via symptom jots logged."
+                subjectiveReason = "Determined via logged symptom keywords."
             }
         }
 
