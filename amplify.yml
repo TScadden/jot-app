@@ -1,4 +1,4 @@
-# Trigger new deployment
+# Trigger new deployment - build v1.6 for mobile hamburger background fix
 version: 1
 frontend:
   phases:
