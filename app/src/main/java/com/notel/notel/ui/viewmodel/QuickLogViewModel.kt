@@ -1,5 +1,6 @@
 package com.notel.notel.ui.viewmodel
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.notel.notel.data.local.entity.Category
@@ -65,7 +66,8 @@ data class QuickLogUiState(
     val showAddCategoryDialog: Boolean = false,
     val customCategoryName: String = "",
     val isValidatingCategory: Boolean = false,
-    val categoryToDelete: Category? = null
+    val categoryToDelete: Category? = null,
+    val isOffline: Boolean = false
 )
 
 @HiltViewModel
@@ -74,10 +76,18 @@ class QuickLogViewModel @Inject constructor(
     private val categoryRepository: CategoryRepository,
     private val preferences: NotelPreferences,
     private val habitRepository: HabitRepository,
-    private val syncManager: SyncManager
+    private val syncManager: SyncManager,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: Context
 ) : ViewModel() {
     
     private val dismissedActions = mutableSetOf<String>()
+
+    fun isNetworkAvailable(): Boolean {
+        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+        val activeNetwork = connectivityManager?.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+        return capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
 
     private val _uiState = MutableStateFlow(QuickLogUiState())
     val uiState: StateFlow<QuickLogUiState> = _uiState.asStateFlow()
@@ -97,6 +107,9 @@ class QuickLogViewModel @Inject constructor(
     private var hasAttemptedInitialRecovery = false
 
     init {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isOffline = !isNetworkAvailable()) }
+        }
         // Observe categories to populate UI
         viewModelScope.launch {
             categoryRepository.getAllCategories().collect { cats ->
@@ -203,6 +216,16 @@ class QuickLogViewModel @Inject constructor(
         forceRefresh: Boolean = false
     ) {
         val cat = category ?: return
+
+        val offline = !isNetworkAvailable()
+        _uiState.update { it.copy(isOffline = offline) }
+        if (offline) {
+            _uiState.update { it.copy(
+                isLoadingChips = false,
+                chipsError = "Connection Error: You are offline. Load Suggestions is unavailable."
+            ) }
+            return
+        }
 
         // 1. Check local VM cache (already cleaned/truncated)
         if (!forceRefresh) {
@@ -420,9 +443,20 @@ class QuickLogViewModel @Inject constructor(
         _uiState.update { it.copy(smartAction = null) }
     }
 
-    fun requestCategorySuggestions() {
+    fun showAddCategoryDialog() {
+        _uiState.update { it.copy(
+            showAddCategoryDialog = true,
+            suggestedCategories = emptyList(),
+            isLoadingSuggestions = false,
+            suggestionsError = null,
+            selectedSuggestedCategories = emptyList(),
+            customCategoryName = ""
+        ) }
+    }
+
+    fun loadSmartCategorySuggestions() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoadingSuggestions = true, suggestionsError = null, showAddCategoryDialog = true, selectedSuggestedCategories = emptyList()) }
+            _uiState.update { it.copy(isLoadingSuggestions = true, suggestionsError = null, selectedSuggestedCategories = emptyList()) }
             val existing = _uiState.value.categories.map { it.name }
             logRepository.getSmartCategorySuggestion(existing).fold(
                 onSuccess = { suggestions ->

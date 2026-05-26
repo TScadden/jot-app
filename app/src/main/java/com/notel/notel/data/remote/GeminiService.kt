@@ -96,13 +96,15 @@ class GeminiService @Inject constructor(
 
     suspend fun getSmartCategorySuggestion(
         recentEntries: List<LogEntry>,
-        existingCategories: List<String>
+        existingCategories: List<String>,
+        userContext: String? = null
     ): Result<List<SmartCategorySuggestion>> {
         return try {
             val response = jotApi.getSmartCategorySuggestion(
                 SmartCategorySuggestionRequest(
                     recentEntries = recentEntries.toDto(),
-                    existingCategories = existingCategories
+                    existingCategories = existingCategories,
+                    userContext = userContext
                 )
             )
             val result = response.body()?.result

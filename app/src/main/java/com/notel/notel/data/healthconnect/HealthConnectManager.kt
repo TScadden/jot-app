@@ -73,6 +73,12 @@ class HealthConnectManager(private val context: Context) {
     suspend fun hasAllPermissions(): Boolean {
         if (checkAvailability() != HealthConnectClient.SDK_AVAILABLE) return false
         val granted = healthConnectClient.permissionController.getGrantedPermissions()
+        return granted.isNotEmpty()
+    }
+
+    suspend fun hasFullPermissions(): Boolean {
+        if (checkAvailability() != HealthConnectClient.SDK_AVAILABLE) return false
+        val granted = healthConnectClient.permissionController.getGrantedPermissions()
         return granted.containsAll(permissions)
     }
 
@@ -521,7 +527,7 @@ class HealthConnectManager(private val context: Context) {
 
     suspend fun readLatestWeight(dateStr: String): Float? {
         try {
-            val start = startOfDate(dateStr)
+            val start = startOfDate(dateStr).minus(90, ChronoUnit.DAYS)
             val end = endOfDate(dateStr)
             val response = healthConnectClient.readRecords(
                 ReadRecordsRequest(
@@ -581,23 +587,12 @@ class HealthConnectManager(private val context: Context) {
     suspend fun readRespiratoryRate(dateStr: String): Double? {
         try {
             val end = endOfDate(dateStr)
-            val start = startOfDate(dateStr)
+            val start = startOfDate(dateStr).minus(30, ChronoUnit.DAYS)
             
-            // Try to find a sleep session that overlaps with this day to get a better window
-            val sleepSession = healthConnectClient.readRecords(
-                ReadRecordsRequest(
-                    recordType = SleepSessionRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start.minus(12, ChronoUnit.HOURS), end)
-                )
-            ).records.lastOrNull { it.endTime.isAfter(start) }
-
-            val queryStart = sleepSession?.startTime ?: start
-            val queryEnd = sleepSession?.endTime ?: end
-
             val response = healthConnectClient.readRecords(
                 ReadRecordsRequest(
                     recordType = RespiratoryRateRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(queryStart, queryEnd),
+                    timeRangeFilter = TimeRangeFilter.between(start, end),
                     ascendingOrder = false,
                     pageSize = 1
                 )
@@ -609,28 +604,26 @@ class HealthConnectManager(private val context: Context) {
     suspend fun readOxygenSaturation(dateStr: String): Double? {
         try {
             val end = endOfDate(dateStr)
-            val start = startOfDate(dateStr)
-
-            val sleepSession = healthConnectClient.readRecords(
-                ReadRecordsRequest(
-                    recordType = SleepSessionRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start.minus(12, ChronoUnit.HOURS), end)
-                )
-            ).records.lastOrNull { it.endTime.isAfter(start) }
-
-            val queryStart = sleepSession?.startTime ?: start
-            val queryEnd = sleepSession?.endTime ?: end
+            val start = startOfDate(dateStr).minus(30, ChronoUnit.DAYS)
 
             val response = healthConnectClient.readRecords(
                 ReadRecordsRequest(
                     recordType = OxygenSaturationRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(queryStart, queryEnd),
+                    timeRangeFilter = TimeRangeFilter.between(start, end),
                     ascendingOrder = false,
                     pageSize = 1
                 )
             )
-            return response.records.firstOrNull()?.percentage?.value
-        } catch(e: Exception) { return null }
+            val record = response.records.firstOrNull()
+            android.util.Log.d("HealthConnectManager", "Oxygen saturation record for $dateStr: $record")
+            val rawVal = record?.percentage?.value
+            return if (rawVal != null) {
+                if (rawVal <= 1.0) rawVal * 100.0 else rawVal
+            } else null
+        } catch(e: Exception) {
+            android.util.Log.e("HealthConnectManager", "Error reading oxygen saturation for $dateStr: ${e.message}", e)
+            return null
+        }
     }
 
     suspend fun readRestingHeartRate(dateStr: String): Int? {

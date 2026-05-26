@@ -60,14 +60,22 @@ class SyncManager @Inject constructor(
                 // PREVENT DATA LOSS: Only push profile data if the user has completed onboarding locally.
                 // This prevents overwriting the server's data with empty local data on a fresh login.
                 if (preferences.onboardingComplete.first()) {
-                    pushProfileData()
+                    val profilePushSuccess = pushProfileData()
+                    if (!profilePushSuccess) {
+                        Log.e(tag, "Profile push failed, aborting full sync to prevent local data loss.")
+                        return@withLock
+                    }
                 }
                 val categories = categoryDao.getAllCategories().first()
                 if (categories.isNotEmpty()) {
                     val categoryDtos = categories.map {
                         CategoryDtoModel(it.id, it.name, it.icon, it.colorHex, it.isDefault, it.sortOrder)
                     }
-                    jotApi.syncCategories(SyncCategoriesRequest(categoryDtos))
+                    val catRes = jotApi.syncCategories(SyncCategoriesRequest(categoryDtos))
+                    if (!catRes.isSuccessful) {
+                        Log.e(tag, "Categories sync failed, aborting full sync: ${catRes.errorBody()?.string()}")
+                        return@withLock
+                    }
                 }
 
                 val entries = logEntryDao.getAllEntries().first()
@@ -75,7 +83,11 @@ class SyncManager @Inject constructor(
                     val entryDtos = entries.map {
                         LogEntryDtoModel(it.id, it.categoryId, it.body, it.chips, it.manualText, it.timestamp)
                     }
-                    jotApi.syncEntries(SyncEntriesRequest(entryDtos))
+                    val entryRes = jotApi.syncEntries(SyncEntriesRequest(entryDtos))
+                    if (!entryRes.isSuccessful) {
+                        Log.e(tag, "Entries sync failed, aborting full sync: ${entryRes.errorBody()?.string()}")
+                        return@withLock
+                    }
                 }
 
                 syncDocuments()
@@ -97,9 +109,9 @@ class SyncManager @Inject constructor(
         }
     }
 
-    suspend fun pushProfileData() = withContext(Dispatchers.IO) {
+    suspend fun pushProfileData(): Boolean = withContext(Dispatchers.IO) {
         try {
-            if (!preferences.loggedIn.first()) return@withContext
+            if (!preferences.loggedIn.first()) return@withContext false
             
             // Serialize User Lists
             val localLists = userListDao.getAllLists().first()
@@ -120,6 +132,10 @@ class SyncManager @Inject constructor(
                     professionalUpdates = preferences.professionalUpdates.first(),
                     processedFiles = preferences.processedFiles.first(),
                     loggedDays = preferences.loggedDays.first(),
+                    age = preferences.userAge.first(),
+                    heightCm = preferences.userHeight.first() * 2.54f, // convert inches to cm
+                    weightKg = preferences.userWeight.first() / 2.20462f, // convert lbs to kg
+                    gender = preferences.userGender.first(),
                     onboardingComplete = preferences.onboardingComplete.first(),
                     autoAiSuggestions = preferences.autoAiSuggestions.first(),
                     eventCounters = preferences.eventCounters.first(),
@@ -134,9 +150,14 @@ class SyncManager @Inject constructor(
             )
             if (response.isSuccessful) {
                 preferences.setLastSyncTime(System.currentTimeMillis())
+                true
+            } else {
+                Log.e(tag, "pushProfileData failed: HTTP ${response.code()} - ${response.errorBody()?.string()}")
+                false
             }
         } catch (e: Exception) {
             Log.e(tag, "pushProfileData failed: ${e.message}")
+            false
         }
     }
 
@@ -249,8 +270,8 @@ class SyncManager @Inject constructor(
                     profile.processedFiles?.let { if (it.isNotBlank()) preferences.setProcessedFiles(it) }
                     profile.loggedDays?.let { if (it.isNotBlank()) preferences.setLoggedDays(it) }
                     profile.age?.let { preferences.setUserAge(it) }
-                    profile.heightCm?.let { preferences.setUserHeight(it) }
-                    profile.weightKg?.let { preferences.setUserWeight(it) }
+                    profile.heightCm?.let { preferences.setUserHeight(it / 2.54f) } // convert cm to inches
+                    profile.weightKg?.let { preferences.setUserWeight(it * 2.20462f) } // convert kg to lbs
                     profile.gender?.let { preferences.setUserGender(it) }
                     profile.onboardingComplete?.let { if (it) preferences.setOnboardingComplete(true) }
                     profile.autoAiSuggestions?.let { preferences.setAutoAiSuggestions(it) }
@@ -296,8 +317,8 @@ class SyncManager @Inject constructor(
                     }
                     profile.reminders?.let { serverJson ->
                         if (serverJson.isNotBlank()) {
-                            val pulledReminders = try { Json.decodeFromString<List<Reminder>>(serverJson) } catch(e: Exception) { emptyList() }
-                            if (pulledReminders.isNotEmpty()) {
+                            val pulledReminders = try { Json.decodeFromString<List<Reminder>>(serverJson) } catch(e: Exception) { null }
+                            if (pulledReminders != null) {
                                 // Cancel existing alarms
                                 val existing = reminderDao.getAllReminders().first()
                                 existing.forEach { ReminderScheduler.cancel(context, it) }

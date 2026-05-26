@@ -287,8 +287,8 @@ class SettingsViewModel @Inject constructor(
                 if (healthConnectManager.hasAllPermissions()) {
                     val hcWeight = healthConnectManager.readLatestWeight("today")
                     val hcHeight = healthConnectManager.readLatestHeight()
-                    if (hcWeight != null && hcWeight > 0f) newWeight = Math.round(hcWeight * 10) / 10f
-                    if (hcHeight != null && hcHeight > 0f) newHeight = Math.round(hcHeight * 10) / 10f
+                    if (hcWeight != null && hcWeight > 0f) newWeight = Math.round(hcWeight).toFloat()
+                    if (hcHeight != null && hcHeight > 0f) newHeight = Math.round(hcHeight).toFloat()
                 }
 
                 // 2. Try Fitbit Cloud (can provide Age and Gender too)
@@ -308,14 +308,34 @@ class SettingsViewModel @Inject constructor(
                                 val user = root["user"]?.jsonObject
                                 
                                 val fAge = user?.get("age")?.jsonPrimitive?.intOrNull
-                                val fHeight = user?.get("height")?.jsonPrimitive?.floatOrNull // Could be in cm or inches depending on unit system
-                                val fWeight = user?.get("weight")?.jsonPrimitive?.floatOrNull // Could be kg or lbs... let's assume raw units are standard based on default
+                                val fHeight = user?.get("height")?.jsonPrimitive?.floatOrNull
+                                val fWeight = user?.get("weight")?.jsonPrimitive?.floatOrNull
                                 val fGender = user?.get("gender")?.jsonPrimitive?.content
+                                val heightUnit = user?.get("heightUnit")?.jsonPrimitive?.content ?: ""
+                                val weightUnit = user?.get("weightUnit")?.jsonPrimitive?.content ?: ""
                                 
                                 if (fAge != null && fAge > 0) newAge = fAge
                                 if (!fGender.isNullOrBlank()) newGender = fGender
-                                if (fHeight != null && fHeight > 0f) newHeight = fHeight
-                                if (fWeight != null && fWeight > 0f) newWeight = fWeight
+                                if (fHeight != null && fHeight > 0f) {
+                                    val rawHeight = if (heightUnit.equals("METRIC", ignoreCase = true) || heightUnit.equals("cm", ignoreCase = true)) {
+                                        if (fHeight < 100f) fHeight else fHeight / 2.54f
+                                    } else if (heightUnit.equals("US", ignoreCase = true) || heightUnit.equals("inches", ignoreCase = true)) {
+                                        fHeight
+                                    } else {
+                                        if (fHeight > 100f) fHeight / 2.54f else fHeight
+                                    }
+                                    newHeight = Math.round(rawHeight).toFloat()
+                                }
+                                if (fWeight != null && fWeight > 0f) {
+                                    val rawWeight = if (weightUnit.equals("METRIC", ignoreCase = true) || weightUnit.equals("kg", ignoreCase = true)) {
+                                        if (fWeight > 140f) fWeight else fWeight * 2.20462f
+                                    } else if (weightUnit.equals("US", ignoreCase = true) || weightUnit.equals("lbs", ignoreCase = true)) {
+                                        fWeight
+                                    } else {
+                                        if (fWeight < 130f) fWeight * 2.20462f else fWeight
+                                    }
+                                    newWeight = Math.round(rawWeight).toFloat()
+                                }
                             }
                         }
                     }
@@ -377,6 +397,13 @@ class SettingsViewModel @Inject constructor(
 
     fun clearKnowledge() {
         viewModelScope.launch { logRepository.clearKnowledgeBase() }
+    }
+
+    fun clearKeyMetricsCache() {
+        viewModelScope.launch {
+            preferences.setHistoricalDailyStats("{}")
+            preferences.setLastKnownStats("{}")
+        }
     }
 
     fun deleteKnowledgeItem(index: Int) {

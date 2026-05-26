@@ -1921,11 +1921,12 @@ fun SettingsScreen(
                 Spacer(Modifier.height(16.dp))
                 if (userAge > 0) Text("Age: $userAge", color = NotelTextSecondary, fontSize = 13.sp)
                 if (userHeight > 0f) {
-                    val ft = (userHeight / 12).toInt()
-                    val inch = (userHeight % 12).toInt()
-                    Text("Height: $ft'$inch\" (${userHeight.toInt()} in)", color = NotelTextSecondary, fontSize = 13.sp)
+                    val roundedHeight = Math.round(userHeight)
+                    val ft = roundedHeight / 12
+                    val inch = roundedHeight % 12
+                    Text("Height: $ft'$inch\" ($roundedHeight in)", color = NotelTextSecondary, fontSize = 13.sp)
                 }
-                if (userWeight > 0f) Text("Weight: ${userWeight} lbs", color = NotelTextSecondary, fontSize = 13.sp)
+                if (userWeight > 0f) Text("Weight: ${Math.round(userWeight)} lbs", color = NotelTextSecondary, fontSize = 13.sp)
                 if (userGender.isNotBlank()) Text("Gender: $userGender", color = NotelTextSecondary, fontSize = 13.sp)
                 
                 Spacer(Modifier.height(16.dp))
@@ -1964,8 +1965,12 @@ fun SettingsScreen(
             
             if (showProfileDialog) {
                 var editAge by remember { mutableStateOf(if (userAge > 0) userAge.toString() else "") }
-                var editHeight by remember { mutableStateOf(if (userHeight > 0f) userHeight.toString() else "") }
-                var editWeight by remember { mutableStateOf(if (userWeight > 0f) userWeight.toString() else "") }
+                val heightInches = Math.round(userHeight)
+                val initialFeet = if (heightInches > 0) (heightInches / 12).toString() else ""
+                val initialInches = if (heightInches > 0) (heightInches % 12).toString() else ""
+                var editHeightFeet by remember { mutableStateOf(initialFeet) }
+                var editHeightInches by remember { mutableStateOf(initialInches) }
+                var editWeight by remember { mutableStateOf(if (userWeight > 0f) Math.round(userWeight).toString() else "") }
                 var editGender by remember { mutableStateOf(userGender) }
                 
                 AlertDialog(
@@ -1986,13 +1991,29 @@ fun SettingsScreen(
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, cursorColor = NotelPrimary, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
                             )
-                            OutlinedTextField(
-                                value = editHeight, onValueChange = { editHeight = it },
-                                label = { Text("Height") },
-                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
-                                singleLine = true,
-                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, cursorColor = NotelPrimary, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = editHeightFeet,
+                                    onValueChange = { editHeightFeet = it },
+                                    label = { Text("Height (ft)") },
+                                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, cursorColor = NotelPrimary, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
+                                )
+                                OutlinedTextField(
+                                    value = editHeightInches,
+                                    onValueChange = { editHeightInches = it },
+                                    label = { Text("Height (in)") },
+                                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, cursorColor = NotelPrimary, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
+                                )
+                            }
                             OutlinedTextField(
                                 value = editWeight, onValueChange = { editWeight = it },
                                 label = { Text("Weight") },
@@ -2004,9 +2025,12 @@ fun SettingsScreen(
                     },
                     confirmButton = {
                         TextButton(onClick = {
+                            val feet = editHeightFeet.toIntOrNull() ?: 0
+                            val inches = editHeightInches.toIntOrNull() ?: 0
+                            val totalInches = (feet * 12 + inches).toFloat()
                             viewModel.saveUserProfile(
                                 age = editAge.toIntOrNull() ?: 0,
-                                height = editHeight.toFloatOrNull() ?: 0f,
+                                height = totalInches,
                                 weight = editWeight.toFloatOrNull() ?: 0f,
                                 gender = editGender
                             )
@@ -2333,6 +2357,27 @@ fun SettingsScreen(
                             Spacer(Modifier.width(8.dp))
                             Text("Recover Account Data", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
                         }
+                    }
+                }
+
+                Spacer(Modifier.height(24.dp))
+                Text("LOCAL CACHE", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                GlassyCard(shape = RoundedCornerShape(16.dp), color = NotelSurface) {
+                    Text(
+                        "Delete all locally cached Key Metrics (weights, breathing rates, SpO2, and resting heart rates) saved on this device. This triggers a fresh sync from Health Connect or Fitbit on your next reload.",
+                        color = NotelTextSecondary,
+                        fontSize = 12.sp
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    GlassyButton(
+                        onClick = { viewModel.clearKeyMetricsCache() },
+                        modifier = Modifier.fillMaxWidth(),
+                        containerColor = NotelSurfaceHigh
+                    ) {
+                        Icon(Icons.Default.DeleteSweep, "Clear Cache", tint = Color(0xFFFF8A65))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Clear Key Metrics Cache", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
                     }
                 }
             }

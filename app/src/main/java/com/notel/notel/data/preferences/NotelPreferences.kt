@@ -98,7 +98,11 @@ class NotelPreferences @Inject constructor(
         val USER_CONTEXT_HIDDEN = booleanPreferencesKey("user_context_hidden")
         val HAS_HISTORICAL_BODY_LOAD = booleanPreferencesKey("has_historical_body_load")
         val LAST_SYNC_TIME = longPreferencesKey("last_sync_time")
+        val HISTORICAL_DAILY_STATS = stringPreferencesKey("historical_daily_stats")
     }
+
+    val historicalDailyStats: Flow<String> = context.dataStore.data.map { it[HISTORICAL_DAILY_STATS] ?: "{}" }
+    suspend fun setHistoricalDailyStats(json: String) { context.dataStore.edit { it[HISTORICAL_DAILY_STATS] = json } }
 
     val hasHistoricalBodyLoad: Flow<Boolean> = context.dataStore.data.map { it[HAS_HISTORICAL_BODY_LOAD] ?: false }
     suspend fun setHasHistoricalBodyLoad(v: Boolean) { context.dataStore.edit { it[HAS_HISTORICAL_BODY_LOAD] = v } }

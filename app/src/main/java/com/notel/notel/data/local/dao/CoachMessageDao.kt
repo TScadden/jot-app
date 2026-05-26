@@ -9,6 +9,9 @@ interface CoachMessageDao {
     @Query("SELECT * FROM coach_messages WHERE sessionId = :sessionId ORDER BY timestamp ASC")
     fun getMessagesForSession(sessionId: String): Flow<List<CoachMessageEntity>>
 
+    @Query("SELECT * FROM coach_messages WHERE sessionId = :sessionId ORDER BY timestamp ASC")
+    suspend fun getMessagesForSessionDirect(sessionId: String): List<CoachMessageEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: CoachMessageEntity)
 

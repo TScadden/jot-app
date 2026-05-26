@@ -168,7 +168,7 @@ fun QuickLogScreen(
                                     color = NotelPrimary.copy(alpha = 0.35f),
                                     shape = RoundedCornerShape(10.dp)
                                 )
-                                .clickable { viewModel.requestCategorySuggestions() }
+                                .clickable { viewModel.showAddCategoryDialog() }
                                 .padding(horizontal = 16.dp, vertical = 10.dp)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -525,7 +525,7 @@ fun QuickLogScreen(
                             state.suggestionsError != null -> {
                                 Text(state.suggestionsError!!, color = MaterialTheme.colorScheme.error, fontSize = 14.sp, textAlign = TextAlign.Center)
                                 Spacer(Modifier.height(12.dp))
-                                GlassyButton(onClick = { viewModel.requestCategorySuggestions() }) { Text("Retry") }
+                                GlassyButton(onClick = { viewModel.loadSmartCategorySuggestions() }) { Text("Retry") }
                             }
                             state.suggestedCategories.isNotEmpty() -> {
                                 Column(
@@ -577,7 +577,27 @@ fun QuickLogScreen(
                                 }
                             }
                             else -> {
-                                Text("No new category ideas found yet. Keep logging more detailed notes!", color = NotelTextSecondary, fontSize = 14.sp, textAlign = TextAlign.Center)
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.padding(vertical = 12.dp)
+                                ) {
+                                    Text(
+                                        "Want personalized tracking subjects?",
+                                        color = NotelTextSecondary,
+                                        fontSize = 13.sp,
+                                        textAlign = TextAlign.Center
+                                    )
+                                    Spacer(Modifier.height(12.dp))
+                                    GlassyButton(
+                                        onClick = { viewModel.loadSmartCategorySuggestions() },
+                                        containerColor = NotelPrimary.copy(alpha = 0.2f),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(Icons.Default.AutoAwesome, null, tint = NotelPrimary, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Generate AI Category Ideas", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
+                                    }
+                                }
                             }
                         }
                         

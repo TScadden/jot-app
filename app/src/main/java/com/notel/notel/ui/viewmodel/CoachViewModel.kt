@@ -486,7 +486,7 @@ class CoachViewModel @Inject constructor(
                 _loadingMessage.value = CoachMessage(id = loadingId, role = "coach", content = "", isLoading = true)
 
                 // 4. Fire API request (fetch up-to-date list directly from database to guarantee user message inclusion)
-                val dbEntities = coachMessageDao.getMessagesForSession(sessionId).first()
+                val dbEntities = coachMessageDao.getMessagesForSessionDirect(sessionId)
                 val currentHistory = dbEntities.map {
                     CoachMessageDto(
                         id = it.id,

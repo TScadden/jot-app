@@ -469,8 +469,9 @@ class LogRepository @Inject constructor(
         if (!isUnlimited) return Result.success(emptyList()) // Silently fail if no access
 
         val recent = logEntryDao.getRecentEntriesAll(limit = 50)
+        val userContext = getEnrichedUserContext()
         
-        return geminiService.getSmartCategorySuggestion(recent, existingCategories)
+        return geminiService.getSmartCategorySuggestion(recent, existingCategories, userContext)
     }
 
     suspend fun validateCategoryName(name: String): Result<String> {
@@ -495,7 +496,13 @@ class LogRepository @Inject constructor(
         val lastUpdate = preferences.userContextLastUpdate.first()
         val updateDate = if (lastUpdate > 0) java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.US).format(java.util.Date(lastUpdate)) else "Unknown"
         
-        val header = "📋 USER BACKGROUND CONTEXT (Last Updated: $updateDate):\n$baseContext\n\n"
+        val gender = preferences.userGender.first()
+        val age = preferences.userAge.first()
+        val height = preferences.userHeight.first()
+        val weight = preferences.userWeight.first()
+        val demographicStats = "Profile Info: Gender: $gender, Age: $age, Height: ${height}cm, Weight: ${weight}lbs"
+        
+        val header = "📋 USER BACKGROUND CONTEXT (Last Updated: $updateDate):\n$baseContext\n$demographicStats\n\n"
         
         val countersJson = preferences.eventCounters.first()
         if (countersJson.isBlank() || countersJson == "[]") return header

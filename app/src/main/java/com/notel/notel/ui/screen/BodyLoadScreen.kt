@@ -262,6 +262,20 @@ fun BodyLoadScreen(
                                 Text("Retry", color = NotelPrimary, fontWeight = FontWeight.Bold)
                             }
                         }
+                        quickLogState.isOffline && quickLogState.chips.isEmpty() -> {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text("Connection Error: You are offline.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(4.dp))
+                                Text("Load Suggestions is unavailable.", color = NotelTextSecondary, fontSize = 11.sp)
+                                Spacer(Modifier.height(12.dp))
+                                TextButton(onClick = { quickLogViewModel.fetchSuggestions(forceRefresh = true) }) {
+                                    Text("Retry Connection", color = NotelPrimary, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
                         quickLogState.chips.isEmpty() -> {
                             Column(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
@@ -349,156 +363,148 @@ fun BodyLoadScreen(
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "Manage your habits and reminders.",
+                        "Manage your habits, reminders, and lists.",
                         color = NotelTextSecondary,
                         fontSize = 13.sp
                     )
                     Spacer(Modifier.height(16.dp))
 
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        // ── Habits Tile ───────────────────────────────────
-                        val checkedCount = habits.count { habitViewModel.isCheckedToday(it) }
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .aspectRatio(1f)
-                                .border(
-                                    width = 3.dp,
-                                    color = NotelPrimary.copy(alpha = 0.12f),
-                                    shape = RoundedCornerShape(26.dp)
-                                )
-                                .border(
-                                    width = 6.dp,
-                                    color = NotelPrimary.copy(alpha = 0.04f),
-                                    shape = RoundedCornerShape(28.dp)
-                                )
-                                .liquidGlass(
-                                    shape = RoundedCornerShape(24.dp),
-                                    color = NotelSurface,
-                                    alpha = 0.8f,
-                                    showBorder = true
-                                )
-                                .clickable { onNavigateToHabits() }
-                                .padding(20.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier.fillMaxSize(),
-                                verticalArrangement = Arrangement.SpaceBetween,
-                                horizontalAlignment = Alignment.Start
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.CheckCircle,
-                                    contentDescription = null,
-                                    tint = NotelPrimary,
-                                    modifier = Modifier.size(32.dp)
-                                )
-                                Column {
-                                    Text(
-                                        text = "Habits",
-                                        color = NotelTextPrimary,
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        lineHeight = 22.sp
-                                    )
-                                    Spacer(Modifier.height(4.dp))
-                                    Text(
-                                        text = if (habits.isEmpty()) "No habits yet"
-                                               else "$checkedCount/${habits.size} done today",
-                                        color = NotelTextSecondary,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                            }
-                        }
-
-                        // ── Reminders Tile (UI only) ──────────────────────
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .aspectRatio(1f)
-                                .border(
-                                    width = 3.dp,
-                                    color = NotelPrimary.copy(alpha = 0.12f),
-                                    shape = RoundedCornerShape(26.dp)
-                                )
-                                .border(
-                                    width = 6.dp,
-                                    color = NotelPrimary.copy(alpha = 0.04f),
-                                    shape = RoundedCornerShape(28.dp)
-                                )
-                                .liquidGlass(
-                                    shape = RoundedCornerShape(24.dp),
-                                    color = NotelSurface,
-                                    alpha = 0.8f,
-                                    showBorder = true
-                                )
-                                .clickable { onNavigateToReminders() }
-                                .padding(20.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier.fillMaxSize(),
-                                verticalArrangement = Arrangement.SpaceBetween,
-                                horizontalAlignment = Alignment.Start
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Notifications,
-                                    contentDescription = null,
-                                    tint = NotelPrimary,
-                                    modifier = Modifier.size(32.dp)
-                                )
-                                Column {
-                                    Text(
-                                        text = "Reminders",
-                                        color = NotelTextPrimary,
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        lineHeight = 22.sp
-                                    )
-                                    Spacer(Modifier.height(4.dp))
-                                    Text(
-                                        text = if (reminders.isEmpty()) "No reminders yet" 
-                                               else "${reminders.size} Reminders",
-                                        color = NotelTextSecondary,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ── Lists Tile ───────────────────────────────────────────────
-            item {
-                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
-                    Spacer(Modifier.height(12.dp))
+                    // ── Habits Tile ───────────────────────────────────
+                    val checkedCount = habits.count { habitViewModel.isCheckedToday(it) }
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .aspectRatio(3f)
+                            .height(76.dp)
                             .border(
                                 width = 3.dp,
                                 color = NotelPrimary.copy(alpha = 0.12f),
-                                shape = RoundedCornerShape(26.dp)
+                                shape = RoundedCornerShape(22.dp)
                             )
                             .border(
                                 width = 6.dp,
                                 color = NotelPrimary.copy(alpha = 0.04f),
-                                shape = RoundedCornerShape(28.dp)
+                                shape = RoundedCornerShape(24.dp)
                             )
                             .liquidGlass(
-                                shape = RoundedCornerShape(24.dp),
+                                shape = RoundedCornerShape(20.dp),
+                                color = NotelSurface,
+                                alpha = 0.8f,
+                                showBorder = true
+                            )
+                            .clickable { onNavigateToHabits() }
+                            .padding(horizontal = 20.dp, vertical = 12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Start
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = NotelPrimary,
+                                modifier = Modifier.size(28.dp)
+                            )
+                            Spacer(Modifier.width(14.dp))
+                            Column {
+                                Text(
+                                    text = "Habits",
+                                    color = NotelTextPrimary,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = if (habits.isEmpty()) "No habits yet"
+                                           else "$checkedCount/${habits.size} done today",
+                                    color = NotelTextSecondary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // ── Reminders Tile (UI only) ──────────────────────
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(76.dp)
+                            .border(
+                                width = 3.dp,
+                                color = NotelPrimary.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(22.dp)
+                            )
+                            .border(
+                                width = 6.dp,
+                                color = NotelPrimary.copy(alpha = 0.04f),
+                                shape = RoundedCornerShape(24.dp)
+                            )
+                            .liquidGlass(
+                                shape = RoundedCornerShape(20.dp),
+                                color = NotelSurface,
+                                alpha = 0.8f,
+                                showBorder = true
+                            )
+                            .clickable { onNavigateToReminders() }
+                            .padding(horizontal = 20.dp, vertical = 12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Start
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Notifications,
+                                contentDescription = null,
+                                tint = NotelPrimary,
+                                modifier = Modifier.size(28.dp)
+                            )
+                            Spacer(Modifier.width(14.dp))
+                            Column {
+                                Text(
+                                    text = "Reminders",
+                                    color = NotelTextPrimary,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = if (reminders.isEmpty()) "No reminders yet" 
+                                           else "${reminders.size} Reminders",
+                                    color = NotelTextSecondary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // ── Lists Tile ───────────────────────────────────────────────
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(76.dp)
+                            .border(
+                                width = 3.dp,
+                                color = NotelPrimary.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(22.dp)
+                            )
+                            .border(
+                                width = 6.dp,
+                                color = NotelPrimary.copy(alpha = 0.04f),
+                                shape = RoundedCornerShape(24.dp)
+                            )
+                            .liquidGlass(
+                                shape = RoundedCornerShape(20.dp),
                                 color = NotelSurface,
                                 alpha = 0.8f,
                                 showBorder = true
                             )
                             .clickable { onNavigateToLists() }
-                            .padding(20.dp)
+                            .padding(horizontal = 20.dp, vertical = 12.dp)
                     ) {
                         Row(
                             modifier = Modifier.fillMaxSize(),
@@ -528,7 +534,6 @@ fun BodyLoadScreen(
                             }
                         }
                     }
-                    Spacer(Modifier.height(4.dp))
                 }
             }
             if (state.error != null) {

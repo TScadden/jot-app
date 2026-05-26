@@ -42,7 +42,8 @@ data class GenerateCategoriesRequest(
 @Serializable
 data class SmartCategorySuggestionRequest(
     val recentEntries: List<LogEntryDtoModel>,
-    val existingCategories: List<String>
+    val existingCategories: List<String>,
+    val userContext: String? = null
 )
 
 @Serializable

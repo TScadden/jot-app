@@ -33,31 +33,34 @@ fun KeyMetricsScreen(
     viewModel: FitbitViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
+    var selectedDate by remember { mutableStateOf(LocalDate.now()) }
     var showCalendar by remember { mutableStateOf(false) }
 
-    val displayDate = if (state.selectedKeyMetricsDate == "today") {
-        LocalDate.now().format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
-    } else {
-        try {
-            LocalDate.parse(state.selectedKeyMetricsDate).format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
-        } catch(e: Exception) { state.selectedKeyMetricsDate }
+    LaunchedEffect(Unit) {
+        viewModel.fetchMetricsForDate("today")
     }
+
+    val displayDate = selectedDate.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
+
 
     if (showCalendar) {
         val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = if (state.selectedKeyMetricsDate == "today") {
-                System.currentTimeMillis()
-            } else {
-                try {
-                    val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
-                        timeZone = java.util.TimeZone.getTimeZone("UTC")
-                    }
-                    sdf.parse(state.selectedKeyMetricsDate)?.time
-                } catch(e: Exception) { System.currentTimeMillis() }
-            },
+            initialSelectedDateMillis = selectedDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(),
             selectableDates = object : SelectableDates {
                 override fun isSelectableDate(utcTimeMillis: Long): Boolean {
-                    return utcTimeMillis <= System.currentTimeMillis()
+                    if (utcTimeMillis > System.currentTimeMillis()) return false
+                    
+                    val localSdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
+                        timeZone = java.util.TimeZone.getTimeZone(java.time.ZoneId.systemDefault().id)
+                    }
+                    val dateStr = localSdf.format(java.util.Date(utcTimeMillis))
+                    val todayStr = java.time.LocalDate.now().toString()
+                    
+                    if (dateStr == todayStr) return true
+                    
+                    return state.historicalHeartRate.any { it.first == dateStr } || 
+                           state.historicalSleep.any { it.first == dateStr } ||
+                           state.historicalCalories.any { it.first == dateStr }
                 }
             }
         )
@@ -66,11 +69,9 @@ fun KeyMetricsScreen(
             confirmButton = {
                 TextButton(onClick = {
                     datePickerState.selectedDateMillis?.let { millis ->
-                        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
-                            timeZone = java.util.TimeZone.getTimeZone("UTC")
-                        }
-                        val formatted = sdf.format(java.util.Date(millis))
-                        viewModel.fetchMetricsForDate(formatted)
+                        val localDate = java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+                        selectedDate = localDate
+                        viewModel.fetchMetricsForDate(localDate.toString())
                     }
                     showCalendar = false
                 }) {
@@ -103,11 +104,6 @@ fun KeyMetricsScreen(
                     }
                 },
                 actions = {
-                    if (state.selectedKeyMetricsDate != "today") {
-                        IconButton(onClick = { viewModel.fetchMetricsForDate("today") }) {
-                            Icon(Icons.Default.Today, "Today", tint = NotelTextSecondary)
-                        }
-                    }
                     IconButton(onClick = { showCalendar = true }) {
                         Icon(Icons.Default.CalendarMonth, "Select Date", tint = NotelTextSecondary)
                     }
@@ -130,29 +126,31 @@ fun KeyMetricsScreen(
             ) {
                 val today = LocalDate.now()
                 val last7Days = (0..6).map { 
-                    val d = today.minusDays(it.toLong())
-                    d.toString() to d.format(DateTimeFormatter.ofPattern("EEE"))
+                    today.minusDays(it.toLong())
                 }.reversed()
 
-                last7Days.forEach { (dateStr, dayLabel) ->
-                    val isSelected = (state.selectedKeyMetricsDate == "today" && dateStr == today.toString()) || 
-                                   state.selectedKeyMetricsDate == dateStr
+                last7Days.forEach { date ->
+                    val dateStr = date.toString()
+                    val todayStr = today.toString()
                     
-                    val hasData = state.historicalHeartRate.any { it.first == dateStr } || 
+                    val isSelected = selectedDate == date
+                    val hasData = dateStr == todayStr ||
+                                 state.historicalHeartRate.any { it.first == dateStr } || 
                                  state.historicalSleep.any { it.first == dateStr } ||
-                                 dateStr == today.toString()
-
-                    val isFuture = try { LocalDate.parse(dateStr).isAfter(today) } catch(e: Exception) { false }
+                                 state.historicalCalories.any { it.first == dateStr }
                     
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
                             .width(44.dp)
-                            .clickable(enabled = !isFuture) { viewModel.fetchMetricsForDate(dateStr) }
-                            .alpha(if (isFuture) 0.3f else if (!hasData) 0.5f else 1f)
+                            .clickable(enabled = hasData) { 
+                                selectedDate = date 
+                                viewModel.fetchMetricsForDate(dateStr)
+                            }
+                            .alpha(if (hasData) 1f else 0.3f)
                     ) {
                         Text(
-                            text = dayLabel, 
+                            text = date.format(DateTimeFormatter.ofPattern("EEE")), 
                             color = if (isSelected) NotelPrimary else NotelTextSecondary, 
                             fontSize = 12.sp, 
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
@@ -173,7 +171,7 @@ fun KeyMetricsScreen(
                             contentAlignment = Alignment.Center
                          ) {
                             Text(
-                                text = dateStr.substring(8),
+                                text = date.dayOfMonth.toString(),
                                 color = if (isSelected) NotelTextPrimary else if (hasData) NotelTextSecondary else Color.Gray,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                 fontSize = 13.sp
@@ -185,74 +183,89 @@ fun KeyMetricsScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            if (state.isLoading) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = NotelPrimary)
+            Spacer(Modifier.height(2.dp))
+
+            Spacer(Modifier.height(14.dp))
+
+            // Premium Key Metrics Grid (Auto-populates if cached, else pulls heart rate and leaves others blank as requested)
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                contentPadding = PaddingValues(bottom = 100.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                item {
+                    MetricTile(
+                        title = "Heart Rate",
+                        value = if (state.isLoading) "--" else if (state.latestHeartRate > 0) "${state.latestHeartRate}" else "No Data Recorded",
+                        unit = "BPM",
+                        icon = Icons.Default.Favorite,
+                        color = NotelPrimary,
+                        isLoading = state.isLoading,
+                        subtitle = "Last daily reading"
+                    )
                 }
-            } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
-                    contentPadding = PaddingValues(bottom = 100.dp),
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    item {
-                        MetricTile(
-                            title = "Heart Rate",
-                            value = if (state.latestHeartRate > 0) "${state.latestHeartRate}" else "--",
-                            unit = "BPM",
-                            icon = Icons.Default.Favorite,
-                            color = NotelPrimary
-                        )
-                    }
-                    item {
-                        MetricTile(
-                            title = "Weight",
-                            value = if (state.weightPounds > 0) String.format("%.1f", state.weightPounds) else "--",
-                            unit = "lbs",
-                            icon = Icons.Default.MonitorWeight,
-                            color = Color(0xFF4FC3F7)
-                        )
-                    }
-                    item {
-                        MetricTile(
-                            title = "Breathing Rate",
-                            value = if (state.respiratoryRate > 0) String.format("%.1f", state.respiratoryRate) else "--",
-                            unit = "brpm",
-                            icon = Icons.Default.Air,
-                            color = Color(0xFF81C784)
-                        )
-                    }
-                    item {
-                        MetricTile(
-                            title = "Blood Oxygen",
-                            value = if (state.bloodOxygen > 0) String.format("%.1f", state.bloodOxygen) else "--",
-                            unit = "%",
-                            icon = Icons.Default.Opacity,
-                            color = Color(0xFFFF8A65)
-                        )
-                    }
-                    item {
-                        MetricTile(
-                            title = "Resting HR",
-                            value = if (state.restingHeartRate > 0) "${state.restingHeartRate}" else "--",
-                            unit = "BPM",
-                            icon = Icons.Default.Bedtime,
-                            color = Color(0xFFBA68C8)
-                        )
-                    }
-                    item {
-                        MetricTile(
-                            title = "HRV",
-                            value = if (state.todayHRV > 0) String.format("%.0f", state.todayHRV) else "--",
-                            unit = "ms",
-                            icon = Icons.Default.Timeline,
-                            color = Color(0xFF4DB6AC)
-                        )
-                    }
+                item {
+                    MetricTile(
+                        title = "Weight",
+                        value = if (state.weightPounds > 0f) "${Math.round(state.weightPounds)}" else if (state.isLoading) "--" else "No Data Recorded",
+                        unit = "lbs",
+                        icon = Icons.Default.MonitorWeight,
+                        color = Color(0xFF4FC3F7),
+                        isLoading = state.isLoading && state.weightPounds <= 0f
+                    )
+                }
+                item {
+                    val brIsToday = selectedDate == java.time.LocalDate.now()
+                    MetricTile(
+                        title = "Breathing Rate",
+                        value = if (state.isLoading) "--" else if (state.respiratoryRate > 0.0) String.format("%.1f", state.respiratoryRate) else "No Data Recorded",
+                        unit = "brpm",
+                        icon = Icons.Default.Air,
+                        color = Color(0xFF81C784),
+                        isLoading = state.isLoading,
+                        subtitle = "Last daily reading",
+                        customNote = if (brIsToday && state.respiratoryRate == 0.0 && !state.isLoading) "Breathing Rate is calculated at night. Check back tomorrow." else null
+                    )
+                }
+                item {
+                    val boIsToday = selectedDate == java.time.LocalDate.now()
+                    MetricTile(
+                        title = "Blood Oxygen",
+                        value = if (state.isLoading) "--" else if (state.bloodOxygen > 0.0) String.format("%.1f", state.bloodOxygen) else "No Data Recorded",
+                        unit = "%",
+                        icon = Icons.Default.Opacity,
+                        color = Color(0xFFFF8A65),
+                        isLoading = state.isLoading,
+                        subtitle = "Last daily reading",
+                        customNote = if (boIsToday && state.bloodOxygen == 0.0 && !state.isLoading) "Blood Oxygen is calculated at night. Check back tomorrow." else null
+                    )
+                }
+                item {
+                    MetricTile(
+                        title = "Resting HR",
+                        value = if (state.isLoading) "--" else if (state.restingHeartRate > 0) "${state.restingHeartRate}" else "No Data Recorded",
+                        unit = "BPM",
+                        icon = Icons.Default.Bedtime,
+                        color = Color(0xFFBA68C8),
+                        isLoading = state.isLoading,
+                        subtitle = "Last daily reading"
+                    )
+                }
+                item {
+                    val hrvIsToday = selectedDate == java.time.LocalDate.now()
+                    MetricTile(
+                        title = "HRV",
+                        value = if (state.isLoading) "--" else if (state.currentHrv > 0.0) String.format("%.0f", state.currentHrv) else "No Data Recorded",
+                        unit = "ms",
+                        icon = Icons.Default.Timeline,
+                        color = Color(0xFF4DB6AC),
+                        isLoading = state.isLoading,
+                        customNote = if (hrvIsToday && state.currentHrv == 0.0 && !state.isLoading) "HRV is calculated at night. Check back tomorrow." else null
+                    )
                 }
             }
         }
@@ -265,7 +278,10 @@ fun MetricTile(
     value: String,
     unit: String,
     icon: ImageVector,
-    color: Color
+    color: Color,
+    isLoading: Boolean = false,
+    subtitle: String? = null,
+    customNote: String? = null
 ) {
     Surface(
         modifier = Modifier
@@ -275,7 +291,6 @@ fun MetricTile(
         color = NotelSurface.copy(alpha = 0.15f),
         border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
     ) {
-        // Glow effect
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -307,27 +322,54 @@ fun MetricTile(
                 }
 
                 Column {
-                    Row(verticalAlignment = Alignment.Bottom) {
+                    if (customNote != null) {
                         Text(
-                            text = value,
-                            color = NotelTextPrimary,
-                            fontSize = 32.sp,
-                            fontWeight = FontWeight.Black
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            text = unit,
-                            color = NotelTextSecondary,
-                            fontSize = 12.sp,
+                            text = customNote,
+                            color = NotelTextSecondary.copy(alpha = 0.7f),
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp,
+                            fontWeight = FontWeight.Normal,
                             modifier = Modifier.padding(bottom = 6.dp)
                         )
+                    } else {
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(
+                                text = value,
+                                color = if (value == "No Data Recorded" || value == "--") NotelTextSecondary.copy(alpha = 0.6f) else NotelTextPrimary,
+                                fontSize = if (value == "No Data Recorded") 13.sp else 32.sp,
+                                fontWeight = if (value == "No Data Recorded" || value == "--") FontWeight.Normal else FontWeight.Black,
+                                modifier = if (value == "No Data Recorded") Modifier.padding(bottom = 4.dp) else Modifier
+                            )
+                            if (value != "No Data Recorded" && value != "--") {
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    text = unit,
+                                    color = NotelTextSecondary,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(bottom = 6.dp)
+                                )
+                            }
+                        }
                     }
+                    
+                    Spacer(Modifier.height(2.dp))
+
                     Text(
                         text = title,
                         color = NotelTextSecondary,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium
                     )
+
+                    if (subtitle != null && !isLoading && customNote == null && value != "No Data Recorded" && value != "--") {
+                        Text(
+                            text = subtitle,
+                            color = NotelTextSecondary.copy(alpha = 0.5f),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Normal,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
                 }
             }
         }

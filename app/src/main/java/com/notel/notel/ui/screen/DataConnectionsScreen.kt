@@ -251,7 +251,46 @@ fun DataConnectionsScreen(
                     fontWeight = FontWeight.Medium
                 )
                 
-                Spacer(Modifier.height(48.dp))
+                if (app.id == "health_connect" && !state.hasFullPermissions) {
+                    Spacer(Modifier.height(24.dp))
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFFEF5350).copy(alpha = 0.05f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.2f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(
+                                "New Metrics Available!",
+                                color = NotelTextPrimary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                            Text(
+                                "Jot now supports Blood Oxygen, Resting HR, and Breathing Rate, but they require additional permissions.",
+                                color = NotelTextSecondary,
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center
+                            )
+                            Button(
+                                onClick = {
+                                    healthConnectLauncher.launch(fitbitViewModel.healthConnectManager.permissions)
+                                    selectedAppForManagement = null
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Grant New Permissions", color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+                
+                Spacer(Modifier.height(if (app.id == "health_connect" && !state.hasFullPermissions) 24.dp else 48.dp))
                 
                 Button(
                     onClick = {
