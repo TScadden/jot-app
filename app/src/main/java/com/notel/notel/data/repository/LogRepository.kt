@@ -1269,9 +1269,57 @@ class LogRepository @Inject constructor(
     suspend fun getBodyLoad(allCategories: List<Category>, dateStr: String? = null): Result<BodyLoadResponse> {
         val today = java.time.LocalDate.now().toString()
         val targetDateStr = dateStr ?: today
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
+        // Enforce AI lock: Only today and yesterday are allowed to call the AI or get fresh recalculation
+        val isTodayOrYesterday = try {
+            val targetDate = java.time.LocalDate.parse(targetDateStr)
+            val todayDate = java.time.LocalDate.now()
+            targetDate.isEqual(todayDate) || targetDate.isEqual(todayDate.minusDays(1))
+        } catch (e: Exception) {
+            true // default to allowing calculation if parsing fails
+        }
+
+        if (!isTodayOrYesterday) {
+            val insightsStr = preferences.aiInsights.first()
+            if (insightsStr.isNotBlank()) {
+                val insights = try {
+                    json.decodeFromString<List<com.notel.notel.data.local.entity.AiInsight>>(insightsStr)
+                } catch (e: Exception) { emptyList() }
+                
+                val targetLocalDate = try {
+                    java.time.LocalDate.parse(targetDateStr)
+                } catch (e: Exception) {
+                    java.time.LocalDate.now()
+                }
+                val startOfDay = targetLocalDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+                val cachedInsight = insights.find { it.type == "BodyLoad" && isSameDay(it.timestamp, startOfDay) }
+                if (cachedInsight != null) {
+                    val text = cachedInsight.text
+                    val scoreRegex = """Cup %:\s*(\d+)""".toRegex()
+                    val factorsRegex = """Factors:\s*([^\n|]*)""".toRegex()
+                    val adviceRegex = """Advice:\s*(.*)""".toRegex()
+                    
+                    val cachedScore = scoreRegex.find(text)?.groupValues?.get(1)?.toIntOrNull()
+                    val cachedFactors = factorsRegex.find(text)?.groupValues?.get(1)?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()
+                    val cachedAdvice = adviceRegex.find(text)?.groupValues?.get(1)?.trim() ?: ""
+                    
+                    if (cachedScore != null) {
+                        return Result.success(
+                            BodyLoadResponse(
+                                score = cachedScore,
+                                factors = cachedFactors,
+                                advice = cachedAdvice,
+                                subjectiveImpact = 0.0
+                            )
+                        )
+                    }
+                }
+            }
+        }
 
         // ── 1. Fetch Biometrics ──
-        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
         
         val heartJson = preferences.historicalHeartRate.first()
         val heartHist = try {
@@ -1348,31 +1396,33 @@ class LogRepository @Inject constructor(
         var subjectiveReason = ""
 
         if (jotsContext.isNotEmpty()) {
-            try {
-                val prompt = """
-                    You are a health analysis helper. Read the user's last 5 journal entries (Jots) leading up to the target day (which ends at timestamp $endOfDay) and evaluate their subjective strain (stress, pain, headaches, insomnia, symptoms, mental fatigue) up to this date.
-                    Consider the timing and recency of the Jots.
-                    Determine the subjective allostatic load percentage on a scale from 0% (perfect, relaxed, symptom-free) to 100% (extreme panic, severe pain, severe symptom flare-up, or extreme exhaustion).
-                    
-                    Example: "had a headache and had a hard time falling asleep" should be rated around 70-80%.
-                    
-                    You MUST return ONLY a valid JSON object in this exact format:
-                    {"impact": <number between 0 and 100>, "reasoning": "<1-sentence explanation>"}
-                """.trimIndent()
+            if (isTodayOrYesterday) {
+                try {
+                    val prompt = """
+                        You are a health analysis helper. Read the user's last 5 journal entries (Jots) leading up to the target day (which ends at timestamp $endOfDay) and evaluate their subjective strain (stress, pain, headaches, insomnia, symptoms, mental fatigue) up to this date.
+                        Consider the timing and recency of the Jots.
+                        Determine the subjective allostatic load percentage on a scale from 0% (perfect, relaxed, symptom-free) to 100% (extreme panic, severe pain, severe symptom flare-up, or extreme exhaustion).
+                        
+                        Example: "had a headache and had a hard time falling asleep" should be rated around 70-80%.
+                        
+                        You MUST return ONLY a valid JSON object in this exact format:
+                        {"impact": <number between 0 and 100>, "reasoning": "<1-sentence explanation>"}
+                    """.trimIndent()
 
-                val catMap = allCategories.associate { it.id to it.name }
-                val response = geminiService.getAdvice(jotsContext, catMap, userContext = prompt)
-                
-                response.onSuccess { text ->
-                    val cleanText = text.trim()
-                    val impactRegex = """\"impact\"\s*:\s*(\d+)""".toRegex()
-                    val reasoningRegex = """\"reasoning\"\s*:\s*\"([^\"]*)\"""".toRegex()
+                    val catMap = allCategories.associate { it.id to it.name }
+                    val response = geminiService.getAdvice(jotsContext, catMap, userContext = prompt)
                     
-                    subjectiveLoad = impactRegex.find(cleanText)?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
-                    subjectiveReason = reasoningRegex.find(cleanText)?.groupValues?.get(1) ?: ""
+                    response.onSuccess { text ->
+                        val cleanText = text.trim()
+                        val impactRegex = """\"impact\"\s*:\s*(\d+)""".toRegex()
+                        val reasoningRegex = """\"reasoning\"\s*:\s*\"([^\"]*)\"""".toRegex()
+                        
+                        subjectiveLoad = impactRegex.find(cleanText)?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+                        subjectiveReason = reasoningRegex.find(cleanText)?.groupValues?.get(1) ?: ""
+                    }
+                } catch (e: Exception) {
+                    // Fallback to deterministic below
                 }
-            } catch (e: Exception) {
-                // Fallback to deterministic below
             }
             
             // Offline/Fail Fallback OR if AI returned 0 but there is text

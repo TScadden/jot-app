@@ -94,6 +94,24 @@ class SyncManager @Inject constructor(
                 syncCoachSessions()
                 syncCoachMessages()
 
+                // Push AI Insights (including BodyLoad scores) to the server
+                val insightsStr = preferences.aiInsights.first()
+                if (insightsStr.isNotBlank()) {
+                    val localInsights = try {
+                        Json.decodeFromString<List<com.notel.notel.data.local.entity.AiInsight>>(insightsStr)
+                    } catch (e: Exception) { emptyList() }
+                    
+                    if (localInsights.isNotEmpty()) {
+                        val insightDtos = localInsights.map {
+                            InsightDtoModel(it.id, it.text, it.type, it.timestamp)
+                        }
+                        val insightRes = jotApi.syncInsights(SyncInsightsRequest(insightDtos))
+                        if (!insightRes.isSuccessful) {
+                            Log.e(tag, "Insights sync failed: ${insightRes.errorBody()?.string()}")
+                        }
+                    }
+                }
+
                 val pullSuccess = pullAllData()
                 if (!pullSuccess) {
                     Log.w(tag, "Sync aborted: Recovery failed. To avoid data loss, we will not push local empty state to server.")
