@@ -149,6 +149,7 @@ fun BodyLoadScreen(
                     state = state,
                     counters = quickLogState.eventCounters,
                     onDaySelected = { viewModel.selectDay(it) },
+                    onDayDoubleClicked = { viewModel.selectDayAndForceRefresh(it) },
                     onFactorSelected = { factor ->
                         if (factor == "Heart") onNavigateToHeart()
                         else viewModel.selectFactor(factor)

@@ -1487,7 +1487,7 @@ fun SettingsScreen(
                         }
                         Spacer(Modifier.height(12.dp))
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            aiInsights.forEach { insight ->
+                            aiInsights.filter { it.type != "BodyLoad" }.forEach { insight ->
                                 InsightTile(insight = insight, onDelete = { viewModel.deleteAiInsight(insight.id) })
                             }
                         }

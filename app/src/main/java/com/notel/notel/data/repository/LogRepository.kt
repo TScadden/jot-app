@@ -1267,12 +1267,194 @@ class LogRepository @Inject constructor(
      * Weights: 35% HRV, 30% Sleep, 20% Activity, 10% RHR, 5% Subjective (Jots).
      */
     suspend fun getBodyLoad(allCategories: List<Category>, dateStr: String? = null): Result<BodyLoadResponse> {
+        val today = java.time.LocalDate.now().toString()
+        val targetDateStr = dateStr ?: today
+
+        // ── 1. Fetch Biometrics ──
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        
+        val heartJson = preferences.historicalHeartRate.first()
+        val heartHist = try {
+            if (heartJson.isNotBlank()) json.decodeFromString<List<com.notel.notel.data.model.BiomarkerPoint>>(heartJson).map { it.date to it.value }
+            else if (healthConnectManager.hasAllPermissions()) healthConnectManager.readHistoricalHeartRate(180)
+            else emptyList()
+        } catch (e: Exception) { emptyList() }
+
+        val sleepJson = preferences.historicalSleep.first()
+        val sleepHist = try {
+            if (sleepJson.isNotBlank()) json.decodeFromString<List<com.notel.notel.data.model.BiomarkerPoint>>(sleepJson).map { it.date to it.value }
+            else if (healthConnectManager.hasAllPermissions()) healthConnectManager.readHistoricalSleep(180)
+            else emptyList()
+        } catch (e: Exception) { emptyList() }
+
+        val calJson = preferences.historicalCalories.first()
+        val calHist = try {
+            if (calJson.isNotBlank()) json.decodeFromString<List<com.notel.notel.data.model.BiomarkerPoint>>(calJson).map { it.date to it.value }
+            else if (healthConnectManager.hasAllPermissions()) healthConnectManager.readHistoricalCalories(180)
+            else emptyList()
+        } catch (e: Exception) { emptyList() }
+
+        val sleepMins = sleepHist.find { it.first == targetDateStr }?.second ?: 0
+        val calVal = calHist.find { it.first == targetDateStr }?.second ?: 0
+        
+        val todayAwake = preferences.todayAwakeAvgHr.first()
+        val hrVal = if (targetDateStr == today && todayAwake > 0) {
+            todayAwake
+        } else {
+            heartHist.find { it.first == targetDateStr }?.second ?: 0
+        }
+
+        // ── 2. Calculate Rules-Based Loads ──
+        
+        // A. Sleep Load (40%)
+        val sleepLoad = when {
+            sleepMins >= 480 -> 0.0
+            sleepMins >= 450 -> 10.0 + 20.0 * (480.0 - sleepMins) / 30.0  // 7.5 to 8 hours: 10% to 30% load
+            sleepMins >= 420 -> 30.0 + 30.0 * (450.0 - sleepMins) / 30.0  // 7 to 7.5 hours: 30% to 60% load
+            sleepMins >= 360 -> 60.0 + 25.0 * (420.0 - sleepMins) / 60.0  // 6 to 7 hours: 60% to 85% load
+            else -> (85.0 + 15.0 * (360.0 - sleepMins) / 60.0).coerceAtMost(100.0) // < 6 hours: 85% to 100% load
+        }
+
+        // B. Active Calorie Load (25%)
+        val calorieLoad = when {
+            calVal < 1800 -> 5.0 + 10.0 * (calVal.toDouble() / 1800.0)
+            calVal <= 2800 -> 15.0 + 15.0 * ((calVal - 1800).toDouble() / 1000.0)
+            else -> (30.0 + 70.0 * ((calVal - 2800).toDouble() / 700.0)).coerceAtMost(100.0)
+        }
+
+        // C. Heart Rate Load (30%)
+        val heartRateLoad = when {
+            hrVal <= 0 -> 0.0
+            hrVal in 60..73 -> 10.0 * (hrVal - 60).toDouble() / 13.0
+            hrVal in 74..85 -> 10.0 + 35.0 * (hrVal - 73).toDouble() / 12.0
+            hrVal > 85 -> (45.0 + 55.0 * (hrVal - 85).toDouble() / 15.0).coerceAtMost(100.0)
+            else -> (25.0 * (60 - hrVal).toDouble() / 15.0).coerceAtMost(25.0)
+        }
+
+        // ── 3. Calculate Subjective Load (10%) ──
+        val targetLocalDate = try {
+            java.time.LocalDate.parse(targetDateStr)
+        } catch (e: Exception) {
+            java.time.LocalDate.now()
+        }
+        val startOfDay = targetLocalDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val endOfDay = startOfDay + (24 * 60 * 60 * 1000L) - 1
+        
+        val dailyEntries = logEntryDao.getRecentEntriesInRange(startOfDay, endOfDay)
+        
+        var subjectiveLoad = 0.0
+        var subjectiveReason = ""
+
+        if (dailyEntries.isNotEmpty()) {
+            val isUnlimited = preferences.isUnlimited.first()
+            val autoSuggestions = preferences.autoAiSuggestions.first()
+            
+            if (isUnlimited && autoSuggestions) {
+                try {
+                    val prompt = """
+                        Evaluate the user's subjective stress, pain, symptoms, or mental fatigue based solely on these daily journal entries (Jots).
+                        Determine the subjective allostatic load on a scale from 0% (feeling perfect, relaxed, positive) to 100% (extreme panic, severe pain, severe autonomic flare-up, or extreme exhaustion).
+                        
+                        You MUST return ONLY a valid JSON object in this exact format (no markdown code blocks, no other text):
+                        {"impact": <number between 0 and 100>, "reasoning": "<1-sentence summary of why>"}
+                    """.trimIndent()
+
+                    val catMap = allCategories.associate { it.id to it.name }
+                    val response = geminiService.getAdvice(dailyEntries, catMap, userContext = prompt)
+                    
+                    response.onSuccess { text ->
+                        val cleanText = text.trim()
+                        val impactRegex = """\"impact\"\s*:\s*(\d+)""".toRegex()
+                        val reasoningRegex = """\"reasoning\"\s*:\s*\"([^\"]*)\"""".toRegex()
+                        
+                        subjectiveLoad = impactRegex.find(cleanText)?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+                        subjectiveReason = reasoningRegex.find(cleanText)?.groupValues?.get(1) ?: ""
+                    }
+                } catch (e: Exception) {
+                    // Fallback to deterministic below
+                }
+            }
+            
+            // Offline/Fail Fallback
+            if (subjectiveLoad == 0.0) {
+                var scoreSum = 0.0
+                val highStressCatIds = listOf(1, 2, 4, 6) // Heart Rate, Symptoms, Pain, Stress categories
+                dailyEntries.forEach { entry ->
+                    if (entry.categoryId in highStressCatIds) {
+                        scoreSum += 20.0
+                    }
+                }
+                subjectiveLoad = scoreSum.coerceAtMost(100.0)
+                subjectiveReason = "Determined via symptom jots logged."
+            }
+        }
+
+        // ── 4. Calculate Final Weighted Score (Rescaling gracefully for missing data) ──
+        var totalWeight = 0.0
+        var weightedLoadSum = 0.0
+        
+        if (sleepMins > 0) {
+            weightedLoadSum += sleepLoad * 0.40
+            totalWeight += 0.40
+        }
+        if (calVal > 0) {
+            weightedLoadSum += calorieLoad * 0.20
+            totalWeight += 0.20
+        }
+        if (hrVal > 0) {
+            weightedLoadSum += heartRateLoad * 0.30
+            totalWeight += 0.30
+        }
+        if (dailyEntries.isNotEmpty()) {
+            weightedLoadSum += subjectiveLoad * 0.10
+            totalWeight += 0.10
+        }
+        
+        val finalScore = if (totalWeight > 0.0) {
+            val rawWeightedLoad = weightedLoadSum / totalWeight
+            // Apply a baseline floor of 15% for a perfect body, scaling up to 100%
+            Math.round(15.0 + (rawWeightedLoad * 0.85)).toInt()
+        } else {
+            15 // Default to baseline healthy load if no biometric data exists
+        }
+
+        // ── 5. Generate Factors Breakdown & Custom Advice ──
+        val factors = mutableListOf<String>()
+        if (sleepMins > 0) factors.add("Sleep (${sleepLoad.toInt()}%)")
+        if (calVal > 0) factors.add("Active Calories (${calorieLoad.toInt()}%)")
+        if (hrVal > 0) factors.add("Heart Rate (${heartRateLoad.toInt()}%)")
+        if (dailyEntries.isNotEmpty()) factors.add("Subjective (${subjectiveLoad.toInt()}%)")
+
+        val adviceList = mutableListOf<String>()
+        if (sleepMins in 1..449) {
+            adviceList.add("Sleep was under 7.5 hours (${formatSleep(sleepMins)}). Prioritize deep recovery and rest today.")
+        }
+        if (calVal > 2800) {
+            adviceList.add("High physical exertion detected ($calVal kcal). Minimize strenuous workloads to prevent flare-ups.")
+        }
+        if (hrVal > 80) {
+            adviceList.add("Average heart rate was elevated ($hrVal bpm). Keep hydration high and reduce physical triggers.")
+        }
+        if (subjectiveLoad > 50.0) {
+            adviceList.add("Subjective strain is elevated. Take some time for self-care and mental decompression.")
+        }
+        
+        val finalAdvice = if (adviceList.isNotEmpty()) {
+            adviceList.joinToString(" ")
+        } else {
+            "Your biometric markers are looking great. Maintain your baseline and stay balanced!"
+        }
+
+        // Save BodyLoad as an insight so the week summary gets it!
+        val bodyLoadText = "Cup %: $finalScore | Factors: ${factors.joinToString(", ")} | Advice: $finalAdvice"
+        saveAiInsight(bodyLoadText, "BodyLoad", startOfDay)
+
         return Result.success(
             BodyLoadResponse(
-                score = 0,
-                factors = emptyList(),
-                advice = "",
-                subjectiveImpact = 0.0
+                score = finalScore,
+                factors = factors,
+                advice = finalAdvice,
+                subjectiveImpact = subjectiveLoad
             )
         )
     }

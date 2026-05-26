@@ -337,12 +337,52 @@ class BodyLoadViewModel @Inject constructor(
         _uiState.update { it.copy(isLoading = true) }
         viewModelScope.launch {
             try {
+                val lastRefresh = preferences.lastBodyLoadRefresh.first()
+                val now = System.currentTimeMillis()
+                val today = LocalDate.now().toString()
+                
+                if (!force) {
+                    if (dateStr != today) {
+                        _uiState.update { it.copy(isLoading = false) }
+                        return@launch
+                    }
+                    if (now - lastRefresh < 60 * 60 * 1000L) {
+                        _uiState.update { it.copy(isLoading = false) }
+                        return@launch
+                    }
+                }
+
                 logRepository.getDailyStatsSummary(dateStr, forceRefresh = true)
                 
                 val categories = categoryRepository.getAllCategories().first()
                 if (categories.isNotEmpty()) {
                     val result = logRepository.getBodyLoad(categories, dateStr)
                     result.onSuccess { res ->
+                        preferences.setLastBodyLoadRefresh(System.currentTimeMillis())
+                        preferences.setLastBodyLoadData(
+                            res.score,
+                            res.factors.joinToString(", "),
+                            res.advice ?: ""
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+            } finally {
+                _uiState.update { it.copy(isLoading = false) }
+            }
+        }
+    }
+
+    fun selectDayAndForceRefresh(dateStr: String) {
+        _uiState.update { it.copy(selectedDate = dateStr, isLoading = true) }
+        viewModelScope.launch {
+            try {
+                logRepository.getDailyStatsSummary(dateStr, forceRefresh = true)
+                val categories = categoryRepository.getAllCategories().first()
+                if (categories.isNotEmpty()) {
+                    val result = logRepository.getBodyLoad(categories, dateStr)
+                    result.onSuccess { res ->
+                        preferences.setLastBodyLoadRefresh(System.currentTimeMillis())
                         preferences.setLastBodyLoadData(
                             res.score,
                             res.factors.joinToString(", "),

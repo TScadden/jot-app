@@ -38,10 +38,12 @@ import kotlin.math.PI
 import kotlin.math.sin
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 fun BodyLoadCard(
     state: BodyLoadState,
     counters: List<EventCounterDto> = emptyList(),
     onDaySelected: (String) -> Unit = {},
+    onDayDoubleClicked: (String) -> Unit = {},
     onFactorSelected: (String?) -> Unit = {},
     onResetSelection: () -> Unit = {},
     onShowTheory: () -> Unit = {},
@@ -199,7 +201,12 @@ fun BodyLoadCard(
                 
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.width(38.dp).clickable { onDaySelected(dateStr) }
+                    modifier = Modifier
+                        .width(38.dp)
+                        .combinedClickable(
+                            onClick = { onDaySelected(dateStr) },
+                            onDoubleClick = { onDayDoubleClicked(dateStr) }
+                        )
                 ) {
                     Text(dayLabel, color = NotelTextSecondary, fontSize = 12.sp, modifier = Modifier.padding(bottom = 6.dp))
                     Box(
@@ -213,7 +220,7 @@ fun BodyLoadCard(
                         contentAlignment = Alignment.Center
                      ) {
                         Text(
-                            text = "-",
+                            text = if (historicalScore > 0) "$historicalScore" else "-",
                             color = if (isSelected) NotelTextPrimary else NotelTextSecondary,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                             fontSize = 13.sp
@@ -290,7 +297,7 @@ fun BodyLoadCard(
                             )
                         } else {
                             Text(
-                                text = "-",
+                                text = if (score > 0) "$score" else "-",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Black,
                                 color = NotelTextPrimary
