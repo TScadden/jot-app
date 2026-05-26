@@ -104,7 +104,7 @@ class ReportGenerator @Inject constructor(
                     y += 25f
                 }
                 line.contains("[BULLET]") -> {
-                    val cleanBullet = line.replace("[BULLET]", "").replace("-", "").replace("*", "").trim()
+                    val cleanBullet = line.replace("[BULLET]", "").replace("*", "").trim().removePrefix("-").trim()
                     drawFormattedLine("• $cleanBullet", margin + 15f, y, contentWidth - 15f, canvas, bodyPaint, boldBodyPaint, italicBodyPaint).let { 
                         y = it 
                     }
