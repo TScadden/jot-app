@@ -1396,33 +1396,31 @@ class LogRepository @Inject constructor(
         var subjectiveReason = ""
 
         if (jotsContext.isNotEmpty()) {
-            if (isTodayOrYesterday) {
-                try {
-                    val prompt = """
-                        You are a health analysis helper. Read the user's last 5 journal entries (Jots) leading up to the target day (which ends at timestamp $endOfDay) and evaluate their subjective strain (stress, pain, headaches, insomnia, symptoms, mental fatigue) up to this date.
-                        Consider the timing and recency of the Jots.
-                        Determine the subjective allostatic load percentage on a scale from 0% (perfect, relaxed, symptom-free) to 100% (extreme panic, severe pain, severe symptom flare-up, or extreme exhaustion).
-                        
-                        Example: "had a headache and had a hard time falling asleep" should be rated around 70-80%.
-                        
-                        You MUST return ONLY a valid JSON object in this exact format:
-                        {"impact": <number between 0 and 100>, "reasoning": "<1-sentence explanation>"}
-                    """.trimIndent()
-
-                    val catMap = allCategories.associate { it.id to it.name }
-                    val response = geminiService.getAdvice(jotsContext, catMap, userContext = prompt)
+            try {
+                val prompt = """
+                    You are a health analysis helper. Read the user's last 5 journal entries (Jots) leading up to the target day (which ends at timestamp $endOfDay) and evaluate their subjective strain (stress, pain, headaches, insomnia, symptoms, mental fatigue) up to this date.
+                    Consider the timing and recency of the Jots.
+                    Determine the subjective allostatic load percentage on a scale from 0% (perfect, relaxed, symptom-free) to 100% (extreme panic, severe pain, severe symptom flare-up, or extreme exhaustion).
                     
-                    response.onSuccess { text ->
-                        val cleanText = text.trim()
-                        val impactRegex = """\"impact\"\s*:\s*(\d+)""".toRegex()
-                        val reasoningRegex = """\"reasoning\"\s*:\s*\"([^\"]*)\"""".toRegex()
-                        
-                        subjectiveLoad = impactRegex.find(cleanText)?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
-                        subjectiveReason = reasoningRegex.find(cleanText)?.groupValues?.get(1) ?: ""
-                    }
-                } catch (e: Exception) {
-                    // Fallback to deterministic below
+                    Example: "had a headache and had a hard time falling asleep" should be rated around 70-80%.
+                    
+                    You MUST return ONLY a valid JSON object in this exact format:
+                    {"impact": <number between 0 and 100>, "reasoning": "<1-sentence explanation>"}
+                """.trimIndent()
+
+                val catMap = allCategories.associate { it.id to it.name }
+                val response = geminiService.getAdvice(jotsContext, catMap, userContext = prompt)
+                
+                response.onSuccess { text ->
+                    val cleanText = text.trim()
+                    val impactRegex = """\"impact\"\s*:\s*(\d+)""".toRegex()
+                    val reasoningRegex = """\"reasoning\"\s*:\s*\"([^\"]*)\"""".toRegex()
+                    
+                    subjectiveLoad = impactRegex.find(cleanText)?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+                    subjectiveReason = reasoningRegex.find(cleanText)?.groupValues?.get(1) ?: ""
                 }
+            } catch (e: Exception) {
+                // Fallback to deterministic below
             }
             
             // Offline/Fail Fallback OR if AI returned 0 but there is text
