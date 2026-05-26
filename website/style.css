@@ -705,7 +705,7 @@ footer {
         left: 0;
         right: 0;
         bottom: 0;
-        background: rgba(10, 10, 14, 0.95);
+        background: #0A0A0E !important;
         backdrop-filter: blur(20px);
         -webkit-backdrop-filter: blur(20px);
         flex-direction: column;
