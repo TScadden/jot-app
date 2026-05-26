@@ -141,18 +141,8 @@ class MainActivity : ComponentActivity() {
                 }
 
                 // Global banner states
-                var reportFile by remember { mutableStateOf<java.io.File?>(null) }
                 var aiInsight by remember { mutableStateOf<com.notel.notel.data.local.entity.AiInsight?>(null) }
                 val reportViewModel: com.notel.notel.ui.viewmodel.SettingsViewModel = hiltViewModel()
-
-                LaunchedEffect(Unit) {
-                    reportViewModel.reportReadyEvent.collect { file: java.io.File ->
-                        val route = navController.currentBackStackEntry?.destination?.route
-                        if (route != "settings" && route?.startsWith("settings") != true) {
-                            reportFile = file
-                        }
-                    }
-                }
 
                 LaunchedEffect(Unit) {
                     reportViewModel.aiInsightReadyEvent.collect { insight ->
@@ -444,60 +434,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // Global Top Banner Overlay (Medical Report Notification)
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = reportFile != null,
-                        enter = androidx.compose.animation.slideInVertically(initialOffsetY = { -it }) + androidx.compose.animation.fadeIn(),
-                        exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { -it }) + androidx.compose.animation.fadeOut(),
-                        modifier = Modifier.align(Alignment.TopCenter).padding(16.dp).statusBarsPadding()
-                    ) {
-                        val file = reportFile
-                        if (file != null) {
-                            Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = NotelPrimary,
-                                tonalElevation = 12.dp,
-                                shadowElevation = 12.dp,
-                                modifier = Modifier.fillMaxWidth().clickable {
-                                    val uri = androidx.core.content.FileProvider.getUriForFile(
-                                        context,
-                                        "${context.packageName}.provider",
-                                        file
-                                    )
-                                    val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                        type = "application/pdf"
-                                        putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-                                    context.startActivity(android.content.Intent.createChooser(intent, "Share Report"))
-                                    reportFile = null
-                                }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(16.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            "Medical Report Ready! ✓",
-                                            style = MaterialTheme.typography.titleMedium,
-                                            color = Color.White,
-                                            fontWeight = FontWeight.ExtraBold
-                                        )
-                                        Text(
-                                            "Downloaded to phone. Tap to share.",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = Color.White.copy(alpha = 0.9f)
-                                        )
-                                    }
-                                    IconButton(onClick = { reportFile = null }) {
-                                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
-                                    }
-                                }
-                            }
-                        }
-                    }
+
 
                     // Global Top Banner Overlay (AI Insight Notification)
                     androidx.compose.animation.AnimatedVisibility(
