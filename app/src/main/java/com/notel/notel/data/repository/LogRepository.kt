@@ -1298,11 +1298,12 @@ class LogRepository @Inject constructor(
         val calVal = calHist.find { it.first == targetDateStr }?.second ?: 0
         
         val todayAwake = preferences.todayAwakeAvgHr.first()
-        val hrVal = if (targetDateStr == today && todayAwake > 0) {
+        val rawHrVal = if (targetDateStr == today && todayAwake > 0) {
             todayAwake
         } else {
             heartHist.find { it.first == targetDateStr }?.second ?: 0
         }
+        val hrVal = if (rawHrVal <= 0) 70 else rawHrVal
 
         // ── 2. Calculate Rules-Based Loads ──
         
@@ -1346,33 +1347,30 @@ class LogRepository @Inject constructor(
         var subjectiveReason = ""
 
         if (dailyEntries.isNotEmpty()) {
-            val isUnlimited = preferences.isUnlimited.first()
-            val autoSuggestions = preferences.autoAiSuggestions.first()
-            
-            if (isUnlimited && autoSuggestions) {
-                try {
-                    val prompt = """
-                        Evaluate the user's subjective stress, pain, symptoms, or mental fatigue based solely on these daily journal entries (Jots).
-                        Determine the subjective allostatic load on a scale from 0% (feeling perfect, relaxed, positive) to 100% (extreme panic, severe pain, severe autonomic flare-up, or extreme exhaustion).
-                        
-                        You MUST return ONLY a valid JSON object in this exact format (no markdown code blocks, no other text):
-                        {"impact": <number between 0 and 100>, "reasoning": "<1-sentence summary of why>"}
-                    """.trimIndent()
-
-                    val catMap = allCategories.associate { it.id to it.name }
-                    val response = geminiService.getAdvice(dailyEntries, catMap, userContext = prompt)
+            try {
+                val prompt = """
+                    You are a health analysis helper. Read the user's daily journal entries (Jots) and evaluate their subjective strain (stress, pain, headaches, insomnia, symptoms, mental fatigue).
+                    Determine the subjective allostatic load percentage on a scale from 0% (perfect, relaxed, symptom-free) to 100% (extreme panic, severe pain, severe symptom flare-up, or extreme exhaustion).
                     
-                    response.onSuccess { text ->
-                        val cleanText = text.trim()
-                        val impactRegex = """\"impact\"\s*:\s*(\d+)""".toRegex()
-                        val reasoningRegex = """\"reasoning\"\s*:\s*\"([^\"]*)\"""".toRegex()
-                        
-                        subjectiveLoad = impactRegex.find(cleanText)?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
-                        subjectiveReason = reasoningRegex.find(cleanText)?.groupValues?.get(1) ?: ""
-                    }
-                } catch (e: Exception) {
-                    // Fallback to deterministic below
+                    Example: "had a headache and had a hard time falling asleep" should be rated around 70-80%.
+                    
+                    You MUST return ONLY a valid JSON object in this exact format:
+                    {"impact": <number between 0 and 100>, "reasoning": "<1-sentence explanation>"}
+                """.trimIndent()
+
+                val catMap = allCategories.associate { it.id to it.name }
+                val response = geminiService.getAdvice(dailyEntries, catMap, userContext = prompt)
+                
+                response.onSuccess { text ->
+                    val cleanText = text.trim()
+                    val impactRegex = """\"impact\"\s*:\s*(\d+)""".toRegex()
+                    val reasoningRegex = """\"reasoning\"\s*:\s*\"([^\"]*)\"""".toRegex()
+                    
+                    subjectiveLoad = impactRegex.find(cleanText)?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+                    subjectiveReason = reasoningRegex.find(cleanText)?.groupValues?.get(1) ?: ""
                 }
+            } catch (e: Exception) {
+                // Fallback to deterministic below
             }
             
             // Offline/Fail Fallback OR if AI returned 0 but there is text
@@ -1400,21 +1398,29 @@ class LogRepository @Inject constructor(
         var totalWeight = 0.0
         var weightedLoadSum = 0.0
         
+        val hasJots = dailyEntries.isNotEmpty()
+        
+        // Define weights dynamically: if jots exist, AI subjective load is highly weighted at 40%
+        val sleepWeight = if (hasJots) 0.30 else 0.40
+        val calWeight = if (hasJots) 0.10 else 0.20
+        val hrWeight = if (hasJots) 0.20 else 0.40
+        val subjectiveWeight = if (hasJots) 0.40 else 0.0
+        
         if (sleepMins > 0) {
-            weightedLoadSum += sleepLoad * 0.40
-            totalWeight += 0.40
+            weightedLoadSum += sleepLoad * sleepWeight
+            totalWeight += sleepWeight
         }
         if (calVal > 0) {
-            weightedLoadSum += calorieLoad * 0.20
-            totalWeight += 0.20
+            weightedLoadSum += calorieLoad * calWeight
+            totalWeight += calWeight
         }
         if (hrVal > 0) {
-            weightedLoadSum += heartRateLoad * 0.30
-            totalWeight += 0.30
+            weightedLoadSum += heartRateLoad * hrWeight
+            totalWeight += hrWeight
         }
-        if (dailyEntries.isNotEmpty()) {
-            weightedLoadSum += subjectiveLoad * 0.10
-            totalWeight += 0.10
+        if (hasJots) {
+            weightedLoadSum += subjectiveLoad * subjectiveWeight
+            totalWeight += subjectiveWeight
         }
         
         val finalScore = if (totalWeight > 0.0) {
