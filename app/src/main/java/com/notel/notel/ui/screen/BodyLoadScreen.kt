@@ -571,16 +571,16 @@ fun BodyLoadScreen(
                 )
                 Spacer(Modifier.height(16.dp))
                 Text(
-                    text = "Think of your body's capacity as a 'Cup'. Every stressor—poor sleep, dehydration, high heart rate spikes, or physical exertion—adds 'water' to that cup.\n\n" +
+                    text = "Think of your body's capacity as a 'Cup'. Every stressor—poor sleep, elevated heart rate, physical exertion, or subjective strain—adds 'water' to that cup.\n\n" +
                            "Your Body Load score (0-100) represents how much of your cup is currently full:\n\n" +
                            "• LOW (15-40): High Resilience. Your cup is mostly empty; you have plenty of room for activity.\n" +
                            "• MODERATE (41-65): Managing Load. You have used a fair amount of your daily capacity.\n" +
                            "• HIGH (66-90+): High Strain. Your cup is nearly full. Even small drops (stressors) could cause an 'overflow' (a flare or crash).\n\n" +
-                           "Your score is weighted using clinical biometric markers:\n" +
-                           "• 50% Autonomic Balance (HRV)\n" +
-                           "• 30% Activity Workload (ACWR)\n" +
-                           "• 15% Cardiovascular Strain (RHR & Spikes)\n" +
-                           "• 5% Subjective Context (Jots & Stress)",
+                           "Your score is weighted dynamically using key biomarker markers (scaled when Jots are logged):\n" +
+                           "• Subjective Jots: 40% (if present; 0% otherwise)\n" +
+                           "• Sleep: 30% (if Jots present; 40% otherwise)\n" +
+                           "• Heart Rate: 20% (if Jots present; 40% otherwise)\n" +
+                           "• Active Calories: 10% (if Jots present; 20% otherwise)",
                     color = NotelTextPrimary,
                     fontSize = 15.sp,
                     lineHeight = 22.sp

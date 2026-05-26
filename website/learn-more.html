@@ -81,16 +81,16 @@
                 <div class="theory-visual glass">
                     <h3>Metric Weighting</h3>
                     <canvas id="weightChart" width="300" height="300" class="weight-pie"></canvas>
-                    <p class="caption">Jot uses clinical biometric markers to calculate your real-time Body Load.</p>
+                    <p class="caption">Jot uses dynamic biomarker weights scaled to your subjective logs to calculate your daily Body Load.</p>
 <script>
 const ctx = document.getElementById('weightChart').getContext('2d');
 new Chart(ctx, {
   type: 'pie',
   data: {
-    labels: ['HRV','Context','ACWR','Strain'],
+    labels: ['Subjective Jots','Sleep Quality','Heart Rate','Active Calories'],
     datasets: [{
-      data: [50,30,15,5],
-      backgroundColor: ['#ff6384','#4bc0c0','#36a2eb','#ffce56']
+      data: [40,30,20,10],
+      backgroundColor: ['#ab47bc','#4bc0c0','#ff6384','#ffce56']
     }]
   },
   options: {
@@ -105,10 +105,10 @@ new Chart(ctx, {
 });
 </script>
 <div class="chart-legend">
-  <div class="legend-item" style="background:#ff6384;">HRV</div>
-  <div class="legend-item" style="background:#4bc0c0;">Context</div>
-  <div class="legend-item" style="background:#36a2eb;">ACWR</div>
-  <div class="legend-item" style="background:#ffce56;">Strain</div>
+  <div class="legend-item" style="background:#ab47bc;">Subjective Jots (40%)</div>
+  <div class="legend-item" style="background:#4bc0c0;">Sleep Quality (30%)</div>
+  <div class="legend-item" style="background:#ff6384;">Heart Rate (20%)</div>
+  <div class="legend-item" style="background:#ffce56;">Active Calories (10%)</div>
 </div>
                 </div>
             </div>
