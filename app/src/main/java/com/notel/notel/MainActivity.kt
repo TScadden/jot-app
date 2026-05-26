@@ -146,9 +146,11 @@ class MainActivity : ComponentActivity() {
 
                 LaunchedEffect(Unit) {
                     reportViewModel.aiInsightReadyEvent.collect { insight ->
-                        val route = navController.currentBackStackEntry?.destination?.route
-                        if (route != "settings" && route?.startsWith("settings") != true) {
-                            aiInsight = insight
+                        if (insight.type != "BodyLoad") {
+                            val route = navController.currentBackStackEntry?.destination?.route
+                            if (route != "settings" && route?.startsWith("settings") != true) {
+                                aiInsight = insight
+                            }
                         }
                     }
                 }
