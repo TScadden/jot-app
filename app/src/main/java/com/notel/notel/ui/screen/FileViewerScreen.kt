@@ -495,6 +495,20 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                     i++
                 }
                 
+                // Parse rows and calculate max column widths, ignoring the Markdown separator line (e.g. `|---|---`)
+                val rowsWithIndices = tableLines.mapIndexed { index, rowRaw -> index to rowRaw }
+                val parsedRows = rowsWithIndices.filter { !it.second.contains("---") }.map { pair ->
+                    val cells = pair.second.split("|").drop(1).dropLast(1).map { it.trim() }
+                    pair.first to cells
+                }
+                
+                val numCols = parsedRows.maxOfOrNull { it.second.size } ?: 0
+                val colWidths = IntArray(numCols) { colIndex ->
+                    parsedRows.maxOfOrNull { pair ->
+                        pair.second.getOrNull(colIndex)?.length ?: 0
+                    } ?: 0
+                }
+                
                 // Render table in a scrollable spreadsheet box
                 Surface(
                     color = NotelSurfaceHigh.copy(alpha = 0.5f),
@@ -509,23 +523,33 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                             .horizontalScroll(hScroll)
                             .padding(12.dp)
                     ) {
+                        var isFirstLine = true
                         tableLines.forEachIndexed { index, rowRaw ->
                             val isHeaderDivider = rowRaw.contains("---")
                             if (!isHeaderDivider) {
+                                val cells = rowRaw.split("|").drop(1).dropLast(1).map { it.trim() }
+                                val paddedCells = cells.mapIndexed { colIndex, cell ->
+                                    val targetWidth = colWidths.getOrElse(colIndex) { cell.length }
+                                    cell.padEnd(targetWidth)
+                                }
+                                val formattedRow = "| " + paddedCells.joinToString(" | ") + " |"
+                                
                                 Text(
-                                    text = rowRaw.replace("|", "  |  ").trim(),
-                                    color = if (index == 0) NotelPrimary else NotelTextPrimary,
+                                    text = formattedRow,
+                                    color = if (isFirstLine) NotelPrimary else NotelTextPrimary,
                                     fontSize = 12.sp,
-                                    fontWeight = if (index == 0) FontWeight.Bold else FontWeight.Normal,
+                                    fontWeight = if (isFirstLine) FontWeight.Bold else FontWeight.Normal,
                                     fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                                     maxLines = 1,
                                     style = androidx.compose.ui.text.TextStyle(letterSpacing = 0.sp)
                                 )
-                                if (index == 0) {
+                                
+                                if (isFirstLine) {
                                     HorizontalDivider(
                                         color = NotelPrimary.copy(alpha = 0.3f),
                                         modifier = Modifier.padding(vertical = 4.dp)
                                     )
+                                    isFirstLine = false
                                 }
                             }
                         }
