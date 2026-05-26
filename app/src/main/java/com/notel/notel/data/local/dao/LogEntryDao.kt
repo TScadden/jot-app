@@ -48,4 +48,7 @@ interface LogEntryDao {
 
     @Query("SELECT * FROM log_entries WHERE timestamp >= :start AND timestamp <= :end ORDER BY timestamp DESC")
     suspend fun getRecentEntriesInRange(start: Long, end: Long): List<LogEntry>
+
+    @Query("SELECT * FROM log_entries WHERE timestamp <= :end ORDER BY timestamp DESC LIMIT :limit")
+    suspend fun getRecentEntriesBefore(end: Long, limit: Int = 5): List<LogEntry>
 }

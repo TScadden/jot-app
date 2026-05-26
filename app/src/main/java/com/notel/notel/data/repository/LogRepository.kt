@@ -1342,14 +1342,16 @@ class LogRepository @Inject constructor(
         val endOfDay = startOfDay + (24 * 60 * 60 * 1000L) - 1
         
         val dailyEntries = logEntryDao.getRecentEntriesInRange(startOfDay, endOfDay)
+        val jotsContext = logEntryDao.getRecentEntriesBefore(endOfDay, 5)
         
         var subjectiveLoad = 0.0
         var subjectiveReason = ""
 
-        if (dailyEntries.isNotEmpty()) {
+        if (jotsContext.isNotEmpty()) {
             try {
                 val prompt = """
-                    You are a health analysis helper. Read the user's daily journal entries (Jots) and evaluate their subjective strain (stress, pain, headaches, insomnia, symptoms, mental fatigue).
+                    You are a health analysis helper. Read the user's last 5 journal entries (Jots) leading up to the target day (which ends at timestamp $endOfDay) and evaluate their subjective strain (stress, pain, headaches, insomnia, symptoms, mental fatigue) up to this date.
+                    Consider the timing and recency of the Jots.
                     Determine the subjective allostatic load percentage on a scale from 0% (perfect, relaxed, symptom-free) to 100% (extreme panic, severe pain, severe symptom flare-up, or extreme exhaustion).
                     
                     Example: "had a headache and had a hard time falling asleep" should be rated around 70-80%.
@@ -1359,7 +1361,7 @@ class LogRepository @Inject constructor(
                 """.trimIndent()
 
                 val catMap = allCategories.associate { it.id to it.name }
-                val response = geminiService.getAdvice(dailyEntries, catMap, userContext = prompt)
+                val response = geminiService.getAdvice(jotsContext, catMap, userContext = prompt)
                 
                 response.onSuccess { text ->
                     val cleanText = text.trim()
@@ -1381,7 +1383,7 @@ class LogRepository @Inject constructor(
                     "anxiety", "flare", "crash", "hurt", "bad", "insomnia", "awake", "sleep", 
                     "symptom", "dizzy", "pots", "mcas", "ache", "sore", "hard time"
                 )
-                dailyEntries.forEach { entry ->
+                jotsContext.forEach { entry ->
                     val text = entry.body.lowercase() + " " + entry.manualText.lowercase()
                     if (entry.categoryId == 1) {
                         scoreSum += 25.0 // Direct Symptoms category
@@ -1398,7 +1400,7 @@ class LogRepository @Inject constructor(
         var totalWeight = 0.0
         var weightedLoadSum = 0.0
         
-        val hasJots = dailyEntries.isNotEmpty()
+        val hasJots = jotsContext.isNotEmpty()
         
         // Define weights dynamically: if jots exist, AI subjective load is highly weighted at 40%
         val sleepWeight = if (hasJots) 0.30 else 0.40
@@ -1436,7 +1438,7 @@ class LogRepository @Inject constructor(
         if (sleepMins > 0) factors.add("Sleep (${sleepLoad.toInt()}%)")
         if (calVal > 0) factors.add("Active Calories (${calorieLoad.toInt()}%)")
         if (hrVal > 0) factors.add("Heart Rate (${heartRateLoad.toInt()}%)")
-        if (dailyEntries.isNotEmpty()) factors.add("Subjective (${subjectiveLoad.toInt()}%)")
+        if (hasJots) factors.add("Subjective (${subjectiveLoad.toInt()}%)")
 
         val adviceList = mutableListOf<String>()
         if (sleepMins in 1..449) {
