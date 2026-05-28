@@ -40,7 +40,13 @@ fun NotesScreen(
     viewModel: NotesViewModel = hiltViewModel()
 ) {
     val notes by viewModel.notes.collectAsState()
-    var noteText by remember { mutableStateOf("") }
+    
+    var noteTitle by remember { mutableStateOf("") }
+    var noteBody by remember { mutableStateOf("") }
+    
+    var editingNote by remember { mutableStateOf<UserListItem?>(null) }
+    var editTitle by remember { mutableStateOf("") }
+    var editBody by remember { mutableStateOf("") }
 
     Scaffold(
         containerColor = NotelBackground,
@@ -71,49 +77,82 @@ fun NotesScreen(
                 .padding(horizontal = 16.dp)
         ) {
             // ── Input area to add a new note ────────────────────────────────────
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(NotelSurfaceHigh.copy(alpha = 0.05f), shape = RoundedCornerShape(18.dp))
+                    .border(1.dp, Color.White.copy(alpha = 0.03f), shape = RoundedCornerShape(18.dp))
+                    .padding(12.dp)
             ) {
                 OutlinedTextField(
-                    value = noteText,
-                    onValueChange = { noteText = it },
-                    placeholder = { Text("Write a note...", color = NotelTextSecondary, fontSize = 14.sp) },
-                    modifier = Modifier.weight(1f),
-                    singleLine = false,
-                    maxLines = 4,
-                    shape = RoundedCornerShape(14.dp),
+                    value = noteTitle,
+                    onValueChange = { noteTitle = it },
+                    placeholder = { Text("Title (optional)...", color = NotelTextSecondary, fontSize = 14.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = NotelPrimary.copy(alpha = 0.6f),
-                        unfocusedBorderColor = NotelSurfaceHigh.copy(alpha = 0.2f),
+                        focusedBorderColor = NotelPrimary.copy(alpha = 0.5f),
+                        unfocusedBorderColor = Color.Transparent,
                         focusedTextColor = NotelTextPrimary,
                         unfocusedTextColor = NotelTextPrimary,
                         cursorColor = NotelPrimary,
-                        focusedContainerColor = NotelSurfaceHigh.copy(alpha = 0.08f),
-                        unfocusedContainerColor = NotelSurfaceHigh.copy(alpha = 0.04f)
+                        focusedContainerColor = NotelSurfaceHigh.copy(alpha = 0.04f),
+                        unfocusedContainerColor = Color.Transparent
                     ),
                     keyboardOptions = KeyboardOptions(
-                        capitalization = KeyboardCapitalization.Sentences,
-                        imeAction = ImeAction.Default
+                        capitalization = KeyboardCapitalization.Words,
+                        imeAction = ImeAction.Next
                     )
                 )
-                Spacer(Modifier.width(8.dp))
-                FilledIconButton(
-                    onClick = {
-                        if (noteText.isNotBlank()) {
-                            viewModel.addNote(noteText)
-                            noteText = ""
-                        }
-                    },
-                    enabled = noteText.isNotBlank(),
-                    shape = CircleShape,
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = if (noteText.isNotBlank()) NotelPrimary else NotelSurfaceHigh.copy(alpha = 0.3f),
-                        contentColor = Color.White
-                    ),
-                    modifier = Modifier.size(48.dp)
+                
+                Spacer(Modifier.height(6.dp))
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Add, "Add Note")
+                    OutlinedTextField(
+                        value = noteBody,
+                        onValueChange = { noteBody = it },
+                        placeholder = { Text("Write a note...", color = NotelTextSecondary, fontSize = 14.sp) },
+                        modifier = Modifier.weight(1f),
+                        singleLine = false,
+                        maxLines = 4,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = NotelPrimary.copy(alpha = 0.5f),
+                            unfocusedBorderColor = Color.Transparent,
+                            focusedTextColor = NotelTextPrimary,
+                            unfocusedTextColor = NotelTextPrimary,
+                            cursorColor = NotelPrimary,
+                            focusedContainerColor = NotelSurfaceHigh.copy(alpha = 0.04f),
+                            unfocusedContainerColor = Color.Transparent
+                        ),
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.Sentences,
+                            imeAction = ImeAction.Default
+                        )
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    FilledIconButton(
+                        onClick = {
+                            if (noteBody.isNotBlank() || noteTitle.isNotBlank()) {
+                                viewModel.addNote(noteTitle, noteBody)
+                                noteTitle = ""
+                                noteBody = ""
+                            }
+                        },
+                        enabled = noteBody.isNotBlank() || noteTitle.isNotBlank(),
+                        shape = CircleShape,
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = if (noteBody.isNotBlank() || noteTitle.isNotBlank()) NotelPrimary else NotelSurfaceHigh.copy(alpha = 0.3f),
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Icon(Icons.Default.Add, "Add Note")
+                    }
                 }
             }
 
@@ -152,12 +191,24 @@ fun NotesScreen(
                 ) {
                     items(notes, key = { it.id }) { item ->
                         val parts = item.text.split("_||_")
-                        val text = parts.getOrNull(0) ?: item.text
-                        val timestamp = parts.getOrNull(1)?.toLongOrNull() ?: System.currentTimeMillis()
+                        val (title, body, timestamp) = if (parts.size == 3) {
+                            Triple(parts[0], parts[1], parts[2].toLongOrNull() ?: System.currentTimeMillis())
+                        } else if (parts.size == 2) {
+                            Triple("New Note", parts[0], parts[1].toLongOrNull() ?: System.currentTimeMillis())
+                        } else {
+                            Triple("New Note", item.text, System.currentTimeMillis())
+                        }
+                        
                         val formattedDate = SimpleDateFormat("MMM d, yyyy h:mm a", Locale.getDefault()).format(Date(timestamp))
 
                         Surface(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    editingNote = item
+                                    editTitle = if (title == "New Note" && parts.size < 3) "" else title
+                                    editBody = body
+                                },
                             shape = RoundedCornerShape(14.dp),
                             color = NotelSurfaceHigh.copy(alpha = 0.08f),
                             border = androidx.compose.foundation.BorderStroke(
@@ -173,12 +224,19 @@ fun NotesScreen(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = text,
-                                        color = NotelTextPrimary,
+                                        text = title,
+                                        color = NotelPrimary,
                                         fontSize = 14.sp,
-                                        lineHeight = 20.sp
+                                        fontWeight = FontWeight.Bold
                                     )
                                     Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        text = body,
+                                        color = NotelTextPrimary,
+                                        fontSize = 13.sp,
+                                        lineHeight = 18.sp
+                                    )
+                                    Spacer(Modifier.height(6.dp))
                                     Text(
                                         text = formattedDate,
                                         color = NotelTextSecondary.copy(alpha = 0.6f),
@@ -204,5 +262,70 @@ fun NotesScreen(
                 }
             }
         }
+    }
+
+    // ── Edit Note Dialog ──────────────────────────────────────────────────────
+    editingNote?.let { note ->
+        AlertDialog(
+            onDismissRequest = { editingNote = null },
+            containerColor = NotelSurface,
+            title = {
+                Text(
+                    "Edit Note",
+                    color = NotelTextPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = editTitle,
+                        onValueChange = { editTitle = it },
+                        placeholder = { Text("Title (optional)...", color = NotelTextSecondary) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = NotelPrimary,
+                            unfocusedBorderColor = NotelSurfaceHigh.copy(alpha = 0.3f),
+                            focusedTextColor = NotelTextPrimary,
+                            unfocusedTextColor = NotelTextPrimary,
+                            cursorColor = NotelPrimary
+                        )
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = editBody,
+                        onValueChange = { editBody = it },
+                        placeholder = { Text("Note content...", color = NotelTextSecondary) },
+                        singleLine = false,
+                        maxLines = 6,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = NotelPrimary,
+                            unfocusedBorderColor = NotelSurfaceHigh.copy(alpha = 0.3f),
+                            focusedTextColor = NotelTextPrimary,
+                            unfocusedTextColor = NotelTextPrimary,
+                            cursorColor = NotelPrimary
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.editNote(note, editTitle, editBody)
+                        editingNote = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary)
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { editingNote = null }) {
+                    Text("Cancel", color = NotelTextSecondary)
+                }
+            }
+        )
     }
 }

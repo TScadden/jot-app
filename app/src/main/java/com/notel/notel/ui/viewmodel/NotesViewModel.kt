@@ -33,8 +33,8 @@ class NotesViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun addNote(text: String) {
-        if (text.isBlank()) return
+    fun addNote(title: String, body: String) {
+        if (body.isBlank() && title.isBlank()) return
         viewModelScope.launch {
             val lists = repository.lists.first()
             var list = lists.find { it.name == "__user_notes__" }
@@ -42,9 +42,26 @@ class NotesViewModel @Inject constructor(
                 list = repository.createList("__user_notes__")
             }
             
+            val finalTitle = if (title.trim().isBlank()) "New Note" else title.trim()
             val timestamp = System.currentTimeMillis()
-            val combinedText = "${text.trim()}_||_$timestamp"
+            val combinedText = "$finalTitle_||_${body.trim()}_||_$timestamp"
             repository.addItem(list.id, combinedText)
+            syncManager.pushProfileData()
+        }
+    }
+
+    fun editNote(item: UserListItem, newTitle: String, newBody: String) {
+        viewModelScope.launch {
+            val finalTitle = if (newTitle.trim().isBlank()) "New Note" else newTitle.trim()
+            val parts = item.text.split("_||_")
+            val timestamp = if (parts.size == 3) {
+                parts.getOrNull(2)?.toLongOrNull()
+            } else if (parts.size == 2) {
+                parts.getOrNull(1)?.toLongOrNull()
+            } else null ?: System.currentTimeMillis()
+            
+            val combinedText = "$finalTitle_||_${newBody.trim()}_||_$timestamp"
+            repository.updateItem(item, combinedText)
             syncManager.pushProfileData()
         }
     }
