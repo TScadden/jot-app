@@ -576,6 +576,7 @@ fun BodyLoadScreen(
                            "• LOW (15-40): High Resilience. Your cup is mostly empty; you have plenty of room for activity.\n" +
                            "• MODERATE (41-65): Managing Load. You have used a fair amount of your daily capacity.\n" +
                            "• HIGH (66-90+): High Strain. Your cup is nearly full. Even small drops (stressors) could cause an 'overflow' (a flare or crash).\n\n" +
+                           "To give you an accurate forecast, **each day's score is computed statically from yesterday's total metrics**, letting you see exactly how yesterday's exertion and sleep impact your body today.\n\n" +
                            "Your score is weighted dynamically using key biomarker markers (scaled when Jots are logged):\n" +
                            "• Subjective Jots: 40% (if present; 0% otherwise)\n" +
                            "• Sleep: 30% (if Jots present; 40% otherwise)\n" +
