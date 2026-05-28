@@ -57,8 +57,8 @@ fun CoachScreen(
     onBack: () -> Unit = {},
     viewModel: CoachViewModel = hiltViewModel()
 ) {
-    val messages by viewModel.messages.collectAsState()
-    val pendingAttachment by viewModel.pendingAttachment.collectAsState()
+    val messages: List<CoachMessage> by viewModel.messages.collectAsState(initial = emptyList())
+    val pendingAttachment: com.notel.notel.ui.viewmodel.PendingUploadFile? by viewModel.pendingAttachment.collectAsState(initial = null)
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
