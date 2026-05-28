@@ -44,7 +44,7 @@ class NotesViewModel @Inject constructor(
             
             val finalTitle = if (title.trim().isBlank()) "New Note" else title.trim()
             val timestamp = System.currentTimeMillis()
-            val combinedText = "$finalTitle_||_${body.trim()}_||_$timestamp"
+            val combinedText = "${finalTitle}_||_${body.trim()}_||_$timestamp"
             repository.addItem(list.id, combinedText)
             syncManager.pushProfileData()
         }
@@ -60,7 +60,7 @@ class NotesViewModel @Inject constructor(
                 parts.getOrNull(1)?.toLongOrNull()
             } else null ?: System.currentTimeMillis()
             
-            val combinedText = "$finalTitle_||_${newBody.trim()}_||_$timestamp"
+            val combinedText = "${finalTitle}_||_${newBody.trim()}_||_$timestamp"
             repository.updateItem(item, combinedText)
             syncManager.pushProfileData()
         }

@@ -11,11 +11,7 @@ import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.remote.CoachMessageDto
 import com.notel.notel.data.remote.JotApi
 import com.notel.notel.data.repository.LogRepository
-import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
-import java.util.UUID
-import javax.inject.Inject
+import com.notel.notel.data.repository.UserListRepository
 
 enum class NoteStatus {
     NONE,
@@ -25,6 +21,13 @@ enum class NoteStatus {
 }
 
 enum class FileStatus {
+    NONE,
+    PENDING,
+    APPROVED,
+    DENIED
+}
+
+enum class ListStatus {
     NONE,
     PENDING,
     APPROVED,
@@ -46,7 +49,10 @@ data class CoachMessage(
     val proposedNoteText: String? = null,
     val noteStatus: NoteStatus = NoteStatus.NONE,
     val proposedFileName: String? = null,
-    val fileStatus: FileStatus = FileStatus.NONE
+    val fileStatus: FileStatus = FileStatus.NONE,
+    val proposedListName: String? = null,
+    val proposedListItems: List<String> = emptyList(),
+    val listStatus: ListStatus = ListStatus.NONE
 )
 
 data class CoachMessageParsed(
@@ -54,7 +60,10 @@ data class CoachMessageParsed(
     val proposedNoteText: String?,
     val noteStatus: NoteStatus,
     val proposedFileName: String?,
-    val fileStatus: FileStatus
+    val fileStatus: FileStatus,
+    val proposedListName: String?,
+    val proposedListItems: List<String>,
+    val listStatus: ListStatus
 )
 
 fun parseCoachMessageContent(rawContent: String): CoachMessageParsed {
@@ -66,11 +75,18 @@ fun parseCoachMessageContent(rawContent: String): CoachMessageParsed {
     val approveFileRegex = Regex("\\[APPROVED_FILE:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
     val denyFileRegex = Regex("\\[DENIED_FILE:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
 
+    val proposeListRegex = Regex("\\[PROPOSE_LIST:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
+    val approveListRegex = Regex("\\[APPROVED_LIST:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
+    val denyListRegex = Regex("\\[DENIED_LIST:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
+
     var cleanContent = rawContent
     var proposedNoteText: String? = null
     var noteStatus = NoteStatus.NONE
     var proposedFileName: String? = null
     var fileStatus = FileStatus.NONE
+    var proposedListName: String? = null
+    var proposedListItems: List<String> = emptyList()
+    var listStatus = ListStatus.NONE
 
     if (proposeRegex.containsMatchIn(cleanContent)) {
         val matchResult = proposeRegex.find(cleanContent)!!
@@ -106,12 +122,48 @@ fun parseCoachMessageContent(rawContent: String): CoachMessageParsed {
         fileStatus = FileStatus.DENIED
     }
 
-    return CoachMessageParsed(cleanContent, proposedNoteText, noteStatus, proposedFileName, fileStatus)
+    fun parseListString(rawListString: String) {
+        val parts = rawListString.split("|")
+        proposedListName = parts.firstOrNull()?.trim()
+        if (parts.size > 1) {
+            proposedListItems = parts.subList(1, parts.size).map { it.trim() }.filter { it.isNotBlank() }
+        }
+    }
+
+    if (proposeListRegex.containsMatchIn(cleanContent)) {
+        val matchResult = proposeListRegex.find(cleanContent)!!
+        parseListString(matchResult.groupValues[1])
+        cleanContent = cleanContent.replace(matchResult.value, "").trim()
+        listStatus = ListStatus.PENDING
+    } else if (approveListRegex.containsMatchIn(cleanContent)) {
+        val matchResult = approveListRegex.find(cleanContent)!!
+        parseListString(matchResult.groupValues[1])
+        cleanContent = cleanContent.replace(matchResult.value, "").trim()
+        listStatus = ListStatus.APPROVED
+    } else if (denyListRegex.containsMatchIn(cleanContent)) {
+        val matchResult = denyListRegex.find(cleanContent)!!
+        parseListString(matchResult.groupValues[1])
+        cleanContent = cleanContent.replace(matchResult.value, "").trim()
+        listStatus = ListStatus.DENIED
+    }
+
+    return CoachMessageParsed(
+        cleanContent = cleanContent, 
+        proposedNoteText = proposedNoteText, 
+        noteStatus = noteStatus, 
+        proposedFileName = proposedFileName, 
+        fileStatus = fileStatus,
+        proposedListName = proposedListName,
+        proposedListItems = proposedListItems,
+        listStatus = listStatus
+    )
 }
 
 
 @HiltViewModel
 class CoachViewModel @Inject constructor(
+    private val userListRepository: UserListRepository,
+    private val syncManager: com.notel.notel.data.sync.SyncManager,
     private val logRepository: LogRepository,
     private val preferences: NotelPreferences,
     private val coachSessionDao: CoachSessionDao,
@@ -146,7 +198,10 @@ class CoachViewModel @Inject constructor(
                         proposedNoteText = parsed.proposedNoteText,
                         noteStatus = parsed.noteStatus,
                         proposedFileName = parsed.proposedFileName,
-                        fileStatus = parsed.fileStatus
+                        fileStatus = parsed.fileStatus,
+                        proposedListName = parsed.proposedListName,
+                        proposedListItems = parsed.proposedListItems,
+                        listStatus = parsed.listStatus
                     )
                 }
             }
@@ -209,6 +264,67 @@ class CoachViewModel @Inject constructor(
                         sessionId = sessionId,
                         role = "coach",
                         content = "Okay, I won't save that note."
+                    )
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    fun approveProposedList(messageId: String, listName: String, items: List<String>) {
+        viewModelScope.launch {
+            try {
+                val sessionId = _currentSessionId.value ?: return@launch
+                
+                // 1. Create list and add items
+                val createdList = userListRepository.createList(listName)
+                items.forEach { itemText ->
+                    userListRepository.addItem(createdList.id, itemText)
+                }
+                
+                // Force data sync
+                syncManager.pushProfileData()
+
+                // 2. Update status in SQLite to APPROVED_LIST
+                val dbEntities = coachMessageDao.getMessagesForSession(sessionId).first()
+                val targetEntity = dbEntities.find { it.id == messageId }
+                if (targetEntity != null) {
+                    val updatedContent = targetEntity.content.replace("[PROPOSE_LIST:", "[APPROVED_LIST:")
+                    coachMessageDao.insertMessage(targetEntity.copy(content = updatedContent, isSynced = false))
+                }
+
+                // 3. Insert confirmation message
+                coachMessageDao.insertMessage(
+                    CoachMessageEntity(
+                        sessionId = sessionId,
+                        role = "coach",
+                        content = "Awesome! I've created the list \"$listName\" with ${items.size} items."
+                    )
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun denyProposedList(messageId: String) {
+        viewModelScope.launch {
+            try {
+                val sessionId = _currentSessionId.value ?: return@launch
+
+                // 1. Update status in SQLite to DENIED_LIST
+                val dbEntities = coachMessageDao.getMessagesForSession(sessionId).first()
+                val targetEntity = dbEntities.find { it.id == messageId }
+                if (targetEntity != null) {
+                    val updatedContent = targetEntity.content.replace("[PROPOSE_LIST:", "[DENIED_LIST:")
+                    coachMessageDao.insertMessage(targetEntity.copy(content = updatedContent, isSynced = false))
+                }
+
+                // 2. Insert confirmation message
+                coachMessageDao.insertMessage(
+                    CoachMessageEntity(
+                        sessionId = sessionId,
+                        role = "coach",
+                        content = "Okay, I won't create that list."
                     )
                 )
             } catch (e: Exception) {
@@ -434,6 +550,15 @@ class CoachViewModel @Inject constructor(
                     denyProposedFile(lastMsg.id)
                     return
                 }
+            } else if (lastMsg.listStatus == ListStatus.PENDING && lastMsg.proposedListName != null) {
+                val lowerText = userText.lowercase()
+                if (lowerText == "approve" || lowerText == "yes" || lowerText == "save" || lowerText == "save it" || lowerText == "save that" || lowerText == "create" || lowerText == "create it" || lowerText == "create that") {
+                    approveProposedList(lastMsg.id, lastMsg.proposedListName, lastMsg.proposedListItems)
+                    return
+                } else if (lowerText == "deny" || lowerText == "no" || lowerText == "don't save" || lowerText == "don't create" || lowerText == "cancel" || lowerText == "no don't create") {
+                    denyProposedList(lastMsg.id)
+                    return
+                }
             }
         }
 
@@ -497,13 +622,21 @@ class CoachViewModel @Inject constructor(
                     )
                 }
                 
-                val userCtx = preferences.userContext.first()
+                val baseUserCtx = preferences.userContext.first()
+                val listInstructions = """
+                    SYSTEM RULE: If the user mentions lists, tasks, items to buy, check off, do, pack, or track, or if you discuss a structured set of items that could be turned into a list:
+                    1. Helpfully ask the user if they would like to turn this into a list.
+                    2. If proposing a list, you MUST append a tag to your response in the exact format: [PROPOSE_LIST:ListName|Item1|Item2|Item3|...] where the list name comes first followed by items separated by pipes.
+                    3. Do not include markdown brackets or other symbols inside the brackets. Example: [PROPOSE_LIST:Packing List|T-shirts|Socks|Toothbrush]
+                """.trimIndent()
+                val enrichedUserCtx = if (baseUserCtx.isBlank()) listInstructions else "$baseUserCtx\n\n$listInstructions"
+
                 val kb = preferences.knowledgeBase.first()
                 val recentEntries = logRepository.getRecentEntriesAll(10)
 
                 val result = logRepository.sendCoachMessage(
                     messages = currentHistory,
-                    userContext = userCtx.ifBlank { null },
+                    userContext = enrichedUserCtx,
                     knowledgeBase = kb.ifBlank { null },
                     recentEntries = recentEntries
                 )

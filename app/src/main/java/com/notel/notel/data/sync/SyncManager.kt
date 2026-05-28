@@ -56,9 +56,15 @@ class SyncManager @Inject constructor(
                 
                 Log.d(tag, "Full sync initiated...")
                 
-                // 1. Snapshot Recovery (Local -> Server, then Server -> Local)
-                // PREVENT DATA LOSS: Only push profile data if the user has completed onboarding locally.
-                // This prevents overwriting the server's data with empty local data on a fresh login.
+                // 1. Snapshot Recovery (Server -> Local, then Local -> Server)
+                // Pull cloud data first to recover any existing server state (e.g. after a database wipe or app update)
+                val pullSuccess = pullAllData()
+                if (!pullSuccess) {
+                    Log.w(tag, "Sync pull failed. Aborting sync cycle to prevent local data loss.")
+                    return@withLock
+                }
+
+                // Only push profile data if the user has completed onboarding locally.
                 if (preferences.onboardingComplete.first()) {
                     val profilePushSuccess = pushProfileData()
                     if (!profilePushSuccess) {
@@ -112,11 +118,7 @@ class SyncManager @Inject constructor(
                     }
                 }
 
-                val pullSuccess = pullAllData()
-                if (!pullSuccess) {
-                    Log.w(tag, "Sync aborted: Recovery failed. To avoid data loss, we will not push local empty state to server.")
-                    return@withLock
-                }
+
 
                 // Profile is handled at the start for optimistic local updates.
                 preferences.setLastSyncTime(System.currentTimeMillis())

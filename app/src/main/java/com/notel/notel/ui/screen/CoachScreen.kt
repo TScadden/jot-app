@@ -49,6 +49,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.platform.LocalContext
 
 
+import com.notel.notel.ui.viewmodel.ListStatus
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CoachScreen(
@@ -135,7 +137,9 @@ fun CoachScreen(
                         onApprove = { viewModel.approveProposedNote(message.id, message.proposedNoteText ?: "") },
                         onDeny = { viewModel.denyProposedNote(message.id) },
                         onApproveFile = { viewModel.approveProposedFile(message.id, message.proposedFileName ?: "") },
-                        onDenyFile = { viewModel.denyProposedFile(message.id) }
+                        onDenyFile = { viewModel.denyProposedFile(message.id) },
+                        onApproveList = { viewModel.approveProposedList(message.id, message.proposedListName ?: "", message.proposedListItems) },
+                        onDenyList = { viewModel.denyProposedList(message.id) }
                     )
                 }
             }
@@ -282,7 +286,9 @@ private fun ChatBubble(
     onApprove: () -> Unit,
     onDeny: () -> Unit,
     onApproveFile: () -> Unit,
-    onDenyFile: () -> Unit
+    onDenyFile: () -> Unit,
+    onApproveList: () -> Unit,
+    onDenyList: () -> Unit
 ) {
     val clipboardManager = LocalClipboardManager.current
     val isUser = message.role == "user"
@@ -620,6 +626,116 @@ private fun ChatBubble(
                     ) {
                         Text(
                             text = "✗ Save Suggestion Dismissed",
+                            color = Color(0xFFFF5252),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+
+        // Suggestion Card or Badges for lists
+        if (!isUser && message.proposedListName != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            when (message.listStatus) {
+                ListStatus.PENDING -> {
+                    Surface(
+                        modifier = Modifier
+                            .widthIn(max = 300.dp)
+                            .padding(start = 8.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.White.copy(alpha = 0.05f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text("📋", fontSize = 16.sp)
+                                Text(
+                                    text = "Create List?",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = NotelPrimary
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Create list \"${message.proposedListName}\" with items:",
+                                fontSize = 14.sp,
+                                color = NotelTextPrimary,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                message.proposedListItems.forEach { item ->
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text("•", color = NotelTextSecondary, fontSize = 14.sp)
+                                        Text(text = item, color = NotelTextSecondary, fontSize = 13.sp)
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = onDenyList,
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = Color(0xFFFF5252)
+                                    ),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF5252).copy(alpha = 0.4f))
+                                ) {
+                                    Text("Deny", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                }
+
+                                Button(
+                                    onClick = onApproveList,
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFF00E676),
+                                        contentColor = Color(0xFF080E1A)
+                                    )
+                                ) {
+                                    Text("Approve", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+                ListStatus.APPROVED -> {
+                    Row(
+                        modifier = Modifier.padding(start = 12.dp, top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "✓ List Created Successfully",
+                            color = Color(0xFF00E676),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                ListStatus.DENIED -> {
+                    Row(
+                        modifier = Modifier.padding(start = 12.dp, top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "✗ List Suggestion Dismissed",
                             color = Color(0xFFFF5252),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold
