@@ -630,6 +630,7 @@ private fun ChatBubble(
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold
                         )
+                    }
                 }
                 else -> {}
             }
