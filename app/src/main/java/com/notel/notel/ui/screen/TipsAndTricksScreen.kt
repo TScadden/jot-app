@@ -318,7 +318,7 @@ private fun TopicCard(topic: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(130.dp)
+            .heightIn(min = 130.dp)
             .border(
                 width = 1.dp,
                 color = NotelPrimary.copy(alpha = 0.08f),
@@ -335,8 +335,8 @@ private fun TopicCard(topic: String, onClick: () -> Unit) {
             .padding(16.dp)
     ) {
         Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.SpaceBetween
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Box(
                 modifier = Modifier
@@ -357,8 +357,7 @@ private fun TopicCard(topic: String, onClick: () -> Unit) {
                 color = NotelTextPrimary,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
-                lineHeight = 18.sp,
-                maxLines = 3
+                lineHeight = 18.sp
             )
         }
     }
