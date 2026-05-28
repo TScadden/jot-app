@@ -5,7 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.repository.LogRepository
 import com.notel.notel.data.repository.UserListRepository
+import com.notel.notel.data.repository.CategoryRepository
 import com.notel.notel.data.remote.GeminiService
+import com.notel.notel.data.local.entity.LogEntry
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -17,6 +19,7 @@ import javax.inject.Inject
 class TipsAndTricksViewModel @Inject constructor(
     private val logRepository: LogRepository,
     private val userListRepository: UserListRepository,
+    private val categoryRepository: CategoryRepository,
     private val geminiService: GeminiService,
     private val preferences: NotelPreferences
 ) : ViewModel() {
@@ -75,7 +78,19 @@ class TipsAndTricksViewModel @Inject constructor(
             try {
                 // 1. Gather all local notes/Jots
                 val jots = logRepository.getAllEntries().first().take(20)
-                val jotsContext = jots.joinToString("\n") { "- [${it.timestamp}]: ${it.body}" }
+                val recentEntries = if (jots.isEmpty()) {
+                    listOf(LogEntry(
+                        id = 99999, 
+                        categoryId = 7, 
+                        body = "Welcome to Jot! Try journaling about your symptoms, habits, or day to get custom tips.", 
+                        chips = "", 
+                        manualText = "Welcome to Jot!", 
+                        timestamp = System.currentTimeMillis()
+                    ))
+                } else {
+                    jots
+                }
+                val jotsContext = recentEntries.joinToString("\n") { "- [${it.timestamp}]: ${it.body}" }
 
                 // 2. Gather lists
                 val lists = userListRepository.lists.first().filter { it.name != "__user_notes__" }
@@ -85,7 +100,11 @@ class TipsAndTricksViewModel @Inject constructor(
                 val docs = logRepository.getAllDocuments().first()
                 val docsContext = docs.joinToString(", ") { it.name }
 
-                // 4. Construct lightweight token-efficient prompt
+                // 4. Fetch all categories for standard structure
+                val allCategories = categoryRepository.getAllCategories().first()
+                val catMap = allCategories.associate { it.id to it.name }
+
+                // 5. Construct lightweight token-efficient prompt
                 val prompt = """
                     You are a personalized assistant helping a user discover insights about their life, habits, health, and data.
                     Read this compact summary of their records:
@@ -106,8 +125,8 @@ class TipsAndTricksViewModel @Inject constructor(
                     ["Question 1?", "Question 2?", "Question 3?", "Question 4?"]
                 """.trimIndent()
 
-                // 5. Call Gemini Service
-                geminiService.getAdvice(emptyList(), emptyMap(), userContext = prompt).onSuccess { aiResponse ->
+                // 6. Call Gemini Service with proper entries & categories to satisfy server requirements
+                geminiService.getAdvice(recentEntries, catMap, userContext = prompt).onSuccess { aiResponse ->
                     val cleanResponse = cleanJsonResponse(aiResponse)
                     try {
                         val arr = JSONArray(cleanResponse)
@@ -146,9 +165,25 @@ class TipsAndTricksViewModel @Inject constructor(
             try {
                 // 1. Gather all local notes/Jots for details
                 val jots = logRepository.getAllEntries().first().take(20)
-                val jotsContext = jots.joinToString("\n") { "- ${it.body}" }
+                val recentEntries = if (jots.isEmpty()) {
+                    listOf(LogEntry(
+                        id = 99999, 
+                        categoryId = 7, 
+                        body = "Welcome to Jot!", 
+                        chips = "", 
+                        manualText = "Welcome to Jot!", 
+                        timestamp = System.currentTimeMillis()
+                    ))
+                } else {
+                    jots
+                }
+                val jotsContext = recentEntries.joinToString("\n") { "- ${it.body}" }
 
-                // 2. Propose prompt for Gemini
+                // 2. Fetch all categories for standard structure
+                val allCategories = categoryRepository.getAllCategories().first()
+                val catMap = allCategories.associate { it.id to it.name }
+
+                // 3. Propose prompt for Gemini
                 val prompt = """
                     The user has chosen to learn more about the following topic based on their personal records:
                     "$topic"
@@ -165,7 +200,7 @@ class TipsAndTricksViewModel @Inject constructor(
                     ["Tip 1 details...", "Tip 2 details...", "Tip 3 details..."]
                 """.trimIndent()
 
-                geminiService.getAdvice(emptyList(), emptyMap(), userContext = prompt).onSuccess { aiResponse ->
+                geminiService.getAdvice(recentEntries, catMap, userContext = prompt).onSuccess { aiResponse ->
                     val cleanResponse = cleanJsonResponse(aiResponse)
                     try {
                         val arr = JSONArray(cleanResponse)
