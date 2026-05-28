@@ -431,7 +431,21 @@ class CoachViewModel @Inject constructor(
                 }
 
                 // 4. Confirmation message
-                val timeLabel = if (timeStr != null) " at $timeStr" else ""
+                val formattedTime = try {
+                    val parts = timeStr?.split(":") ?: emptyList()
+                    val hour = parts.getOrNull(0)?.toIntOrNull()
+                    val minute = parts.getOrNull(1)?.toIntOrNull()
+                    if (hour != null && minute != null) {
+                        val amPm = if (hour < 12) "AM" else "PM"
+                        val h12 = when (hour % 12) { 0 -> 12; else -> hour % 12 }
+                        "$h12:${String.format("%02d", minute)} $amPm"
+                    } else {
+                        timeStr
+                    }
+                } catch (e: Exception) {
+                    timeStr
+                }
+                val timeLabel = if (formattedTime != null) " at $formattedTime" else ""
                 coachMessageDao.insertMessage(
                     CoachMessageEntity(
                         sessionId = sessionId,

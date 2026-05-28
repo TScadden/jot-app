@@ -789,9 +789,23 @@ private fun ChatBubble(
                                 color = NotelTextPrimary
                             )
                             if (message.proposedReminderTime != null) {
+                                val formattedTime = try {
+                                    val parts = message.proposedReminderTime.split(":")
+                                    val hour = parts.getOrNull(0)?.toIntOrNull()
+                                    val minute = parts.getOrNull(1)?.toIntOrNull()
+                                    if (hour != null && minute != null) {
+                                        val amPm = if (hour < 12) "AM" else "PM"
+                                        val h12 = when (hour % 12) { 0 -> 12; else -> hour % 12 }
+                                        "$h12:${String.format("%02d", minute)} $amPm"
+                                    } else {
+                                        message.proposedReminderTime
+                                    }
+                                } catch (e: java.lang.Exception) {
+                                    message.proposedReminderTime
+                                }
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "🕐 ${message.proposedReminderTime}",
+                                    text = "🕐 $formattedTime",
                                     fontSize = 13.sp,
                                     color = NotelTextSecondary
                                 )
