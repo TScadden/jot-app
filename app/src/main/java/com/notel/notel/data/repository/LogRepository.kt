@@ -914,7 +914,7 @@ class LogRepository @Inject constructor(
         
         val newInsight = AiInsight(java.util.UUID.randomUUID().toString(), text, ts, type)
         insights.add(0, newInsight)
-        preferences.setAiInsights(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(AiInsight.serializer()), insights.take(20))) // Keep last 20
+        preferences.setAiInsights(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(AiInsight.serializer()), insights.take(100))) // Keep last 100
         
         _aiInsightReadyEvent.emit(newInsight)
         
@@ -934,7 +934,7 @@ class LogRepository @Inject constructor(
             if (!exists) insights.add(0, newOn)
         }
         
-        preferences.setAiInsights(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(AiInsight.serializer()), insights.take(30))) 
+        preferences.setAiInsights(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(AiInsight.serializer()), insights.take(100))) // Keep last 100
         triggerSync()
     }
 
