@@ -50,6 +50,7 @@ import androidx.compose.ui.platform.LocalContext
 
 
 import com.notel.notel.ui.viewmodel.ListStatus
+import com.notel.notel.ui.viewmodel.PendingUploadFile
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,7 +59,7 @@ fun CoachScreen(
     viewModel: CoachViewModel = hiltViewModel()
 ) {
     val messages: List<CoachMessage> by viewModel.messages.collectAsState(initial = emptyList())
-    val pendingAttachment: com.notel.notel.ui.viewmodel.PendingUploadFile? by viewModel.pendingAttachment.collectAsState(initial = null)
+    val pendingAttachment: PendingUploadFile? by viewModel.pendingAttachment.collectAsState(initial = null)
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
