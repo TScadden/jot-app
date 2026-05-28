@@ -29,6 +29,10 @@ import com.notel.notel.ui.viewmodel.BodyLoadViewModel
 import com.notel.notel.ui.viewmodel.QuickLogViewModel
 import com.notel.notel.ui.viewmodel.HabitViewModel
 import com.notel.notel.ui.viewmodel.ReminderViewModel
+import com.notel.notel.ui.viewmodel.NotesViewModel
+import com.notel.notel.ui.viewmodel.ListsViewModel
+import com.notel.notel.data.local.entity.UserListItem
+import com.notel.notel.data.local.entity.UserList
 import com.notel.notel.data.remote.HabitDtoModel
 import com.notel.notel.ui.viewmodel.EventCounterDto
 import com.notel.notel.data.local.entity.Category
@@ -49,12 +53,16 @@ fun BodyLoadScreen(
     onNavigateToNotes: () -> Unit = {},
     quickLogViewModel: QuickLogViewModel = hiltViewModel(),
     habitViewModel: HabitViewModel = hiltViewModel(),
-    reminderViewModel: ReminderViewModel = hiltViewModel()
+    reminderViewModel: ReminderViewModel = hiltViewModel(),
+    notesViewModel: NotesViewModel = hiltViewModel(),
+    listsViewModel: ListsViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
     val quickLogState by quickLogViewModel.uiState.collectAsState()
     val habits by habitViewModel.habits.collectAsState()
     val reminders by reminderViewModel.reminders.collectAsState()
+    val notes: List<com.notel.notel.data.local.entity.UserListItem> by notesViewModel.notes.collectAsState()
+    val lists: List<com.notel.notel.data.local.entity.UserList> by listsViewModel.lists.collectAsState()
 
     // Auto-hide success message
     LaunchedEffect(quickLogState.saveSuccess) {
@@ -527,8 +535,10 @@ fun BodyLoadScreen(
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold
                                 )
+                                val userLists = lists.filter { list -> list.name != "__user_notes__" }
                                 Text(
-                                    text = "Manage your lists",
+                                    text = if (userLists.isEmpty()) "No lists yet"
+                                           else "${userLists.size} ${if (userLists.size == 1) "List" else "Lists"}",
                                     color = NotelTextSecondary,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium
@@ -583,7 +593,8 @@ fun BodyLoadScreen(
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "Create and view notes",
+                                    text = if (notes.isEmpty()) "No notes yet"
+                                           else "${notes.size} ${if (notes.size == 1) "Note" else "Notes"}",
                                     color = NotelTextSecondary,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium

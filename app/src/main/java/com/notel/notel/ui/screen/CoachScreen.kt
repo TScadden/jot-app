@@ -51,6 +51,7 @@ import androidx.compose.ui.platform.LocalContext
 
 import com.notel.notel.ui.viewmodel.ListStatus
 import com.notel.notel.ui.viewmodel.PendingUploadFile
+import com.notel.notel.ui.viewmodel.ReminderStatus
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -140,7 +141,9 @@ fun CoachScreen(
                         onApproveFile = { viewModel.approveProposedFile(message.id, message.proposedFileName ?: "") },
                         onDenyFile = { viewModel.denyProposedFile(message.id) },
                         onApproveList = { viewModel.approveProposedList(message.id, message.proposedListName ?: "", message.proposedListItems) },
-                        onDenyList = { viewModel.denyProposedList(message.id) }
+                        onDenyList = { viewModel.denyProposedList(message.id) },
+                        onApproveReminder = { viewModel.approveProposedReminder(message.id, message.proposedReminderTitle ?: "", message.proposedReminderTime) },
+                        onDenyReminder = { viewModel.denyProposedReminder(message.id) }
                     )
                 }
             }
@@ -289,7 +292,9 @@ private fun ChatBubble(
     onApproveFile: () -> Unit,
     onDenyFile: () -> Unit,
     onApproveList: () -> Unit,
-    onDenyList: () -> Unit
+    onDenyList: () -> Unit,
+    onApproveReminder: () -> Unit,
+    onDenyReminder: () -> Unit
 ) {
     val clipboardManager = LocalClipboardManager.current
     val isUser = message.role == "user"
@@ -740,6 +745,108 @@ private fun ChatBubble(
                     ) {
                         Text(
                             text = "✗ List Suggestion Dismissed",
+                            color = Color(0xFFFF5252),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+                else -> {}
+            }
+        }
+
+        // Reminder proposal card
+        if (!isUser && message.proposedReminderTitle != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            when (message.reminderStatus) {
+                ReminderStatus.PENDING -> {
+                    Surface(
+                        modifier = Modifier
+                            .widthIn(max = 300.dp)
+                            .padding(start = 8.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.White.copy(alpha = 0.05f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text("🔔", fontSize = 16.sp)
+                                Text(
+                                    text = "Set Reminder?",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = NotelPrimary
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                text = message.proposedReminderTitle,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = NotelTextPrimary
+                            )
+                            if (message.proposedReminderTime != null) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "🕐 ${message.proposedReminderTime}",
+                                    fontSize = 13.sp,
+                                    color = NotelTextSecondary
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = onDenyReminder,
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = Color(0xFFFF5252)
+                                    ),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF5252).copy(alpha = 0.4f))
+                                ) {
+                                    Text("Deny", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                                Button(
+                                    onClick = onApproveReminder,
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFF00E676),
+                                        contentColor = Color(0xFF080E1A)
+                                    )
+                                ) {
+                                    Text("Set It", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+                ReminderStatus.APPROVED -> {
+                    Row(
+                        modifier = Modifier.padding(start = 12.dp, top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "✓ Reminder Set",
+                            color = Color(0xFF00E676),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                ReminderStatus.DENIED -> {
+                    Row(
+                        modifier = Modifier.padding(start = 12.dp, top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "✗ Reminder Dismissed",
                             color = Color(0xFFFF5252),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold

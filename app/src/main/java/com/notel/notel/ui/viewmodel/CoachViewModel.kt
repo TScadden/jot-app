@@ -11,7 +11,9 @@ import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.remote.CoachMessageDto
 import com.notel.notel.data.remote.JotApi
 import com.notel.notel.data.repository.LogRepository
+import com.notel.notel.data.repository.ReminderRepository
 import com.notel.notel.data.repository.UserListRepository
+import com.notel.notel.data.local.entity.Reminder
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.UUID
 import javax.inject.Inject
@@ -49,6 +51,13 @@ enum class ListStatus {
     DENIED
 }
 
+enum class ReminderStatus {
+    NONE,
+    PENDING,
+    APPROVED,
+    DENIED
+}
+
 data class PendingUploadFile(
     val name: String,
     val mimeType: String,
@@ -67,7 +76,10 @@ data class CoachMessage(
     val fileStatus: FileStatus = FileStatus.NONE,
     val proposedListName: String? = null,
     val proposedListItems: List<String> = emptyList(),
-    val listStatus: ListStatus = ListStatus.NONE
+    val listStatus: ListStatus = ListStatus.NONE,
+    val proposedReminderTitle: String? = null,
+    val proposedReminderTime: String? = null, // "HH:MM"
+    val reminderStatus: ReminderStatus = ReminderStatus.NONE
 )
 
 data class CoachMessageParsed(
@@ -78,7 +90,10 @@ data class CoachMessageParsed(
     val fileStatus: FileStatus,
     val proposedListName: String?,
     val proposedListItems: List<String>,
-    val listStatus: ListStatus
+    val listStatus: ListStatus,
+    val proposedReminderTitle: String?,
+    val proposedReminderTime: String?,
+    val reminderStatus: ReminderStatus
 )
 
 fun parseCoachMessageContent(rawContent: String): CoachMessageParsed {
@@ -94,6 +109,10 @@ fun parseCoachMessageContent(rawContent: String): CoachMessageParsed {
     val approveListRegex = Regex("\\[APPROVED_LIST:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
     val denyListRegex = Regex("\\[DENIED_LIST:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
 
+    val proposeReminderRegex = Regex("\\[PROPOSE_REMINDER:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
+    val approveReminderRegex = Regex("\\[APPROVED_REMINDER:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
+    val denyReminderRegex = Regex("\\[DENIED_REMINDER:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
+
     var cleanContent = rawContent
     var proposedNoteText: String? = null
     var noteStatus = NoteStatus.NONE
@@ -102,6 +121,9 @@ fun parseCoachMessageContent(rawContent: String): CoachMessageParsed {
     var proposedListName: String? = null
     var proposedListItems: List<String> = emptyList()
     var listStatus = ListStatus.NONE
+    var proposedReminderTitle: String? = null
+    var proposedReminderTime: String? = null
+    var reminderStatus = ReminderStatus.NONE
 
     if (proposeRegex.containsMatchIn(cleanContent)) {
         val matchResult = proposeRegex.find(cleanContent)!!
@@ -162,15 +184,41 @@ fun parseCoachMessageContent(rawContent: String): CoachMessageParsed {
         listStatus = ListStatus.DENIED
     }
 
+    fun parseReminderString(raw: String) {
+        val parts = raw.split("|")
+        proposedReminderTitle = parts.getOrNull(0)?.trim()
+        proposedReminderTime = parts.getOrNull(1)?.trim()
+    }
+
+    if (proposeReminderRegex.containsMatchIn(cleanContent)) {
+        val matchResult = proposeReminderRegex.find(cleanContent)!!
+        parseReminderString(matchResult.groupValues[1])
+        cleanContent = cleanContent.replace(matchResult.value, "").trim()
+        reminderStatus = ReminderStatus.PENDING
+    } else if (approveReminderRegex.containsMatchIn(cleanContent)) {
+        val matchResult = approveReminderRegex.find(cleanContent)!!
+        parseReminderString(matchResult.groupValues[1])
+        cleanContent = cleanContent.replace(matchResult.value, "").trim()
+        reminderStatus = ReminderStatus.APPROVED
+    } else if (denyReminderRegex.containsMatchIn(cleanContent)) {
+        val matchResult = denyReminderRegex.find(cleanContent)!!
+        parseReminderString(matchResult.groupValues[1])
+        cleanContent = cleanContent.replace(matchResult.value, "").trim()
+        reminderStatus = ReminderStatus.DENIED
+    }
+
     return CoachMessageParsed(
-        cleanContent = cleanContent, 
-        proposedNoteText = proposedNoteText, 
-        noteStatus = noteStatus, 
-        proposedFileName = proposedFileName, 
+        cleanContent = cleanContent,
+        proposedNoteText = proposedNoteText,
+        noteStatus = noteStatus,
+        proposedFileName = proposedFileName,
         fileStatus = fileStatus,
         proposedListName = proposedListName,
         proposedListItems = proposedListItems,
-        listStatus = listStatus
+        listStatus = listStatus,
+        proposedReminderTitle = proposedReminderTitle,
+        proposedReminderTime = proposedReminderTime,
+        reminderStatus = reminderStatus
     )
 }
 
@@ -178,6 +226,7 @@ fun parseCoachMessageContent(rawContent: String): CoachMessageParsed {
 @HiltViewModel
 class CoachViewModel @Inject constructor(
     private val userListRepository: UserListRepository,
+    private val reminderRepository: ReminderRepository,
     private val syncManager: com.notel.notel.data.sync.SyncManager,
     private val logRepository: LogRepository,
     private val preferences: NotelPreferences,
@@ -216,7 +265,10 @@ class CoachViewModel @Inject constructor(
                         fileStatus = parsed.fileStatus,
                         proposedListName = parsed.proposedListName,
                         proposedListItems = parsed.proposedListItems,
-                        listStatus = parsed.listStatus
+                        listStatus = parsed.listStatus,
+                        proposedReminderTitle = parsed.proposedReminderTitle,
+                        proposedReminderTime = parsed.proposedReminderTime,
+                        reminderStatus = parsed.reminderStatus
                     )
                 }
             }
@@ -342,6 +394,74 @@ class CoachViewModel @Inject constructor(
                         sessionId = sessionId,
                         role = "coach",
                         content = "Okay, I won't create that list."
+                    )
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun approveProposedReminder(messageId: String, title: String, timeStr: String?) {
+        viewModelScope.launch {
+            try {
+                val sessionId = _currentSessionId.value ?: return@launch
+
+                // 1. Parse HH:MM into hour/minute
+                val parts = timeStr?.split(":") ?: emptyList()
+                val hour = parts.getOrNull(0)?.toIntOrNull() ?: 9
+                val minute = parts.getOrNull(1)?.toIntOrNull() ?: 0
+
+                // 2. Create reminder via repository
+                reminderRepository.addReminder(
+                    Reminder(
+                        title = title,
+                        type = "FIXED",
+                        fixedHour = hour,
+                        fixedMinute = minute
+                    )
+                )
+
+                // 3. Update tag in SQLite to APPROVED_REMINDER
+                val dbEntities = coachMessageDao.getMessagesForSession(sessionId).first()
+                val targetEntity = dbEntities.find { it.id == messageId }
+                if (targetEntity != null) {
+                    val updatedContent = targetEntity.content.replace("[PROPOSE_REMINDER:", "[APPROVED_REMINDER:")
+                    coachMessageDao.insertMessage(targetEntity.copy(content = updatedContent, isSynced = false))
+                }
+
+                // 4. Confirmation message
+                val timeLabel = if (timeStr != null) " at $timeStr" else ""
+                coachMessageDao.insertMessage(
+                    CoachMessageEntity(
+                        sessionId = sessionId,
+                        role = "coach",
+                        content = "Done! I've set a reminder for \"$title\"$timeLabel."
+                    )
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun denyProposedReminder(messageId: String) {
+        viewModelScope.launch {
+            try {
+                val sessionId = _currentSessionId.value ?: return@launch
+
+                val dbEntities = coachMessageDao.getMessagesForSession(sessionId).first()
+                val targetEntity = dbEntities.find { it.id == messageId }
+                if (targetEntity != null) {
+                    val updatedContent = targetEntity.content.replace("[PROPOSE_REMINDER:", "[DENIED_REMINDER:")
+                    coachMessageDao.insertMessage(targetEntity.copy(content = updatedContent, isSynced = false))
+                }
+
+                coachMessageDao.insertMessage(
+                    CoachMessageEntity(
+                        sessionId = sessionId,
+                        role = "coach",
+                        content = "Okay, I won't set that reminder."
                     )
                 )
             } catch (e: Exception) {
@@ -578,6 +698,15 @@ class CoachViewModel @Inject constructor(
                     denyProposedList(lastMsg.id)
                     return
                 }
+            } else if (lastMsg.reminderStatus == ReminderStatus.PENDING && lastMsg.proposedReminderTitle != null) {
+                val lowerText = userText.lowercase()
+                if (lowerText == "yes" || lowerText == "set it" || lowerText == "set" || lowerText == "create" || lowerText == "add" || lowerText == "sure" || lowerText == "ok") {
+                    approveProposedReminder(lastMsg.id, lastMsg.proposedReminderTitle, lastMsg.proposedReminderTime)
+                    return
+                } else if (lowerText == "no" || lowerText == "cancel" || lowerText == "don't" || lowerText == "don't set") {
+                    denyProposedReminder(lastMsg.id)
+                    return
+                }
             }
         }
 
@@ -642,13 +771,19 @@ class CoachViewModel @Inject constructor(
                 }
                 
                 val baseUserCtx = preferences.userContext.first()
-                val listInstructions = """
-                    SYSTEM RULE: If the user mentions lists, tasks, items to buy, check off, do, pack, or track, or if you discuss a structured set of items that could be turned into a list:
-                    1. Helpfully ask the user if they would like to turn this into a list.
-                    2. If proposing a list, you MUST append a tag to your response in the exact format: [PROPOSE_LIST:ListName|Item1|Item2|Item3|...] where the list name comes first followed by items separated by pipes.
-                    3. Do not include markdown brackets or other symbols inside the brackets. Example: [PROPOSE_LIST:Packing List|T-shirts|Socks|Toothbrush]
+                val actionInstructions = """
+                    SYSTEM RULES FOR PROPOSING ACTIONS:
+
+                    LISTS: If the user mentions lists, tasks, items to buy, check off, do, pack, or track, helpfully ask if they'd like to turn it into a list. Format: [PROPOSE_LIST:ListName|Item1|Item2|Item3|...]
+                    Example: [PROPOSE_LIST:Packing List|T-shirts|Socks|Toothbrush]
+
+                    REMINDERS: If the user mentions wanting to be reminded of something, wanting to remember something at a certain time, or asks you to set a reminder, propose a reminder. Format: [PROPOSE_REMINDER:Reminder Title|HH:MM]
+                    Use 24-hour format for the time. Example: [PROPOSE_REMINDER:Take medication|08:00]
+                    If no specific time is mentioned, suggest a reasonable time based on context.
+
+                    Only include ONE action tag per response. Do not include markdown formatting inside the brackets.
                 """.trimIndent()
-                val enrichedUserCtx = if (baseUserCtx.isBlank()) listInstructions else "$baseUserCtx\n\n$listInstructions"
+                val enrichedUserCtx = if (baseUserCtx.isBlank()) actionInstructions else "$baseUserCtx\n\n$actionInstructions"
 
                 val kb = preferences.knowledgeBase.first()
                 val recentEntries = logRepository.getRecentEntriesAll(10)
