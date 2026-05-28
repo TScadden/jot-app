@@ -46,6 +46,7 @@ fun ListsScreen(
     viewModel: ListsViewModel = hiltViewModel()
 ) {
     val lists by viewModel.lists.collectAsState()
+    val filteredLists = remember(lists) { lists.filter { it.name != "__user_notes__" } }
     val selectedList by viewModel.selectedList.collectAsState()
     val items by viewModel.items.collectAsState()
 
@@ -54,9 +55,9 @@ fun ListsScreen(
     var showDeleteConfirm by remember { mutableStateOf<UserList?>(null) }
 
     // When lists load and nothing is selected, auto-select the first
-    LaunchedEffect(lists) {
-        if (selectedList == null && lists.isNotEmpty()) {
-            viewModel.selectList(lists.first())
+    LaunchedEffect(filteredLists) {
+        if (selectedList == null && filteredLists.isNotEmpty()) {
+            viewModel.selectList(filteredLists.first())
         }
     }
 
@@ -104,7 +105,7 @@ fun ListsScreen(
             )
         }
     ) { padding ->
-        if (lists.isEmpty()) {
+        if (filteredLists.isEmpty()) {
             // Empty state
             Box(
                 modifier = Modifier
@@ -169,7 +170,7 @@ fun ListsScreen(
                         modifier = Modifier.weight(1f),
                         contentPadding = PaddingValues(bottom = 16.dp)
                     ) {
-                        items(lists, key = { it.id }) { list ->
+                        items(filteredLists, key = { it.id }) { list ->
                             val isSelected = selectedList?.id == list.id
                             Box(
                                 modifier = Modifier

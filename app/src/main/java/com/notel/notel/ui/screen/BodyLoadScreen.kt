@@ -46,6 +46,7 @@ fun BodyLoadScreen(
     onNavigateToHabits: () -> Unit = {},
     onNavigateToReminders: () -> Unit = {},
     onNavigateToLists: () -> Unit = {},
+    onNavigateToNotes: () -> Unit = {},
     quickLogViewModel: QuickLogViewModel = hiltViewModel(),
     habitViewModel: HabitViewModel = hiltViewModel(),
     reminderViewModel: ReminderViewModel = hiltViewModel()
@@ -528,6 +529,61 @@ fun BodyLoadScreen(
                                 )
                                 Text(
                                     text = "Manage your lists",
+                                    color = NotelTextSecondary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // ── Notes Tile ───────────────────────────────────────────────
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(76.dp)
+                            .border(
+                                width = 3.dp,
+                                color = NotelPrimary.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(22.dp)
+                            )
+                            .border(
+                                width = 6.dp,
+                                color = NotelPrimary.copy(alpha = 0.04f),
+                                shape = RoundedCornerShape(24.dp)
+                            )
+                            .liquidGlass(
+                                shape = RoundedCornerShape(20.dp),
+                                color = NotelSurface,
+                                alpha = 0.8f,
+                                showBorder = true
+                            )
+                            .clickable { onNavigateToNotes() }
+                            .padding(horizontal = 20.dp, vertical = 12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Start
+                        ) {
+                            Icon(
+                                imageVector = androidx.compose.material.icons.Icons.Default.Edit,
+                                contentDescription = null,
+                                tint = NotelPrimary,
+                                modifier = Modifier.size(28.dp)
+                            )
+                            Spacer(Modifier.width(14.dp))
+                            Column {
+                                Text(
+                                    text = "Notes",
+                                    color = NotelTextPrimary,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Create and view notes",
                                     color = NotelTextSecondary,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium
