@@ -29,6 +29,13 @@ class FoodViewModel @Inject constructor(
     private val preferences: NotelPreferences
 ) : ViewModel() {
 
+    init {
+        // Bug 1: Clear results when opening the screen
+        viewModelScope.launch {
+            preferences.setFoodCheckerLastQuery("")
+        }
+    }
+
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery
 
@@ -37,6 +44,21 @@ class FoodViewModel @Inject constructor(
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage
+
+    // Bug 2: Track expanded state of cards inside ViewModel to avoid scroll recycling reset
+    private val _expandedFoods = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+    val expandedFoods: StateFlow<Map<String, Boolean>> = _expandedFoods
+
+    fun toggleExpanded(foodName: String) {
+        _expandedFoods.update { current ->
+            val isExpanded = current[foodName] ?: true
+            current.toMutableMap().apply { put(foodName, !isExpanded) }
+        }
+    }
+
+    private fun setAllExpanded(foods: List<String>) {
+        _expandedFoods.value = foods.associateWith { true }
+    }
 
     // Encyclopedia cache flow: Map of food_name (lowercase) -> FoodCheckResult
     val encyclopedia: StateFlow<Map<String, FoodCheckResult>> = preferences.foodCheckerHistory
@@ -47,7 +69,12 @@ class FoodViewModel @Inject constructor(
     // Last query checked results flow
     val lastCheckResults: StateFlow<List<FoodCheckResult>> = preferences.foodCheckerLastQuery
         .map { json ->
-            parseLastQueryJson(json)
+            val results = parseLastQueryJson(json)
+            // Restore expanded states to true for new queries
+            if (results.isNotEmpty()) {
+                setAllExpanded(results.map { it.foodName })
+            }
+            results
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Tapping a recent search item
@@ -73,8 +100,8 @@ class FoodViewModel @Inject constructor(
             _errorMessage.value = null
 
             try {
-                // 1. Parse into separate lowercase trimmed items
-                val items = input.split(",")
+                // Bug 4 & 3: Parse by both comma and newline splitting
+                val items = input.split(Regex("[,\\n]"))
                     .map { it.trim().lowercase() }
                     .filter { it.isNotEmpty() }
                     .distinct()
@@ -146,56 +173,78 @@ class FoodViewModel @Inject constructor(
                     }
                 """.trimIndent()
 
-                geminiService.getAdvice(dummyEntries, emptyMap(), userContext = prompt).onSuccess { aiResponse ->
-                    val cleanResponse = cleanJsonResponse(aiResponse)
+                var success = false
+                var attempts = 0
+                val maxAttempts = 3
+                var errorMsg: String? = null
+
+                while (attempts < maxAttempts && !success) {
+                    attempts++
                     try {
-                        val responseObj = JSONObject(cleanResponse)
-                        val newResults = mutableListOf<FoodCheckResult>()
+                        val result = geminiService.getAdvice(dummyEntries, emptyMap(), userContext = prompt)
+                        if (result.isSuccess) {
+                            val aiResponse = result.getOrNull() ?: throw Exception("Empty response")
+                            val cleanResponse = extractJsonBlock(cleanJsonResponse(aiResponse))
+                            val responseObj = JSONObject(cleanResponse)
+                            val newResults = mutableListOf<FoodCheckResult>()
 
-                        // Parse each newly evaluated item
-                        responseObj.keys().forEach { foodKey ->
-                            val foodLower = foodKey.trim().lowercase()
-                            val foodObj = responseObj.getJSONObject(foodKey)
-                            val topicsList = mutableListOf<FoodTopicLevel>()
+                            // Parse each newly evaluated item
+                            responseObj.keys().forEach { foodKey ->
+                                val foodLower = foodKey.trim().lowercase()
+                                val foodObj = responseObj.getJSONObject(foodKey)
+                                val topicsList = mutableListOf<FoodTopicLevel>()
 
-                            val coreTopics = listOf("Histamine", "Sugar", "FODMAP", "Inflammation", "Oxalate")
-                            for (topic in coreTopics) {
-                                val levelObj = foodObj.optJSONObject(topic)
-                                val level = levelObj?.optString("level", "Low") ?: "Low"
-                                val reasoning = levelObj?.optString("reasoning", "No details available.") ?: "No details available."
-                                topicsList.add(FoodTopicLevel(topic, level, reasoning))
+                                val coreTopics = listOf("Histamine", "Sugar", "FODMAP", "Inflammation", "Oxalate")
+                                for (topic in coreTopics) {
+                                    val levelObj = foodObj.optJSONObject(topic)
+                                    val level = levelObj?.optString("level", "Low") ?: "Low"
+                                    val reasoning = levelObj?.optString("reasoning", "No details available.") ?: "No details available."
+                                    topicsList.add(FoodTopicLevel(topic, level, reasoning))
+                                }
+
+                                newResults.add(FoodCheckResult(foodLower, topicsList))
                             }
 
-                            newResults.add(FoodCheckResult(foodLower, topicsList))
-                        }
+                            if (newResults.isNotEmpty()) {
+                                // Update local Encyclopedia with newly generated items
+                                val updatedEncyclopedia = currentEncyclopedia.toMutableMap()
+                                newResults.forEach {
+                                    updatedEncyclopedia[it.foodName] = it
+                                }
+                                saveEncyclopedia(updatedEncyclopedia)
 
-                        // Update local Encyclopedia with newly generated items
-                        val updatedEncyclopedia = currentEncyclopedia.toMutableMap()
-                        newResults.forEach {
-                            updatedEncyclopedia[it.foodName] = it
-                        }
-                        saveEncyclopedia(updatedEncyclopedia)
+                                // Compile final result (cached + new) matching the user's initial search query order
+                                val finalResult = mutableListOf<FoodCheckResult>()
+                                for (item in items) {
+                                    val res = updatedEncyclopedia[item]
+                                    if (res != null) {
+                                        finalResult.add(res)
+                                    }
+                                }
 
-                        // Compile final result (cached + new) matching the user's initial search query order
-                        val finalResult = mutableListOf<FoodCheckResult>()
-                        for (item in items) {
-                            val res = updatedEncyclopedia[item]
-                            if (res != null) {
-                                finalResult.add(res)
+                                saveLastQuery(finalResult)
+                                success = true
+                            } else {
+                                throw Exception("Parsed results were empty")
                             }
+                        } else {
+                            throw result.exceptionOrNull() ?: Exception("Unknown network failure")
                         }
-
-                        saveLastQuery(finalResult)
                     } catch (e: Exception) {
                         e.printStackTrace()
-                        _errorMessage.value = "Failed to parse AI food analysis. Please check your food names and retry."
+                        errorMsg = e.message ?: "Failed to parse AI food analysis."
+                        if (attempts < maxAttempts) {
+                            kotlinx.coroutines.delay(400L * attempts) // Exponential backoff delay
+                        }
                     }
-                }.onFailure {
-                    _errorMessage.value = it.message ?: "Failed to contact checker database."
+                }
+
+                if (!success) {
+                    _errorMessage.value = errorMsg ?: "Error checking food items. Please check spelling."
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
-                _errorMessage.value = "Error checking food items. Please check spelling."
+                _errorMessage.value = e.message ?: "Error checking food items."
             } finally {
                 _isLoading.value = false
             }
@@ -213,6 +262,17 @@ class FoodViewModel @Inject constructor(
             clean = clean.removeSuffix("```")
         }
         return clean.trim()
+    }
+
+    private fun extractJsonBlock(raw: String): String {
+        val trimmed = raw.trim()
+        val startIndex = trimmed.indexOf('{')
+        val endIndex = trimmed.lastIndexOf('}')
+        return if (startIndex != -1 && endIndex != -1 && endIndex > startIndex) {
+            trimmed.substring(startIndex, endIndex + 1)
+        } else {
+            trimmed
+        }
     }
 
     // JSON Helper parsers
