@@ -106,6 +106,16 @@ class FoodViewModel @Inject constructor(
                 }
 
                 // 4. Request missing items from Gemini
+                val dummyEntries = listOf(
+                    com.notel.notel.data.local.entity.LogEntry(
+                        id = 99999,
+                        categoryId = 7,
+                        body = "Food Sensitivity Scan",
+                        chips = "",
+                        manualText = "Food Sensitivity Scan",
+                        timestamp = System.currentTimeMillis()
+                    )
+                )
                 val missingListContext = missingFromCache.joinToString(", ")
                 val prompt = """
                     Analyze the following list of food items and evaluate their levels/concentrations of key health sensitivity markers:
@@ -136,7 +146,7 @@ class FoodViewModel @Inject constructor(
                     }
                 """.trimIndent()
 
-                geminiService.getAdvice(emptyList(), emptyMap(), userContext = prompt).onSuccess { aiResponse ->
+                geminiService.getAdvice(dummyEntries, emptyMap(), userContext = prompt).onSuccess { aiResponse ->
                     val cleanResponse = cleanJsonResponse(aiResponse)
                     try {
                         val responseObj = JSONObject(cleanResponse)
