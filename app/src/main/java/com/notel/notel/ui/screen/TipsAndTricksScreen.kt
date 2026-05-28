@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.TipsAndTricksViewModel
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -199,9 +201,7 @@ fun TipsAndTricksScreen(
                             modifier = Modifier.padding(bottom = 16.dp, top = 4.dp)
                         )
                         
-                        LazyVerticalGrid(
-                            columns = GridCells.Fixed(2),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        LazyColumn(
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                             contentPadding = PaddingValues(bottom = 120.dp),
                             modifier = Modifier.fillMaxSize()
@@ -318,30 +318,29 @@ private fun TopicCard(topic: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 130.dp)
             .border(
                 width = 1.dp,
                 color = NotelPrimary.copy(alpha = 0.08f),
-                shape = RoundedCornerShape(20.dp)
+                shape = RoundedCornerShape(16.dp)
             )
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(16.dp))
             .clickable { onClick() }
             .liquidGlass(
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(16.dp),
                 color = NotelSurface,
                 alpha = 0.8f,
                 showBorder = true
             )
-            .padding(16.dp)
+            .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
-        Column(
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(32.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(10.dp))
                     .background(NotelPrimary.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
             ) {
@@ -349,15 +348,24 @@ private fun TopicCard(topic: String, onClick: () -> Unit) {
                     imageVector = Icons.Default.Lightbulb,
                     contentDescription = null,
                     tint = NotelPrimary,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
+            Spacer(Modifier.width(14.dp))
             Text(
                 text = topic,
                 color = NotelTextPrimary,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                lineHeight = 18.sp
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                lineHeight = 19.sp,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(Modifier.width(8.dp))
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = NotelTextSecondary.copy(alpha = 0.5f),
+                modifier = Modifier.size(20.dp)
             )
         }
     }
