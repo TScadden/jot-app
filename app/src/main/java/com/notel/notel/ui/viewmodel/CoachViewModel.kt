@@ -666,3 +666,4 @@ class CoachViewModel @Inject constructor(
         }
     }
 }
+}
