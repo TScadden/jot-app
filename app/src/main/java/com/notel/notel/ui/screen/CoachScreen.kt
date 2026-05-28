@@ -630,8 +630,10 @@ private fun ChatBubble(
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold
                         )
-                    }
                 }
+                else -> {}
+            }
+        }
 
         // Suggestion Card or Badges for lists
         if (!isUser && message.proposedListName != null) {
