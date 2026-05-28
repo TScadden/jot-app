@@ -39,6 +39,7 @@ fun FoodScreen(
     val errorMessage by viewModel.errorMessage.collectAsState()
     val lastCheckResults by viewModel.lastCheckResults.collectAsState()
     val recentSearches by viewModel.recentSearches.collectAsState()
+    val expandedFoods by viewModel.expandedFoods.collectAsState()
 
     var inputVal by remember { mutableStateOf("") }
     
@@ -98,7 +99,8 @@ fun FoodScreen(
                         placeholder = { Text("e.g. spinach, coffee, avocado, aged cheese") },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
-                        singleLine = true,
+                        singleLine = false,
+                        maxLines = 4,
                         trailingIcon = {
                             if (inputVal.isNotEmpty()) {
                                 IconButton(onClick = { inputVal = "" }) {
@@ -114,6 +116,16 @@ fun FoodScreen(
                             focusedContainerColor   = NotelSurfaceHigh.copy(alpha = 0.05f),
                             unfocusedContainerColor = NotelSurfaceHigh.copy(alpha = 0.05f)
                         )
+                    )
+                    
+                    Spacer(Modifier.height(8.dp))
+                    
+                    Text(
+                        text = "To check multiple items, separate them with a comma (e.g. spinach, coffee) or type them on new lines.",
+                        color = NotelTextSecondary.copy(alpha = 0.7f),
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp,
+                        modifier = Modifier.padding(horizontal = 4.dp)
                     )
                     
                     Spacer(Modifier.height(12.dp))
@@ -189,7 +201,12 @@ fun FoodScreen(
                 }
 
                 items(lastCheckResults, key = { it.foodName }) { result ->
-                    FoodResultCard(result = result)
+                    val isExpanded = expandedFoods[result.foodName] ?: true
+                    FoodResultCard(
+                        result = result,
+                        expanded = isExpanded,
+                        onToggleExpand = { viewModel.toggleExpanded(result.foodName) }
+                    )
                 }
             }
 
@@ -237,9 +254,11 @@ fun FoodScreen(
 }
 
 @Composable
-private fun FoodResultCard(result: FoodCheckResult) {
-    var expanded by remember { mutableStateOf(true) }
-
+private fun FoodResultCard(
+    result: FoodCheckResult,
+    expanded: Boolean,
+    onToggleExpand: () -> Unit
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -249,7 +268,7 @@ private fun FoodResultCard(result: FoodCheckResult) {
                 shape = RoundedCornerShape(20.dp)
             )
             .clip(RoundedCornerShape(20.dp))
-            .clickable { expanded = !expanded }
+            .clickable { onToggleExpand() }
             .liquidGlass(
                 shape = RoundedCornerShape(20.dp),
                 color = NotelSurface,
