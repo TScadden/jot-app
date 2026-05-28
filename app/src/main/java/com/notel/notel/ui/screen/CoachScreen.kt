@@ -131,7 +131,7 @@ fun CoachScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                items(messages, key = { it.id }) { message ->
+                items(messages, key = { it.id }) { message: CoachMessage ->
                     ChatBubble(
                         message = message,
                         onApprove = { viewModel.approveProposedNote(message.id, message.proposedNoteText ?: "") },
