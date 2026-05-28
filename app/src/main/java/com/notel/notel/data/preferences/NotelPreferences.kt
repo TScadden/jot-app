@@ -101,6 +101,8 @@ class NotelPreferences @Inject constructor(
         val HISTORICAL_DAILY_STATS = stringPreferencesKey("historical_daily_stats")
         val TIPS_AND_TRICKS_TOPICS = stringPreferencesKey("tips_and_tricks_topics")
         val TIPS_AND_TRICKS_ANSWERS = stringPreferencesKey("tips_and_tricks_answers")
+        val FOOD_CHECKER_HISTORY = stringPreferencesKey("food_checker_history")
+        val FOOD_CHECKER_LAST_QUERY = stringPreferencesKey("food_checker_last_query")
     }
 
     val historicalDailyStats: Flow<String> = context.dataStore.data.map { it[HISTORICAL_DAILY_STATS] ?: "{}" }
@@ -111,6 +113,8 @@ class NotelPreferences @Inject constructor(
 
     val tipsAndTricksTopics: Flow<String> = context.dataStore.data.map { it[TIPS_AND_TRICKS_TOPICS] ?: "" }
     val tipsAndTricksAnswers: Flow<String> = context.dataStore.data.map { it[TIPS_AND_TRICKS_ANSWERS] ?: "" }
+    val foodCheckerHistory: Flow<String> = context.dataStore.data.map { it[FOOD_CHECKER_HISTORY] ?: "{}" }
+    val foodCheckerLastQuery: Flow<String> = context.dataStore.data.map { it[FOOD_CHECKER_LAST_QUERY] ?: "[]" }
 
     val authToken: Flow<String> = context.dataStore.data.map { prefs ->
         val encrypted = prefs[AUTH_TOKEN] ?: ""
@@ -603,6 +607,14 @@ class NotelPreferences @Inject constructor(
 
     suspend fun setTipsAndTricksAnswers(answersJson: String) {
         context.dataStore.edit { it[TIPS_AND_TRICKS_ANSWERS] = answersJson }
+    }
+
+    suspend fun setFoodCheckerHistory(historyJson: String) {
+        context.dataStore.edit { it[FOOD_CHECKER_HISTORY] = historyJson }
+    }
+
+    suspend fun setFoodCheckerLastQuery(lastQueryJson: String) {
+        context.dataStore.edit { it[FOOD_CHECKER_LAST_QUERY] = lastQueryJson }
     }
 }
 

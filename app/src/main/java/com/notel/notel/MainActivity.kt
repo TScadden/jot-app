@@ -232,11 +232,15 @@ class MainActivity : ComponentActivity() {
                                 onSleepClick = { navController.navigate("sleep") },
                                 onKeyMetricsClick = { navController.navigate("key_metrics") },
                                 onCoachClick = { navController.navigate("coach_history") },
-                                onTipsAndTricksClick = { navController.navigate("tips_and_tricks") }
+                                onTipsAndTricksClick = { navController.navigate("tips_and_tricks") },
+                                onFoodClick = { navController.navigate("food") }
                             )
                         }
                         composable("tips_and_tricks") {
                             TipsAndTricksScreen(onBack = { navController.popBackStack() })
+                        }
+                        composable("food") {
+                            FoodScreen(onBack = { navController.popBackStack() })
                         }
                         composable("coach_history") {
                             com.notel.notel.ui.screen.CoachHistoryScreen(

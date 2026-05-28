@@ -34,13 +34,15 @@ fun InfoScreen(
     onSleepClick: () -> Unit = {},
     onKeyMetricsClick: () -> Unit = {},
     onCoachClick: () -> Unit = {},
-    onTipsAndTricksClick: () -> Unit = {}
+    onTipsAndTricksClick: () -> Unit = {},
+    onFoodClick: () -> Unit = {}
 ) {
     val tiles = listOf(
         InfoTile("Sleep", Icons.Default.Bedtime, "Analysis & Debt"),
         InfoTile("Tips and Tricks", Icons.Default.Lightbulb, "Master your data"),
         InfoTile("Health Coach", Icons.Default.QuestionMark, "Personalized Advice"),
-        InfoTile("Key Metrics", Icons.Default.BarChart, "Your Body Data")
+        InfoTile("Key Metrics", Icons.Default.BarChart, "Your Body Data"),
+        InfoTile("Food", Icons.Default.Restaurant, "Sensitivity Checker")
     )
 
     Scaffold(
@@ -85,7 +87,8 @@ fun InfoScreen(
                         onSleepClick = onSleepClick,
                         onKeyMetricsClick = onKeyMetricsClick,
                         onCoachClick = onCoachClick,
-                        onTipsAndTricksClick = onTipsAndTricksClick
+                        onTipsAndTricksClick = onTipsAndTricksClick,
+                        onFoodClick = onFoodClick
                     )
                 }
             }
@@ -99,7 +102,8 @@ fun InfoTileCard(
     onSleepClick: () -> Unit,
     onKeyMetricsClick: () -> Unit,
     onCoachClick: () -> Unit,
-    onTipsAndTricksClick: () -> Unit
+    onTipsAndTricksClick: () -> Unit,
+    onFoodClick: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -123,6 +127,7 @@ fun InfoTileCard(
                     "Key Metrics" -> onKeyMetricsClick()
                     "Health Coach" -> onCoachClick()
                     "Tips and Tricks" -> onTipsAndTricksClick()
+                    "Food" -> onFoodClick()
                 }
             }
             .liquidGlass(
