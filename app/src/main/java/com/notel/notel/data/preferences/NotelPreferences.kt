@@ -99,6 +99,8 @@ class NotelPreferences @Inject constructor(
         val HAS_HISTORICAL_BODY_LOAD = booleanPreferencesKey("has_historical_body_load")
         val LAST_SYNC_TIME = longPreferencesKey("last_sync_time")
         val HISTORICAL_DAILY_STATS = stringPreferencesKey("historical_daily_stats")
+        val TIPS_AND_TRICKS_TOPICS = stringPreferencesKey("tips_and_tricks_topics")
+        val TIPS_AND_TRICKS_ANSWERS = stringPreferencesKey("tips_and_tricks_answers")
     }
 
     val historicalDailyStats: Flow<String> = context.dataStore.data.map { it[HISTORICAL_DAILY_STATS] ?: "{}" }
@@ -106,6 +108,9 @@ class NotelPreferences @Inject constructor(
 
     val hasHistoricalBodyLoad: Flow<Boolean> = context.dataStore.data.map { it[HAS_HISTORICAL_BODY_LOAD] ?: false }
     suspend fun setHasHistoricalBodyLoad(v: Boolean) { context.dataStore.edit { it[HAS_HISTORICAL_BODY_LOAD] = v } }
+
+    val tipsAndTricksTopics: Flow<String> = context.dataStore.data.map { it[TIPS_AND_TRICKS_TOPICS] ?: "" }
+    val tipsAndTricksAnswers: Flow<String> = context.dataStore.data.map { it[TIPS_AND_TRICKS_ANSWERS] ?: "" }
 
     val authToken: Flow<String> = context.dataStore.data.map { prefs ->
         val encrypted = prefs[AUTH_TOKEN] ?: ""
@@ -590,6 +595,14 @@ class NotelPreferences @Inject constructor(
             it[LAST_KNOWN_LON] = lon
             it[LAST_KNOWN_CITY] = city
         }
+    }
+
+    suspend fun setTipsAndTricksTopics(topicsJson: String) {
+        context.dataStore.edit { it[TIPS_AND_TRICKS_TOPICS] = topicsJson }
+    }
+
+    suspend fun setTipsAndTricksAnswers(answersJson: String) {
+        context.dataStore.edit { it[TIPS_AND_TRICKS_ANSWERS] = answersJson }
     }
 }
 

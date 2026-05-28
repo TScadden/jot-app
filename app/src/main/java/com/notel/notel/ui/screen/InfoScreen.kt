@@ -33,7 +33,8 @@ fun InfoScreen(
     onBack: () -> Unit = {},
     onSleepClick: () -> Unit = {},
     onKeyMetricsClick: () -> Unit = {},
-    onCoachClick: () -> Unit = {}
+    onCoachClick: () -> Unit = {},
+    onTipsAndTricksClick: () -> Unit = {}
 ) {
     val tiles = listOf(
         InfoTile("Sleep", Icons.Default.Bedtime, "Analysis & Debt"),
@@ -79,7 +80,13 @@ fun InfoScreen(
                 modifier = Modifier.fillMaxSize()
             ) {
                 items(tiles) { tile ->
-                    InfoTileCard(tile, onSleepClick, onKeyMetricsClick, onCoachClick)
+                    InfoTileCard(
+                        tile = tile,
+                        onSleepClick = onSleepClick,
+                        onKeyMetricsClick = onKeyMetricsClick,
+                        onCoachClick = onCoachClick,
+                        onTipsAndTricksClick = onTipsAndTricksClick
+                    )
                 }
             }
         }
@@ -87,7 +94,13 @@ fun InfoScreen(
 }
 
 @Composable
-fun InfoTileCard(tile: InfoTile, onSleepClick: () -> Unit, onKeyMetricsClick: () -> Unit, onCoachClick: () -> Unit) {
+fun InfoTileCard(
+    tile: InfoTile,
+    onSleepClick: () -> Unit,
+    onKeyMetricsClick: () -> Unit,
+    onCoachClick: () -> Unit,
+    onTipsAndTricksClick: () -> Unit
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -109,6 +122,7 @@ fun InfoTileCard(tile: InfoTile, onSleepClick: () -> Unit, onKeyMetricsClick: ()
                     "Sleep" -> onSleepClick()
                     "Key Metrics" -> onKeyMetricsClick()
                     "Health Coach" -> onCoachClick()
+                    "Tips and Tricks" -> onTipsAndTricksClick()
                 }
             }
             .liquidGlass(

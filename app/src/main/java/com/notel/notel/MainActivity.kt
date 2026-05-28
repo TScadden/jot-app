@@ -231,8 +231,12 @@ class MainActivity : ComponentActivity() {
                                 onBack = { navController.popBackStack() },
                                 onSleepClick = { navController.navigate("sleep") },
                                 onKeyMetricsClick = { navController.navigate("key_metrics") },
-                                onCoachClick = { navController.navigate("coach_history") }
+                                onCoachClick = { navController.navigate("coach_history") },
+                                onTipsAndTricksClick = { navController.navigate("tips_and_tricks") }
                             )
+                        }
+                        composable("tips_and_tricks") {
+                            TipsAndTricksScreen(onBack = { navController.popBackStack() })
                         }
                         composable("coach_history") {
                             com.notel.notel.ui.screen.CoachHistoryScreen(
