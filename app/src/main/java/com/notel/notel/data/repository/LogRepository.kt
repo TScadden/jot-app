@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -52,6 +54,8 @@ class LogRepository @Inject constructor(
     private val knowledgeDocumentDao: com.notel.notel.data.local.dao.KnowledgeDocumentDao,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) {
+    private val insightsMutex = Mutex()
+
     private val _isGeneratingReport = MutableStateFlow(false)
     val isGeneratingReport = _isGeneratingReport.asStateFlow()
 
@@ -184,8 +188,14 @@ class LogRepository @Inject constructor(
     fun searchEntries(query: String): Flow<List<LogEntry>> =
         logEntryDao.searchEntries(query)
 
+    private suspend fun clearTodayBodyLoadCache() {
+        val todayStr = java.time.LocalDate.now().toString()
+        clearBodyLoadInsightsForDays(listOf(todayStr))
+    }
+
     suspend fun insertEntry(entry: LogEntry): Long {
         val id = logEntryDao.insertEntry(entry)
+        clearTodayBodyLoadCache()
         triggerSync()
         return id
     }
@@ -195,6 +205,7 @@ class LogRepository @Inject constructor(
 
     suspend fun updateEntry(entry: LogEntry) {
         logEntryDao.updateEntry(entry)
+        clearTodayBodyLoadCache()
         triggerSync()
     }
 
@@ -207,6 +218,7 @@ class LogRepository @Inject constructor(
             jotApi.deleteEntry(entry.id)
             
             // 3. Trigger refresh
+            clearTodayBodyLoadCache()
             triggerSync()
         } catch (e: Exception) {
             e.printStackTrace()
@@ -899,7 +911,7 @@ class LogRepository @Inject constructor(
         }
     }
     
-    suspend fun saveAiInsight(text: String, type: String, timestamp: Long? = null) {
+    suspend fun saveAiInsight(text: String, type: String, timestamp: Long? = null) = insightsMutex.withLock {
         val insightsStr = preferences.aiInsights.first()
         val insights: MutableList<AiInsight> = try {
             if (insightsStr.isNotBlank()) Json.decodeFromString<MutableList<AiInsight>>(insightsStr) else mutableListOf()
@@ -921,7 +933,7 @@ class LogRepository @Inject constructor(
         triggerSync()
     }
 
-    suspend fun saveAiInsightsBulk(newEntries: List<AiInsight>) {
+    suspend fun saveAiInsightsBulk(newEntries: List<AiInsight>) = insightsMutex.withLock {
         if (newEntries.isEmpty()) return
         val insightsStr = preferences.aiInsights.first()
         val insights: MutableList<AiInsight> = try {
@@ -936,6 +948,28 @@ class LogRepository @Inject constructor(
         
         preferences.setAiInsights(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(AiInsight.serializer()), insights.take(100))) // Keep last 100
         triggerSync()
+    }
+
+    suspend fun clearBodyLoadInsightsForDays(days: List<String>) = insightsMutex.withLock {
+        val insightsStr = preferences.aiInsights.first()
+        val insights: MutableList<AiInsight> = try {
+            if (insightsStr.isNotBlank()) Json.decodeFromString<MutableList<AiInsight>>(insightsStr) else mutableListOf()
+        } catch(e: Exception) { mutableListOf() }
+        
+        var modified = false
+        days.forEach { dateStr ->
+            val targetLocalDate = try { java.time.LocalDate.parse(dateStr) } catch(e: Exception) { java.time.LocalDate.now() }
+            val startOfDay = targetLocalDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+            val removed = insights.removeAll { it.type == "BodyLoad" && isSameDay(it.timestamp, startOfDay) }
+            if (removed) {
+                modified = true
+            }
+        }
+        
+        if (modified) {
+            preferences.setAiInsights(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(AiInsight.serializer()), insights))
+            triggerSync()
+        }
     }
 
     suspend fun ingestDocumentFile(fileName: String, mimeType: String, base64Data: String): Result<Unit> {
@@ -1280,41 +1314,39 @@ class LogRepository @Inject constructor(
             true // default to allowing calculation if parsing fails
         }
 
-        if (!isTodayOrYesterday) {
-            val insightsStr = preferences.aiInsights.first()
-            if (insightsStr.isNotBlank()) {
-                val insights = try {
-                    json.decodeFromString<List<com.notel.notel.data.local.entity.AiInsight>>(insightsStr)
-                } catch (e: Exception) { emptyList() }
-                
-                val targetLocalDate = try {
-                    java.time.LocalDate.parse(targetDateStr)
-                } catch (e: Exception) {
-                    java.time.LocalDate.now()
-                }
-                val startOfDay = targetLocalDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val insightsStr = preferences.aiInsights.first()
+        if (insightsStr.isNotBlank()) {
+            val insights = try {
+                json.decodeFromString<List<com.notel.notel.data.local.entity.AiInsight>>(insightsStr)
+            } catch (e: Exception) { emptyList() }
+            
+            val targetLocalDate = try {
+                java.time.LocalDate.parse(targetDateStr)
+            } catch (e: Exception) {
+                java.time.LocalDate.now()
+            }
+            val startOfDay = targetLocalDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
 
-                val cachedInsight = insights.find { it.type == "BodyLoad" && isSameDay(it.timestamp, startOfDay) }
-                if (cachedInsight != null) {
-                    val text = cachedInsight.text
-                    val scoreRegex = """Cup %:\s*(\d+)""".toRegex()
-                    val factorsRegex = """Factors:\s*([^\n|]*)""".toRegex()
-                    val adviceRegex = """Advice:\s*(.*)""".toRegex()
-                    
-                    val cachedScore = scoreRegex.find(text)?.groupValues?.get(1)?.toIntOrNull()
-                    val cachedFactors = factorsRegex.find(text)?.groupValues?.get(1)?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()
-                    val cachedAdvice = adviceRegex.find(text)?.groupValues?.get(1)?.trim() ?: ""
-                    
-                    if (cachedScore != null) {
-                        return Result.success(
-                            BodyLoadResponse(
-                                score = cachedScore,
-                                factors = cachedFactors,
-                                advice = cachedAdvice,
-                                subjectiveImpact = 0.0
-                            )
+            val cachedInsight = insights.find { it.type == "BodyLoad" && isSameDay(it.timestamp, startOfDay) }
+            if (cachedInsight != null) {
+                val text = cachedInsight.text
+                val scoreRegex = """Cup %:\s*(\d+)""".toRegex()
+                val factorsRegex = """Factors:\s*([^\n|]*)""".toRegex()
+                val adviceRegex = """Advice:\s*(.*)""".toRegex()
+                
+                val cachedScore = scoreRegex.find(text)?.groupValues?.get(1)?.toIntOrNull()
+                val cachedFactors = factorsRegex.find(text)?.groupValues?.get(1)?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()
+                val cachedAdvice = adviceRegex.find(text)?.groupValues?.get(1)?.trim() ?: ""
+                
+                if (cachedScore != null) {
+                    return Result.success(
+                        BodyLoadResponse(
+                            score = cachedScore,
+                            factors = cachedFactors,
+                            advice = cachedAdvice,
+                            subjectiveImpact = 0.0
                         )
-                    }
+                    )
                 }
             }
         }

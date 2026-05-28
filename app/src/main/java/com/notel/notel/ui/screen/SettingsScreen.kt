@@ -2607,7 +2607,7 @@ fun DebugScreen(
         modifier = Modifier
             .fillMaxSize()
             .padding(padding)
-            .padding(16.dp)
+            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 80.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
@@ -2655,6 +2655,11 @@ fun DebugScreen(
             item {
                 GlassyButton(onClick = { viewModel.recoverAccountData() }, modifier = Modifier.fillMaxWidth(), containerColor = NotelSurfaceHigh) {
                     Text("Force Sync", color = NotelTextPrimary, fontSize = 10.sp)
+                }
+            }
+            item {
+                GlassyButton(onClick = { viewModel.refreshThisWeeksScores() }, modifier = Modifier.fillMaxWidth(), containerColor = NotelSurfaceHigh) {
+                    Text("Refresh Week", color = NotelTextPrimary, fontSize = 10.sp)
                 }
             }
         }
