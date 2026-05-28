@@ -1342,14 +1342,20 @@ class LogRepository @Inject constructor(
             else emptyList()
         } catch (e: Exception) { emptyList() }
 
-        val sleepMins = sleepHist.find { it.first == targetDateStr }?.second ?: 0
-        val calVal = calHist.find { it.first == targetDateStr }?.second ?: 0
+        val dataDateStr = try {
+            java.time.LocalDate.parse(targetDateStr).minusDays(1).toString()
+        } catch (e: Exception) {
+            targetDateStr
+        }
+
+        val sleepMins = sleepHist.find { it.first == dataDateStr }?.second ?: 0
+        val calVal = calHist.find { it.first == dataDateStr }?.second ?: 0
         
         val todayAwake = preferences.todayAwakeAvgHr.first()
-        val rawHrVal = if (targetDateStr == today && todayAwake > 0) {
+        val rawHrVal = if (dataDateStr == today && todayAwake > 0) {
             todayAwake
         } else {
-            heartHist.find { it.first == targetDateStr }?.second ?: 0
+            heartHist.find { it.first == dataDateStr }?.second ?: 0
         }
         val hrVal = if (rawHrVal <= 0) 70 else rawHrVal
 
@@ -1387,10 +1393,17 @@ class LogRepository @Inject constructor(
             java.time.LocalDate.now()
         }
         val startOfDay = targetLocalDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
-        val endOfDay = startOfDay + (24 * 60 * 60 * 1000L) - 1
         
-        val dailyEntries = logEntryDao.getRecentEntriesInRange(startOfDay, endOfDay)
-        val jotsContext = logEntryDao.getRecentEntriesBefore(endOfDay, 5)
+        val dataLocalDate = try {
+            java.time.LocalDate.parse(dataDateStr)
+        } catch (e: Exception) {
+            java.time.LocalDate.now().minusDays(1)
+        }
+        val dataStartOfDay = dataLocalDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val dataEndOfDay = dataStartOfDay + (24 * 60 * 60 * 1000L) - 1
+        
+        val dailyEntries = logEntryDao.getRecentEntriesInRange(dataStartOfDay, dataEndOfDay)
+        val jotsContext = logEntryDao.getRecentEntriesBefore(dataEndOfDay, 5)
         
         var subjectiveLoad = 0.0
         var subjectiveReason = ""
@@ -1398,7 +1411,7 @@ class LogRepository @Inject constructor(
         if (jotsContext.isNotEmpty()) {
             try {
                 val prompt = """
-                    You are a health analysis helper. Read the user's last 5 journal entries (Jots) leading up to the target day (which ends at timestamp $endOfDay) and evaluate their subjective strain (stress, pain, headaches, insomnia, symptoms, mental fatigue) up to this date.
+                    You are a health analysis helper. Read the user's last 5 journal entries (Jots) leading up to the target day (which ends at timestamp $dataEndOfDay) and evaluate their subjective strain (stress, pain, headaches, insomnia, symptoms, mental fatigue) up to this date.
                     Consider the timing and recency of the Jots.
                     Determine the subjective allostatic load percentage on a scale from 0% (perfect, relaxed, symptom-free) to 100% (extreme panic, severe pain, severe symptom flare-up, or extreme exhaustion).
                     
