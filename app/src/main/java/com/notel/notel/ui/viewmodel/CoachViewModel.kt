@@ -12,6 +12,21 @@ import com.notel.notel.data.remote.CoachMessageDto
 import com.notel.notel.data.remote.JotApi
 import com.notel.notel.data.repository.LogRepository
 import com.notel.notel.data.repository.UserListRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import java.util.UUID
+import javax.inject.Inject
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 enum class NoteStatus {
     NONE,
@@ -183,7 +198,7 @@ class CoachViewModel @Inject constructor(
         content = "Hi! I'm Jot Coach. I have context on your recent logs, body load history, and knowledge base. How can I help you today?"
     )
 
-    @kotlinx.coroutines.ExperimentalCoroutinesApi
+    @OptIn(ExperimentalCoroutinesApi::class)
     val messages: StateFlow<List<CoachMessage>> = _currentSessionId.flatMapLatest { sessionId ->
         if (sessionId == null) {
             flowOf(listOf(welcomeMessage))
@@ -270,6 +285,8 @@ class CoachViewModel @Inject constructor(
                 e.printStackTrace()
             }
         }
+    }
+
     fun approveProposedList(messageId: String, listName: String, items: List<String>) {
         viewModelScope.launch {
             try {
@@ -665,5 +682,4 @@ class CoachViewModel @Inject constructor(
             }
         }
     }
-}
 }
