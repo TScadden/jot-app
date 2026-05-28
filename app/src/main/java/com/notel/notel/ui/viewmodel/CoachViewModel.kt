@@ -331,7 +331,9 @@ class CoachViewModel @Inject constructor(
                 e.printStackTrace()
             }
         }
-    }    fun deleteCurrentSession(onDeleted: () -> Unit) {
+    }
+
+    fun deleteCurrentSession(onDeleted: () -> Unit) {
         val sessionId = _currentSessionId.value ?: return
         viewModelScope.launch {
             try {
