@@ -28,6 +28,8 @@ import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.TipsAndTricksViewModel
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -249,6 +251,7 @@ fun TipsAndTricksScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 24.dp)
                     .padding(bottom = 50.dp)
             ) {
