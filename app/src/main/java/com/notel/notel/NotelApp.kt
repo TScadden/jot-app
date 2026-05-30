@@ -38,7 +38,6 @@ class NotelApp : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         lifecycleTracker.startTracking()
-        scheduleDailyBodyLoadReminder()
         scheduleHabitReminder()
         scheduleCupReminder()
         com.notel.notel.worker.RedditRefreshWorker.schedule(this)
@@ -55,31 +54,6 @@ class NotelApp : Application(), Configuration.Provider {
                 }
             }
         }
-    }
-
-    private fun scheduleDailyBodyLoadReminder() {
-        val calendar = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 21) // 9:00 PM
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-        }
-        
-        if (calendar.timeInMillis <= System.currentTimeMillis()) {
-            calendar.add(Calendar.DAY_OF_YEAR, 1)
-        }
-
-        val delay = calendar.timeInMillis - System.currentTimeMillis()
-
-        val dailyWorkRequest = PeriodicWorkRequestBuilder<BodyLoadReminderWorker>(24, TimeUnit.HOURS)
-            .setInitialDelay(delay, TimeUnit.MILLISECONDS)
-            .addTag("body_load_reminder")
-            .build()
-
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "body_load_reminder",
-            ExistingPeriodicWorkPolicy.UPDATE,
-            dailyWorkRequest
-        )
     }
 
     private fun scheduleHabitReminder() {

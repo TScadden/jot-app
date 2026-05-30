@@ -2083,26 +2083,7 @@ fun SettingsScreen(
                         
 
 
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Body Load Summary", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
-                                Text(
-                                    "A summary of your final physiological load at 9:00 PM. Tap to learn more.",
-                                    color = NotelTextSecondary,
-                                    fontSize = 11.sp
-                                )
-                            }
-                            Switch(
-                                checked = dailyCupUpdatesEnabled,
-                                onCheckedChange = { checkAndToggle(it) { enabled -> viewModel.setDailyCupUpdatesEnabled(enabled) } },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = NotelPrimary,
-                                    checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
-                                    uncheckedThumbColor = NotelTextSecondary,
-                                    uncheckedTrackColor = NotelSurfaceHigh
-                                )
-                            )
-                        }
+                        
 
 
 
@@ -2632,11 +2613,7 @@ fun DebugScreen(
                     Text("Daily", color = NotelTextPrimary, fontSize = 10.sp)
                 }
             }
-            item {
-                GlassyButton(onClick = { viewModel.testBodyLoadNotification(context) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Body Load", color = NotelTextPrimary, fontSize = 10.sp)
-                }
-            }
+            
             item {
                 GlassyButton(onClick = { viewModel.testHabitNotification(context) }, modifier = Modifier.fillMaxWidth()) {
                     Text("Habit", color = NotelTextPrimary, fontSize = 10.sp)

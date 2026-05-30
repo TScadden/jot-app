@@ -715,18 +715,7 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun testBodyLoadNotification(context: android.content.Context) {
-        viewModelScope.launch {
-            logRepository.getBodyLoad(categories.value).fold(
-                onSuccess = { res ->
-                    com.notel.notel.util.NotificationHelper(context).showBodyLoadUpdate(res.score)
-                },
-                onFailure = {
-                    com.notel.notel.util.NotificationHelper(context).showBodyLoadReminder()
-                }
-            )
-        }
-    }
+    
 
     fun testHabitNotification(context: android.content.Context) {
         viewModelScope.launch {
