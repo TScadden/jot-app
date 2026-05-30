@@ -97,7 +97,29 @@ object PdfExporter {
             canvas.drawText("Jot HR Spikes Report", 50f, y, titlePaint)
             y += 24f
             canvas.drawText("Date: $formattedDate | Exported: ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())}", 50f, y, subTitlePaint)
-            y += 40f
+            y += 35f
+
+            // Metrics Summary Section
+            val readings = heartRateData.map { it.second }
+            if (readings.isNotEmpty()) {
+                val sorted = readings.sorted()
+                val peakVal = sorted.last()
+                val p10 = sorted[(sorted.size * 0.10).toInt().coerceAtLeast(0)]
+                val deltaVal = peakVal - p10
+                val totalEvents = allEvents.size
+                
+                canvas.drawText("SUMMARY", 50f, y, headerPaint)
+                y += 10f
+                canvas.drawLine(50f, y, 545f, y, linePaint)
+                y += 20f
+                
+                canvas.drawText("• Peak Heart Rate: $peakVal bpm", 60f, y, textPaint)
+                y += 18f
+                canvas.drawText("• Total Spike Events: $totalEvents events", 60f, y, textPaint)
+                y += 18f
+                canvas.drawText("• Max Jump (Delta): +$deltaVal bpm (Baseline: $p10 bpm ➝ Peak: $peakVal bpm)", 60f, y, textPaint)
+                y += 30f
+            }
 
             // Table Headers
             canvas.drawText("Time", 50f, y, headerPaint)
