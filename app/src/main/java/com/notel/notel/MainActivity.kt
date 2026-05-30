@@ -233,7 +233,8 @@ class MainActivity : ComponentActivity() {
                                 onKeyMetricsClick = { navController.navigate("key_metrics") },
                                 onCoachClick = { navController.navigate("coach_history") },
                                 onTipsAndTricksClick = { navController.navigate("tips_and_tricks") },
-                                onFoodClick = { navController.navigate("food") }
+                                onFoodClick = { navController.navigate("food") },
+                                onFriendsClick = {}
                             )
                         }
                         composable("tips_and_tricks") {
