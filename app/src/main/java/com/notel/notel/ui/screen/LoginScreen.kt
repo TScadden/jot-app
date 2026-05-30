@@ -133,9 +133,9 @@ class LoginViewModel @Inject constructor(
                     preferences.setAuthToken(body.token!!)
                     preferences.setLoggedIn(true)
                     
-                    // Handle Admin/Friend status from server
                     body.isUnlimited?.let { preferences.setIsUnlimited(it) }
                     body.onboardingComplete?.let { if (it) preferences.setOnboardingComplete(true) }
+                    body.nickname?.let { preferences.setUserNickname(it) }
                     
                     syncManager.pullAllData() // Pull existing data on successful login
                     
@@ -175,9 +175,9 @@ class LoginViewModel @Inject constructor(
                 val response = jotApi.register(AuthRequest(email, pass))
                 val body = response.body()
                 
-                if (response.isSuccessful && body != null && body.token?.isNotBlank() == true) {
                     preferences.setAuthToken(body.token!!)
                     preferences.setLoggedIn(true)
+                    body.nickname?.let { preferences.setUserNickname(it) }
                     onboardingCompleteByServer = false // New users always start with onboarding
                     isLoggedIn = true
                 } else {

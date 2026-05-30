@@ -193,6 +193,9 @@ class SettingsViewModel @Inject constructor(
     val dailyCupUpdatesEnabled = preferences.dailyCupUpdatesEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
+    val userNickname = preferences.userNickname
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+
     val hrSpikeAlertsEnabled = preferences.hrSpikeAlertsEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
@@ -992,6 +995,51 @@ class SettingsViewModel @Inject constructor(
         val d1 = java.time.Instant.ofEpochMilli(t1).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
         val d2 = java.time.Instant.ofEpochMilli(t2).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
         return d1 == d2
+    }
+
+    fun updateNickname(nickname: String, onResult: (Boolean, String?) -> Unit) {
+        val trimmed = nickname.trim().replace("\\s+".toRegex(), " ")
+
+        // Validation Rules
+        if (trimmed.length < 2) {
+            onResult(false, "Nickname must be at least 2 characters")
+            return
+        }
+
+        val lettersOnly = "^[a-zA-Z ]+$".toRegex()
+        if (!trimmed.matches(lettersOnly)) {
+            onResult(false, "Nickname can only contain letters and spaces")
+            return
+        }
+
+        val spaceCount = trimmed.count { it == ' ' }
+        if (spaceCount > 2) {
+            onResult(false, "Nickname can contain at most 2 spaces")
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                // First check server for uniqueness
+                val checkRes = jotApi.checkNickname(trimmed)
+                if (checkRes.isSuccessful && checkRes.body()?.unique == false) {
+                    onResult(false, checkRes.body()?.error ?: "Nickname is already taken")
+                    return@launch
+                }
+
+                // Push update to server
+                val updateRes = jotApi.updateNickname(com.notel.notel.data.remote.UpdateNicknameRequest(trimmed))
+                val body = updateRes.body()
+                if (updateRes.isSuccessful && body?.success == true) {
+                    preferences.setUserNickname(trimmed)
+                    onResult(true, null)
+                } else {
+                    onResult(false, body?.error ?: "Failed to update nickname on the server")
+                }
+            } catch (e: Exception) {
+                onResult(false, e.message ?: "Network error")
+            }
+        }
     }
 }
 

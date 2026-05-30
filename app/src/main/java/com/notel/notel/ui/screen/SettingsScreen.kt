@@ -96,6 +96,7 @@ fun SettingsScreen(
     val spikeDeltaThreshold by viewModel.spikeDeltaThreshold.collectAsState()
     val habitReminderEnabled by viewModel.habitReminderEnabled.collectAsState()
     val userContextHidden by viewModel.userContextHidden.collectAsState()
+    val userNickname by viewModel.userNickname.collectAsState()
     val tutorialSeen by viewModel.settingsTutorialSeen.collectAsState()  // null = loading, false = not seen, true = seen
 
     val context = LocalContext.current
@@ -1905,6 +1906,128 @@ fun SettingsScreen(
             if (currentMenu == SettingsMenu.USER_PROFILE) {
             Text("USER PROFILE", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(8.dp))
+
+            var editingNickname by remember { mutableStateOf("") }
+            var isEditingNickname by remember { mutableStateOf(false) }
+            var nicknameError by remember { mutableStateOf<String?>(null) }
+            var isSavingNickname by remember { mutableStateOf(false) }
+
+            GlassyCard(
+                shape = RoundedCornerShape(16.dp),
+                color = NotelSurface,
+                modifier = Modifier.padding(bottom = 16.dp)
+            ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Face,
+                                contentDescription = null,
+                                tint = NotelPrimary,
+                                modifier = Modifier.size(28.dp)
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                Text("Nickname", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                                if (!isEditingNickname) {
+                                    Text(
+                                        text = userNickname.ifBlank { "Not set" },
+                                        color = if (userNickname.isBlank()) NotelTextSecondary else NotelPrimary,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                        }
+                        
+                        if (!isEditingNickname) {
+                            GlassyButton(
+                                onClick = {
+                                    editingNickname = userNickname
+                                    nicknameError = null
+                                    isEditingNickname = true
+                                },
+                                containerColor = NotelSurfaceHigh
+                            ) {
+                                Text("Edit", color = NotelTextPrimary, fontSize = 12.sp)
+                            }
+                        }
+                    }
+
+                    if (isEditingNickname) {
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = editingNickname,
+                            onValueChange = {
+                                editingNickname = it
+                                nicknameError = null
+                            },
+                            placeholder = { Text("Enter nickname...", color = NotelTextSecondary) },
+                            singleLine = true,
+                            isError = nicknameError != null,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = NotelPrimary,
+                                cursorColor = NotelPrimary,
+                                focusedTextColor = NotelTextPrimary,
+                                unfocusedTextColor = NotelTextPrimary
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        if (nicknameError != null) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = nicknameError!!,
+                                color = androidx.compose.ui.graphics.Color(0xFFFF5252),
+                                fontSize = 11.sp
+                            )
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            GlassyButton(
+                                onClick = { isEditingNickname = false },
+                                modifier = Modifier.weight(1f),
+                                containerColor = NotelSurfaceHigh
+                            ) {
+                                Text("Cancel", color = NotelTextPrimary)
+                            }
+                            GlassyButton(
+                                onClick = {
+                                    isSavingNickname = true
+                                    viewModel.updateNickname(editingNickname) { success, error ->
+                                        isSavingNickname = false
+                                        if (success) {
+                                            isEditingNickname = false
+                                        } else {
+                                            nicknameError = error ?: "Unknown error"
+                                        }
+                                    }
+                                },
+                                enabled = !isSavingNickname,
+                                modifier = Modifier.weight(1f),
+                                containerColor = NotelPrimary
+                            ) {
+                                if (isSavingNickname) {
+                                    CircularProgressIndicator(
+                                        color = NotelTextPrimary,
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Text("Save", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             
             GlassyCard(
                 shape = RoundedCornerShape(16.dp),

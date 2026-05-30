@@ -151,6 +151,7 @@ data class AuthResponse(
     val email: String? = null,
     val isUnlimited: Boolean? = null,
     val onboardingComplete: Boolean? = null,
+    val nickname: String? = null,
     val error: String? = null
 )
 
@@ -381,6 +382,25 @@ data class FetchSubredditResponse(
     val error: String? = null
 )
 
+@Serializable
+data class NicknameCheckResponse(
+    val unique: Boolean,
+    val error: String? = null
+)
+
+@Serializable
+data class UpdateNicknameRequest(
+    val nickname: String
+)
+
+@Serializable
+data class UpdateNicknameResponse(
+    val success: Boolean,
+    val nickname: String? = null,
+    val error: String? = null
+)
+
+
 interface JotApi {
 
     @POST("api/auth/register")
@@ -391,6 +411,12 @@ interface JotApi {
 
     @POST("api/auth/forgot-password")
     suspend fun forgotPassword(@Body request: ForgotPasswordRequest): Response<GenericResponse>
+
+    @retrofit2.http.GET("api/auth/check-nickname")
+    suspend fun checkNickname(@retrofit2.http.Query("name") name: String): Response<NicknameCheckResponse>
+
+    @POST("api/auth/update-nickname")
+    suspend fun updateNickname(@Body request: UpdateNicknameRequest): Response<UpdateNicknameResponse>
 
     @POST("api/ai/suggestions")
     suspend fun getSuggestions(@Body request: SuggestionsRequest): Response<AiResponse<List<String>>>

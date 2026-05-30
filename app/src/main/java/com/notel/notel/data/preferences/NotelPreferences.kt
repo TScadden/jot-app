@@ -103,6 +103,7 @@ class NotelPreferences @Inject constructor(
         val TIPS_AND_TRICKS_ANSWERS = stringPreferencesKey("tips_and_tricks_answers")
         val FOOD_CHECKER_HISTORY = stringPreferencesKey("food_checker_history")
         val FOOD_CHECKER_LAST_QUERY = stringPreferencesKey("food_checker_last_query")
+        val USER_NICKNAME = stringPreferencesKey("user_nickname")
     }
 
     val historicalDailyStats: Flow<String> = context.dataStore.data.map { it[HISTORICAL_DAILY_STATS] ?: "{}" }
@@ -157,6 +158,7 @@ class NotelPreferences @Inject constructor(
     val currentStreak: Flow<Int> = context.dataStore.data.map { it[CURRENT_STREAK] ?: 0 }
     val bestStreak: Flow<Int> = context.dataStore.data.map { it[BEST_STREAK] ?: 0 }
     val lastOpenDate: Flow<String> = context.dataStore.data.map { it[LAST_OPEN_DATE] ?: "" }
+    val userNickname: Flow<String> = context.dataStore.data.map { it[USER_NICKNAME] ?: "" }
     val cupTheorySeen: Flow<Boolean> = context.dataStore.data.map { it[CUP_THEORY_SEEN] ?: false }
     val lastDynamicNotificationDate: Flow<String> = context.dataStore.data.map { it[LAST_DYNAMIC_NOTIFICATION_DATE] ?: "" }
     val lastKnownStats: Flow<String> = context.dataStore.data.map { it[LAST_KNOWN_STATS] ?: "{}" }
@@ -579,6 +581,10 @@ class NotelPreferences @Inject constructor(
 
     suspend fun setHrLastSampleTime(time: Long) {
         context.dataStore.edit { it[HR_LAST_SAMPLE_TIME] = time }
+    }
+
+    suspend fun setUserNickname(nickname: String) {
+        context.dataStore.edit { it[USER_NICKNAME] = nickname }
     }
 
     suspend fun setCupTheorySeen(seen: Boolean) {
