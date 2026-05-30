@@ -175,6 +175,7 @@ class LoginViewModel @Inject constructor(
                 val response = jotApi.register(AuthRequest(email, pass))
                 val body = response.body()
                 
+                if (response.isSuccessful && body != null && body.token?.isNotBlank() == true) {
                     preferences.setAuthToken(body.token!!)
                     preferences.setLoggedIn(true)
                     body.nickname?.let { preferences.setUserNickname(it) }
