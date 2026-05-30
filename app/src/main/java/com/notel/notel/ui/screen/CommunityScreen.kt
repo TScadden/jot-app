@@ -19,6 +19,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.CommunityViewModel
 import com.notel.notel.data.remote.FriendDto
+import com.notel.notel.data.remote.FriendDetailDto
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -31,6 +33,12 @@ fun CommunityScreen(
     var friendIdInput by remember { mutableStateOf("") }
     var addFriendError by remember { mutableStateOf<String?>(null) }
     var addFriendSuccess by remember { mutableStateOf<String?>(null) }
+
+    // Friend detail state
+    var selectedFriend by remember { mutableStateOf<FriendDto?>(null) }
+    var friendDetail by remember { mutableStateOf<FriendDetailDto?>(null) }
+    var friendDetailLoading by remember { mutableStateOf(false) }
+    var friendDetailError by remember { mutableStateOf<String?>(null) }
 
     val friends by viewModel.friends.collectAsState()
     val notifications by viewModel.notifications.collectAsState()
@@ -45,6 +53,18 @@ fun CommunityScreen(
     // Fetch initial data
     LaunchedEffect(Unit) {
         viewModel.fetchFriendsAndNotifications()
+    }
+
+    // Auto-refresh friend detail every 30 seconds while dialog is open
+    LaunchedEffect(selectedFriend) {
+        val friend = selectedFriend ?: return@LaunchedEffect
+        while (true) {
+            delay(30_000L)
+            viewModel.fetchFriendDetail(friend.id) { detail, err ->
+                friendDetail = detail
+                friendDetailError = err
+            }
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -185,8 +205,18 @@ fun CommunityScreen(
                                         FriendItem(
                                             name = friend.nickname,
                                             tag = friend.tag,
-                                            status = friend.status,
-                                            level = "${friend.level} pts"
+                                            level = "${friend.level} pts",
+                                            onClick = {
+                                                selectedFriend = friend
+                                                friendDetail = null
+                                                friendDetailError = null
+                                                friendDetailLoading = true
+                                                viewModel.fetchFriendDetail(friend.id) { detail, err ->
+                                                    friendDetail = detail
+                                                    friendDetailError = err
+                                                    friendDetailLoading = false
+                                                }
+                                            }
                                         )
                                     }
                                 }
@@ -241,6 +271,17 @@ fun CommunityScreen(
                     }
                 }
             }
+        }
+
+        // Friend Detail Dialog
+        if (selectedFriend != null) {
+            FriendDetailDialog(
+                friend = selectedFriend!!,
+                detail = friendDetail,
+                isLoading = friendDetailLoading,
+                error = friendDetailError,
+                onDismiss = { selectedFriend = null }
+            )
         }
 
         // Add Friend Glassy Dialog
@@ -451,22 +492,16 @@ fun CommunityScreen(
 }
 
 @Composable
-fun FriendItem(name: String, tag: String, status: String, level: String) {
+fun FriendItem(name: String, tag: String, level: String, onClick: (() -> Unit)? = null) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
+            .padding(vertical = 2.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .background(
-                        color = if (status == "Online") Color.Green else Color.Gray,
-                        shape = RoundedCornerShape(50)
-                    )
-            )
-            Spacer(Modifier.width(12.dp))
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(text = name, color = NotelTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
@@ -476,12 +511,14 @@ fun FriendItem(name: String, tag: String, status: String, level: String) {
                 Text(text = level, color = NotelTextSecondary, fontSize = 12.sp)
             }
         }
-        Text(
-            text = status,
-            color = if (status == "Online") NotelPrimary else NotelTextSecondary,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium
-        )
+        if (onClick != null) {
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = NotelTextSecondary.copy(alpha = 0.4f),
+                modifier = Modifier.size(18.dp)
+            )
+        }
     }
 }
 
@@ -574,6 +611,184 @@ fun NotificationItemRow(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun FriendDetailDialog(
+    friend: FriendDto,
+    detail: FriendDetailDto?,
+    isLoading: Boolean,
+    error: String?,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .liquidGlass(
+                    shape = RoundedCornerShape(24.dp),
+                    color = NotelSurface,
+                    alpha = 0.97f,
+                    showBorder = true
+                )
+                .padding(24.dp)
+        ) {
+            Column {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = friend.nickname,
+                            color = NotelTextPrimary,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "#${friend.tag}",
+                            color = NotelTextSecondary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = NotelTextSecondary)
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                Text(
+                    text = "TODAY",
+                    color = NotelTextSecondary,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 1.sp
+                )
+                Spacer(Modifier.height(12.dp))
+
+                when {
+                    isLoading -> {
+                        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            GlassySpinner(size = 28.dp)
+                        }
+                    }
+                    error != null -> {
+                        Text(text = error, color = Color.Red, fontSize = 13.sp)
+                    }
+                    detail != null && !detail.sharingEnabled -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .liquidGlass(shape = RoundedCornerShape(14.dp), color = NotelSurfaceHigh, alpha = 0.6f, showBorder = false)
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = null,
+                                    tint = NotelTextSecondary.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(32.dp)
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    text = "${friend.nickname} has turned off data sharing",
+                                    color = NotelTextSecondary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+                    detail != null -> {
+                        // Stats grid
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            FriendStatCard(
+                                modifier = Modifier.weight(1f),
+                                icon = Icons.Default.Bedtime,
+                                label = "Sleep",
+                                value = detail.todaySleepMins?.let {
+                                    val h = it / 60
+                                    val m = it % 60
+                                    if (h > 0) "${h}h ${m}m" else "${m}m"
+                                } ?: "—"
+                            )
+                            FriendStatCard(
+                                modifier = Modifier.weight(1f),
+                                icon = Icons.Default.Favorite,
+                                label = "Avg HR",
+                                value = detail.todayAvgHr?.let { "${it} bpm" } ?: "—"
+                            )
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        FriendStatCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            icon = Icons.Default.EmojiEvents,
+                            label = "Daily Score",
+                            value = detail.todayScore?.let { "$it pts" } ?: "—",
+                            accentColor = NotelPrimary
+                        )
+                    }
+                    else -> {
+                        Text(
+                            text = "No data available yet",
+                            color = NotelTextSecondary,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun FriendStatCard(
+    modifier: Modifier = Modifier,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    value: String,
+    accentColor: Color = NotelTextSecondary
+) {
+    Box(
+        modifier = modifier
+            .liquidGlass(
+                shape = RoundedCornerShape(14.dp),
+                color = NotelSurfaceHigh,
+                alpha = 0.6f,
+                showBorder = false
+            )
+            .padding(14.dp)
+    ) {
+        Column {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = accentColor,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = value,
+                color = NotelTextPrimary,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = label,
+                color = NotelTextSecondary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium
+            )
         }
     }
 }

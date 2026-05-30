@@ -106,6 +106,10 @@ class NotelPreferences @Inject constructor(
         val USER_NICKNAME = stringPreferencesKey("user_nickname")
         val USER_TAG = stringPreferencesKey("user_tag")
         val WEEKLY_SCORE = intPreferencesKey("weekly_score")
+        val SHARE_DATA_WITH_FRIENDS = booleanPreferencesKey("share_data_with_friends")
+        val TODAY_SLEEP_MINS = intPreferencesKey("today_sleep_mins")
+        val TODAY_AVG_HR = intPreferencesKey("today_avg_hr_shared")
+        val TODAY_SCORE = intPreferencesKey("today_score")
     }
 
     val historicalDailyStats: Flow<String> = context.dataStore.data.map { it[HISTORICAL_DAILY_STATS] ?: "{}" }
@@ -163,6 +167,10 @@ class NotelPreferences @Inject constructor(
     val userNickname: Flow<String> = context.dataStore.data.map { it[USER_NICKNAME] ?: "" }
     val userTag: Flow<String> = context.dataStore.data.map { it[USER_TAG] ?: "" }
     val weeklyScore: Flow<Int> = context.dataStore.data.map { it[WEEKLY_SCORE] ?: 0 }
+    val shareDataWithFriends: Flow<Boolean> = context.dataStore.data.map { it[SHARE_DATA_WITH_FRIENDS] ?: true }
+    val todaySleepMins: Flow<Int> = context.dataStore.data.map { it[TODAY_SLEEP_MINS] ?: 0 }
+    val todayAvgHrShared: Flow<Int> = context.dataStore.data.map { it[TODAY_AVG_HR] ?: 0 }
+    val todayScore: Flow<Int> = context.dataStore.data.map { it[TODAY_SCORE] ?: 0 }
     
     suspend fun setWeeklyScore(score: Int) {
         context.dataStore.edit { it[WEEKLY_SCORE] = score }
@@ -590,6 +598,22 @@ class NotelPreferences @Inject constructor(
 
     suspend fun setHrLastSampleTime(time: Long) {
         context.dataStore.edit { it[HR_LAST_SAMPLE_TIME] = time }
+    }
+
+    suspend fun setShareDataWithFriends(enabled: Boolean) {
+        context.dataStore.edit { it[SHARE_DATA_WITH_FRIENDS] = enabled }
+    }
+
+    suspend fun setTodaySleepMins(mins: Int) {
+        context.dataStore.edit { it[TODAY_SLEEP_MINS] = mins }
+    }
+
+    suspend fun setTodayAvgHrShared(avg: Int) {
+        context.dataStore.edit { it[TODAY_AVG_HR] = avg }
+    }
+
+    suspend fun setTodayScore(score: Int) {
+        context.dataStore.edit { it[TODAY_SCORE] = score }
     }
 
     suspend fun setUserNickname(nickname: String) {

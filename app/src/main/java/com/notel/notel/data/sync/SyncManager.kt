@@ -242,6 +242,29 @@ class SyncManager @Inject constructor(
             val weeklyScoreValue = calculateWeeklyScore()
             preferences.setWeeklyScore(weeklyScoreValue)
 
+            // Compute today's shared metrics
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+            val todayStr = sdf.format(java.util.Date())
+            val json2 = Json { ignoreUnknownKeys = true }
+
+            val hrStr2 = preferences.historicalHeartRate.first()
+            val hrMap2 = try {
+                if (hrStr2.isNotBlank()) json2.decodeFromString<List<com.notel.notel.data.model.BiomarkerPoint>>(hrStr2).associate { it.date to it.value.toInt() } else emptyMap()
+            } catch(e: Exception) { emptyMap() }
+
+            val sleepStr2 = preferences.historicalSleep.first()
+            val sleepMap2 = try {
+                if (sleepStr2.isNotBlank()) json2.decodeFromString<List<com.notel.notel.data.model.BiomarkerPoint>>(sleepStr2).associate { it.date to it.value.toInt() } else emptyMap()
+            } catch(e: Exception) { emptyMap() }
+
+            val todaySleep = sleepMap2[todayStr] ?: 0
+            val todayHr = hrMap2[todayStr] ?: 0
+            val todayScoreVal = weeklyScoreValue
+
+            preferences.setTodaySleepMins(todaySleep)
+            preferences.setTodayAvgHrShared(todayHr)
+            preferences.setTodayScore(todayScoreVal)
+
             val response = jotApi.syncProfile(
                 SyncProfileRequest(
                     userContext = preferences.userContext.first(),
@@ -250,8 +273,8 @@ class SyncManager @Inject constructor(
                     processedFiles = preferences.processedFiles.first(),
                     loggedDays = preferences.loggedDays.first(),
                     age = preferences.userAge.first(),
-                    heightCm = preferences.userHeight.first() * 2.54f, // convert inches to cm
-                    weightKg = preferences.userWeight.first() / 2.20462f, // convert lbs to kg
+                    heightCm = preferences.userHeight.first() * 2.54f,
+                    weightKg = preferences.userWeight.first() / 2.20462f,
                     gender = preferences.userGender.first(),
                     onboardingComplete = preferences.onboardingComplete.first(),
                     autoAiSuggestions = preferences.autoAiSuggestions.first(),
@@ -263,7 +286,11 @@ class SyncManager @Inject constructor(
                     bestStreak = preferences.bestStreak.first(),
                     userLists = userListsJson,
                     reminders = remindersJson,
-                    weeklyScore = weeklyScoreValue
+                    weeklyScore = weeklyScoreValue,
+                    shareDataWithFriends = preferences.shareDataWithFriends.first(),
+                    todaySleepMins = todaySleep,
+                    todayAvgHr = todayHr,
+                    todayScore = todayScoreVal
                 )
             )
             if (response.isSuccessful) {

@@ -206,6 +206,9 @@ class SettingsViewModel @Inject constructor(
     val userTag = preferences.userTag
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
+    val shareDataWithFriends = preferences.shareDataWithFriends
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
     val hrSpikeAlertsEnabled = preferences.hrSpikeAlertsEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
@@ -523,6 +526,13 @@ class SettingsViewModel @Inject constructor(
     fun setAutoAiSuggestions(enabled: Boolean) {
         viewModelScope.launch {
             preferences.setAutoAiSuggestions(enabled)
+            syncManager.pushProfileData()
+        }
+    }
+
+    fun setShareDataWithFriends(enabled: Boolean) {
+        viewModelScope.launch {
+            preferences.setShareDataWithFriends(enabled)
             syncManager.pushProfileData()
         }
     }

@@ -215,7 +215,11 @@ data class SyncProfileRequest(
     val bestStreak: Int? = null,
     val userLists: String? = null,
     val reminders: String? = null,
-    val weeklyScore: Int? = null
+    val weeklyScore: Int? = null,
+    val shareDataWithFriends: Boolean? = null,
+    val todaySleepMins: Int? = null,
+    val todayAvgHr: Int? = null,
+    val todayScore: Int? = null
 )
 
 @Serializable
@@ -273,7 +277,11 @@ data class ProfileDtoModel(
     val bestStreak: Int? = null,
     val userLists: String? = null,
     val reminders: String? = null,
-    val weeklyScore: Int? = null
+    val weeklyScore: Int? = null,
+    val shareDataWithFriends: Boolean? = null,
+    val todaySleepMins: Int? = null,
+    val todayAvgHr: Int? = null,
+    val todayScore: Int? = null
 )
 
 @Serializable
@@ -417,6 +425,24 @@ data class FriendDto(
 )
 
 @Serializable
+data class FriendDetailDto(
+    val friendId: String,
+    val nickname: String,
+    val tag: String,
+    val sharingEnabled: Boolean,
+    val todaySleepMins: Int? = null,
+    val todayAvgHr: Int? = null,
+    val todayScore: Int? = null
+)
+
+@Serializable
+data class FriendDetailResponse(
+    val success: Boolean,
+    val data: FriendDetailDto? = null,
+    val error: String? = null
+)
+
+@Serializable
 data class FriendsListResponse(
     val success: Boolean,
     val friends: List<FriendDto>? = null,
@@ -476,6 +502,9 @@ interface JotApi {
 
     @GET("api/friends/list")
     suspend fun getFriendsList(): Response<FriendsListResponse>
+
+    @retrofit2.http.GET("api/friends/data/{friendId}")
+    suspend fun getFriendDetail(@retrofit2.http.Path("friendId") friendId: String): Response<FriendDetailResponse>
 
     @POST("api/friends/respond")
     suspend fun respondFriendRequest(@Body request: RespondFriendRequestApiRequest): Response<GenericResponse>

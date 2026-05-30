@@ -130,4 +130,19 @@ class CommunityViewModel @Inject constructor(
             }
         }
     }
+
+    fun fetchFriendDetail(friendId: String, onResult: (com.notel.notel.data.remote.FriendDetailDto?, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val res = jotApi.getFriendDetail(friendId)
+                if (res.isSuccessful && res.body()?.success == true) {
+                    onResult(res.body()?.data, null)
+                } else {
+                    onResult(null, res.body()?.error ?: "Failed to load friend data")
+                }
+            } catch (e: Exception) {
+                onResult(null, e.message ?: "Network error")
+            }
+        }
+    }
 }

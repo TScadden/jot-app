@@ -99,6 +99,7 @@ fun SettingsScreen(
     val userContextHidden by viewModel.userContextHidden.collectAsState()
     val userNickname by viewModel.userNickname.collectAsState()
     val userTag by viewModel.userTag.collectAsState()
+    val shareDataWithFriends by viewModel.shareDataWithFriends.collectAsState()
     val tutorialSeen by viewModel.settingsTutorialSeen.collectAsState()  // null = loading, false = not seen, true = seen
 
     val context = LocalContext.current
@@ -2419,6 +2420,27 @@ fun SettingsScreen(
                 val isRecovering by viewModel.isRecovering.collectAsState()
                 val lastSyncTimeSync by viewModel.lastSyncTime.collectAsState()
 
+                Text("PRIVACY", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                GlassyCard(shape = RoundedCornerShape(16.dp), color = NotelSurface) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Share data with friends", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                            Text("Allow mutual friends to see your daily sleep, heart rate, and score", color = NotelTextSecondary, fontSize = 11.sp)
+                        }
+                        Switch(
+                            checked = shareDataWithFriends,
+                            onCheckedChange = { viewModel.setShareDataWithFriends(it) },
+                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = NotelPrimary)
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(24.dp))
                 Text("MANUAL SYNC", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(8.dp))
                 GlassyCard(shape = RoundedCornerShape(16.dp), color = NotelSurface) {
