@@ -214,7 +214,8 @@ data class SyncProfileRequest(
     val currentStreak: Int? = null,
     val bestStreak: Int? = null,
     val userLists: String? = null,
-    val reminders: String? = null
+    val reminders: String? = null,
+    val weeklyScore: Int? = null
 )
 
 @Serializable
@@ -271,7 +272,8 @@ data class ProfileDtoModel(
     val currentStreak: Int? = null,
     val bestStreak: Int? = null,
     val userLists: String? = null,
-    val reminders: String? = null
+    val reminders: String? = null,
+    val weeklyScore: Int? = null
 )
 
 @Serializable

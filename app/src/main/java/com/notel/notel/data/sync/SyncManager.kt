@@ -130,6 +130,99 @@ class SyncManager @Inject constructor(
         }
     }
 
+    suspend fun calculateWeeklyScore(): Int = withContext(Dispatchers.IO) {
+        try {
+            // Reset to Sunday 12:00 AM
+            val cal = java.util.Calendar.getInstance()
+            cal.set(java.util.Calendar.DAY_OF_WEEK, java.util.Calendar.SUNDAY)
+            cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+            cal.set(java.util.Calendar.MINUTE, 0)
+            cal.set(java.util.Calendar.SECOND, 0)
+            cal.set(java.util.Calendar.MILLISECOND, 0)
+            val startOfWeek = cal.timeInMillis
+
+            // Get date strings for the week
+            val dates = mutableListOf<String>()
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+            val todayStr = sdf.format(java.util.Date())
+            
+            val tempCal = java.util.Calendar.getInstance()
+            tempCal.timeInMillis = startOfWeek
+            var dateStr = sdf.format(tempCal.time)
+            dates.add(dateStr)
+            while (dateStr != todayStr && dates.size < 7) {
+                tempCal.add(java.util.Calendar.DAY_OF_YEAR, 1)
+                dateStr = sdf.format(tempCal.time)
+                dates.add(dateStr)
+            }
+
+            // Fetch logs for the week
+            val weeklyEntries = logEntryDao.getRecentEntriesInRange(startOfWeek, System.currentTimeMillis())
+            val jotsByDate = weeklyEntries.groupBy {
+                sdf.format(java.util.Date(it.timestamp))
+            }
+
+            // Fetch Biomarker Lists
+            val json = Json { ignoreUnknownKeys = true }
+            
+            val hrStr = preferences.historicalHeartRate.first()
+            val hrMap = try {
+                if (hrStr.isNotBlank()) json.decodeFromString<List<com.notel.notel.data.model.BiomarkerPoint>>(hrStr).associate { it.date to it.value.toInt() } else emptyMap()
+            } catch(e: Exception) { emptyMap() }
+
+            val sleepStr = preferences.historicalSleep.first()
+            val sleepMap = try {
+                if (sleepStr.isNotBlank()) json.decodeFromString<List<com.notel.notel.data.model.BiomarkerPoint>>(sleepStr).associate { it.date to it.value.toInt() } else emptyMap()
+            } catch(e: Exception) { emptyMap() }
+
+            val calStr = preferences.historicalCalories.first()
+            val calMap = try {
+                if (calStr.isNotBlank()) json.decodeFromString<List<com.notel.notel.data.model.BiomarkerPoint>>(calStr).associate { it.date to it.value.toInt() } else emptyMap()
+            } catch(e: Exception) { emptyMap() }
+
+            var totalScore = 0
+
+            // 1. Streak Points: Streak * 25
+            val streak = preferences.currentStreak.first()
+            totalScore += streak * 25
+
+            // 2. Iterate each day of the week to sum up points
+            dates.forEach { d ->
+                // A. Jots: 100 pts per Jot, max 3 per day (300 max)
+                val dailyJots = jotsByDate[d]?.size ?: 0
+                totalScore += minOf(3, dailyJots) * 100
+
+                // B. Calories: Total Calories / 20, max 200 pts (4000 cap)
+                val dailyCal = calMap[d] ?: 0
+                if (dailyCal > 0) {
+                    totalScore += minOf(200, dailyCal / 20)
+                }
+
+                // C. Sleep: Sleep minutes / 6. If sleep minutes is in [420, 540], add +100 bonus
+                val sleepMins = sleepMap[d] ?: 0
+                if (sleepMins > 0) {
+                    totalScore += sleepMins / 6
+                    if (sleepMins in 420..540) {
+                        totalScore += 100 // Sweet Spot rest bonus
+                    }
+                }
+
+                // D. Avg HR: 50 points daily for active tracking + 100 points for healthy range [55, 85]
+                val avgHr = hrMap[d] ?: 0
+                if (avgHr > 0) {
+                    totalScore += 50 // Tracking active points
+                    if (avgHr in 55..85) {
+                        totalScore += 100 // Healthy range bonus
+                    }
+                }
+            }
+
+            totalScore
+        } catch (e: Exception) {
+            0
+        }
+    }
+
     suspend fun pushProfileData(): Boolean = withContext(Dispatchers.IO) {
         try {
             if (!preferences.loggedIn.first()) return@withContext false
@@ -145,6 +238,9 @@ class SyncManager @Inject constructor(
             // Serialize Reminders
             val localReminders = reminderDao.getAllReminders().first()
             val remindersJson = Json.encodeToString(localReminders)
+
+            val weeklyScoreValue = calculateWeeklyScore()
+            preferences.setWeeklyScore(weeklyScoreValue)
 
             val response = jotApi.syncProfile(
                 SyncProfileRequest(
@@ -166,7 +262,8 @@ class SyncManager @Inject constructor(
                     currentStreak = preferences.currentStreak.first(),
                     bestStreak = preferences.bestStreak.first(),
                     userLists = userListsJson,
-                    reminders = remindersJson
+                    reminders = remindersJson,
+                    weeklyScore = weeklyScoreValue
                 )
             )
             if (response.isSuccessful) {
@@ -332,6 +429,7 @@ class SyncManager @Inject constructor(
                     profile.redditSummaries?.let { if (it.isNotBlank()) preferences.setRedditSummaries(it) }
                     profile.currentStreak?.let { preferences.setCurrentStreak(it) }
                     profile.bestStreak?.let { preferences.setBestStreak(it) }
+                    profile.weeklyScore?.let { preferences.setWeeklyScore(it) }
                     profile.userLists?.let { serverJson ->
                         if (serverJson.isNotBlank()) {
                             val pulledLists = try { Json.decodeFromString<List<UserListSyncDto>>(serverJson) } catch(e: Exception) { emptyList() }

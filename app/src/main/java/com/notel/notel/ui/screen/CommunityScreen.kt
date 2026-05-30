@@ -40,6 +40,7 @@ fun CommunityScreen(
     val userStreak by viewModel.userStreak.collectAsState()
     val userNickname by viewModel.userNickname.collectAsState()
     val userTag by viewModel.userTag.collectAsState()
+    val userWeeklyScore by viewModel.userWeeklyScore.collectAsState()
 
     // Fetch initial data
     LaunchedEffect(Unit) {
@@ -185,7 +186,7 @@ fun CommunityScreen(
                                             name = friend.nickname,
                                             tag = friend.tag,
                                             status = friend.status,
-                                            level = "Level ${friend.level}"
+                                            level = "${friend.level} pts"
                                         )
                                     }
                                 }
@@ -221,7 +222,7 @@ fun CommunityScreen(
                                     nickname = userNickname.ifBlank { "You" },
                                     tag = userTag.ifBlank { "00000" },
                                     status = "Online",
-                                    level = userStreak
+                                    level = userWeeklyScore
                                 )).sortedByDescending { it.level }
 
                                 leaderboardList.forEachIndexed { index, person ->
@@ -229,7 +230,7 @@ fun CommunityScreen(
                                         rank = index + 1,
                                         name = person.nickname,
                                         tag = person.tag,
-                                        score = "${person.level * 10} pts",
+                                        score = "${person.level} pts",
                                         isCurrentUser = person.id == "me"
                                     )
                                 }
@@ -265,7 +266,7 @@ fun CommunityScreen(
                         )
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            text = "Enter your friend's unique #ID (e.g. Tyson Scadden#26385)",
+                            text = "Enter your friend's 5-digit Tag (e.g. 26385)",
                             color = NotelTextSecondary,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium
@@ -279,7 +280,7 @@ fun CommunityScreen(
                                 addFriendError = null
                                 addFriendSuccess = null
                             },
-                            placeholder = { Text("Nickname#ID", color = NotelTextSecondary) },
+                            placeholder = { Text("Tag (e.g. 26385)", color = NotelTextSecondary) },
                             singleLine = true,
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = NotelTextPrimary,
@@ -315,11 +316,15 @@ fun CommunityScreen(
                             Spacer(Modifier.width(16.dp))
                             GlassyButton(
                                 onClick = {
-                                    if (friendIdInput.isBlank() || !friendIdInput.contains('#')) {
-                                        addFriendError = "Invalid format. Must include '#ID'"
+                                    val trimmed = friendIdInput.trim()
+                                    val isValidTag = trimmed.matches(Regex("^\\d{5}$"))
+                                    val isValidHashTag = trimmed.startsWith("#") && trimmed.substring(1).matches(Regex("^\\d{5}$"))
+
+                                    if (trimmed.isBlank() || !(isValidTag || isValidHashTag)) {
+                                        addFriendError = "Invalid format. Enter a 5-digit Tag (e.g. 26385)"
                                         return@GlassyButton
                                     }
-                                    viewModel.sendFriendRequest(friendIdInput) { success, err ->
+                                    viewModel.sendFriendRequest(trimmed) { success, err ->
                                         if (success) {
                                             addFriendSuccess = "Request sent successfully!"
                                             friendIdInput = ""

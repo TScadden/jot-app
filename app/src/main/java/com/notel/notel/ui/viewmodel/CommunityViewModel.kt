@@ -32,6 +32,9 @@ class CommunityViewModel @Inject constructor(
     val userTag: StateFlow<String> = preferences.userTag
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
+    val userWeeklyScore: StateFlow<Int> = preferences.weeklyScore
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
     private val _friends = MutableStateFlow<List<FriendDto>>(emptyList())
     val friends: StateFlow<List<FriendDto>> = _friends.asStateFlow()
 
