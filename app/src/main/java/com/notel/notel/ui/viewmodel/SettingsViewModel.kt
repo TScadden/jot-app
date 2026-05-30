@@ -630,14 +630,17 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             // 0. Push ALL local data to the server BEFORE wiping anything
             try {
-                syncManager.pushProfileData()
-                syncManager.pushEntries()
-                syncManager.pushCategories()
+                val profilePushed = syncManager.pushProfileData()
+                val entriesPushed = syncManager.pushEntries()
+                val categoriesPushed = syncManager.pushCategories()
                 
-                // Verify the sync actually reached the server by doing a quick pull check
-                val pullResult = syncManager.pullAllData()
-                if (!pullResult) {
-                    _logoutError.value = "Could not verify data was saved to server. Please try again in a moment."
+                // Verify the sync pushes actually reached the server
+                if (!profilePushed || !entriesPushed || !categoriesPushed) {
+                    val details = mutableListOf<String>()
+                    if (!profilePushed) details.add("Profile")
+                    if (!entriesPushed) details.add("Entries")
+                    if (!categoriesPushed) details.add("Categories")
+                    _logoutError.value = "Could not verify data was saved to server (Failed: ${details.joinToString(", ")}). Please try again in a moment."
                     return@launch
                 }
             } catch (e: Exception) {

@@ -306,33 +306,41 @@ class SyncManager @Inject constructor(
         }
     }
 
-    suspend fun pushEntries() = withContext(Dispatchers.IO) {
+    suspend fun pushEntries(): Boolean = withContext(Dispatchers.IO) {
         try {
-            if (!preferences.loggedIn.first()) return@withContext
+            if (!preferences.loggedIn.first()) return@withContext false
             val entries = logEntryDao.getAllEntries().first()
             if (entries.isNotEmpty()) {
                 val entryDtos = entries.map {
                     LogEntryDtoModel(it.id, it.categoryId, it.body, it.chips, it.manualText, it.timestamp)
                 }
-                jotApi.syncEntries(SyncEntriesRequest(entryDtos))
+                val response = jotApi.syncEntries(SyncEntriesRequest(entryDtos))
+                response.isSuccessful
+            } else {
+                true
             }
         } catch (e: Exception) {
             Log.e(tag, "pushEntries failed: ${e.message}")
+            false
         }
     }
 
-    suspend fun pushCategories() = withContext(Dispatchers.IO) {
+    suspend fun pushCategories(): Boolean = withContext(Dispatchers.IO) {
         try {
-            if (!preferences.loggedIn.first()) return@withContext
+            if (!preferences.loggedIn.first()) return@withContext false
             val categories = categoryDao.getAllCategories().first()
             if (categories.isNotEmpty()) {
                 val categoryDtos = categories.map {
                     CategoryDtoModel(it.id, it.name, it.icon, it.colorHex, it.isDefault, it.sortOrder)
                 }
-                jotApi.syncCategories(SyncCategoriesRequest(categoryDtos))
+                val response = jotApi.syncCategories(SyncCategoriesRequest(categoryDtos))
+                response.isSuccessful
+            } else {
+                true
             }
         } catch (e: Exception) {
             Log.e(tag, "pushCategories failed: ${e.message}")
+            false
         }
     }
     
