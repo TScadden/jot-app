@@ -637,7 +637,10 @@ class SettingsViewModel @Inject constructor(
                 // Verify the sync pushes actually reached the server
                 if (!profilePushed || !entriesPushed || !categoriesPushed) {
                     val details = mutableListOf<String>()
-                    if (!profilePushed) details.add("Profile")
+                    if (!profilePushed) {
+                        val serverErr = syncManager.lastProfilePushError ?: "Unknown error"
+                        details.add("Profile: $serverErr")
+                    }
                     if (!entriesPushed) details.add("Entries")
                     if (!categoriesPushed) details.add("Categories")
                     _logoutError.value = "Could not verify data was saved to server (Failed: ${details.joinToString(", ")}). Please try again in a moment."

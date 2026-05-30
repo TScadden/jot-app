@@ -223,6 +223,9 @@ class SyncManager @Inject constructor(
         }
     }
 
+    var lastProfilePushError: String? = null
+        private set
+
     suspend fun pushProfileData(): Boolean = withContext(Dispatchers.IO) {
         try {
             if (!preferences.loggedIn.first()) return@withContext false
@@ -294,14 +297,18 @@ class SyncManager @Inject constructor(
                 )
             )
             if (response.isSuccessful) {
+                lastProfilePushError = null
                 preferences.setLastSyncTime(System.currentTimeMillis())
                 true
             } else {
-                Log.e(tag, "pushProfileData failed: HTTP ${response.code()} - ${response.errorBody()?.string()}")
+                val errStr = response.errorBody()?.string() ?: "Empty body"
+                lastProfilePushError = "HTTP ${response.code()}: $errStr"
+                Log.e(tag, "pushProfileData failed: $lastProfilePushError")
                 false
             }
         } catch (e: Exception) {
-            Log.e(tag, "pushProfileData failed: ${e.message}")
+            lastProfilePushError = e.message ?: e.toString()
+            Log.e(tag, "pushProfileData failed: $lastProfilePushError")
             false
         }
     }
