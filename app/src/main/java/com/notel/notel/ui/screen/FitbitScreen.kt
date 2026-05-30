@@ -783,6 +783,33 @@ fun FitbitScreen(
                                 HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
                                 Spacer(Modifier.height(16.dp))
 
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Spike Event Log",
+                                        color = NotelTextPrimary,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp
+                                    )
+                                    IconButton(
+                                        onClick = {
+                                            com.notel.notel.util.PdfExporter.exportSpikesToPdf(context, state.selectedHeartRateDate, state.heartRateData)
+                                        },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = androidx.compose.material.icons.Icons.Default.Download,
+                                            contentDescription = "Download spikes PDF",
+                                            tint = NotelPrimary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.height(12.dp))
+
                                 val formatter = java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault())
                                 val zoneId = java.time.ZoneId.systemDefault()
 
