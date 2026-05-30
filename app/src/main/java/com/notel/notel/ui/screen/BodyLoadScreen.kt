@@ -88,6 +88,7 @@ fun BodyLoadScreen(
     var showTheorySheet by remember { mutableStateOf(false) }
     var showWeatherSheet by remember { mutableStateOf(false) }
     var showUvInfo by remember { mutableStateOf(false) }
+    var showNotifications by remember { mutableStateOf(false) }
     val todayStr = java.time.LocalDate.now().toString()
     val isToday = state.selectedDate == todayStr
 
@@ -133,6 +134,14 @@ fun BodyLoadScreen(
                         Icon(
                             imageVector = Icons.Default.Watch,
                             contentDescription = "Connections",
+                            tint = NotelPrimary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    IconButton(onClick = { showNotifications = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Notifications,
+                            contentDescription = "Notifications",
                             tint = NotelPrimary,
                             modifier = Modifier.size(24.dp)
                         )
@@ -996,6 +1005,83 @@ fun BodyLoadScreen(
                     description = "Stay indoors during peak hours (10am-4pm). If outside, seek shade, wear full protective UPF clothing, SPF 50+ mineral sunscreen, and wrap-around sunglasses. Unprotected skin burns in minutes.",
                     color = Color(0xFFCE93D8)
                 )
+            }
+        }
+    }
+
+    AnimatedVisibility(
+        visible = showNotifications,
+        enter = slideInHorizontally(initialOffsetX = { it }),
+        exit = slideOutHorizontally(targetOffsetX = { it }),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f))
+                .clickable { showNotifications = false }
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(0.85f)
+                    .align(Alignment.CenterEnd)
+                    .clickable(enabled = false) {}
+                    .liquidGlass(
+                        shape = RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp),
+                        color = NotelSurface,
+                        alpha = 0.95f,
+                        showBorder = true
+                    )
+                    .padding(24.dp)
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Notifications",
+                            color = NotelTextPrimary,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        IconButton(onClick = { showNotifications = false }) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = NotelTextPrimary
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(32.dp))
+
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.weight(1f).fillMaxWidth()
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.NotificationsNone,
+                                contentDescription = null,
+                                tint = NotelTextSecondary.copy(alpha = 0.4f),
+                                modifier = Modifier.size(64.dp)
+                            )
+                            Spacer(Modifier.height(16.dp))
+                            Text(
+                                text = "You have no notifications",
+                                color = NotelTextSecondary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
             }
         }
     }
