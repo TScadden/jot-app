@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.graphicsLayer
 import com.notel.notel.ui.theme.*
 
 data class InfoTile(
@@ -36,7 +37,9 @@ fun InfoScreen(
     onCoachClick: () -> Unit = {},
     onTipsAndTricksClick: () -> Unit = {},
     onFoodClick: () -> Unit = {},
-    onFriendsClick: () -> Unit = {}
+    onCommunityClick: () -> Unit = {},
+    onNavigateToMembership: () -> Unit = {},
+    isUnlimited: Boolean = false
 ) {
     val tiles = listOf(
         InfoTile("Sleep", Icons.Default.Bedtime, "Analysis & Debt"),
@@ -44,7 +47,7 @@ fun InfoScreen(
         InfoTile("Health Coach", Icons.Default.QuestionMark, "Personalized Advice"),
         InfoTile("Key Metrics", Icons.Default.BarChart, "Your Body Data"),
         InfoTile("Food", Icons.Default.Restaurant, "Sensitivity Checker"),
-        InfoTile("Friends & Leaderboard", Icons.Default.People, "Connect & Compare")
+        InfoTile("Community", Icons.Default.People, "Friends & Leaderboard")
     )
 
     Scaffold(
@@ -86,12 +89,14 @@ fun InfoScreen(
                 items(tiles) { tile ->
                     InfoTileCard(
                         tile = tile,
+                        isUnlimited = isUnlimited,
+                        onNavigateToMembership = onNavigateToMembership,
                         onSleepClick = onSleepClick,
                         onKeyMetricsClick = onKeyMetricsClick,
                         onCoachClick = onCoachClick,
                         onTipsAndTricksClick = onTipsAndTricksClick,
                         onFoodClick = onFoodClick,
-                        onFriendsClick = onFriendsClick
+                        onCommunityClick = onCommunityClick
                     )
                 }
             }
@@ -102,13 +107,18 @@ fun InfoScreen(
 @Composable
 fun InfoTileCard(
     tile: InfoTile,
+    isUnlimited: Boolean,
+    onNavigateToMembership: () -> Unit,
     onSleepClick: () -> Unit,
     onKeyMetricsClick: () -> Unit,
     onCoachClick: () -> Unit,
     onTipsAndTricksClick: () -> Unit,
     onFoodClick: () -> Unit,
-    onFriendsClick: () -> Unit
+    onCommunityClick: () -> Unit
 ) {
+    val isAiGated = tile.title == "Health Coach" || tile.title == "Tips and Tricks"
+    val isLocked = isAiGated && !isUnlimited
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -126,25 +136,29 @@ fun InfoTileCard(
             )
             .clip(RoundedCornerShape(24.dp))
             .clickable { 
-                when (tile.title) {
-                    "Sleep" -> onSleepClick()
-                    "Key Metrics" -> onKeyMetricsClick()
-                    "Health Coach" -> onCoachClick()
-                    "Tips and Tricks" -> onTipsAndTricksClick()
-                    "Food" -> onFoodClick()
-                    "Friends & Leaderboard" -> onFriendsClick()
+                if (isLocked) {
+                    onNavigateToMembership()
+                } else {
+                    when (tile.title) {
+                        "Sleep" -> onSleepClick()
+                        "Key Metrics" -> onKeyMetricsClick()
+                        "Health Coach" -> onCoachClick()
+                        "Tips and Tricks" -> onTipsAndTricksClick()
+                        "Food" -> onFoodClick()
+                        "Community" -> onCommunityClick()
+                    }
                 }
             }
             .liquidGlass(
                 shape = RoundedCornerShape(24.dp),
                 color = NotelSurface,
-                alpha = 0.8f,
+                alpha = if (isLocked) 0.35f else 0.8f,
                 showBorder = true
             )
             .padding(20.dp)
     ) {
         Column(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().graphicsLayer(alpha = if (isLocked) 0.5f else 1f),
             verticalArrangement = Arrangement.SpaceBetween,
             horizontalAlignment = Alignment.Start
         ) {
@@ -169,6 +183,25 @@ fun InfoTileCard(
                     color = NotelTextSecondary,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium
+                )
+            }
+        }
+
+        if (isLocked) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(8.dp),
+                contentAlignment = Alignment.TopEnd
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = "Premium Locked Feature",
+                    tint = NotelPrimary,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .background(NotelSurfaceHigh.copy(alpha = 0.8f), RoundedCornerShape(8.dp))
+                        .padding(4.dp)
                 )
             }
         }

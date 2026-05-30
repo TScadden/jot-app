@@ -32,6 +32,7 @@ class SyncManager @Inject constructor(
     private val coachMessageDao: com.notel.notel.data.local.dao.CoachMessageDao,
     private val userListDao: com.notel.notel.data.local.dao.UserListDao,
     private val reminderDao: com.notel.notel.data.local.dao.ReminderDao,
+    private val habitRepository: com.notel.notel.data.repository.HabitRepository,
     private val preferences: NotelPreferences,
     @ApplicationContext private val context: Context
 ) {
@@ -281,6 +282,10 @@ class SyncManager @Inject constructor(
                     }
                     logEntryDao.insertAll(entryEntities)
                 }
+
+                // Restore User Nickname and Unique Tag
+                body.nickname?.let { if (it.isNotBlank()) preferences.setUserNickname(it) }
+                body.tag?.let { if (it.isNotBlank()) preferences.setUserTag(it) }
                 
                 // C. Restore AI Context/Doctor's Notes
                 body.profile?.let { profile ->
@@ -293,7 +298,12 @@ class SyncManager @Inject constructor(
                     profile.heightCm?.let { preferences.setUserHeight(it / 2.54f) } // convert cm to inches
                     profile.weightKg?.let { preferences.setUserWeight(it * 2.20462f) } // convert kg to lbs
                     profile.gender?.let { preferences.setUserGender(it) }
-                    profile.onboardingComplete?.let { if (it) preferences.setOnboardingComplete(true) }
+                    profile.onboardingComplete?.let { 
+                        if (it) {
+                            preferences.setOnboardingComplete(true)
+                            preferences.setCupTheorySeen(true)
+                        }
+                    }
                     profile.autoAiSuggestions?.let { preferences.setAutoAiSuggestions(it) }
                     // C. Restore AI Context/Doctor's Notes (with Smarter Merging for counters)
                     profile.eventCounters?.let { serverJson ->
@@ -325,12 +335,15 @@ class SyncManager @Inject constructor(
                     profile.userLists?.let { serverJson ->
                         if (serverJson.isNotBlank()) {
                             val pulledLists = try { Json.decodeFromString<List<UserListSyncDto>>(serverJson) } catch(e: Exception) { emptyList() }
-                            userListDao.clearAllLists()
-                            userListDao.clearAllListItems()
-                            pulledLists.forEach { listDto ->
-                                val insertedListId = userListDao.insertList(UserList(name = listDto.name)).toInt()
-                                listDto.items.forEachIndexed { index, text ->
-                                    userListDao.insertItem(UserListItem(listId = insertedListId, text = text, sortOrder = index))
+                            // Only clear and replace if server actually returned lists to restore
+                            if (pulledLists.isNotEmpty()) {
+                                userListDao.clearAllLists()
+                                userListDao.clearAllListItems()
+                                pulledLists.forEach { listDto ->
+                                    val insertedListId = userListDao.insertList(UserList(name = listDto.name)).toInt()
+                                    listDto.items.forEachIndexed { index, text ->
+                                        userListDao.insertItem(UserListItem(listId = insertedListId, text = text, sortOrder = index))
+                                    }
                                 }
                             }
                         }
@@ -338,7 +351,8 @@ class SyncManager @Inject constructor(
                     profile.reminders?.let { serverJson ->
                         if (serverJson.isNotBlank()) {
                             val pulledReminders = try { Json.decodeFromString<List<Reminder>>(serverJson) } catch(e: Exception) { null }
-                            if (pulledReminders != null) {
+                            // Only clear and replace if server actually returned reminders to restore
+                            if (pulledReminders != null && pulledReminders.isNotEmpty()) {
                                 // Cancel existing alarms
                                 val existing = reminderDao.getAllReminders().first()
                                 existing.forEach { ReminderScheduler.cancel(context, it) }
@@ -406,10 +420,26 @@ class SyncManager @Inject constructor(
 
                 // D. Restore AI Results (Productivity)
                 if (body.insights.isNotEmpty()) {
+                    val localInsightsStr = preferences.aiInsights.first()
+                    val localInsights = try {
+                        if (localInsightsStr.isNotBlank()) Json.decodeFromString<List<com.notel.notel.data.local.entity.AiInsight>>(localInsightsStr) else emptyList()
+                    } catch(e: Exception) { emptyList() }
+
                     val insightsList = body.insights.map { 
                         com.notel.notel.data.local.entity.AiInsight(it.id, it.text, it.timestamp, it.type)
+                    }.toMutableList()
+
+                    // Keep any local today's BodyLoad insight that is not in the server's response
+                    localInsights.forEach { localOn ->
+                        if (localOn.type == "BodyLoad") {
+                            val exists = insightsList.any { it.type == "BodyLoad" && Math.abs(it.timestamp - localOn.timestamp) < 6 * 60 * 60 * 1000 }
+                            if (!exists) {
+                                insightsList.add(0, localOn)
+                            }
+                        }
                     }
-                    val json = Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(com.notel.notel.data.local.entity.AiInsight.serializer()), insightsList)
+
+                    val json = Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(com.notel.notel.data.local.entity.AiInsight.serializer()), insightsList.take(100))
                     preferences.setAiInsights(json)
                 }
 
@@ -419,7 +449,17 @@ class SyncManager @Inject constructor(
                 
                 // CRITICAL: Recalculate streak now that we have data
                 preferences.updateStreak()
-                
+
+                // CRITICAL: Fetch habits from the server — habits are stored server-side only
+                // (not in local SQLite), so they must be re-fetched on every login/sync.
+                // This was previously only done in HabitViewModel.init which could run too
+                // late (after the UI has already shown empty habits).
+                try {
+                    habitRepository.fetchHabits()
+                } catch (e: Exception) {
+                    Log.e(tag, "Habit fetch after pull failed: ${e.message}")
+                }
+
                 true
             } else {
                 val errorMsg = response.errorBody()?.string() ?: "Unknown Error"

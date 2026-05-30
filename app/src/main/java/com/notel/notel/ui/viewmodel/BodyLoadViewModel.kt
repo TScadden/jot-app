@@ -355,16 +355,14 @@ class BodyLoadViewModel @Inject constructor(
                 logRepository.getDailyStatsSummary(dateStr, forceRefresh = true)
                 
                 val categories = categoryRepository.getAllCategories().first()
-                if (categories.isNotEmpty()) {
-                    val result = logRepository.getBodyLoad(categories, dateStr)
-                    result.onSuccess { res ->
-                        preferences.setLastBodyLoadRefresh(System.currentTimeMillis())
-                        preferences.setLastBodyLoadData(
-                            res.score,
-                            res.factors.joinToString(", "),
-                            res.advice ?: ""
-                        )
-                    }
+                val result = logRepository.getBodyLoad(categories, dateStr)
+                result.onSuccess { res ->
+                    preferences.setLastBodyLoadRefresh(System.currentTimeMillis())
+                    preferences.setLastBodyLoadData(
+                        res.score,
+                        res.factors.joinToString(", "),
+                        res.advice ?: ""
+                    )
                 }
             } catch (e: Exception) {
             } finally {
@@ -379,16 +377,14 @@ class BodyLoadViewModel @Inject constructor(
             try {
                 logRepository.getDailyStatsSummary(dateStr, forceRefresh = true)
                 val categories = categoryRepository.getAllCategories().first()
-                if (categories.isNotEmpty()) {
-                    val result = logRepository.getBodyLoad(categories, dateStr)
-                    result.onSuccess { res ->
-                        preferences.setLastBodyLoadRefresh(System.currentTimeMillis())
-                        preferences.setLastBodyLoadData(
-                            res.score,
-                            res.factors.joinToString(", "),
-                            res.advice ?: ""
-                        )
-                    }
+                val result = logRepository.getBodyLoad(categories, dateStr)
+                result.onSuccess { res ->
+                    preferences.setLastBodyLoadRefresh(System.currentTimeMillis())
+                    preferences.setLastBodyLoadData(
+                        res.score,
+                        res.factors.joinToString(", "),
+                        res.advice ?: ""
+                    )
                 }
             } catch (e: Exception) {
             } finally {
@@ -406,16 +402,14 @@ class BodyLoadViewModel @Inject constructor(
                 logRepository.getDailyStatsSummary(dateStr, forceRefresh = (dateStr == today))
                 
                 val categories = categoryRepository.getAllCategories().first()
-                if (categories.isNotEmpty()) {
-                    val result = logRepository.getBodyLoad(categories, dateStr)
-                    result.onSuccess { res ->
-                        if (dateStr == today) {
-                            preferences.setLastBodyLoadData(
-                                res.score,
-                                res.factors.joinToString(", "),
-                                res.advice ?: ""
-                            )
-                        }
+                val result = logRepository.getBodyLoad(categories, dateStr)
+                result.onSuccess { res ->
+                    if (dateStr == today) {
+                        preferences.setLastBodyLoadData(
+                            res.score,
+                            res.factors.joinToString(", "),
+                            res.advice ?: ""
+                        )
                     }
                 }
                 

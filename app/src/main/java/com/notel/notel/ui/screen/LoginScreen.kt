@@ -134,8 +134,14 @@ class LoginViewModel @Inject constructor(
                     preferences.setLoggedIn(true)
                     
                     body.isUnlimited?.let { preferences.setIsUnlimited(it) }
-                    body.onboardingComplete?.let { if (it) preferences.setOnboardingComplete(true) }
+                    body.onboardingComplete?.let { 
+                        if (it) {
+                            preferences.setOnboardingComplete(true)
+                            preferences.setCupTheorySeen(true)
+                        }
+                    }
                     body.nickname?.let { preferences.setUserNickname(it) }
+                    body.tag?.let { preferences.setUserTag(it) }
                     
                     syncManager.pullAllData() // Pull existing data on successful login
                     
@@ -179,6 +185,7 @@ class LoginViewModel @Inject constructor(
                     preferences.setAuthToken(body.token!!)
                     preferences.setLoggedIn(true)
                     body.nickname?.let { preferences.setUserNickname(it) }
+                    body.tag?.let { preferences.setUserTag(it) }
                     onboardingCompleteByServer = false // New users always start with onboarding
                     isLoggedIn = true
                 } else {

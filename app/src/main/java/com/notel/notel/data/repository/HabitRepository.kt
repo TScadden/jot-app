@@ -44,11 +44,14 @@ class HabitRepository @Inject constructor(
             if (response.isSuccessful) {
                 val habits = response.body()?.habits ?: emptyList()
                 _habits.value = habits
+                _error.value = null
                 // Cache for the home screen widget
                 saveWidgetCache(habits)
                 Result.success(Unit)
             } else {
-                Result.failure(Exception("Failed to load habits: ${response.code()}"))
+                val msg = "Failed to load habits: ${response.code()}"
+                _error.value = msg
+                Result.failure(Exception(msg))
             }
         } catch (e: Exception) {
             _error.value = e.message
@@ -64,6 +67,7 @@ class HabitRepository @Inject constructor(
             if (response.isSuccessful) {
                 val habit = response.body()?.habit ?: return Result.failure(Exception("No habit returned"))
                 _habits.value = _habits.value + habit
+                _error.value = null
                 
                 // Auto-enable habit reminders for the first habit
                 preferences.autoEnableHabitReminders()

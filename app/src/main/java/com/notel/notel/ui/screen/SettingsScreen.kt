@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -97,6 +98,7 @@ fun SettingsScreen(
     val habitReminderEnabled by viewModel.habitReminderEnabled.collectAsState()
     val userContextHidden by viewModel.userContextHidden.collectAsState()
     val userNickname by viewModel.userNickname.collectAsState()
+    val userTag by viewModel.userTag.collectAsState()
     val tutorialSeen by viewModel.settingsTutorialSeen.collectAsState()  // null = loading, false = not seen, true = seen
 
     val context = LocalContext.current
@@ -239,7 +241,13 @@ fun SettingsScreen(
 
     var showProfileDialog by remember { mutableStateOf(false) }
     
-    var contextInput by remember(userContext) { mutableStateOf(userContext) }
+    var isContextFocused by remember { mutableStateOf(false) }
+    var contextInput by remember { mutableStateOf("") }
+    LaunchedEffect(userContext) {
+        if (!isContextFocused) {
+            contextInput = userContext
+        }
+    }
     var customAmountInput by remember { mutableStateOf("") }
     
     var showInsightsHistory by remember { mutableStateOf(false) }
@@ -473,6 +481,7 @@ fun SettingsScreen(
                                 onValueChange = { contextInput = it; viewModel.saveUserContext(it.trim()) },
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .onFocusChanged { isContextFocused = it.isFocused }
                                     .blur(if (userContextHidden && userContext.isNotBlank()) 12.dp else 0.dp),
                                 minLines = 2, 
                                 maxLines = 4,
@@ -1934,12 +1943,23 @@ fun SettingsScreen(
                             Column {
                                 Text("Nickname", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
                                 if (!isEditingNickname) {
-                                    Text(
-                                        text = userNickname.ifBlank { "Not set" },
-                                        color = if (userNickname.isBlank()) NotelTextSecondary else NotelPrimary,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = userNickname.ifBlank { "Not set" },
+                                            color = if (userNickname.isBlank()) NotelTextSecondary else NotelPrimary,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        if (userNickname.isNotBlank() && userTag.isNotBlank()) {
+                                            Spacer(Modifier.width(4.dp))
+                                            Text(
+                                                text = "#$userTag",
+                                                color = NotelTextSecondary,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -2764,6 +2784,59 @@ fun DebugScreen(
             }
         }
         
+        Spacer(Modifier.height(16.dp))
+        Text("Modify Streaks", color = NotelTextSecondary, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(8.dp))
+        
+        var customCurrentStr by remember { mutableStateOf("") }
+        var customBestStr by remember { mutableStateOf("") }
+        
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = customCurrentStr,
+                onValueChange = { customCurrentStr = it },
+                label = { Text("Current", fontSize = 10.sp) },
+                modifier = Modifier.weight(1f),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = NotelTextPrimary,
+                    unfocusedTextColor = NotelTextPrimary,
+                    focusedBorderColor = NotelPrimary,
+                    unfocusedBorderColor = NotelSurfaceHigh
+                ),
+                singleLine = true
+            )
+            OutlinedTextField(
+                value = customBestStr,
+                onValueChange = { customBestStr = it },
+                label = { Text("Best", fontSize = 10.sp) },
+                modifier = Modifier.weight(1f),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = NotelTextPrimary,
+                    unfocusedTextColor = NotelTextPrimary,
+                    focusedBorderColor = NotelPrimary,
+                    unfocusedBorderColor = NotelSurfaceHigh
+                ),
+                singleLine = true
+            )
+            GlassyButton(
+                onClick = {
+                    val currentVal = customCurrentStr.toIntOrNull() ?: 0
+                    val bestVal = customBestStr.toIntOrNull() ?: 0
+                    viewModel.setCustomStreak(currentVal, bestVal)
+                    customCurrentStr = ""
+                    customBestStr = ""
+                },
+                modifier = Modifier.padding(top = 4.dp),
+                containerColor = NotelPrimary
+            ) {
+                Text("Set", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+
         Spacer(Modifier.height(16.dp))
         Text("System Logs (${logs.size})", color = NotelTextSecondary, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))

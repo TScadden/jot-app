@@ -227,15 +227,28 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         composable("info") {
+                            val settingsViewModel: com.notel.notel.ui.viewmodel.SettingsViewModel = hiltViewModel()
+                            val isUnlimited by settingsViewModel.isUnlimited.collectAsState(initial = false)
                             InfoScreen(
                                 onBack = { navController.popBackStack() },
                                 onSleepClick = { navController.navigate("sleep") },
                                 onKeyMetricsClick = { navController.navigate("key_metrics") },
-                                onCoachClick = { navController.navigate("coach_history") },
-                                onTipsAndTricksClick = { navController.navigate("tips_and_tricks") },
+                                onCoachClick = { 
+                                    if (isUnlimited) navController.navigate("coach_history")
+                                    else navController.navigate("settings?menu=MEMBERSHIP")
+                                },
+                                onTipsAndTricksClick = { 
+                                    if (isUnlimited) navController.navigate("tips_and_tricks")
+                                    else navController.navigate("settings?menu=MEMBERSHIP")
+                                },
                                 onFoodClick = { navController.navigate("food") },
-                                onFriendsClick = {}
+                                onCommunityClick = { navController.navigate("community") },
+                                onNavigateToMembership = { navController.navigate("settings?menu=MEMBERSHIP") },
+                                isUnlimited = isUnlimited
                             )
+                        }
+                        composable("community") {
+                            com.notel.notel.ui.screen.CommunityScreen(onBack = { navController.popBackStack() })
                         }
                         composable("tips_and_tricks") {
                             TipsAndTricksScreen(onBack = { navController.popBackStack() })
@@ -298,9 +311,9 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 onLogout = {
-                                    navController.navigate("login") {
-                                        popUpTo(0) { inclusive = true }
-                                    }
+                                    val intent = this@MainActivity.intent
+                                    this@MainActivity.finish()
+                                    this@MainActivity.startActivity(intent)
                                 },
                                 onNavigateToFile = { name, path, mime, docId ->
                                     val encName = java.net.URLEncoder.encode(name, "UTF-8")

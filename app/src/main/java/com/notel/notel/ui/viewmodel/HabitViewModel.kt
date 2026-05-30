@@ -17,13 +17,8 @@ class HabitViewModel @Inject constructor(
 ) : ViewModel() {
 
     val habits: StateFlow<List<HabitDtoModel>> = habitRepository.habits
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
     val isLoading: StateFlow<Boolean> = habitRepository.isLoading
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-
     val error: StateFlow<String?> = habitRepository.error
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     init {
         loadHabits()
@@ -39,11 +34,10 @@ class HabitViewModel @Inject constructor(
         if (title.isBlank()) return
         viewModelScope.launch {
             val result = habitRepository.createHabit(title.trim(), targetTime)
-            result.onFailure { e ->
-                // error is exposed via habitRepository.error StateFlow
+            if (result.isSuccess) {
+                // Re-fetch to get server-assigned ID and confirm persistence
+                habitRepository.fetchHabits()
             }
-            // Re-fetch to get server-assigned ID and confirm persistence
-            habitRepository.fetchHabits()
         }
     }
 

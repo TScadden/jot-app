@@ -4,6 +4,7 @@ import kotlinx.serialization.Serializable
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.POST
+import retrofit2.http.GET
 
 @Serializable
 data class AiRequest(
@@ -152,6 +153,7 @@ data class AuthResponse(
     val isUnlimited: Boolean? = null,
     val onboardingComplete: Boolean? = null,
     val nickname: String? = null,
+    val tag: String? = null,
     val error: String? = null
 )
 
@@ -281,7 +283,9 @@ data class SyncPullResponse(
     val documents: List<KnowledgeDocumentDtoModel> = emptyList(),
     val coachSessions: List<CoachSessionDto> = emptyList(),
     val coachMessages: List<CoachMessageDto> = emptyList(),
-    val isUnlimited: Boolean? = null
+    val isUnlimited: Boolean? = null,
+    val nickname: String? = null,
+    val tag: String? = null
 )
 
 @Serializable
@@ -397,6 +401,53 @@ data class UpdateNicknameRequest(
 data class UpdateNicknameResponse(
     val success: Boolean,
     val nickname: String? = null,
+    val tag: String? = null,
+    val error: String? = null
+)
+
+@Serializable
+data class FriendDto(
+    val id: String,
+    val nickname: String,
+    val tag: String,
+    val status: String,
+    val level: Int
+)
+
+@Serializable
+data class FriendsListResponse(
+    val success: Boolean,
+    val friends: List<FriendDto>? = null,
+    val error: String? = null
+)
+
+@Serializable
+data class FriendRequestApiRequest(
+    val friendIdString: String
+)
+
+@Serializable
+data class RespondFriendRequestApiRequest(
+    val requestId: Int,
+    val action: String
+)
+
+@Serializable
+data class FriendNotificationDto(
+    val id: Int,
+    val type: String,
+    val message: String,
+    val isRead: Boolean,
+    val createdAt: String,
+    val senderNickname: String? = null,
+    val senderTag: String? = null,
+    val friendRequestId: Int? = null
+)
+
+@Serializable
+data class FriendNotificationsResponse(
+    val success: Boolean,
+    val notifications: List<FriendNotificationDto>? = null,
     val error: String? = null
 )
 
@@ -417,6 +468,21 @@ interface JotApi {
 
     @POST("api/auth/update-nickname")
     suspend fun updateNickname(@Body request: UpdateNicknameRequest): Response<UpdateNicknameResponse>
+
+    @POST("api/friends/request")
+    suspend fun sendFriendRequest(@Body request: FriendRequestApiRequest): Response<GenericResponse>
+
+    @GET("api/friends/list")
+    suspend fun getFriendsList(): Response<FriendsListResponse>
+
+    @POST("api/friends/respond")
+    suspend fun respondFriendRequest(@Body request: RespondFriendRequestApiRequest): Response<GenericResponse>
+
+    @GET("api/friends/notifications")
+    suspend fun getFriendNotifications(): Response<FriendNotificationsResponse>
+
+    @POST("api/friends/notifications/read")
+    suspend fun markFriendNotificationsRead(): Response<GenericResponse>
 
     @POST("api/ai/suggestions")
     suspend fun getSuggestions(@Body request: SuggestionsRequest): Response<AiResponse<List<String>>>

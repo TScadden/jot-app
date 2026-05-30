@@ -314,6 +314,13 @@ class LogRepository @Inject constructor(
             if (calList.isNotEmpty()) preferences.setHistoricalCalories(json.encodeToString(calList))
             
             if (historyHr.isNotEmpty()) preferences.setHistoricalHrSpikes(json.encodeToString(historyHr))
+
+            // Also write today's awake-avg HR directly so BodyLoadViewModel's todayAwakeAvgHr
+            // flow fires correctly for Health Connect users (previously only Fitbit set this).
+            val todayHrEntry = historyHr.find { it.date == todayStr }
+            if (todayHrEntry != null && todayHrEntry.awakeAvg > 0) {
+                preferences.setTodayAwakeAvgHr(todayHrEntry.awakeAvg)
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -973,9 +980,6 @@ class LogRepository @Inject constructor(
     }
 
     suspend fun ingestDocumentFile(fileName: String, mimeType: String, base64Data: String): Result<Unit> {
-        val isUnlimited = preferences.isUnlimited.first()
-        if (!isUnlimited) return Result.failure(IllegalStateException("Unlimited membership required for AI features. Please check Membership in Settings."))
-
         return try {
             val dir = File(context.filesDir, "knowledge_docs")
             if (!dir.exists()) dir.mkdirs()
@@ -1027,9 +1031,6 @@ class LogRepository @Inject constructor(
         base64Data: String,
         extractedText: String
     ): Result<Unit> {
-        val isUnlimited = preferences.isUnlimited.first()
-        if (!isUnlimited) return Result.failure(IllegalStateException("Unlimited membership required for AI features. Please check Membership in Settings."))
-
         return try {
             val dir = File(context.filesDir, "knowledge_docs")
             if (!dir.exists()) dir.mkdirs()

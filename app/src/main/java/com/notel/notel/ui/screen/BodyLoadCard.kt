@@ -115,7 +115,12 @@ fun BodyLoadCard(
     }
 
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-        onRefresh()
+        // Only auto-refresh on resume when viewing today — avoids interfering with
+        // a user-selected historical day if a system overlay or permission dialog
+        // temporarily resumes the lifecycle.
+        if (state.selectedDate == todayStr) {
+            onRefresh()
+        }
     }
 
 

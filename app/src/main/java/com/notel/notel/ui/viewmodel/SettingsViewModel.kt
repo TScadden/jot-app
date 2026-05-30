@@ -44,6 +44,13 @@ class SettingsViewModel @Inject constructor(
 
     init {
         syncManager.setLogCallback { addSystemLog(it) }
+        viewModelScope.launch {
+            try {
+                syncManager.pullAllData()
+            } catch (e: Exception) {
+                // Ignore silent background pull failures
+            }
+        }
     }
 
 
@@ -196,6 +203,9 @@ class SettingsViewModel @Inject constructor(
     val userNickname = preferences.userNickname
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
+    val userTag = preferences.userTag
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+
     val hrSpikeAlertsEnabled = preferences.hrSpikeAlertsEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
@@ -253,10 +263,19 @@ class SettingsViewModel @Inject constructor(
         billingManager.launchPurchaseFlow(activity, productId, quantity)
     }
 
+    private var pushContextJob: kotlinx.coroutines.Job? = null
+
     fun saveUserContext(text: String) {
         viewModelScope.launch { 
             preferences.setUserContext(text)
             preferences.setUserContextLastUpdate(System.currentTimeMillis())
+            
+            // Debounce pushing profile changes to the server by 800ms
+            pushContextJob?.cancel()
+            pushContextJob = viewModelScope.launch {
+                kotlinx.coroutines.delay(800)
+                syncManager.pushProfileData()
+            }
         }
     }
 
@@ -1020,18 +1039,12 @@ class SettingsViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
-                // First check server for uniqueness
-                val checkRes = jotApi.checkNickname(trimmed)
-                if (checkRes.isSuccessful && checkRes.body()?.unique == false) {
-                    onResult(false, checkRes.body()?.error ?: "Nickname is already taken")
-                    return@launch
-                }
-
-                // Push update to server
+                // Push update to server directly (no uniqueness check needed for duplicate nicknames)
                 val updateRes = jotApi.updateNickname(com.notel.notel.data.remote.UpdateNicknameRequest(trimmed))
                 val body = updateRes.body()
                 if (updateRes.isSuccessful && body?.success == true) {
                     preferences.setUserNickname(trimmed)
+                    body.tag?.let { preferences.setUserTag(it) }
                     onResult(true, null)
                 } else {
                     onResult(false, body?.error ?: "Failed to update nickname on the server")
@@ -1039,6 +1052,15 @@ class SettingsViewModel @Inject constructor(
             } catch (e: Exception) {
                 onResult(false, e.message ?: "Network error")
             }
+        }
+    }
+
+    fun setCustomStreak(current: Int, best: Int) {
+        viewModelScope.launch {
+            preferences.setCurrentStreak(current)
+            preferences.setBestStreak(best)
+            syncManager.pushProfileData()
+            addSystemLog("Developer: Streak updated to current=$current, best=$best")
         }
     }
 }

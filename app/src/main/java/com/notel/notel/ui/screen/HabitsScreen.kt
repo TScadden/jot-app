@@ -33,6 +33,8 @@ fun HabitsScreen(
     habitViewModel: HabitViewModel = hiltViewModel()
 ) {
     val habits by habitViewModel.habits.collectAsState()
+    val isLoading by habitViewModel.isLoading.collectAsState()
+    val error by habitViewModel.error.collectAsState()
     var newHabitText by remember { mutableStateOf("") }
 
     val checkedCount = habits.count { habitViewModel.isCheckedToday(it) }
@@ -154,7 +156,13 @@ fun HabitsScreen(
                 },
                 modifier = Modifier.fillMaxWidth(),
                 trailingIcon = {
-                    if (newHabitText.isNotBlank()) {
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            color = NotelPrimary,
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else if (newHabitText.isNotBlank()) {
                         IconButton(onClick = {
                             habitViewModel.addHabit(newHabitText)
                             newHabitText = ""
@@ -163,6 +171,17 @@ fun HabitsScreen(
                         }
                     }
                 },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Done
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onDone = {
+                        if (newHabitText.isNotBlank()) {
+                            habitViewModel.addHabit(newHabitText)
+                            newHabitText = ""
+                        }
+                    }
+                ),
                 shape = RoundedCornerShape(16.dp),
                 singleLine = true,
                 textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp),
@@ -176,6 +195,24 @@ fun HabitsScreen(
                     unfocusedContainerColor = NotelSurfaceHigh.copy(alpha = 0.05f)
                 )
             )
+
+            error?.let { err ->
+                Spacer(Modifier.height(10.dp))
+                Surface(
+                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.1f),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.3f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = err,
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
 
             Spacer(Modifier.height(14.dp))
 
