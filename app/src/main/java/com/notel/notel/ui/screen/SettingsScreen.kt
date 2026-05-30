@@ -2064,7 +2064,7 @@ fun SettingsScreen(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Cup Reminder", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
                                 Text(
-                                    "A ping if you haven't checked your Cup level by the afternoon.",
+                                    "A daily ping at 9:00 AM to check your Cup level, unless you've already logged in.",
                                     color = NotelTextSecondary,
                                     fontSize = 11.sp
                                 )

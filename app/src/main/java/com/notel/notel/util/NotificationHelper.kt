@@ -47,7 +47,7 @@ class NotificationHelper(private val context: Context) {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_noti_j) 
             .setContentTitle("Cup Reminder 🧪")
-            .setContentText("You haven't checked it today. Check to plan better.")
+            .setContentText("Log in and check your score for the day so you can plan better.")
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)

@@ -22,7 +22,14 @@ class CupReminderWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result {
         if (!preferences.loggedIn.first()) return Result.success()
-        if (!preferences.dailyCupUpdatesEnabled.first()) return Result.success()
+        if (!preferences.bodyLoadRemindersEnabled.first()) return Result.success()
+
+        // Prevent reminder from firing if user opened app today before 9:00 AM
+        val today = java.time.LocalDate.now().toString()
+        val lastOpen = preferences.lastOpenDate.first()
+        if (lastOpen == today) {
+            return Result.success()
+        }
 
         // Send a simple reminder notification
         NotificationHelper(applicationContext).showBodyLoadReminder()

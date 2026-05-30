@@ -109,7 +109,7 @@ class NotelApp : Application(), Configuration.Provider {
 
     private fun scheduleCupReminder() {
         val calendar = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 16) // 4:00 PM
+            set(Calendar.HOUR_OF_DAY, 9) // 9:00 AM
             set(Calendar.MINUTE, 0)
             set(Calendar.SECOND, 0)
         }
