@@ -1027,6 +1027,9 @@ fun BodyLoadScreen(
                     .fillMaxWidth(0.85f)
                     .align(Alignment.CenterEnd)
                     .clickable(enabled = false) {}
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .padding(bottom = 72.dp)
                     .liquidGlass(
                         shape = RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp),
                         color = NotelSurface,
