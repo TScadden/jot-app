@@ -698,6 +698,14 @@ footer {
         padding: 1rem;
     }
 
+    nav.menu-active, nav.glass.menu-active {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        border-bottom: none !important;
+    }
+
     .nav-links {
         display: none;
         position: fixed;
@@ -705,11 +713,12 @@ footer {
         left: 0;
         right: 0;
         bottom: 0;
-        background: rgba(10, 10, 14, 0.6) !important;
-        backdrop-filter: blur(20px) !important;
-        -webkit-backdrop-filter: blur(20px) !important;
+        background: rgba(10, 10, 14, 0.75) !important;
+        backdrop-filter: blur(10px) !important;
+        -webkit-backdrop-filter: blur(10px) !important;
         flex-direction: column;
         justify-content: center;
+        align-items: center;
         padding: 4rem 2rem;
         gap: 2.5rem;
         z-index: 1000;
@@ -720,15 +729,25 @@ footer {
     }
 
     .nav-links a {
-        font-size: 1.5rem;
-        width: 100%;
+        font-size: 2rem;
+        width: auto;
         text-align: center;
+        font-weight: 600;
+        color: var(--text-main);
+    }
+
+    .nav-links a:hover {
+        color: var(--primary-color) !important;
     }
 
     .nav-links .btn-primary {
-        width: 100%;
-        padding: 1.2rem;
+        width: auto;
+        min-width: 220px;
+        padding: 1rem 2.5rem;
         font-size: 1.2rem;
+        border-radius: 14px;
+        text-align: center;
+        margin-top: 1rem;
     }
 
     .mobile-nav-toggle {

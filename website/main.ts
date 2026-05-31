@@ -180,11 +180,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const mobileToggle = document.getElementById('mobile-toggle');
     const navLinks = document.getElementById('nav-links');
     const navLinkItems = document.querySelectorAll('.nav-link, .btn-download');
+    const navElement = document.querySelector('nav');
 
     if (mobileToggle && navLinks) {
         mobileToggle.addEventListener('click', () => {
             mobileToggle.classList.toggle('active');
             navLinks.classList.toggle('active');
+            navElement?.classList.toggle('menu-active');
             document.body.style.overflow = navLinks.classList.contains('active') ? 'hidden' : '';
         });
 
@@ -193,6 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
             item.addEventListener('click', () => {
                 mobileToggle.classList.remove('active');
                 navLinks.classList.remove('active');
+                navElement?.classList.remove('menu-active');
                 document.body.style.overflow = '';
             });
         });

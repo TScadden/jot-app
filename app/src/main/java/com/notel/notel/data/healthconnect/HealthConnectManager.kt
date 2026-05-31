@@ -294,16 +294,29 @@ class HealthConnectManager(private val context: Context) {
                 )
             )
 
-            // Group all samples by local date string mapping to time and bpm
-            val byDay = mutableMapOf<String, MutableList<Pair<Long, Int>>>()
-            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
-                timeZone = java.util.TimeZone.getTimeZone(zoneId)
-            }
+            // Group all samples by local date string mapping to time, bpm, and local hour
+            val byDay = mutableMapOf<String, MutableList<Triple<Long, Int, Int>>>()
+            
+            var lastDayStart = 0L
+            var lastDayEnd = 0L
+            var lastDateStr = ""
+            
             response.records.forEach { record ->
                 record.samples.forEach { sample ->
                     val timestamp = sample.time.toEpochMilli()
-                    val dateStr = sdf.format(java.util.Date(timestamp))
-                    byDay.getOrPut(dateStr) { mutableListOf() }.add(timestamp to sample.beatsPerMinute.toInt())
+                    val dateStr = if (timestamp in lastDayStart until lastDayEnd) {
+                        lastDateStr
+                    } else {
+                        val zdt = java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(timestamp), zoneId)
+                        val startOfDay = zdt.truncatedTo(ChronoUnit.DAYS)
+                        lastDayStart = startOfDay.toInstant().toEpochMilli()
+                        lastDayEnd = startOfDay.plusDays(1).toInstant().toEpochMilli()
+                        lastDateStr = zdt.toLocalDate().toString()
+                        lastDateStr
+                    }
+                    val millisSinceStartOfDay = timestamp - lastDayStart
+                    val hour = (millisSinceStartOfDay / 3600000L).toInt()
+                    byDay.getOrPut(dateStr) { mutableListOf() }.add(Triple(timestamp, sample.beatsPerMinute.toInt(), hour))
                 }
             }
 
@@ -318,10 +331,7 @@ class HealthConnectManager(private val context: Context) {
                 val baseline = bpmList[p10Index]
                 val maxDelta = max - baseline
                 
-                val daytimeSamples = sortedSamples.filter { 
-                    val h = java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(it.first), zoneId).hour
-                    h in 7..21
-                }
+                val daytimeSamples = sortedSamples.filter { it.third in 7..21 }
                 val awakeAvg = if (daytimeSamples.isNotEmpty()) daytimeSamples.map { it.second }.average().toInt() else avg
 
                 var dayCount = 0
@@ -329,6 +339,7 @@ class HealthConnectManager(private val context: Context) {
                 val eventRecords = mutableListOf<SpikeEventRecord>()
                 var currentEventPeak = 0
                 var currentEventStart = 0L
+                var currentEventStartHour = 0
                 var inEvent = false
                 var eventEndMs = 0L
                 
@@ -339,11 +350,11 @@ class HealthConnectManager(private val context: Context) {
                                 val dur = maxOf(1, ((eventEndMs - 300000L - currentEventStart) / 60000L).toInt())
                                 eventRecords.add(SpikeEventRecord(currentEventPeak, dur, currentEventStart))
                                 
-                                val h = java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(currentEventStart), zoneId).hour
-                                if (h in 7..21) dayCount++ else nightCount++
+                                if (currentEventStartHour in 7..21) dayCount++ else nightCount++
                             }
                             inEvent = true
                             currentEventStart = s.first
+                            currentEventStartHour = s.third
                             currentEventPeak = s.second
                         } else {
                             currentEventPeak = maxOf(currentEventPeak, s.second)
@@ -354,8 +365,7 @@ class HealthConnectManager(private val context: Context) {
                 if (inEvent) {
                     val dur = maxOf(1, ((eventEndMs - 300000L - currentEventStart) / 60000L).toInt())
                     eventRecords.add(SpikeEventRecord(currentEventPeak, dur, currentEventStart))
-                    val h = java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(currentEventStart), zoneId).hour
-                    if (h in 7..21) dayCount++ else nightCount++
+                    if (currentEventStartHour in 7..21) dayCount++ else nightCount++
                 }
 
                 DailyHeartRateSummary(
