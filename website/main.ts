@@ -130,6 +130,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Prevent touch scrolling behind modal on mobile (iOS Safari)
+    betaModal?.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+    }, { passive: false });
+
     // Simple parallax effect for hero glow
     window.addEventListener('mousemove', (e) => {
         const glow = document.querySelector('.hero-bg .glow') as HTMLElement;
@@ -179,7 +184,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Mobile Navigation Toggle
     const mobileToggle = document.getElementById('mobile-toggle');
     const navLinks = document.getElementById('nav-links');
-    const navLinkItems = document.querySelectorAll('.nav-link, .btn-download');
+    const navLinkItems = document.querySelectorAll('#nav-links a');
     const navElement = document.querySelector('nav');
 
     if (mobileToggle && navLinks) {
