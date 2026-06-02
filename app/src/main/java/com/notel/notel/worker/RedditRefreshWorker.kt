@@ -64,8 +64,8 @@ class RedditRefreshWorker @AssistedInject constructor(
                         if (idx >= 0) {
                             mutableSubs[idx] = mutableSubs[idx].copy(
                                 lastFetched = System.currentTimeMillis(),
-                                postsAnalyzed = body.postsAnalyzed,
-                                scannedPosts = body.posts?.map { com.notel.notel.data.remote.RedditPost(it.title, it.author, it.url, it.comments) } ?: emptyList()
+                                postsAnalyzed = body.posts?.size ?: 0,
+                                scannedPosts = body.posts ?: emptyList()
                             )
                         }
                     }

@@ -34,6 +34,7 @@ class SyncManager @Inject constructor(
     private val reminderDao: com.notel.notel.data.local.dao.ReminderDao,
     private val habitRepository: com.notel.notel.data.repository.HabitRepository,
     private val preferences: NotelPreferences,
+    private val healthConnectManager: com.notel.notel.data.healthconnect.HealthConnectManager,
     @ApplicationContext private val context: Context
 ) {
     private val tag = "SyncManager"
@@ -260,13 +261,49 @@ class SyncManager @Inject constructor(
                 if (sleepStr2.isNotBlank()) json2.decodeFromString<List<com.notel.notel.data.model.BiomarkerPoint>>(sleepStr2).associate { it.date to it.value.toInt() } else emptyMap()
             } catch(e: Exception) { emptyMap() }
 
-            val todaySleep = sleepMap2[todayStr] ?: 0
-            val todayHr = hrMap2[todayStr] ?: 0
+            var todaySleep = sleepMap2[todayStr] ?: 0
+            var todayHr = hrMap2[todayStr] ?: 0
+            var todaySpikeCount = 0
+
+            if (healthConnectManager.hasBasicPermissions()) {
+                try {
+                    val liveSleep = healthConnectManager.readSleepSession(todayStr)
+                    if (liveSleep != null) {
+                        todaySleep = liveSleep.minutesAsleep
+                    }
+                    val liveHr = healthConnectManager.readHeartRateAverage(todayStr)
+                    if (liveHr > 0) {
+                        todayHr = liveHr
+                    }
+                    val spikes = healthConnectManager.readHistoricalHeartRateWithSpikes(1)
+                    val todaySpikeObj = spikes.find { it.date == todayStr }
+                    if (todaySpikeObj != null) {
+                        todaySpikeCount = todaySpikeObj.spikeCount
+                    }
+                } catch (e: Exception) {
+                    Log.e(tag, "Failed to read live Health Connect data for today: ${e.message}")
+                }
+            } else {
+                val spikesStr = preferences.historicalHrSpikes.first()
+                val spikesList = try {
+                    if (spikesStr.isNotBlank()) json2.decodeFromString<List<com.notel.notel.data.healthconnect.DailyHeartRateSummary>>(spikesStr) else emptyList()
+                } catch(e: Exception) { emptyList() }
+                todaySpikeCount = spikesList.find { it.date == todayStr }?.spikeCount ?: 0
+            }
+
+            // Sleep debt computation
+            val sleepHistoryPairs = sleepMap2.toMutableMap()
+            if (todaySleep > 0) {
+                sleepHistoryPairs[todayStr] = todaySleep
+            }
+            val todaySleepDebtVal = calculateDebtAtDate(todayStr, sleepHistoryPairs.toList())
             val todayScoreVal = weeklyScoreValue
 
             preferences.setTodaySleepMins(todaySleep)
             preferences.setTodayAvgHrShared(todayHr)
             preferences.setTodayScore(todayScoreVal)
+            preferences.setTodaySpikes(todaySpikeCount)
+            preferences.setTodaySleepDebt(todaySleepDebtVal)
 
             val response = jotApi.syncProfile(
                 SyncProfileRequest(
@@ -293,7 +330,9 @@ class SyncManager @Inject constructor(
                     shareDataWithFriends = preferences.shareDataWithFriends.first(),
                     todaySleepMins = todaySleep,
                     todayAvgHr = todayHr,
-                    todayScore = todayScoreVal
+                    todayScore = todayScoreVal,
+                    todaySpikes = todaySpikeCount,
+                    todaySleepDebt = todaySleepDebtVal
                 )
             )
             if (response.isSuccessful) {
@@ -472,6 +511,11 @@ class SyncManager @Inject constructor(
                     profile.currentStreak?.let { preferences.setCurrentStreak(it) }
                     profile.bestStreak?.let { preferences.setBestStreak(it) }
                     profile.weeklyScore?.let { preferences.setWeeklyScore(it) }
+                    profile.todaySleepMins?.let { preferences.setTodaySleepMins(it) }
+                    profile.todayAvgHr?.let { preferences.setTodayAvgHrShared(it) }
+                    profile.todayScore?.let { preferences.setTodayScore(it) }
+                    profile.todaySpikes?.let { preferences.setTodaySpikes(it) }
+                    profile.todaySleepDebt?.let { preferences.setTodaySleepDebt(it) }
                     profile.userLists?.let { serverJson ->
                         if (serverJson.isNotBlank()) {
                             val pulledLists = try { Json.decodeFromString<List<UserListSyncDto>>(serverJson) } catch(e: Exception) { emptyList() }
@@ -674,5 +718,26 @@ class SyncManager @Inject constructor(
         } catch (e: Exception) {
             Log.e(tag, "syncCoachMessages failed: ${e.message}")
         }
+    }
+
+    private fun calculateDebtAtDate(date: String, history: List<Pair<String, Int>>): Int {
+        val targetHours = 8.0
+        var runningDebt = 0.0
+        val rolling = history
+            .filter { it.first <= date }
+            .sortedBy { it.first }
+            .takeLast(10)
+        
+        rolling.forEach { (_, mins) ->
+            val actualHours = mins / 60.0
+            if (actualHours < targetHours) {
+                runningDebt += (targetHours - actualHours)
+            } else {
+                val surplus = actualHours - targetHours
+                runningDebt -= Math.min(surplus, 1.5)
+            }
+            runningDebt = Math.max(0.0, runningDebt)
+        }
+        return (-runningDebt * 60).toInt()
     }
 }

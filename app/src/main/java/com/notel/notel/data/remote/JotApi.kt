@@ -219,7 +219,9 @@ data class SyncProfileRequest(
     val shareDataWithFriends: Boolean? = null,
     val todaySleepMins: Int? = null,
     val todayAvgHr: Int? = null,
-    val todayScore: Int? = null
+    val todayScore: Int? = null,
+    val todaySpikes: Int? = null,
+    val todaySleepDebt: Int? = null
 )
 
 @Serializable
@@ -281,7 +283,9 @@ data class ProfileDtoModel(
     val shareDataWithFriends: Boolean? = null,
     val todaySleepMins: Int? = null,
     val todayAvgHr: Int? = null,
-    val todayScore: Int? = null
+    val todayScore: Int? = null,
+    val todaySpikes: Int? = null,
+    val todaySleepDebt: Int? = null
 )
 
 @Serializable
@@ -397,6 +401,18 @@ data class FetchSubredditResponse(
 )
 
 @Serializable
+data class SummarizeSubredditRequest(
+    val subreddit: String,
+    val posts: List<RedditPost> = emptyList(),
+    val userContext: String? = null
+)
+
+@Serializable
+data class SummarizeSubredditResponse(
+    val result: String
+)
+
+@Serializable
 data class NicknameCheckResponse(
     val unique: Boolean,
     val error: String? = null
@@ -432,7 +448,9 @@ data class FriendDetailDto(
     val sharingEnabled: Boolean,
     val todaySleepMins: Int? = null,
     val todayAvgHr: Int? = null,
-    val todayScore: Int? = null
+    val todayScore: Int? = null,
+    val todaySpikes: Int? = null,
+    val todaySleepDebt: Int? = null
 )
 
 @Serializable
@@ -560,6 +578,9 @@ interface JotApi {
     @POST("api/ai/fetch-subreddit")
     suspend fun fetchSubreddit(@Body request: FetchSubredditRequest): Response<FetchSubredditResponse>
 
+    @POST("api/ai/summarize-subreddit")
+    suspend fun summarizeSubreddit(@Body request: SummarizeSubredditRequest): Response<SummarizeSubredditResponse>
+
     @POST("api/ai/coach")
     suspend fun getCoachReply(@Body request: CoachRequest): Response<AiResponse<String>>
 
@@ -581,6 +602,9 @@ interface JotApi {
 
     @POST("api/sync/insights")
     suspend fun syncInsights(@Body request: SyncInsightsRequest): Response<SyncResponse>
+
+    @retrofit2.http.DELETE("api/sync/insights/{id}")
+    suspend fun deleteInsight(@retrofit2.http.Path("id") id: String): Response<SyncResponse>
 
     @POST("api/sync/documents")
     suspend fun syncDocuments(@Body request: SyncDocumentsRequest): Response<SyncResponse>

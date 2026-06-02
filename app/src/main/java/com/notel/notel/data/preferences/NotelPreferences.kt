@@ -110,6 +110,8 @@ class NotelPreferences @Inject constructor(
         val TODAY_SLEEP_MINS = intPreferencesKey("today_sleep_mins")
         val TODAY_AVG_HR = intPreferencesKey("today_avg_hr_shared")
         val TODAY_SCORE = intPreferencesKey("today_score")
+        val TODAY_SPIKES = intPreferencesKey("today_spikes")
+        val TODAY_SLEEP_DEBT = intPreferencesKey("today_sleep_debt")
     }
 
     val historicalDailyStats: Flow<String> = context.dataStore.data.map { it[HISTORICAL_DAILY_STATS] ?: "{}" }
@@ -171,6 +173,8 @@ class NotelPreferences @Inject constructor(
     val todaySleepMins: Flow<Int> = context.dataStore.data.map { it[TODAY_SLEEP_MINS] ?: 0 }
     val todayAvgHrShared: Flow<Int> = context.dataStore.data.map { it[TODAY_AVG_HR] ?: 0 }
     val todayScore: Flow<Int> = context.dataStore.data.map { it[TODAY_SCORE] ?: 0 }
+    val todaySpikes: Flow<Int> = context.dataStore.data.map { it[TODAY_SPIKES] ?: 0 }
+    val todaySleepDebt: Flow<Int> = context.dataStore.data.map { it[TODAY_SLEEP_DEBT] ?: 0 }
     
     suspend fun setWeeklyScore(score: Int) {
         context.dataStore.edit { it[WEEKLY_SCORE] = score }
@@ -614,6 +618,14 @@ class NotelPreferences @Inject constructor(
 
     suspend fun setTodayScore(score: Int) {
         context.dataStore.edit { it[TODAY_SCORE] = score }
+    }
+ 
+    suspend fun setTodaySpikes(spikes: Int) {
+        context.dataStore.edit { it[TODAY_SPIKES] = spikes }
+    }
+ 
+    suspend fun setTodaySleepDebt(debt: Int) {
+        context.dataStore.edit { it[TODAY_SLEEP_DEBT] = debt }
     }
 
     suspend fun setUserNickname(nickname: String) {

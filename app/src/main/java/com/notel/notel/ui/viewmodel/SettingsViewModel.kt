@@ -790,6 +790,14 @@ class SettingsViewModel @Inject constructor(
             
             val updated = current.filter { it.id != id }
             preferences.setAiInsights(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(AiInsight.serializer()), updated))
+            
+            try {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    jotApi.deleteInsight(id)
+                }
+            } catch (e: Exception) {
+                // Ignore silent background network failure
+            }
         }
     }
 
@@ -865,11 +873,11 @@ class SettingsViewModel @Inject constructor(
     private var isProcessingQueue = false
 
     fun addOrRefreshSubreddit(input: String) {
-        val sub = if (input.contains("reddit.com/r/")) {
-            input.substringAfter("reddit.com/r/").substringBefore("/").substringBefore("?").trim().lowercase()
-        } else {
-            input.removePrefix("r/").trim().lowercase()
+        var sub = input.trim().lowercase()
+        if (sub.contains("reddit.com/r/")) {
+            sub = sub.substringAfter("reddit.com/r/").substringBefore("/").substringBefore("?")
         }
+        sub = sub.removePrefix("/r/").removePrefix("r/").removePrefix("/").removeSuffix("/").trim()
 
         if (sub.isEmpty() || !sub.matches(Regex("^[a-z0-9_]{2,21}$"))) return
         if (_redditRefreshQueue.value.contains(sub)) return
@@ -908,9 +916,9 @@ class SettingsViewModel @Inject constructor(
                             val entry = LinkedSubreddit(
                                 name = sub, 
                                 lastFetched = System.currentTimeMillis(), 
-                                postsAnalyzed = body.postsAnalyzed, 
+                                postsAnalyzed = body.posts?.size ?: 0, 
                                 autoUpdate = currentAutoUpdate,
-                                scannedPosts = body.posts?.map { com.notel.notel.data.remote.RedditPost(it.title, it.author, it.url, it.comments) } ?: emptyList()
+                                scannedPosts = body.posts ?: emptyList()
                             )
                             if (existing >= 0) current[existing] = entry else current.add(0, entry)
                             preferences.setRedditSubreddits(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(LinkedSubreddit.serializer()), current))
@@ -928,7 +936,7 @@ class SettingsViewModel @Inject constructor(
                             syncManager.syncAllData()
                             _redditSynced.emit("Integrated r/$sub community knowledge")
                         } else {
-                            _redditError.emit(body?.error ?: "No content returned for r/$sub")
+                            _redditError.emit("No content returned for r/$sub")
                         }
                     } else {
                         val errMsg = response.errorBody()?.string()?.let {

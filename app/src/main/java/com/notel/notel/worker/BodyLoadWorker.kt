@@ -28,20 +28,16 @@ class BodyLoadWorker @AssistedInject constructor(
         val lastRefresh = preferences.lastBodyLoadRefresh.first()
         val now = System.currentTimeMillis()
         
-        // Random notification logic: 12 PM - 5 PM
+        // Score updated notification logic: 9 AM or later if not opened yet
         val currentHour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
         val todayStr = java.time.LocalDate.now().toString()
         val lastNotifDate = preferences.lastDynamicNotificationDate.first()
         val remindersEnabled = preferences.bodyLoadRemindersEnabled.first()
+        val lastOpen = preferences.lastOpenDate.first()
         
-        if (remindersEnabled && lastNotifDate != todayStr && currentHour in 12..17) {
-             // We roll a 50% chance to send it now, but if it's already after 3pm we just send it 
-             // to ensure it happens before the window closes.
-             val roll = (0..100).random()
-             if (roll > 50 || currentHour >= 15) {
-                com.notel.notel.util.NotificationHelper(applicationContext).showMidDayBodyLoadRefresh()
-                preferences.setLastDynamicNotificationDate(todayStr)
-             }
+        if (remindersEnabled && lastNotifDate != todayStr && currentHour >= 9 && lastOpen != todayStr) {
+            com.notel.notel.util.NotificationHelper(applicationContext).showMidDayBodyLoadRefresh()
+            preferences.setLastDynamicNotificationDate(todayStr)
         }
 
         try {

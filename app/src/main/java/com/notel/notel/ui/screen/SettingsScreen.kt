@@ -20,6 +20,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.focus.onFocusChanged
@@ -1430,11 +1431,11 @@ fun SettingsScreen(
                     )
                     Spacer(Modifier.height(16.dp))
 
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         val isDeepBusy by viewModel.isGeneratingDeepResearch.collectAsState()
                         GlassyButton(
                             onClick = { viewModel.generateDeepResearch() },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
                             enabled = !isDeepBusy && hasLogs,
                             containerColor = NotelSurfaceHigh
                         ) {
@@ -1449,7 +1450,7 @@ fun SettingsScreen(
                         val isProtocolBusy by viewModel.isGeneratingWeeklyRecap.collectAsState() // Reusing recap state for simplicity if needed, or specific state
                         GlassyButton(
                             onClick = { viewModel.generateWeeklyRecap() },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
                             enabled = !isProtocolBusy && hasLogs,
                             containerColor = NotelSurfaceHigh
                         ) {
@@ -1534,60 +1535,66 @@ fun SettingsScreen(
                                 }, color = NotelTextPrimary, fontSize = 14.sp, lineHeight = 20.sp)
 
                                 if (posts.isNotEmpty()) {
-                                    val threadsWithComments = posts.filter { it.comments.isNotEmpty() }
-                                    if (threadsWithComments.isNotEmpty()) {
-                                        Spacer(Modifier.height(24.dp))
-                                        Text("SCANNED THREADS (Tap title for comments)", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = NotelTextSecondary.copy(alpha = 0.7f), letterSpacing = 1.sp)
-                                        Spacer(Modifier.height(8.dp))
-                                        
-                                        // Stable expansion state using a map
-                                        val expansions = remember { mutableStateMapOf<String, Boolean>() }
-                                        
-                                        threadsWithComments.forEach { post ->
-                                            val key = post.url ?: post.title
-                                            val isExpanded = expansions[key] ?: false
-                                            Surface(
-                                                color = NotelSurfaceHigh.copy(alpha = 0.4f),
-                                                shape = RoundedCornerShape(12.dp),
-                                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                                    Spacer(Modifier.height(24.dp))
+                                    Text("SCANNED THREADS (Tap title for comments)", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = NotelTextSecondary.copy(alpha = 0.7f), letterSpacing = 1.sp)
+                                    Spacer(Modifier.height(8.dp))
+                                    
+                                    // Stable expansion state using a map
+                                    val expansions = remember { mutableStateMapOf<String, Boolean>() }
+                                    
+                                    posts.forEach { post ->
+                                        val key = post.url ?: post.title
+                                        val isExpanded = expansions[key] ?: false
+                                        Surface(
+                                            color = NotelSurfaceHigh.copy(alpha = 0.4f),
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                                        ) {
+                                            Column(
+                                                modifier = Modifier
+                                                    .clickable { expansions[key] = !isExpanded }
+                                                    .padding(12.dp)
                                             ) {
-                                                Column(
-                                                    modifier = Modifier
-                                                        .clickable { expansions[key] = !isExpanded }
-                                                        .padding(12.dp)
-                                                ) {
-                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(
+                                                        post.title.let {
+                                                            var s = it
+                                                            repeat(2) { s = android.text.Html.fromHtml(s, android.text.Html.FROM_HTML_MODE_LEGACY).toString() }
+                                                            s
+                                                        },
+                                                        color = NotelTextPrimary,
+                                                        fontWeight = if (isExpanded) FontWeight.Bold else FontWeight.Medium,
+                                                        fontSize = 12.sp,
+                                                        modifier = Modifier.weight(1f)
+                                                    )
+                                                    Text(
+                                                        "${post.comments.size}",
+                                                        color = NotelPrimary,
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        modifier = Modifier.padding(end = 4.dp)
+                                                    )
+                                                    Icon(
+                                                        if (isExpanded) {
+                                                            androidx.compose.material.icons.Icons.Default.KeyboardArrowUp
+                                                        } else {
+                                                            androidx.compose.material.icons.Icons.Default.KeyboardArrowDown
+                                                        },
+                                                        null,
+                                                        tint = NotelTextSecondary,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                                if (isExpanded) {
+                                                    Spacer(Modifier.height(12.dp))
+                                                    if (post.comments.isEmpty()) {
                                                         Text(
-                                                            post.title.let {
-                                                                var s = it
-                                                                repeat(2) { s = android.text.Html.fromHtml(s, android.text.Html.FROM_HTML_MODE_LEGACY).toString() }
-                                                                s
-                                                            },
-                                                            color = NotelTextPrimary,
-                                                            fontWeight = if (isExpanded) FontWeight.Bold else FontWeight.Medium,
-                                                            fontSize = 12.sp,
-                                                            modifier = Modifier.weight(1f)
+                                                            "No active comments (automated bot/mod comments filtered out)",
+                                                            color = NotelTextSecondary.copy(alpha = 0.5f),
+                                                            fontSize = 11.sp,
+                                                            modifier = Modifier.padding(start = 4.dp)
                                                         )
-                                                        Text(
-                                                            "${post.comments.size}",
-                                                            color = NotelPrimary,
-                                                            fontSize = 10.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            modifier = Modifier.padding(end = 4.dp)
-                                                        )
-                                                        Icon(
-                                                            if (isExpanded) {
-                                                                androidx.compose.material.icons.Icons.Default.KeyboardArrowUp
-                                                            } else {
-                                                                androidx.compose.material.icons.Icons.Default.KeyboardArrowDown
-                                                            },
-                                                            null,
-                                                            tint = NotelTextSecondary,
-                                                            modifier = Modifier.size(16.dp)
-                                                        )
-                                                    }
-                                                    if (isExpanded) {
-                                                        Spacer(Modifier.height(12.dp))
+                                                    } else {
                                                         post.comments.forEach { comment ->
                                                             Row(modifier = Modifier.padding(bottom = 8.dp).fillMaxWidth()) {
                                                                 Box(
@@ -1606,10 +1613,6 @@ fun SettingsScreen(
                                                 }
                                             }
                                         }
-                                    } else {
-                                        Spacer(Modifier.height(24.dp))
-                                        Text("No detailed comments found for your recent scan. The AI summary above still uses the main thread content.", 
-                                            color = NotelTextSecondary, fontSize = 11.sp, textAlign = TextAlign.Center)
                                     }
                                 }
                             }

@@ -707,7 +707,7 @@ fun FriendDetailDialog(
                         }
                     }
                     detail != null -> {
-                        // Stats grid
+                        // Stats grid Row 1
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -724,9 +724,39 @@ fun FriendDetailDialog(
                             )
                             FriendStatCard(
                                 modifier = Modifier.weight(1f),
+                                icon = Icons.Default.AccessTime,
+                                label = "Sleep Debt",
+                                value = detail.todaySleepDebt?.let {
+                                    if (it == 0) "None"
+                                    else {
+                                        val h = Math.abs(it) / 60
+                                        val m = Math.abs(it) % 60
+                                        if (h > 0) "-${h}h ${m}m" else "-${m}m"
+                                    }
+                                } ?: "—",
+                                accentColor = if ((detail.todaySleepDebt ?: 0) < 0) Color(0xFFFF5252) else NotelTextSecondary
+                            )
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        // Stats grid Row 2
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            FriendStatCard(
+                                modifier = Modifier.weight(1f),
                                 icon = Icons.Default.Favorite,
                                 label = "Avg HR",
                                 value = detail.todayAvgHr?.let { "${it} bpm" } ?: "—"
+                            )
+                            FriendStatCard(
+                                modifier = Modifier.weight(1f),
+                                icon = Icons.Default.Warning,
+                                label = "HR Spikes",
+                                value = detail.todaySpikes?.let { 
+                                    if (it == 1) "1 spike" else "$it spikes"
+                                } ?: "—",
+                                accentColor = if ((detail.todaySpikes ?: 0) > 0) Color(0xFFFFB74D) else NotelTextSecondary
                             )
                         }
                         Spacer(Modifier.height(12.dp))
