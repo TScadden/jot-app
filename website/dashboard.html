@@ -778,14 +778,16 @@
 
             const dateMap = new Map();
 
-            // Sort so v2 entries come after v1 entries — dateMap.set() will overwrite,
-            // so the corrected v2 data always wins for any given date.
+            // Sort by version (no suffix = v1, _v2 = v2, _v3 = v3, etc.) so that the highest version wins.
             const biometricInsights = data.insights
                 .filter(i => i.type === 'Biometrics')
                 .sort((a, b) => {
-                    const aIsV2 = a.id && a.id.endsWith('_v2');
-                    const bIsV2 = b.id && b.id.endsWith('_v2');
-                    return aIsV2 === bIsV2 ? 0 : aIsV2 ? 1 : -1;
+                    const getVersion = (id) => {
+                        if (!id) return 1;
+                        const match = id.match(/_v(\d+)$/);
+                        return match ? parseInt(match[1], 10) : 1;
+                    };
+                    return getVersion(a.id) - getVersion(b.id);
                 });
 
             biometricInsights.forEach(insight => {

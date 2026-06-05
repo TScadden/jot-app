@@ -764,24 +764,24 @@ class SyncManager @Inject constructor(
                 } else emptyList()
             } catch (e: Exception) { emptyList() }
 
-            // Strip old v1 biometrics insights (id = "biometrics_YYYY-MM-DD" without _v2 suffix).
+            // Strip old v1/v2 biometrics insights.
             // They contain inflated deep sleep values from the Fitbit multi-session bug.
             // Keeping non-biometrics insights intact.
             val strippedInsights = allLocalInsights.filter { insight ->
-                insight.type != "Biometrics" || insight.id.endsWith("_v2")
+                insight.type != "Biometrics" || insight.id.endsWith("_v3")
             }
 
             val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).apply {
                 timeZone = java.util.TimeZone.getTimeZone(java.time.ZoneId.systemDefault())
             }
-            // Only skip dates we already have a correct v2 entry for
-            val existingV2Dates = strippedInsights.filter { it.type == "Biometrics" && it.id.endsWith("_v2") }.map {
+            // Only skip dates we already have a correct v3 entry for
+            val existingV3Dates = strippedInsights.filter { it.type == "Biometrics" && it.id.endsWith("_v3") }.map {
                 sdf.format(java.util.Date(it.timestamp))
             }.toSet()
             
             val targetDays = (0..180).map {
                 java.time.LocalDate.now().minusDays(it.toLong()).toString()
-            }.filter { it !in existingV2Dates }
+            }.filter { it !in existingV3Dates }
             
             if (targetDays.isEmpty()) return
             
@@ -810,7 +810,7 @@ class SyncManager @Inject constructor(
                     val textJson = """{"sleepMins":$sleepMins,"deepSleepMins":$deepSleepMins,"avgHr":$avgHr,"hrv":$hrv,"calories":$calories}"""
                     newInsights.add(
                         com.notel.notel.data.local.entity.AiInsight(
-                            id = "biometrics_${dayStr}_v2",
+                            id = "biometrics_${dayStr}_v3",
                             text = textJson,
                             type = "Biometrics",
                             timestamp = timestamp
