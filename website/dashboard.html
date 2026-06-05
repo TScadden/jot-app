@@ -669,7 +669,7 @@
 
         if (logsTimeline) {
             logsTimeline.addEventListener('scroll', () => {
-                if (logsTimeline.scrollTop > 300) {
+                if (logsTimeline.scrollTop > 100) {
                     backToTopBtn.classList.add('visible');
                 } else {
                     backToTopBtn.classList.remove('visible');
@@ -679,9 +679,9 @@
 
         // Also fallback to window scroll for mobile/tablet responsive layout
         window.addEventListener('scroll', () => {
-            if (window.scrollY > 300 || (logsTimeline && logsTimeline.scrollTop > 300)) {
+            if (window.scrollY > 100 || (logsTimeline && logsTimeline.scrollTop > 100)) {
                 backToTopBtn.classList.add('visible');
-            } else if (window.scrollY <= 300 && (!logsTimeline || logsTimeline.scrollTop <= 300)) {
+            } else if (window.scrollY <= 100 && (!logsTimeline || logsTimeline.scrollTop <= 100)) {
                 backToTopBtn.classList.remove('visible');
             }
         });
