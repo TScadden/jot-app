@@ -463,30 +463,30 @@
                 <h3 style="margin-bottom: 2rem; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
                     <span>📈 Wellness Graph Tracker</span>
                 </h3>
-                <div class="graphs-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem;">
-                    <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 280px; position: relative; background: rgba(255,255,255,0.01);">
+                <div class="graphs-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 1.5rem;">
+                    <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 340px; position: relative; background: rgba(255,255,255,0.01);">
                         <h4 style="color: var(--text-secondary); margin-bottom: 1rem;">Sleep Duration (Hours)</h4>
-                        <div style="position: relative; height: 200px;"><canvas id="chart-sleep"></canvas></div>
+                        <div style="position: relative; height: 260px;"><canvas id="chart-sleep"></canvas></div>
                     </div>
-                    <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 280px; position: relative; background: rgba(255,255,255,0.01);">
+                    <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 340px; position: relative; background: rgba(255,255,255,0.01);">
                         <h4 style="color: var(--text-secondary); margin-bottom: 1rem;">Deep Sleep (Minutes)</h4>
-                        <div style="position: relative; height: 200px;"><canvas id="chart-deepsleep"></canvas></div>
+                        <div style="position: relative; height: 260px;"><canvas id="chart-deepsleep"></canvas></div>
                     </div>
-                    <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 280px; position: relative; background: rgba(255,255,255,0.01);">
+                    <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 340px; position: relative; background: rgba(255,255,255,0.01);">
                         <h4 style="color: var(--text-secondary); margin-bottom: 1rem;">Heart Rate (Average)</h4>
-                        <div style="position: relative; height: 200px;"><canvas id="chart-hr"></canvas></div>
+                        <div style="position: relative; height: 260px;"><canvas id="chart-hr"></canvas></div>
                     </div>
-                    <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 280px; position: relative; background: rgba(255,255,255,0.01);">
+                    <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 340px; position: relative; background: rgba(255,255,255,0.01);">
                         <h4 style="color: var(--text-secondary); margin-bottom: 1rem;">Heart Rate Variability (HRV)</h4>
-                        <div style="position: relative; height: 200px;"><canvas id="chart-hrv"></canvas></div>
+                        <div style="position: relative; height: 260px;"><canvas id="chart-hrv"></canvas></div>
                     </div>
-                    <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 280px; position: relative; background: rgba(255,255,255,0.01);">
+                    <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 340px; position: relative; background: rgba(255,255,255,0.01);">
                         <h4 style="color: var(--text-secondary); margin-bottom: 1rem;">Calories Burned (kcal)</h4>
-                        <div style="position: relative; height: 200px;"><canvas id="chart-calories"></canvas></div>
+                        <div style="position: relative; height: 260px;"><canvas id="chart-calories"></canvas></div>
                     </div>
-                    <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 280px; position: relative; background: rgba(255,255,255,0.01);">
+                    <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 340px; position: relative; background: rgba(255,255,255,0.01);">
                         <h4 style="color: var(--text-secondary); margin-bottom: 1rem;">Number of Jots</h4>
-                        <div style="position: relative; height: 200px;"><canvas id="chart-jots"></canvas></div>
+                        <div style="position: relative; height: 260px;"><canvas id="chart-jots"></canvas></div>
                     </div>
                 </div>
             </div>
@@ -843,14 +843,16 @@
                             label: label,
                             data: dataSet,
                             borderColor: color,
-                            borderWidth: 2.5,
+                            borderWidth: 2,
                             backgroundColor: gradient,
                             fill: true,
-                            tension: 0.35,
+                            tension: 0.3,
                             pointBackgroundColor: color,
                             pointBorderColor: '#ffffff',
                             pointHoverRadius: 6,
-                            pointRadius: 4
+                            pointHoverBorderWidth: 2,
+                            pointRadius: 0,
+                            pointHitRadius: 10
                         }]
                     },
                     options: {
@@ -871,7 +873,12 @@
                         scales: {
                             x: {
                                 grid: { color: 'rgba(255,255,255,0.03)' },
-                                ticks: { color: '#a1a1b5', font: { family: 'Outfit' } }
+                                ticks: { 
+                                    color: '#a1a1b5', 
+                                    font: { family: 'Outfit' },
+                                    maxTicksLimit: 8,
+                                    maxRotation: 0
+                                }
                             },
                             y: {
                                 grid: { color: 'rgba(255,255,255,0.03)' },

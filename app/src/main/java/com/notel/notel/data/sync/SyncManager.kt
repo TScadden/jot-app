@@ -12,6 +12,7 @@ import com.notel.notel.notifications.ReminderScheduler
 import com.notel.notel.data.remote.*
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -102,8 +103,11 @@ class SyncManager @Inject constructor(
                 syncCoachSessions()
                 syncCoachMessages()
 
-                // Generate and cache historical biometrics insights before sync
-                generateHistoricalBiometricsInsights()
+                // Generate and cache historical biometrics insights in the background
+                @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+                kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+                    generateHistoricalBiometricsInsights()
+                }
 
                 // Push AI Insights (including BodyLoad scores) to the server
                 val insightsStr = preferences.aiInsights.first()
@@ -804,6 +808,10 @@ class SyncManager @Inject constructor(
             if (newInsights.isNotEmpty()) {
                 val merged = (localInsights + newInsights).distinctBy { it.id }
                 preferences.setAiInsights(Json.encodeToString(merged))
+                @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+                kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+                    syncAllData()
+                }
             }
         } catch (e: Exception) {
             Log.e(tag, "generateHistoricalBiometricsInsights failed: ${e.message}")
