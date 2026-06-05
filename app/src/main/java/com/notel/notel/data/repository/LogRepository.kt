@@ -1317,45 +1317,7 @@ class LogRepository @Inject constructor(
             true // default to allowing calculation if parsing fails
         }
 
-        val insightsStr = preferences.aiInsights.first()
-        if (insightsStr.isNotBlank()) {
-            val insights = try {
-                json.decodeFromString<List<com.notel.notel.data.local.entity.AiInsight>>(insightsStr)
-            } catch (e: Exception) { emptyList() }
-            
-            val targetLocalDate = try {
-                java.time.LocalDate.parse(targetDateStr)
-            } catch (e: Exception) {
-                java.time.LocalDate.now()
-            }
-            val startOfDay = targetLocalDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
-
-            val cachedInsight = insights.find { it.type == "BodyLoad" && isSameDay(it.timestamp, startOfDay) }
-            if (cachedInsight != null) {
-                val text = cachedInsight.text
-                val scoreRegex = """Cup %:\s*(\d+)""".toRegex()
-                val factorsRegex = """Factors:\s*([^\n|]*)""".toRegex()
-                val adviceRegex = """Advice:\s*(.*)""".toRegex()
-                
-                val cachedScore = scoreRegex.find(text)?.groupValues?.get(1)?.toIntOrNull()
-                val cachedFactors = factorsRegex.find(text)?.groupValues?.get(1)?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()
-                val cachedAdvice = adviceRegex.find(text)?.groupValues?.get(1)?.trim() ?: ""
-                
-                if (cachedScore != null) {
-                    return Result.success(
-                        BodyLoadResponse(
-                            score = cachedScore,
-                            factors = cachedFactors,
-                            advice = cachedAdvice,
-                            subjectiveImpact = 0.0
-                        )
-                    )
-                }
-            }
-        }
-
         // ── 1. Fetch Biometrics ──
-        
         val heartJson = preferences.historicalHeartRate.first()
         val heartHist = try {
             if (heartJson.isNotBlank()) json.decodeFromString<List<com.notel.notel.data.model.BiomarkerPoint>>(heartJson).map { it.date to it.value }
@@ -1383,8 +1345,50 @@ class LogRepository @Inject constructor(
             targetDateStr
         }
 
-        val sleepMins = sleepHist.find { it.first == targetDateStr }?.second ?: 0
+        val sleepMins = sleepHist.find { it.first == dataDateStr }?.second ?: 0
         val calVal = calHist.find { it.first == dataDateStr }?.second ?: 0
+
+        val insightsStr = preferences.aiInsights.first()
+        if (insightsStr.isNotBlank()) {
+            val insights = try {
+                json.decodeFromString<List<com.notel.notel.data.local.entity.AiInsight>>(insightsStr)
+            } catch (e: Exception) { emptyList() }
+            
+            val targetLocalDate = try {
+                java.time.LocalDate.parse(targetDateStr)
+            } catch (e: Exception) {
+                java.time.LocalDate.now()
+            }
+            val startOfDay = targetLocalDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+            val cachedInsight = insights.find { it.type == "BodyLoad" && isSameDay(it.timestamp, startOfDay) }
+            if (cachedInsight != null) {
+                val text = cachedInsight.text
+                val scoreRegex = """Cup %:\s*(\d+)""".toRegex()
+                val factorsRegex = """Factors:\s*([^\n|]*)""".toRegex()
+                val adviceRegex = """Advice:\s*(.*)""".toRegex()
+                
+                val cachedScore = scoreRegex.find(text)?.groupValues?.get(1)?.toIntOrNull()
+                val cachedFactors = factorsRegex.find(text)?.groupValues?.get(1)?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()
+                val cachedAdvice = adviceRegex.find(text)?.groupValues?.get(1)?.trim() ?: ""
+                
+                // Recalculate if it's today/yesterday, we now have real sleep data, but the cache has 0% or no sleep factor.
+                val hasCachedSleep = cachedFactors.any { it.startsWith("Sleep") }
+                val isCachedSleepZero = cachedFactors.any { it.startsWith("Sleep") && it.contains("0%") }
+                val hasNewSleepData = isTodayOrYesterday && sleepMins > 0 && (!hasCachedSleep || isCachedSleepZero)
+
+                if (cachedScore != null && !hasNewSleepData) {
+                    return Result.success(
+                        BodyLoadResponse(
+                            score = cachedScore,
+                            factors = cachedFactors,
+                            advice = cachedAdvice,
+                            subjectiveImpact = 0.0
+                        )
+                    )
+                }
+            }
+        }
         
         val todayAwake = preferences.todayAwakeAvgHr.first()
         val rawHrVal = if (dataDateStr == today && todayAwake > 0) {
