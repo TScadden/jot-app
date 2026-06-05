@@ -325,21 +325,22 @@
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            z-index: 1000;
+            z-index: 9999;
             opacity: 0;
             visibility: hidden;
-            transition: opacity 0.3s ease, visibility 0.3s ease, transform 0.3s ease;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            transition: opacity 0.3s ease, visibility 0.3s ease, transform 0.3s ease, background-color 0.3s ease, color 0.3s ease;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
             transform: translateY(10px);
-            color: var(--text-main);
-            border: 1px solid var(--glass-border);
+            background: #161622 !important;
+            color: #7C6EFF;
+            border: 2px solid #7C6EFF;
         }
 
         .back-to-top-btn:hover {
-            border-color: var(--primary-color);
-            background: rgba(124, 110, 255, 0.1) !important;
+            background: #7C6EFF !important;
+            color: #ffffff;
             transform: translateY(0) scale(1.1);
-            box-shadow: 0 12px 30px rgba(124, 110, 255, 0.2);
+            box-shadow: 0 12px 30px rgba(124, 110, 255, 0.4);
         }
 
         .back-to-top-btn.visible {
@@ -594,7 +595,7 @@
             const catMap = {};
             if (categories) {
                 categories.forEach(c => {
-                    catMap[c.localId] = c;
+                    catMap[c.id] = c;
                 });
             }
 
