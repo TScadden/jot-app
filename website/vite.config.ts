@@ -11,6 +11,8 @@ export default defineConfig({
         main: resolve(__dirname, 'index.html'),
         learnMore: resolve(__dirname, 'learn-more.html'),
         resetPassword: resolve(__dirname, 'reset-password.html'),
+        login: resolve(__dirname, 'login.html'),
+        dashboard: resolve(__dirname, 'dashboard.html'),
       },
     },
   },

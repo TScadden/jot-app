@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jot | Account Authentication</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./style.css?v=1.9">
+    <link rel="icon" type="image/png" href="/jot_app_icon_1773090172459.png">
+    <style>
+        .auth-container {
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 100px 2rem 40px 2rem;
+            position: relative;
+        }
+
+        .auth-card {
+            width: 100%;
+            max-width: 440px;
+            padding: 3rem 2.5rem;
+            border-radius: 28px;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .auth-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .auth-header h1 {
+            font-size: 2.25rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+        }
+
+        .auth-header p {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .form-group label {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            padding-left: 0.25rem;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 1rem 1.25rem;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            color: var(--text-main);
+            font-family: 'Outfit', sans-serif;
+            font-size: 1rem;
+            outline: none;
+            transition: var(--transition);
+        }
+
+        .form-group input:focus {
+            border-color: var(--primary-color);
+            background: rgba(255, 255, 255, 0.05);
+            box-shadow: 0 0 12px rgba(124, 110, 255, 0.25);
+        }
+
+        .auth-actions {
+            margin-top: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+
+        .auth-btn {
+            width: 100%;
+            padding: 1rem;
+            border: none;
+            cursor: pointer;
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.05rem;
+        }
+
+        .toggle-text {
+            text-align: center;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        .toggle-text span {
+            color: var(--primary-color);
+            cursor: pointer;
+            font-weight: 600;
+            margin-left: 0.25rem;
+        }
+
+        .toggle-text span:hover {
+            text-decoration: underline;
+        }
+
+        .message-box {
+            padding: 1rem;
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            font-size: 0.9rem;
+            font-weight: 500;
+            display: none;
+            line-height: 1.4;
+        }
+
+        .message-box.error {
+            display: block;
+            background: rgba(255, 94, 98, 0.1);
+            border: 1px solid rgba(255, 94, 98, 0.3);
+            color: #FF5E62;
+        }
+
+        .message-box.success {
+            display: block;
+            background: rgba(78, 205, 196, 0.1);
+            border: 1px solid rgba(78, 205, 196, 0.3);
+            color: #4ECDC4;
+        }
+
+        .forgot-link {
+            align-self: flex-end;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-top: -0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        .forgot-link:hover {
+            color: var(--primary-color);
+            text-decoration: underline;
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="glass">
+        <div class="container nav-content">
+            <a href="/" class="logo">
+                <img src="/jot_app_icon_1773090172459.png" alt="Jot Logo" class="app-icon">
+                <span>Jot</span>
+            </a>
+            <div class="nav-actions">
+                <div class="nav-links" id="nav-links">
+                    <a href="/">Home</a>
+                    <a href="/learn-more">Learn More</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="auth-container">
+        <div class="auth-card glass">
+            <div class="auth-header">
+                <h1 id="auth-title">Welcome Back</h1>
+                <p id="auth-subtitle">Log in to view your synchronised wellness logs.</p>
+            </div>
+
+            <div id="alert-box" class="message-box"></div>
+
+            <form id="auth-form" onsubmit="handleAuth(event)">
+                <div class="form-group">
+                    <label for="email">Email Address</label>
+                    <input type="email" id="email" placeholder="you@example.com" required autocomplete="email">
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" placeholder="••••••••" required minlength="8">
+                </div>
+
+                <a href="/reset-password.html" class="forgot-link" id="forgot-pass-link">Forgot Password?</a>
+
+                <div class="auth-actions">
+                    <button type="submit" class="btn-primary auth-btn" id="submit-btn">Log In</button>
+                    <p class="toggle-text" id="toggle-wrapper">
+                        Don't have an account? <span onclick="toggleMode()">Register</span>
+                    </p>
+                </div>
+            </form>
+        </div>
+        <div class="hero-bg">
+            <div class="glow" style="top: 20%; right: 30%; width: 400px; height: 400px;"></div>
+        </div>
+    </div>
+
+    <script>
+        // Check if already logged in
+        if (localStorage.getItem('token')) {
+            window.location.href = '/dashboard.html';
+        }
+
+        let isLoginMode = true;
+
+        function toggleMode() {
+            isLoginMode = !isLoginMode;
+            const title = document.getElementById('auth-title');
+            const subtitle = document.getElementById('auth-subtitle');
+            const submitBtn = document.getElementById('submit-btn');
+            const toggleWrapper = document.getElementById('toggle-wrapper');
+            const forgotLink = document.getElementById('forgot-pass-link');
+            const alertBox = document.getElementById('alert-box');
+
+            alertBox.style.display = 'none';
+
+            if (isLoginMode) {
+                title.textContent = 'Welcome Back';
+                subtitle.textContent = 'Log in to view your synchronised wellness logs.';
+                submitBtn.textContent = 'Log In';
+                forgotLink.style.display = 'block';
+                toggleWrapper.innerHTML = `Don't have an account? <span onclick="toggleMode()">Register</span>`;
+            } else {
+                title.textContent = 'Create Account';
+                subtitle.textContent = 'Sign up to start tracking your clinical body load.';
+                submitBtn.textContent = 'Register';
+                forgotLink.style.display = 'none';
+                toggleWrapper.innerHTML = `Already have an account? <span onclick="toggleMode()">Log In</span>`;
+            }
+        }
+
+        async function handleAuth(e) {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const alertBox = document.getElementById('alert-box');
+            const submitBtn = document.getElementById('submit-btn');
+
+            alertBox.style.display = 'none';
+            alertBox.className = 'message-box';
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = isLoginMode ? 'Signing In...' : 'Registering...';
+
+            const endpoint = isLoginMode ? '/api/auth/login' : '/api/auth/register';
+
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    alertBox.textContent = isLoginMode ? 'Login successful! Redirecting...' : 'Account created successfully! Logging in...';
+                    alertBox.className = 'message-box success';
+                    
+                    localStorage.setItem('token', data.token);
+                    localStorage.setItem('userId', data.userId);
+                    localStorage.setItem('email', data.email);
+                    localStorage.setItem('nickname', data.nickname || 'User');
+                    localStorage.setItem('tag', data.tag || '00000');
+
+                    setTimeout(() => {
+                        window.location.href = '/dashboard.html';
+                    }, 1000);
+                } else {
+                    alertBox.textContent = data.error || 'Authentication failed. Please try again.';
+                    alertBox.className = 'message-box error';
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = isLoginMode ? 'Log In' : 'Register';
+                }
+            } catch (err) {
+                alertBox.textContent = 'Error securely connecting to the server.';
+                alertBox.className = 'message-box error';
+                submitBtn.disabled = false;
+                submitBtn.textContent = isLoginMode ? 'Log In' : 'Register';
+            }
+        }
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jot | Wellness Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./style.css?v=1.9">
+    <link rel="icon" type="image/png" href="/jot_app_icon_1773090172459.png">
+    <style>
+        .dashboard-container {
+            padding-top: 120px;
+            padding-bottom: 60px;
+            min-height: 100vh;
+        }
+
+        .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2.5rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .welcome-greet h2 {
+            font-size: 2rem;
+            font-weight: 800;
+        }
+
+        .welcome-greet p {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 3rem;
+        }
+
+        .stat-card {
+            padding: 1.5rem;
+            border-radius: 18px;
+            display: flex;
+            align-items: center;
+            gap: 1.25rem;
+        }
+
+        .stat-icon {
+            font-size: 2.25rem;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            border: 1px solid var(--glass-border);
+        }
+
+        .stat-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .stat-val {
+            font-size: 1.5rem;
+            font-weight: 800;
+            line-height: 1.2;
+        }
+
+        .stat-lbl {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .dashboard-content {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 3rem;
+        }
+
+        .section-header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid var(--glass-border);
+            padding-bottom: 0.75rem;
+        }
+
+        .section-header-row h3 {
+            font-size: 1.4rem;
+            font-weight: 700;
+        }
+
+        .logs-timeline {
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+
+        .log-card {
+            padding: 1.75rem;
+            border-radius: 20px;
+            transition: var(--transition);
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .log-card:hover {
+            border-color: var(--primary-color);
+            background: rgba(124, 110, 255, 0.02);
+            transform: translateY(-2px);
+        }
+
+        .log-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .log-category {
+            padding: 0.4rem 0.8rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.8rem;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .log-body {
+            font-size: 1.05rem;
+            line-height: 1.5;
+        }
+
+        .log-chips {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .log-chip {
+            font-size: 0.8rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            padding: 0.25rem 0.75rem;
+            border-radius: 50px;
+            color: var(--text-muted);
+        }
+
+        .no-data-msg {
+            text-align: center;
+            padding: 4rem 2rem;
+            border-radius: 20px;
+            color: var(--text-muted);
+        }
+
+        .no-data-msg p {
+            margin-top: 0.5rem;
+        }
+
+        .btn-logout {
+            background: rgba(255, 94, 98, 0.1);
+            border: 1px solid rgba(255, 94, 98, 0.2);
+            color: #FF5E62;
+            padding: 0.6rem 1.25rem;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .btn-logout:hover {
+            background: rgba(255, 94, 98, 0.2);
+            transform: translateY(-1px);
+        }
+
+        /* Loading Spinner */
+        .loader-wrapper {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 6rem;
+        }
+
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid var(--glass-border);
+            border-top: 4px solid var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="glass">
+        <div class="container nav-content">
+            <a href="/" class="logo">
+                <img src="/jot_app_icon_1773090172459.png" alt="Jot Logo" class="app-icon">
+                <span>Jot</span>
+            </a>
+            <div class="nav-actions">
+                <button class="btn-logout" onclick="handleLogout()">Log Out</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="dashboard-container container">
+        <div class="dashboard-header">
+            <div class="welcome-greet">
+                <h2>Hello, <span id="user-display-name">User</span></h2>
+                <p>Track your health trends and clinical signals from the web.</p>
+            </div>
+        </div>
+
+        <!-- Metric Profile Stats -->
+        <div class="stats-grid" id="stats-container">
+            <div class="stat-card glass">
+                <div class="stat-icon">☕</div>
+                <div class="stat-info">
+                    <span class="stat-val" id="stat-bodyload">--</span>
+                    <span class="stat-lbl">Body Load Score</span>
+                </div>
+            </div>
+            <div class="stat-card glass">
+                <div class="stat-icon">😴</div>
+                <div class="stat-info">
+                    <span class="stat-val" id="stat-sleep">--</span>
+                    <span class="stat-lbl">Sleep Minutes</span>
+                </div>
+            </div>
+            <div class="stat-card glass">
+                <div class="stat-icon">💓</div>
+                <div class="stat-info">
+                    <span class="stat-val" id="stat-heart">--</span>
+                    <span class="stat-lbl">Avg Heart Rate</span>
+                </div>
+            </div>
+            <div class="stat-card glass">
+                <div class="stat-icon">🔥</div>
+                <div class="stat-info">
+                    <span class="stat-val" id="stat-spikes">--</span>
+                    <span class="stat-lbl">HR Spikes</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="dashboard-content">
+            <div class="logs-section">
+                <div class="section-header-row">
+                    <h3>Recent Clinical Jots</h3>
+                    <span style="font-size: 0.9rem; color: var(--text-muted);" id="logs-count">0 items</span>
+                </div>
+
+                <div id="loading-spinner" class="loader-wrapper">
+                    <div class="spinner"></div>
+                </div>
+
+                <div class="logs-timeline" id="logs-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const token = localStorage.getItem('token');
+        if (!token) {
+            window.location.href = '/login.html';
+        }
+
+        // Set up welcome greeting
+        const nickname = localStorage.getItem('nickname') || 'User';
+        const tag = localStorage.getItem('tag') || '00000';
+        document.getElementById('user-display-name').textContent = `${nickname} #${tag}`;
+
+        // Fetch User Data
+        async function fetchDashboardData() {
+            try {
+                const response = await fetch('/api/sync/pull', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (response.status === 401) {
+                    handleLogout();
+                    return;
+                }
+
+                const data = await response.json();
+                document.getElementById('loading-spinner').style.display = 'none';
+
+                if (response.ok) {
+                    renderStats(data.profile);
+                    renderLogs(data.entries, data.categories);
+                } else {
+                    showError('Failed to fetch synchronization data.');
+                }
+            } catch (err) {
+                document.getElementById('loading-spinner').style.display = 'none';
+                showError('Error connecting to the synchronization server.');
+            }
+        }
+
+        function renderStats(profile) {
+            if (!profile) return;
+
+            const score = profile.todayScore || profile.weeklyScore;
+            document.getElementById('stat-bodyload').textContent = score ? `${score}/100` : 'No data';
+            document.getElementById('stat-sleep').textContent = profile.todaySleepMins ? formatMinutes(profile.todaySleepMins) : 'No data';
+            document.getElementById('stat-heart').textContent = profile.todayAvgHr ? `${profile.todayAvgHr} bpm` : 'No data';
+            document.getElementById('stat-spikes').textContent = profile.todaySpikes !== undefined && profile.todaySpikes !== null ? profile.todaySpikes : 'No data';
+        }
+
+        function formatMinutes(mins) {
+            if (mins >= 60) {
+                const hrs = Math.floor(mins / 60);
+                const remainingMins = mins % 60;
+                return `${hrs}h ${remainingMins}m`;
+            }
+            return `${mins}m`;
+        }
+
+        function renderLogs(entries, categories) {
+            const listContainer = document.getElementById('logs-list');
+            const logsCount = document.getElementById('logs-count');
+            listContainer.innerHTML = '';
+
+            if (!entries || entries.length === 0) {
+                listContainer.innerHTML = `
+                    <div class="no-data-msg glass">
+                        <h3>No logs synced yet</h3>
+                        <p>Logs created in your Jot mobile app will automatically appear here once synced.</p>
+                    </div>
+                `;
+                logsCount.textContent = '0 items';
+                return;
+            }
+
+            // Map categories for fast lookup
+            const catMap = {};
+            if (categories) {
+                categories.forEach(c => {
+                    catMap[c.localId] = c;
+                });
+            }
+
+            // Sort entries chronologically (latest first)
+            const sortedEntries = [...entries].sort((a, b) => b.timestamp - a.timestamp);
+            logsCount.textContent = `${sortedEntries.length} items`;
+
+            sortedEntries.forEach(entry => {
+                const card = document.createElement('div');
+                card.className = 'log-card glass';
+
+                // Look up category
+                const cat = catMap[entry.categoryId] || { name: 'Wellness Log', colorHex: '#7C6EFF' };
+                const formattedDate = new Date(entry.timestamp).toLocaleString(undefined, {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
+                });
+
+                // Parse chips JSON string
+                let chipsHtml = '';
+                try {
+                    if (entry.chips) {
+                        const parsedChips = JSON.parse(entry.chips);
+                        if (Array.isArray(parsedChips) && parsedChips.length > 0) {
+                            chipsHtml = `
+                                <div class="log-chips">
+                                    ${parsedChips.map(chip => `<span class="log-chip">${chip}</span>`).join('')}
+                                </div>
+                            `;
+                        }
+                    }
+                } catch (e) {}
+
+                card.innerHTML = `
+                    <div class="log-meta">
+                        <span class="log-category" style="background: ${cat.colorHex}15; color: ${cat.colorHex || 'var(--primary-color)'}; border: 1px solid ${cat.colorHex}30">
+                            ${cat.name}
+                        </span>
+                        <span>${formattedDate}</span>
+                    </div>
+                    <div class="log-body">${entry.body}</div>
+                    ${chipsHtml}
+                `;
+
+                listContainer.appendChild(card);
+            });
+        }
+
+        function showError(msg) {
+            const listContainer = document.getElementById('logs-list');
+            listContainer.innerHTML = `
+                <div class="no-data-msg glass" style="border-color: rgba(255, 94, 98, 0.3);">
+                    <h3 style="color: #FF5E62;">Sync Error</h3>
+                    <p>${msg}</p>
+                </div>
+            `;
+        }
+
+        function handleLogout() {
+            localStorage.clear();
+            window.location.href = '/login.html';
+        }
+
+        // Run fetch
+        fetchDashboardData();
+    </script>
+</body>
+
+</html>
