@@ -5,6 +5,7 @@ import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.*
 import dagger.hilt.android.HiltAndroidApp
 import com.notel.notel.worker.BodyLoadReminderWorker
+import com.notel.notel.worker.BiometricsSyncWorker
 import com.notel.notel.worker.CupReminderWorker
 import com.notel.notel.worker.HabitReminderWorker
 import com.notel.notel.service.HrSpikeMonitorService
@@ -41,6 +42,7 @@ class NotelApp : Application(), Configuration.Provider {
         scheduleHabitReminder()
         scheduleCupReminder()
         com.notel.notel.worker.RedditRefreshWorker.schedule(this)
+        BiometricsSyncWorker.schedule(this)
         
         // Start HR Monitor Service safely when app enters foreground
         CoroutineScope(Dispatchers.IO).launch {

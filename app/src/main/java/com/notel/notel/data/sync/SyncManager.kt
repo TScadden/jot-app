@@ -276,7 +276,13 @@ class SyncManager @Inject constructor(
                     if (liveSleep != null) {
                         todaySleep = liveSleep.minutesAsleep
                     }
-                    val liveHr = healthConnectManager.readHeartRateAverage(todayStr)
+                    val liveRhr = healthConnectManager.readRestingHeartRate(todayStr)
+                    val liveHr = if (liveRhr != null && liveRhr > 0) {
+                        liveRhr
+                    } else {
+                        val avg = healthConnectManager.readHeartRateAverage(todayStr)
+                        if (avg > 0) avg else 0
+                    }
                     if (liveHr > 0) {
                         todayHr = liveHr
                     }
@@ -752,22 +758,30 @@ class SyncManager @Inject constructor(
             if (!isAvailable) return
             
             val insightsStr = preferences.aiInsights.first()
-            val localInsights = try {
+            val allLocalInsights = try {
                 if (insightsStr.isNotBlank()) {
                     Json.decodeFromString<List<com.notel.notel.data.local.entity.AiInsight>>(insightsStr)
                 } else emptyList()
             } catch (e: Exception) { emptyList() }
-            
+
+            // Strip old v1 biometrics insights (id = "biometrics_YYYY-MM-DD" without _v2 suffix).
+            // They contain inflated deep sleep values from the Fitbit multi-session bug.
+            // Keeping non-biometrics insights intact.
+            val strippedInsights = allLocalInsights.filter { insight ->
+                insight.type != "Biometrics" || insight.id.endsWith("_v2")
+            }
+
             val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).apply {
                 timeZone = java.util.TimeZone.getTimeZone(java.time.ZoneId.systemDefault())
             }
-            val existingBiometricsDates = localInsights.filter { it.type == "Biometrics" }.map {
+            // Only skip dates we already have a correct v2 entry for
+            val existingV2Dates = strippedInsights.filter { it.type == "Biometrics" && it.id.endsWith("_v2") }.map {
                 sdf.format(java.util.Date(it.timestamp))
             }.toSet()
             
             val targetDays = (0..180).map {
                 java.time.LocalDate.now().minusDays(it.toLong()).toString()
-            }.filter { it !in existingBiometricsDates }
+            }.filter { it !in existingV2Dates }
             
             if (targetDays.isEmpty()) return
             
@@ -796,7 +810,7 @@ class SyncManager @Inject constructor(
                     val textJson = """{"sleepMins":$sleepMins,"deepSleepMins":$deepSleepMins,"avgHr":$avgHr,"hrv":$hrv,"calories":$calories}"""
                     newInsights.add(
                         com.notel.notel.data.local.entity.AiInsight(
-                            id = "biometrics_$dayStr",
+                            id = "biometrics_${dayStr}_v2",
                             text = textJson,
                             type = "Biometrics",
                             timestamp = timestamp
@@ -806,11 +820,16 @@ class SyncManager @Inject constructor(
             }
             
             if (newInsights.isNotEmpty()) {
-                val merged = (localInsights + newInsights).distinctBy { it.id }
+                val merged = (strippedInsights + newInsights).distinctBy { it.id }
                 preferences.setAiInsights(Json.encodeToString(merged))
-                @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
-                kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
-                    syncAllData()
+                // Push the corrected biometrics to the server directly (no recursive syncAllData)
+                val insightDtos = merged.map {
+                    com.notel.notel.data.remote.InsightDtoModel(it.id, it.text, it.type, it.timestamp)
+                }
+                try {
+                    jotApi.syncInsights(com.notel.notel.data.remote.SyncInsightsRequest(insightDtos))
+                } catch (e: Exception) {
+                    Log.e(tag, "Failed to push corrected biometrics to server: ${e.message}")
                 }
             }
         } catch (e: Exception) {

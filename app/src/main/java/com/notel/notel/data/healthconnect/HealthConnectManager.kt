@@ -441,7 +441,29 @@ class HealthConnectManager(private val context: Context) {
             val end = ZonedDateTime.now(ZoneId.systemDefault()).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
             val start = end.minus(days.toLong(), ChronoUnit.DAYS)
             
-            val response = healthConnectClient.aggregateGroupByDuration(
+            val formatter = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
+                timeZone = java.util.TimeZone.getTimeZone(java.time.ZoneId.systemDefault().id)
+            }
+
+            // 1. Try to read RestingHeartRateRecord first
+            val response = healthConnectClient.readRecords(
+                ReadRecordsRequest(
+                    recordType = RestingHeartRateRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(start, end)
+                )
+            )
+            
+            val rhrList = response.records.map { record ->
+                val dateStr = formatter.format(java.util.Date(record.time.toEpochMilli()))
+                dateStr to record.beatsPerMinute.toInt()
+            }.distinctBy { it.first }
+            
+            if (rhrList.isNotEmpty()) {
+                return@withContext rhrList.sortedBy { it.first }
+            }
+            
+            // 2. Fall back to Aggregate BPM_AVG if Resting HR is not available
+            val aggResponse = healthConnectClient.aggregateGroupByDuration(
                 AggregateGroupByDurationRequest(
                     metrics = setOf(HeartRateRecord.BPM_AVG),
                     timeRangeFilter = TimeRangeFilter.between(start, end),
@@ -449,11 +471,7 @@ class HealthConnectManager(private val context: Context) {
                 )
             )
             
-            val formatter = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
-                timeZone = java.util.TimeZone.getTimeZone(java.time.ZoneId.systemDefault())
-            }
-            
-            response.mapNotNull { bucket ->
+            aggResponse.mapNotNull { bucket ->
                 val avg = bucket.result[HeartRateRecord.BPM_AVG]
                 if (avg != null && avg > 0) {
                     val dateStr = formatter.format(java.util.Date(bucket.startTime.toEpochMilli()))

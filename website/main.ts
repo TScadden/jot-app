@@ -50,6 +50,16 @@ const animateStats = (data?: { jots: number, insights: number, accuracy: number 
 };
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Check authentication status to update navigation links
+    const token = localStorage.getItem('token');
+    if (token) {
+        const loginLinks = document.querySelectorAll('a[href="/login"]');
+        loginLinks.forEach(link => {
+            link.setAttribute('href', '/dashboard');
+            link.textContent = 'Dashboard';
+        });
+    }
+
     // Fetch Real Stats from Server
     fetch('/api/public/stats')
         .then(res => res.json())

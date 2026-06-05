@@ -776,8 +776,17 @@
         function renderGraphs(data) {
             if (!data) return;
 
-            const biometricInsights = data.insights.filter(i => i.type === 'Biometrics');
             const dateMap = new Map();
+
+            // Sort so v2 entries come after v1 entries — dateMap.set() will overwrite,
+            // so the corrected v2 data always wins for any given date.
+            const biometricInsights = data.insights
+                .filter(i => i.type === 'Biometrics')
+                .sort((a, b) => {
+                    const aIsV2 = a.id && a.id.endsWith('_v2');
+                    const bIsV2 = b.id && b.id.endsWith('_v2');
+                    return aIsV2 === bIsV2 ? 0 : aIsV2 ? 1 : -1;
+                });
 
             biometricInsights.forEach(insight => {
                 const d = new Date(Number(insight.timestamp));
@@ -820,9 +829,15 @@
                 .map(([dateStr, rec]) => ({ dateStr, ...rec }))
                 .sort((a, b) => a.rawDate - b.rawDate);
 
-            const labels = sortedRecords.map(r => r.dateStr);
+            function createLineChart(ctxId, label, records, rawValExtractor, formatValExtractor, color, isDuration = false) {
+                const filteredRecords = records.filter(r => {
+                    const val = rawValExtractor(r);
+                    return val > 0;
+                });
 
-            function createLineChart(ctxId, label, dataSet, color, isDuration = false) {
+                const chartLabels = filteredRecords.map(r => r.dateStr);
+                const chartData = filteredRecords.map(r => formatValExtractor ? formatValExtractor(r) : rawValExtractor(r));
+
                 if (activeCharts[ctxId]) {
                     activeCharts[ctxId].destroy();
                 }
@@ -838,10 +853,10 @@
                 activeCharts[ctxId] = new Chart(ctx, {
                     type: 'line',
                     data: {
-                        labels: labels,
+                        labels: chartLabels,
                         datasets: [{
                             label: label,
-                            data: dataSet,
+                            data: chartData,
                             borderColor: color,
                             borderWidth: 2,
                             backgroundColor: gradient,
@@ -895,12 +910,12 @@
                 });
             }
 
-            createLineChart('chart-sleep', 'Sleep Duration', sortedRecords.map(r => (r.sleepMins / 60.0).toFixed(1)), '#42A5F5', true);
-            createLineChart('chart-deepsleep', 'Deep Sleep', sortedRecords.map(r => (r.deepSleepMins / 60.0).toFixed(1)), '#7C6EFF', true);
-            createLineChart('chart-hr', 'Heart Rate', sortedRecords.map(r => r.avgHr), '#FF5E62');
-            createLineChart('chart-hrv', 'HRV', sortedRecords.map(r => r.hrv), '#B388FF');
-            createLineChart('chart-calories', 'Calories', sortedRecords.map(r => r.calories), '#FFA726');
-            createLineChart('chart-jots', 'Number of Jots', sortedRecords.map(r => r.jots), '#26A69A');
+            createLineChart('chart-sleep', 'Sleep Duration', sortedRecords, r => r.sleepMins, r => (r.sleepMins / 60.0).toFixed(1), '#42A5F5', true);
+            createLineChart('chart-deepsleep', 'Deep Sleep', sortedRecords, r => r.deepSleepMins, r => (r.deepSleepMins / 60.0).toFixed(1), '#7C6EFF', true);
+            createLineChart('chart-hr', 'Heart Rate', sortedRecords, r => r.avgHr, null, '#FF5E62');
+            createLineChart('chart-hrv', 'HRV', sortedRecords, r => r.hrv, null, '#B388FF');
+            createLineChart('chart-calories', 'Calories', sortedRecords, r => r.calories, null, '#FFA726');
+            createLineChart('chart-jots', 'Number of Jots', sortedRecords, r => r.jots, null, '#26A69A');
         }
 
         // Run fetch
