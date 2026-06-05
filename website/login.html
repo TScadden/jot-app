@@ -214,6 +214,7 @@
             const alertBox = document.getElementById('alert-box');
             alertBox.textContent = 'To ensure your biometrics are synchronized correctly, new accounts must be registered inside the Jot mobile app. Please download the app to sign up.';
             alertBox.className = 'message-box error';
+            alertBox.style.display = 'block';
         }
 
         async function handleAuth(e) {
@@ -227,10 +228,10 @@
             alertBox.className = 'message-box';
 
             submitBtn.disabled = true;
-            submitBtn.textContent = isLoginMode ? 'Signing In...' : 'Registering...';
+            submitBtn.textContent = 'Signing In...';
 
             const API_BASE = "https://api.jottracker.com";
-            const endpoint = isLoginMode ? `${API_BASE}/api/auth/login` : `${API_BASE}/api/auth/register`;
+            const endpoint = `${API_BASE}/api/auth/login`;
 
             try {
                 const response = await fetch(endpoint, {
@@ -242,8 +243,9 @@
                 const data = await response.json();
 
                 if (response.ok) {
-                    alertBox.textContent = isLoginMode ? 'Login successful! Redirecting...' : 'Account created successfully! Logging in...';
+                    alertBox.textContent = 'Login successful! Redirecting...';
                     alertBox.className = 'message-box success';
+                    alertBox.style.display = 'block';
                     
                     localStorage.setItem('token', data.token);
                     localStorage.setItem('userId', data.userId);
@@ -257,14 +259,16 @@
                 } else {
                     alertBox.textContent = data.error || 'Authentication failed. Please try again.';
                     alertBox.className = 'message-box error';
+                    alertBox.style.display = 'block';
                     submitBtn.disabled = false;
-                    submitBtn.textContent = isLoginMode ? 'Log In' : 'Register';
+                    submitBtn.textContent = 'Log In';
                 }
             } catch (err) {
                 alertBox.textContent = 'Error securely connecting to the server.';
                 alertBox.className = 'message-box error';
+                alertBox.style.display = 'block';
                 submitBtn.disabled = false;
-                submitBtn.textContent = isLoginMode ? 'Log In' : 'Register';
+                submitBtn.textContent = 'Log In';
             }
         }
     </script>
