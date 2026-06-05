@@ -10,6 +10,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         learnMore: resolve(__dirname, 'learn-more.html'),
+        resetPassword: resolve(__dirname, 'reset-password.html'),
       },
     },
   },

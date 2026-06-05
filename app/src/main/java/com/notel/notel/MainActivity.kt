@@ -325,14 +325,16 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         composable("fitbit") {
-                            val fitbitViewModel: com.notel.notel.ui.viewmodel.FitbitViewModel = hiltViewModel()
                             FitbitScreen(viewModel = fitbitViewModel, onBack = { navController.popBackStack() })
                         }
                         composable("sleep") {
                             SleepScreen(onBack = { navController.popBackStack() })
                         }
                         composable("key_metrics") {
-                            KeyMetricsScreen(onBack = { navController.popBackStack() })
+                            KeyMetricsScreen(
+                                onBack = { navController.popBackStack() },
+                                viewModel = fitbitViewModel
+                            )
                         }
                         composable(
                             route = "file_viewer?name={name}&path={path}&mime={mime}&docId={docId}",
