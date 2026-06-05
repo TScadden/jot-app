@@ -469,7 +469,7 @@
                         <div style="position: relative; height: 260px;"><canvas id="chart-sleep"></canvas></div>
                     </div>
                     <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 340px; position: relative; background: rgba(255,255,255,0.01);">
-                        <h4 style="color: var(--text-secondary); margin-bottom: 1rem;">Deep Sleep (Minutes)</h4>
+                        <h4 style="color: var(--text-secondary); margin-bottom: 1rem;">Deep Sleep (Hours)</h4>
                         <div style="position: relative; height: 260px;"><canvas id="chart-deepsleep"></canvas></div>
                     </div>
                     <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 340px; position: relative; background: rgba(255,255,255,0.01);">
@@ -896,7 +896,7 @@
             }
 
             createLineChart('chart-sleep', 'Sleep Duration', sortedRecords.map(r => (r.sleepMins / 60.0).toFixed(1)), '#42A5F5', true);
-            createLineChart('chart-deepsleep', 'Deep Sleep', sortedRecords.map(r => r.deepSleepMins), '#7C6EFF');
+            createLineChart('chart-deepsleep', 'Deep Sleep', sortedRecords.map(r => (r.deepSleepMins / 60.0).toFixed(1)), '#7C6EFF', true);
             createLineChart('chart-hr', 'Heart Rate', sortedRecords.map(r => r.avgHr), '#FF5E62');
             createLineChart('chart-hrv', 'HRV', sortedRecords.map(r => r.hrv), '#B388FF');
             createLineChart('chart-calories', 'Calories', sortedRecords.map(r => r.calories), '#FFA726');
