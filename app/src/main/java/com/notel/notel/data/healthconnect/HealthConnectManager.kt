@@ -735,11 +735,24 @@ class HealthConnectManager(private val context: Context) {
                 timeZone = java.util.TimeZone.getTimeZone(ZoneId.systemDefault().id)
             }
             
-            val dailyAsleep = mutableMapOf<String, Int>()
-            val dailyDeep = mutableMapOf<String, Int>()
-            
+            // Group all sessions by the date of their end time (the "wakeup" date),
+            // then per date pick only the LONGEST session. Fitbit writes multiple
+            // SleepSessionRecord entries per night (one full-session + sub-stage entries)
+            // which are non-overlapping so deduplication doesn't filter them, causing
+            // deep minutes to be summed and massively inflated (e.g. 49m → 293m).
+            val sessionsByDate = mutableMapOf<String, SleepSessionRecord>()
             val deduplicatedRecords = deduplicateSleepSessions(records)
             deduplicatedRecords.forEach { session ->
+                val dateStr = formatter.format(java.util.Date(session.endTime.toEpochMilli()))
+                val existing = sessionsByDate[dateStr]
+                val thisDuration = Duration.between(session.startTime, session.endTime).toMillis()
+                val existingDuration = if (existing != null) Duration.between(existing.startTime, existing.endTime).toMillis() else -1L
+                if (thisDuration > existingDuration) {
+                    sessionsByDate[dateStr] = session
+                }
+            }
+
+            sessionsByDate.map { (dateStr, session) ->
                 var deep = 0
                 var awake = 0L
                 session.stages.forEach { stage ->
@@ -753,17 +766,10 @@ class HealthConnectManager(private val context: Context) {
                 }
                 val duration = Duration.between(session.startTime, session.endTime).toMinutes()
                 val asleep = (duration - awake).toInt().coerceAtLeast(0)
-                
-                val dateStr = formatter.format(java.util.Date(session.endTime.toEpochMilli()))
-                dailyAsleep[dateStr] = (dailyAsleep[dateStr] ?: 0) + asleep
-                dailyDeep[dateStr] = (dailyDeep[dateStr] ?: 0) + deep
-            }
-            
-            dailyAsleep.keys.map { date ->
                 DailySleepSummary(
-                    date = date,
-                    minutesAsleep = dailyAsleep[date] ?: 0,
-                    deepMinutes = dailyDeep[date] ?: 0
+                    date = dateStr,
+                    minutesAsleep = asleep,
+                    deepMinutes = deep
                 )
             }.sortedByDescending { it.date }
         } catch(e: Exception) {
