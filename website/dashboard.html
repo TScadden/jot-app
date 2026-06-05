@@ -80,30 +80,136 @@
             font-weight: 600;
         }
 
+        /* Two-column layout */
         .dashboard-content {
             display: grid;
             grid-template-columns: 1fr;
-            gap: 3rem;
+            gap: 2rem;
+            align-items: start;
         }
 
-        .section-header-row {
+        @media (min-width: 992px) {
+            .dashboard-content {
+                grid-template-columns: 1.5fr 1.5fr;
+                gap: 2.5rem;
+            }
+        }
+
+        /* Insights Widget styling */
+        .insights-section {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .insights-card {
+            padding: 2rem;
+            border-radius: 24px;
+        }
+
+        .insights-header {
             margin-bottom: 1.5rem;
             border-bottom: 1px solid var(--glass-border);
             padding-bottom: 0.75rem;
         }
 
-        .section-header-row h3 {
+        .insights-header h3 {
             font-size: 1.4rem;
             font-weight: 700;
         }
 
-        .logs-timeline {
+        .insights-list {
             display: flex;
             flex-direction: column;
             gap: 1.25rem;
+        }
+
+        .insight-item {
+            padding: 1.25rem;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            transition: var(--transition);
+        }
+
+        .insight-item:hover {
+            border-color: var(--primary-color);
+            background: rgba(124, 110, 255, 0.01);
+        }
+
+        .insight-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+            font-size: 0.85rem;
+        }
+
+        .insight-date {
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .insight-score-badge {
+            background: rgba(124, 110, 255, 0.1);
+            color: var(--primary-color);
+            padding: 0.25rem 0.6rem;
+            border-radius: 6px;
+            font-weight: 600;
+        }
+
+        .insight-advice {
+            font-size: 1rem;
+            line-height: 1.5;
+            color: var(--text-main);
+            font-style: italic;
+            margin-bottom: 0.5rem;
+        }
+
+        .insight-factors {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .no-insights-msg {
+            color: var(--text-muted);
+            text-align: center;
+            padding: 2rem 1rem;
+            font-size: 0.95rem;
+        }
+
+        /* Logs Widget styling */
+        .logs-section {
+            padding: 2rem;
+            border-radius: 24px;
+            max-height: 800px;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .logs-timeline {
+            overflow-y: auto;
+            max-height: 620px;
+            padding-right: 0.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+
+        /* Custom Scrollbar for widget */
+        .logs-timeline::-webkit-scrollbar {
+            width: 6px;
+        }
+        .logs-timeline::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .logs-timeline::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+        .logs-timeline::-webkit-scrollbar-thumb:hover {
+            background: var(--primary-color);
         }
 
         .log-card {
@@ -298,13 +404,26 @@
         </div>
 
         <div class="dashboard-content">
-            <div class="logs-section">
-                <div class="section-header-row">
+            <!-- Left Column: AI Wellness Insights -->
+            <div class="insights-section">
+                <div class="insights-card glass">
+                    <div class="insights-header">
+                        <h3>🤖 AI Wellness Insights</h3>
+                    </div>
+                    <div id="insights-list" class="insights-list">
+                        <div class="no-insights-msg">Loading AI Wellness Insights...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Recent Clinical Jots scrollable widget -->
+            <div class="logs-section glass">
+                <div class="section-header-row" style="margin-bottom: 0; padding-bottom: 0.5rem; border-bottom: 1px solid var(--glass-border);">
                     <h3>Recent Clinical Jots</h3>
                     <span style="font-size: 0.9rem; color: var(--text-muted);" id="logs-count">0 items</span>
                 </div>
 
-                <div id="loading-spinner" class="loader-wrapper">
+                <div id="loading-spinner" class="loader-wrapper" style="padding: 3rem;">
                     <div class="spinner"></div>
                 </div>
 
@@ -341,6 +460,7 @@
 
                 if (response.ok) {
                     renderStats(data.profile, data.insights);
+                    renderInsights(data.insights);
                     renderLogs(data.entries, data.categories);
                 } else {
                     showError('Failed to fetch synchronization data.');
@@ -384,6 +504,59 @@
                 return `${hrs}h ${remainingMins}m`;
             }
             return `${mins}m`;
+        }
+
+        function renderInsights(insights) {
+            const insightsContainer = document.getElementById('insights-list');
+            if (!insightsContainer) return;
+
+            if (insights && insights.length > 0) {
+                // Filter only BodyLoad type and take latest 4
+                const relevantInsights = insights.filter(i => i.type === 'BodyLoad').slice(0, 4);
+                
+                if (relevantInsights.length === 0) {
+                    insightsContainer.innerHTML = '<p class="no-insights-msg">No clinical insights compiled yet. Log more symptoms to trigger analysis.</p>';
+                    return;
+                }
+
+                insightsContainer.innerHTML = relevantInsights.map(insight => {
+                    const date = !isNaN(Number(insight.timestamp)) ? new Date(Number(insight.timestamp)).toLocaleDateString(undefined, {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric'
+                    }) : 'Unknown Date';
+
+                    // Parse parts from text: "Cup %: X | Factors: Y | Advice: Z"
+                    let advice = insight.text;
+                    let factors = null;
+                    let score = null;
+
+                    if (insight.text.includes("Advice: ")) {
+                        advice = insight.text.split("Advice: ")[1].trim();
+                    }
+                    if (insight.text.includes("Factors: ")) {
+                        factors = insight.text.split("Factors: ")[1].split(" |")[0].trim();
+                    }
+                    if (insight.text.includes("Cup %: ")) {
+                        score = insight.text.split("Cup %: ")[1].split(" |")[0].trim();
+                    } else if (insight.text.includes("Body Load: ")) {
+                        score = insight.text.split("Body Load: ")[1].split(" |")[0].trim();
+                    }
+
+                    return `
+                        <div class="insight-item">
+                            <div class="insight-meta">
+                                <span class="insight-date">${date}</span>
+                                ${score ? `<span class="insight-score-badge">Cup Load: ${score}%</span>` : ''}
+                            </div>
+                            <p class="insight-advice">"${advice}"</p>
+                            ${factors && factors !== 'None' ? `<div class="insight-factors"><strong>Factors:</strong> ${factors}</div>` : ''}
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                insightsContainer.innerHTML = '<p class="no-insights-msg">No wellness insights generated yet. Log symptoms inside the Jot mobile app to view AI analysis.</p>';
+            }
         }
 
         function renderLogs(entries, categories) {
