@@ -1,5 +1,7 @@
 package com.notel.notel.ui.screen
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -36,12 +38,151 @@ fun KeyMetricsScreen(
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
     var showCalendar by remember { mutableStateOf(false) }
 
+    // CSV Export states
+    var showDownloadDialog by remember { mutableStateOf(false) }
+    var selectedExportDays by remember { mutableIntStateOf(30) }
+    var includeSpikes by remember { mutableStateOf(true) }
+    val isExporting by viewModel.isExportingCsv.collectAsState()
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
     LaunchedEffect(Unit) {
         viewModel.fetchMetricsForDate("today")
     }
 
+    LaunchedEffect(Unit) {
+        viewModel.csvReadyEvent.collect { file ->
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.provider",
+                file
+            )
+            val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = "text/csv"
+                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            val chooser = android.content.Intent.createChooser(intent, "Share Biometrics CSV")
+            context.startActivity(chooser)
+        }
+    }
+
     val displayDate = selectedDate.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
 
+    if (showDownloadDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!isExporting) showDownloadDialog = false },
+            title = { Text("Export Biometrics CSV", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        "Select how far back you want the download to go:",
+                        color = NotelTextSecondary,
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+                    
+                    val options = listOf(
+                        7 to "Last 7 Days",
+                        30 to "Last 30 Days",
+                        90 to "Last 90 Days",
+                        180 to "Last 180 Days",
+                        -1 to "All Time"
+                    )
+                    
+                    options.forEach { (days, label) ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { 
+                                    selectedExportDays = days 
+                                    if (days == -1) includeSpikes = false
+                                }
+                                .padding(vertical = 8.dp)
+                        ) {
+                            RadioButton(
+                                selected = selectedExportDays == days,
+                                onClick = { 
+                                    selectedExportDays = days 
+                                    if (days == -1) includeSpikes = false
+                                },
+                                colors = RadioButtonDefaults.colors(
+                                    selectedColor = NotelPrimary,
+                                    unselectedColor = NotelTextSecondary
+                                )
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(label, color = NotelTextPrimary, fontSize = 16.sp)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Include Heart Rate Spikes", 
+                                color = if (selectedExportDays == -1) NotelTextSecondary.copy(alpha = 0.5f) else NotelTextPrimary, 
+                                fontSize = 15.sp, 
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = if (selectedExportDays == -1) "you can not toggle it on when you are on all time" else "Calculates POTS spikes. Turning off makes export instant.", 
+                                color = if (selectedExportDays == -1) NotelPrimary else NotelTextSecondary, 
+                                fontSize = 12.sp
+                            )
+                        }
+                        Switch(
+                            checked = includeSpikes,
+                            onCheckedChange = { includeSpikes = it },
+                            enabled = selectedExportDays != -1,
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = NotelPrimary,
+                                uncheckedThumbColor = NotelTextSecondary,
+                                uncheckedTrackColor = NotelSurfaceHigh,
+                                disabledCheckedThumbColor = Color.White.copy(alpha = 0.3f),
+                                disabledCheckedTrackColor = NotelPrimary.copy(alpha = 0.3f),
+                                disabledUncheckedThumbColor = NotelTextSecondary.copy(alpha = 0.3f),
+                                disabledUncheckedTrackColor = NotelSurfaceHigh.copy(alpha = 0.3f)
+                            )
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.exportMetricsCsvAsync(selectedExportDays, includeSpikes)
+                        showDownloadDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
+                    enabled = !isExporting,
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    if (isExporting) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
+                    } else {
+                        Text("Export", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDownloadDialog = false }, enabled = !isExporting) {
+                    Text("Cancel", color = NotelTextSecondary)
+                }
+            },
+            containerColor = NotelSurface,
+            shape = RoundedCornerShape(16.dp)
+        )
+    }
 
     if (showCalendar) {
         val datePickerState = rememberDatePickerState(
@@ -104,6 +245,19 @@ fun KeyMetricsScreen(
                     }
                 },
                 actions = {
+                    if (isExporting) {
+                        CircularProgressIndicator(
+                            color = NotelPrimary,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .padding(12.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        IconButton(onClick = { showDownloadDialog = true }) {
+                            Icon(Icons.Default.Download, "Export CSV", tint = NotelTextSecondary)
+                        }
+                    }
                     IconButton(onClick = { showCalendar = true }) {
                         Icon(Icons.Default.CalendarMonth, "Select Date", tint = NotelTextSecondary)
                     }

@@ -333,7 +333,7 @@ fun QuickLogScreen(
                             state.isLoadingAdvice -> {
                                 GlassySpinner(size = 48.dp)
                                 Spacer(Modifier.height(12.dp))
-                                Text("Analysing your recent entries…", color = NotelTextSecondary, fontSize = 14.sp, textAlign = TextAlign.Center)
+                                Text("Analyzing your recent entries…", color = NotelTextSecondary, fontSize = 14.sp, textAlign = TextAlign.Center)
                             }
                             state.adviceError != null -> {
                                 state.adviceError?.let { err ->

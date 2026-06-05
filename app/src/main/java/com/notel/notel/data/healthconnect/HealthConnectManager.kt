@@ -16,12 +16,21 @@ import java.time.ZonedDateTime
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import kotlinx.serialization.Serializable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Serializable
 data class SpikeEventRecord(
     val peakBpm: Int,
     val durationMins: Int,
     val startTimeMs: Long = 0L
+)
+
+@Serializable
+data class DailySleepSummary(
+    val date: String,
+    val minutesAsleep: Int,
+    val deepMinutes: Int
 )
 
 /** Per-day heart rate summary exposing spike data for POTS-aware AI analysis. */
@@ -62,7 +71,8 @@ class HealthConnectManager(private val context: Context) {
             HealthPermission.getReadPermission(RespiratoryRateRecord::class),
             HealthPermission.getReadPermission(OxygenSaturationRecord::class),
             HealthPermission.getReadPermission(RestingHeartRateRecord::class),
-            HealthPermission.getReadPermission(PowerRecord::class)
+            HealthPermission.getReadPermission(PowerRecord::class),
+            "android.permission.health.READ_HEALTH_DATA_HISTORY"
         )
     }
 
@@ -281,114 +291,130 @@ class HealthConnectManager(private val context: Context) {
      *  spike statistics per day — critical for POTS/MCAS users whose daily
      *  averages appear normal while they experience large orthostatic spikes.
      */
-    suspend fun readHistoricalHeartRateWithSpikes(days: Int = 30): List<DailyHeartRateSummary> {
+    suspend fun readHistoricalHeartRateWithSpikes(days: Int = 30): List<DailyHeartRateSummary> = withContext(Dispatchers.IO) {
         try {
             val zoneId = ZoneId.systemDefault()
             val end = java.time.ZonedDateTime.now(zoneId).plusDays(1).truncatedTo(java.time.temporal.ChronoUnit.DAYS).toInstant()
             val start = end.minus(days.toLong(), java.time.temporal.ChronoUnit.DAYS)
 
-            val response = healthConnectClient.readRecords(
-                ReadRecordsRequest(
-                    recordType = HeartRateRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start, end)
-                )
-            )
-
-            // Group all samples by local date string mapping to time, bpm, and local hour
-            val byDay = mutableMapOf<String, MutableList<Triple<Long, Int, Int>>>()
-            
+            val results = mutableListOf<DailyHeartRateSummary>()
             var lastDayStart = 0L
             var lastDayEnd = 0L
             var lastDateStr = ""
-            
-            response.records.forEach { record ->
-                record.samples.forEach { sample ->
-                    val timestamp = sample.time.toEpochMilli()
-                    val dateStr = if (timestamp in lastDayStart until lastDayEnd) {
-                        lastDateStr
-                    } else {
-                        val zdt = java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(timestamp), zoneId)
-                        val startOfDay = zdt.truncatedTo(ChronoUnit.DAYS)
-                        lastDayStart = startOfDay.toInstant().toEpochMilli()
-                        lastDayEnd = startOfDay.plusDays(1).toInstant().toEpochMilli()
-                        lastDateStr = zdt.toLocalDate().toString()
-                        lastDateStr
+
+            // Query in 30-day chunks to keep database roundtrips low while maintaining low memory footprint
+            var currentStart = start
+            while (currentStart.isBefore(end)) {
+                val currentEnd = minOf(currentStart.plus(30, ChronoUnit.DAYS), end)
+                
+                val chunkByDay = mutableMapOf<String, MutableList<HeartSample>>()
+                var pageToken: String? = null
+                do {
+                    val response = healthConnectClient.readRecords(
+                        ReadRecordsRequest(
+                            recordType = HeartRateRecord::class,
+                            timeRangeFilter = TimeRangeFilter.between(currentStart, currentEnd),
+                            pageToken = pageToken
+                        )
+                    )
+
+                    response.records.forEach { record ->
+                        record.samples.forEach { sample ->
+                            val timestamp = sample.time.toEpochMilli()
+                            val dateStr = if (timestamp in lastDayStart until lastDayEnd) {
+                                lastDateStr
+                            } else {
+                                val zdt = java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(timestamp), zoneId)
+                                val startOfDay = zdt.truncatedTo(ChronoUnit.DAYS)
+                                lastDayStart = startOfDay.toInstant().toEpochMilli()
+                                lastDayEnd = startOfDay.plusDays(1).toInstant().toEpochMilli()
+                                lastDateStr = zdt.toLocalDate().toString()
+                                lastDateStr
+                            }
+                            val millisSinceStartOfDay = timestamp - lastDayStart
+                            val hour = (millisSinceStartOfDay / 3600000L).toInt()
+                            chunkByDay.getOrPut(dateStr) { mutableListOf() }.add(HeartSample(timestamp, sample.beatsPerMinute.toInt(), hour))
+                        }
                     }
-                    val millisSinceStartOfDay = timestamp - lastDayStart
-                    val hour = (millisSinceStartOfDay / 3600000L).toInt()
-                    byDay.getOrPut(dateStr) { mutableListOf() }.add(Triple(timestamp, sample.beatsPerMinute.toInt(), hour))
+                    pageToken = response.pageToken
+                } while (pageToken != null)
+
+                val threshold = DailyHeartRateSummary.SPIKE_THRESHOLD_BPM
+                chunkByDay.forEach { (date, samples) ->
+                    val sortedSamples = samples.sortedBy { it.time }
+                    val bpmList = sortedSamples.map { it.bpm }.sorted()
+                    val avg = bpmList.average().toInt()
+                    val max = bpmList.last()
+                    val min = bpmList.first()
+                    val p10Index = (bpmList.size * 0.10).toInt().coerceAtLeast(0)
+                    val baseline = bpmList[p10Index]
+                    val maxDelta = max - baseline
+                    
+                    val daytimeSamples = sortedSamples.filter { it.hour in 7..21 }
+                    val awakeAvg = if (daytimeSamples.isNotEmpty()) daytimeSamples.map { it.bpm }.average().toInt() else avg
+
+                    var dayCount = 0
+                    var nightCount = 0
+                    val eventRecords = mutableListOf<SpikeEventRecord>()
+                    var currentEventPeak = 0
+                    var currentEventStart = 0L
+                    var currentEventStartHour = 0
+                    var inEvent = false
+                    var eventEndMs = 0L
+                    
+                    for (s in sortedSamples) {
+                        if (s.bpm >= threshold) {
+                            if (!inEvent || s.time > eventEndMs) {
+                                if (inEvent) {
+                                    val dur = maxOf(1, ((eventEndMs - 300000L - currentEventStart) / 60000L).toInt())
+                                    eventRecords.add(SpikeEventRecord(currentEventPeak, dur, currentEventStart))
+                                    
+                                    if (currentEventStartHour in 7..21) dayCount++ else nightCount++
+                                }
+                                inEvent = true
+                                currentEventStart = s.time
+                                currentEventStartHour = s.hour
+                                currentEventPeak = s.bpm
+                            } else {
+                                currentEventPeak = maxOf(currentEventPeak, s.bpm)
+                            }
+                            eventEndMs = s.time + 300000L
+                        }
+                    }
+                    if (inEvent) {
+                        val dur = maxOf(1, ((eventEndMs - 300000L - currentEventStart) / 60000L).toInt())
+                        eventRecords.add(SpikeEventRecord(currentEventPeak, dur, currentEventStart))
+                        if (currentEventStartHour in 7..21) dayCount++ else nightCount++
+                    }
+
+                    results.add(
+                        DailyHeartRateSummary(
+                            date = date,
+                            avg = avg,
+                            max = max,
+                            min = min,
+                            baseline = baseline,
+                            spikeCount = dayCount + nightCount,
+                            daySpikeCount = dayCount,
+                            nightSpikeCount = nightCount,
+                            awakeAvg = awakeAvg,
+                            maxDelta = maxDelta,
+                            totalReadings = sortedSamples.size,
+                            eventsList = eventRecords
+                        )
+                    )
                 }
+
+                currentStart = currentEnd
             }
 
-            val threshold = DailyHeartRateSummary.SPIKE_THRESHOLD_BPM
-            return byDay.map { (date, samples) ->
-                val sortedSamples = samples.sortedBy { it.first }
-                val bpmList = sortedSamples.map { it.second }.sorted()
-                val avg = bpmList.average().toInt()
-                val max = bpmList.last()
-                val min = bpmList.first()
-                val p10Index = (bpmList.size * 0.10).toInt().coerceAtLeast(0)
-                val baseline = bpmList[p10Index]
-                val maxDelta = max - baseline
-                
-                val daytimeSamples = sortedSamples.filter { it.third in 7..21 }
-                val awakeAvg = if (daytimeSamples.isNotEmpty()) daytimeSamples.map { it.second }.average().toInt() else avg
-
-                var dayCount = 0
-                var nightCount = 0
-                val eventRecords = mutableListOf<SpikeEventRecord>()
-                var currentEventPeak = 0
-                var currentEventStart = 0L
-                var currentEventStartHour = 0
-                var inEvent = false
-                var eventEndMs = 0L
-                
-                for (s in sortedSamples) {
-                    if (s.second >= threshold) {
-                        if (!inEvent || s.first > eventEndMs) {
-                            if (inEvent) {
-                                val dur = maxOf(1, ((eventEndMs - 300000L - currentEventStart) / 60000L).toInt())
-                                eventRecords.add(SpikeEventRecord(currentEventPeak, dur, currentEventStart))
-                                
-                                if (currentEventStartHour in 7..21) dayCount++ else nightCount++
-                            }
-                            inEvent = true
-                            currentEventStart = s.first
-                            currentEventStartHour = s.third
-                            currentEventPeak = s.second
-                        } else {
-                            currentEventPeak = maxOf(currentEventPeak, s.second)
-                        }
-                        eventEndMs = s.first + 300000L
-                    }
-                }
-                if (inEvent) {
-                    val dur = maxOf(1, ((eventEndMs - 300000L - currentEventStart) / 60000L).toInt())
-                    eventRecords.add(SpikeEventRecord(currentEventPeak, dur, currentEventStart))
-                    if (currentEventStartHour in 7..21) dayCount++ else nightCount++
-                }
-
-                DailyHeartRateSummary(
-                    date = date,
-                    avg = avg,
-                    max = max,
-                    min = min,
-                    baseline = baseline,
-                    spikeCount = dayCount + nightCount,
-                    daySpikeCount = dayCount,
-                    nightSpikeCount = nightCount,
-                    awakeAvg = awakeAvg,
-                    maxDelta = maxDelta,
-                    totalReadings = sortedSamples.size,
-                    eventsList = eventRecords
-                )
-            }.sortedByDescending { it.date }
+            results.sortedByDescending { it.date }
         } catch (e: Exception) {
-            return emptyList()
+            emptyList()
         }
     }
 
-    suspend fun readHistoricalHeartRate(days: Int = 180): List<Pair<String, Int>> {
+    suspend fun readHistoricalHeartRate(days: Int = 180): List<Pair<String, Int>> = withContext(Dispatchers.IO) {
         try {
             val end = ZonedDateTime.now(ZoneId.systemDefault()).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
             val start = end.minus(days.toLong(), ChronoUnit.DAYS)
@@ -405,7 +431,7 @@ class HealthConnectManager(private val context: Context) {
                 timeZone = java.util.TimeZone.getTimeZone(java.time.ZoneId.systemDefault())
             }
             
-            return response.mapNotNull { bucket ->
+            response.mapNotNull { bucket ->
                 val avg = bucket.result[HeartRateRecord.BPM_AVG]
                 if (avg != null && avg > 0) {
                     val dateStr = formatter.format(java.util.Date(bucket.startTime.toEpochMilli()))
@@ -413,12 +439,12 @@ class HealthConnectManager(private val context: Context) {
                 } else null
             }.sortedBy { it.first }
         } catch(e: Exception) {
-            return emptyList()
+            emptyList()
         }
     }
 
 
-    suspend fun readHistoricalSleep(days: Int = 180, targetDateStr: String? = null): List<Pair<String, Int>> {
+    suspend fun readHistoricalSleep(days: Int = 180, targetDateStr: String? = null): List<Pair<String, Int>> = withContext(Dispatchers.IO) {
         try {
             val anchorDate = if (targetDateStr != null) {
                 ZonedDateTime.of(java.time.LocalDate.parse(targetDateStr), java.time.LocalTime.MAX, ZoneId.systemDefault())
@@ -432,15 +458,19 @@ class HealthConnectManager(private val context: Context) {
             
             val start = anchorDate.minusDays(days.toLong()).truncatedTo(ChronoUnit.DAYS).toInstant()
             
-            // Note: SLEEP_SESSION_DURATION_TOTAL is the best way to get total minutes,
-            // but for actual 'minutes asleep' we might still need sessions if we want awake deduction.
-            // For general trends, session duration is standard.
-            val response = healthConnectClient.readRecords(
-                ReadRecordsRequest(
-                    recordType = SleepSessionRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start, end)
+            val records = mutableListOf<SleepSessionRecord>()
+            var pageToken: String? = null
+            do {
+                val pageResponse = healthConnectClient.readRecords(
+                    ReadRecordsRequest(
+                        recordType = SleepSessionRecord::class,
+                        timeRangeFilter = TimeRangeFilter.between(start, end),
+                        pageToken = pageToken
+                    )
                 )
-            )
+                records.addAll(pageResponse.records)
+                pageToken = pageResponse.pageToken
+            } while (pageToken != null)
             
             val formatter = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
                 timeZone = java.util.TimeZone.getTimeZone(ZoneId.systemDefault())
@@ -450,7 +480,7 @@ class HealthConnectManager(private val context: Context) {
             
             val sessionIntervals = mutableListOf<Triple<Instant, Instant, Int>>()
             
-            response.records.forEach { session ->
+            records.forEach { session ->
                 var awake = 0L
                 session.stages.forEach { stage ->
                     if (stage.stage in listOf(SleepSessionRecord.STAGE_TYPE_AWAKE, SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED, SleepSessionRecord.STAGE_TYPE_OUT_OF_BED)) {
@@ -492,7 +522,7 @@ class HealthConnectManager(private val context: Context) {
                 
                 // Correctly handle awake stages by taking their union as well
                 val awakeIntervals = mutableListOf<Pair<Instant, Instant>>()
-                response.records.forEach { record ->
+                records.forEach { record ->
                     if (record.startTime.isBefore(end) && record.endTime.isAfter(start)) {
                         record.stages.forEach { stage ->
                             if (stage.stage in listOf(SleepSessionRecord.STAGE_TYPE_AWAKE, SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED, SleepSessionRecord.STAGE_TYPE_OUT_OF_BED)) {
@@ -529,9 +559,9 @@ class HealthConnectManager(private val context: Context) {
             
 
             
-            return dailySessions.entries.map { it.key to it.value }.sortedBy { it.first }
+            dailySessions.entries.map { it.key to it.value }.sortedBy { it.first }
         } catch(e: Exception) {
-            return emptyList()
+            emptyList()
         }
     }
 
@@ -566,31 +596,38 @@ class HealthConnectManager(private val context: Context) {
         } catch(e: Exception) { return null }
     }
 
-    suspend fun readHeartRateVariability(days: Int = 30): List<Pair<String, Double>> {
+    suspend fun readHeartRateVariability(days: Int = 30): List<Pair<String, Double>> = withContext(Dispatchers.IO) {
         try {
             val end = ZonedDateTime.now(ZoneId.systemDefault()).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
             val start = end.minus(days.toLong(), ChronoUnit.DAYS)
             
-            val response = healthConnectClient.readRecords(
-                ReadRecordsRequest(
-                    recordType = HeartRateVariabilityRmssdRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start, end)
+            val records = mutableListOf<HeartRateVariabilityRmssdRecord>()
+            var pageToken: String? = null
+            do {
+                val pageResponse = healthConnectClient.readRecords(
+                    ReadRecordsRequest(
+                        recordType = HeartRateVariabilityRmssdRecord::class,
+                        timeRangeFilter = TimeRangeFilter.between(start, end),
+                        pageToken = pageToken
+                    )
                 )
-            )
+                records.addAll(pageResponse.records)
+                pageToken = pageResponse.pageToken
+            } while (pageToken != null)
             
             val formatter = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
                 timeZone = java.util.TimeZone.getTimeZone(java.time.ZoneId.systemDefault())
             }
             
-            val dailyValues = response.records.groupBy { 
+            val dailyValues = records.groupBy { 
                 formatter.format(java.util.Date(it.time.toEpochMilli()))
             }.mapValues { entry ->
                 entry.value.map { it.heartRateVariabilityMillis }.average()
             }
             
-            return dailyValues.toList().sortedBy { it.first }
+            dailyValues.toList().sortedBy { it.first }
         } catch(e: Exception) {
-            return emptyList()
+            emptyList()
         }
     }
 
@@ -652,7 +689,68 @@ class HealthConnectManager(private val context: Context) {
         } catch(e: Exception) { return null }
     }
 
+    suspend fun readHistoricalSleepWithDeep(days: Int = 180): List<DailySleepSummary> = withContext(Dispatchers.IO) {
+        try {
+            val end = ZonedDateTime.now(ZoneId.systemDefault()).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
+            val start = end.minus(days.toLong(), ChronoUnit.DAYS)
+            
+            val records = mutableListOf<SleepSessionRecord>()
+            var pageToken: String? = null
+            do {
+                val pageResponse = healthConnectClient.readRecords(
+                    ReadRecordsRequest(
+                        recordType = SleepSessionRecord::class,
+                        timeRangeFilter = TimeRangeFilter.between(start, end),
+                        pageToken = pageToken
+                    )
+                )
+                records.addAll(pageResponse.records)
+                pageToken = pageResponse.pageToken
+            } while (pageToken != null)
+            
+            val formatter = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
+                timeZone = java.util.TimeZone.getTimeZone(ZoneId.systemDefault())
+            }
+            
+            val dailyAsleep = mutableMapOf<String, Int>()
+            val dailyDeep = mutableMapOf<String, Int>()
+            
+            records.forEach { session ->
+                var deep = 0
+                var awake = 0L
+                session.stages.forEach { stage ->
+                    val durationMins = ChronoUnit.MINUTES.between(stage.startTime, stage.endTime)
+                    when (stage.stage) {
+                        SleepSessionRecord.STAGE_TYPE_DEEP -> deep += durationMins.toInt()
+                        SleepSessionRecord.STAGE_TYPE_AWAKE,
+                        SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED,
+                        SleepSessionRecord.STAGE_TYPE_OUT_OF_BED -> awake += durationMins
+                    }
+                }
+                val duration = Duration.between(session.startTime, session.endTime).toMinutes()
+                val asleep = (duration - awake).toInt().coerceAtLeast(0)
+                
+                val dateStr = formatter.format(java.util.Date(session.endTime.toEpochMilli()))
+                dailyAsleep[dateStr] = (dailyAsleep[dateStr] ?: 0) + asleep
+                dailyDeep[dateStr] = (dailyDeep[dateStr] ?: 0) + deep
+            }
+            
+            dailyAsleep.keys.map { date ->
+                DailySleepSummary(
+                    date = date,
+                    minutesAsleep = dailyAsleep[date] ?: 0,
+                    deepMinutes = dailyDeep[date] ?: 0
+                )
+            }.sortedByDescending { it.date }
+        } catch(e: Exception) {
+            emptyList()
+        }
+    }
+
     fun requestPermissionsActivityContract(): androidx.activity.result.contract.ActivityResultContract<Set<String>, Set<String>> {
         return PermissionController.createRequestPermissionResultContract()
     }
 }
+
+private class HeartSample(val time: Long, val bpm: Int, val hour: Int)
+

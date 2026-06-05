@@ -258,4 +258,50 @@ class NotificationHelper(private val context: Context) {
 
         manager.notify(2001, notification)
     }
+
+    fun showCsvReady(file: java.io.File) {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val channelId = "csv_notifications"
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                "Biometrics Exports",
+                NotificationManager.IMPORTANCE_HIGH
+            )
+            manager.createNotificationChannel(channel)
+        }
+
+        val fileUri = androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.provider",
+            file
+        )
+
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/csv"
+            putExtra(Intent.EXTRA_STREAM, fileUri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        val chooser = Intent.createChooser(shareIntent, "Share Biometrics CSV")
+        val sharePendingIntent = PendingIntent.getActivity(
+            context, 
+            2, 
+            chooser, 
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(R.drawable.ic_noti_j)
+            .setContentTitle("Biometrics CSV Ready 📊")
+            .setContentText("Your biometrics CSV has been saved to Downloads. Tap to share.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("Your biometrics CSV data has been saved to your Downloads folder. Tap this notification to share it or review the file."))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(sharePendingIntent) // Tapping now shares directly
+            .addAction(android.R.drawable.ic_menu_share, "Share", sharePendingIntent)
+            .setAutoCancel(true)
+            .build()
+
+        manager.notify(2002, notification)
+    }
 }

@@ -75,11 +75,19 @@ data class FitbitState(
 @HiltViewModel
 class FitbitViewModel @Inject constructor(
     private val preferences: NotelPreferences,
-    val healthConnectManager: HealthConnectManager
+    val healthConnectManager: HealthConnectManager,
+    private val lifecycleTracker: com.notel.notel.util.AppLifecycleTracker,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(FitbitState(connectedDevices = listOf("Health Connect")))
     val state = _state.asStateFlow()
+
+    private val _isExportingCsv = MutableStateFlow(false)
+    val isExportingCsv = _isExportingCsv.asStateFlow()
+
+    private val _csvReadyEvent = MutableSharedFlow<java.io.File>()
+    val csvReadyEvent = _csvReadyEvent.asSharedFlow()
 
     private var lastSyncTime = 0L
     private var cachedDailyStatsMap = mapOf<String, CachedMetrics>()
@@ -1155,5 +1163,226 @@ class FitbitViewModel @Inject constructor(
             runningDebt = Math.max(0.0, runningDebt)
         }
         return (-runningDebt * 60).toInt()
+    }
+
+    suspend fun exportMetricsCsv(days: Int, includeSpikes: Boolean): String = withContext(Dispatchers.IO) {
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        val hasHC = healthConnectManager.hasAllPermissions()
+        val token = preferences.fitbitToken.first()
+        
+        val today = java.time.LocalDate.now()
+        val resolvedDays = if (days == -1) 3650 else days
+        
+        val avgHrMap = mutableMapOf<String, Int>()
+        val sleepDurationMap = mutableMapOf<String, Int>()
+        val deepSleepMap = mutableMapOf<String, Int>()
+        val spikesMap = mutableMapOf<String, Int>()
+        
+        // ── Get Health Connect Data ──
+        if (hasHC) {
+            try {
+                // Heart Rate Average
+                val hcHr = healthConnectManager.readHistoricalHeartRate(resolvedDays)
+                hcHr.forEach { (date, avg) -> avgHrMap[date] = avg }
+                
+                // Heart Rate Spikes
+                if (includeSpikes) {
+                    val hcSpikes = healthConnectManager.readHistoricalHeartRateWithSpikes(resolvedDays)
+                    hcSpikes.forEach { summary -> spikesMap[summary.date] = summary.spikeCount }
+                }
+                
+                // Sleep details
+                val hcSleep = healthConnectManager.readHistoricalSleepWithDeep(resolvedDays)
+                hcSleep.forEach { summary ->
+                    sleepDurationMap[summary.date] = summary.minutesAsleep
+                    deepSleepMap[summary.date] = summary.deepMinutes
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        
+        // ── Get Fitbit Data ──
+        if (token.isNotBlank()) {
+            try {
+                // Fetch Sleep list from Fitbit (contains stages and deep minutes)
+                val client = okhttp3.OkHttpClient()
+                val todayStr = today.toString()
+                val sleepHistRequest = okhttp3.Request.Builder()
+                    .url("https://api.fitbit.com/1.2/user/-/sleep/list.json?beforeDate=$todayStr&sort=desc&offset=0&limit=$resolvedDays")
+                    .header("Authorization", "Bearer $token")
+                    .build()
+                
+                client.newCall(sleepHistRequest).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val body = response.body?.string() ?: ""
+                        val root = json.parseToJsonElement(body).jsonObject
+                        val sleepArray = root["sleep"]?.jsonArray ?: emptyList()
+                        sleepArray.forEach { el ->
+                            val obj = el.jsonObject
+                            val date = obj["dateOfSleep"]?.jsonPrimitive?.content ?: ""
+                            val minAsleep = obj["minutesAsleep"]?.jsonPrimitive?.intOrNull ?: 0
+                            val summary = obj["levels"]?.jsonObject?.get("summary")?.jsonObject
+                            val deep = summary?.get("deep")?.jsonObject?.get("minutes")?.jsonPrimitive?.intOrNull ?: 0
+                            if (date.isNotBlank() && minAsleep > 0) {
+                                sleepDurationMap[date] = minAsleep
+                                deepSleepMap[date] = deep
+                            }
+                        }
+                    }
+                }
+                
+                // Fitbit heart rate / resting HR fallback
+                val limitDays = if (days == -1) 365 else days // Fitbit heart rate 6m URL or daysd.json (limit to 365 days max for fallback)
+                val hrHistRequest = okhttp3.Request.Builder()
+                    .url("https://api.fitbit.com/1/user/-/activities/heart/date/today/${limitDays}d.json")
+                    .header("Authorization", "Bearer $token")
+                    .build()
+                
+                client.newCall(hrHistRequest).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val body = response.body?.string() ?: ""
+                        val root = json.parseToJsonElement(body).jsonObject
+                        root["activities-heart"]?.jsonArray?.forEach { el ->
+                            val obj = el.jsonObject
+                            val date = obj["dateTime"]?.jsonPrimitive?.content ?: ""
+                            val valObj = obj["value"]?.jsonObject
+                            val rhr = valObj?.get("restingHeartRate")?.jsonPrimitive?.intOrNull ?: 0
+                            if (date.isNotBlank() && rhr > 0) {
+                                if (!avgHrMap.containsKey(date)) {
+                                    avgHrMap[date] = rhr
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        
+        // ── Local cache fallback ──
+        try {
+            val cachedHR = preferences.historicalHeartRate.first()
+            if (cachedHR.isNotBlank()) {
+                val list = json.decodeFromString<List<BiomarkerPoint>>(cachedHR)
+                list.forEach { p -> 
+                    if (!avgHrMap.containsKey(p.date) || avgHrMap[p.date] == 0) {
+                        avgHrMap[p.date] = p.value.toInt()
+                    }
+                }
+            }
+        } catch (e: Exception) {}
+
+        try {
+            val cachedSleep = preferences.historicalSleep.first()
+            if (cachedSleep.isNotBlank()) {
+                val list = json.decodeFromString<List<BiomarkerPoint>>(cachedSleep)
+                list.forEach { p -> 
+                    if (!sleepDurationMap.containsKey(p.date) || sleepDurationMap[p.date] == 0) {
+                        sleepDurationMap[p.date] = p.value.toInt()
+                    }
+                }
+            }
+        } catch (e: Exception) {}
+
+        try {
+            val cachedSpikes = preferences.historicalHrSpikes.first()
+            if (cachedSpikes.isNotBlank()) {
+                val list = json.decodeFromString<List<com.notel.notel.data.healthconnect.DailyHeartRateSummary>>(cachedSpikes)
+                list.forEach { summary -> 
+                    if (!spikesMap.containsKey(summary.date) || spikesMap[summary.date] == 0) {
+                        spikesMap[summary.date] = summary.spikeCount
+                    }
+                }
+            }
+        } catch (e: Exception) {}
+        
+        val datesList = if (days == -1) {
+            val earliestDateStr = (avgHrMap.keys + sleepDurationMap.keys + deepSleepMap.keys + spikesMap.keys)
+                .filter { it.isNotBlank() }
+                .minOrNull()
+            if (earliestDateStr != null) {
+                try {
+                    val earliestDate = java.time.LocalDate.parse(earliestDateStr)
+                    val daysBetween = java.time.temporal.ChronoUnit.DAYS.between(earliestDate, today).toInt()
+                    (0..daysBetween).map { today.minusDays(it.toLong()).toString() }
+                } catch(e: Exception) {
+                    (0 until 365).map { today.minusDays(it.toLong()).toString() }
+                }
+            } else {
+                emptyList()
+            }
+        } else {
+            (0 until days).map { today.minusDays(it.toLong()).toString() }
+        }
+
+        // ── Generate CSV ──
+        val csv = StringBuilder()
+        csv.append("Date,Average HR (BPM),Sleep Duration (mins),Deep Sleep (mins),Spikes (count)\n")
+
+        fun centerPad(text: String, width: Int): String {
+            if (text.length >= width) return text
+            val totalPadding = width - text.length
+            val leftPadding = totalPadding / 2
+            val rightPadding = totalPadding - leftPadding
+            return " ".repeat(leftPadding) + text + " ".repeat(rightPadding)
+        }
+
+        datesList.sortedDescending().forEach { date ->
+            val avgHrVal = avgHrMap[date]?.let { if (it == 0) "No data" else it.toString() } ?: "No data"
+            val sleepMinsVal = sleepDurationMap[date]?.let { if (it == 0) "No data" else it.toString() } ?: "No data"
+            val deepMinsVal = deepSleepMap[date]?.let { if (it == 0) "No data" else it.toString() } ?: "No data"
+            val spikesVal = spikesMap[date]?.toString() ?: "No data"
+
+            val dateC = centerPad(date, 10)
+            val avgHrC = centerPad(avgHrVal, 18)
+            val sleepMinsC = centerPad(sleepMinsVal, 21)
+            val deepMinsC = centerPad(deepMinsVal, 17)
+            val spikesC = centerPad(spikesVal, 14)
+
+            csv.append("$dateC,$avgHrC,$sleepMinsC,$deepMinsC,$spikesC\n")
+        }
+        
+        csv.toString()
+    }
+
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+    fun exportMetricsCsvAsync(days: Int, includeSpikes: Boolean) {
+        if (_isExportingCsv.value) return
+        _isExportingCsv.value = true
+        kotlinx.coroutines.GlobalScope.launch {
+            try {
+                val csvContent = exportMetricsCsv(days, includeSpikes)
+                val fileName = if (days == -1) "jot_metrics_alltime.csv" else "jot_metrics_${days}d.csv"
+                val cacheFile = java.io.File(context.cacheDir, fileName)
+                cacheFile.writeText(csvContent)
+
+                // Save to Downloads
+                val resolver = context.contentResolver
+                val contentValues = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                    put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/csv")
+                    put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+                }
+                val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                uri?.let {
+                    resolver.openOutputStream(it)?.use { os ->
+                        os.write(csvContent.toByteArray())
+                    }
+                }
+
+                _csvReadyEvent.emit(cacheFile)
+
+                // Send notification if app is backgrounded
+                if (!lifecycleTracker.isAppInForeground.value) {
+                    com.notel.notel.util.NotificationHelper(context).showCsvReady(cacheFile)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isExportingCsv.value = false
+            }
+        }
     }
 }
