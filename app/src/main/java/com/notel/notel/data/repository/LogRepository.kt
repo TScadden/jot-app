@@ -1383,7 +1383,7 @@ class LogRepository @Inject constructor(
             targetDateStr
         }
 
-        val sleepMins = sleepHist.find { it.first == dataDateStr }?.second ?: 0
+        val sleepMins = sleepHist.find { it.first == targetDateStr }?.second ?: 0
         val calVal = calHist.find { it.first == dataDateStr }?.second ?: 0
         
         val todayAwake = preferences.todayAwakeAvgHr.first()
