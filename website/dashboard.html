@@ -797,14 +797,25 @@
                 try {
                     metrics = JSON.parse(insight.text);
                 } catch(e) {}
+                
+                const existing = dateMap.get(key) || {
+                    rawDate: d,
+                    sleepMins: 0,
+                    deepSleepMins: 0,
+                    avgHr: 0,
+                    hrv: 0,
+                    calories: 0,
+                    jots: 0
+                };
+
                 dateMap.set(key, {
                     rawDate: d,
-                    sleepMins: metrics.sleepMins || 0,
-                    deepSleepMins: metrics.deepSleepMins || 0,
-                    avgHr: metrics.avgHr || 0,
-                    hrv: metrics.hrv || 0,
-                    calories: metrics.calories || 0,
-                    jots: 0
+                    sleepMins: metrics.sleepMins || existing.sleepMins,
+                    deepSleepMins: metrics.deepSleepMins || existing.deepSleepMins,
+                    avgHr: metrics.avgHr || existing.avgHr,
+                    hrv: metrics.hrv || existing.hrv,
+                    calories: metrics.calories || existing.calories,
+                    jots: existing.jots
                 });
             });
 
