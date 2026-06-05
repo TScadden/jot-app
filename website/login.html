@@ -211,29 +211,9 @@
         let isLoginMode = true;
 
         function toggleMode() {
-            isLoginMode = !isLoginMode;
-            const title = document.getElementById('auth-title');
-            const subtitle = document.getElementById('auth-subtitle');
-            const submitBtn = document.getElementById('submit-btn');
-            const toggleWrapper = document.getElementById('toggle-wrapper');
-            const forgotLink = document.getElementById('forgot-pass-link');
             const alertBox = document.getElementById('alert-box');
-
-            alertBox.style.display = 'none';
-
-            if (isLoginMode) {
-                title.textContent = 'Welcome Back';
-                subtitle.textContent = 'Log in to view your synchronised wellness logs.';
-                submitBtn.textContent = 'Log In';
-                forgotLink.style.display = 'block';
-                toggleWrapper.innerHTML = `Don't have an account? <span onclick="toggleMode()">Register</span>`;
-            } else {
-                title.textContent = 'Create Account';
-                subtitle.textContent = 'Sign up to start tracking your clinical body load.';
-                submitBtn.textContent = 'Register';
-                forgotLink.style.display = 'none';
-                toggleWrapper.innerHTML = `Already have an account? <span onclick="toggleMode()">Log In</span>`;
-            }
+            alertBox.textContent = 'To ensure your biometrics are synchronized correctly, new accounts must be registered inside the Jot mobile app. Please download the app to sign up.';
+            alertBox.className = 'message-box error';
         }
 
         async function handleAuth(e) {
@@ -249,7 +229,8 @@
             submitBtn.disabled = true;
             submitBtn.textContent = isLoginMode ? 'Signing In...' : 'Registering...';
 
-            const endpoint = isLoginMode ? '/api/auth/login' : '/api/auth/register';
+            const API_BASE = "https://api.jottracker.com";
+            const endpoint = isLoginMode ? `${API_BASE}/api/auth/login` : `${API_BASE}/api/auth/register`;
 
             try {
                 const response = await fetch(endpoint, {
