@@ -927,11 +927,13 @@ class LogRepository @Inject constructor(
         val ts = timestamp ?: System.currentTimeMillis()
         
         // Remove existing BodyLoad insight for the same day to prevent duplicates
-        if (type == "BodyLoad") {
-            insights.removeAll { it.type == "BodyLoad" && isSameDay(it.timestamp, ts) }
+        val insightId = if (type == "BodyLoad") {
+            val date = java.time.Instant.ofEpochMilli(ts).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+            "bodyload_$date"
+        } else {
+            java.util.UUID.randomUUID().toString()
         }
-        
-        val newInsight = AiInsight(java.util.UUID.randomUUID().toString(), text, ts, type)
+        val newInsight = AiInsight(insightId, text, ts, type)
         insights.add(0, newInsight)
         preferences.setAiInsights(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(AiInsight.serializer()), insights.take(100))) // Keep last 100
         

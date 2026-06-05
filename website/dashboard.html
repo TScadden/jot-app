@@ -511,8 +511,23 @@
             if (!insightsContainer) return;
 
             if (insights && insights.length > 0) {
-                // Filter only BodyLoad type and take latest 4
-                const relevantInsights = insights.filter(i => i.type === 'BodyLoad').slice(0, 4);
+                // Filter BodyLoad type and keep only the latest one per calendar day
+                const uniqueInsights = [];
+                const seenDates = new Set();
+
+                insights.forEach(insight => {
+                    if (insight.type === 'BodyLoad') {
+                        const dateStr = !isNaN(Number(insight.timestamp)) 
+                            ? new Date(Number(insight.timestamp)).toDateString() 
+                            : 'Unknown';
+                        if (!seenDates.has(dateStr)) {
+                            seenDates.add(dateStr);
+                            uniqueInsights.push(insight);
+                        }
+                    }
+                });
+
+                const relevantInsights = uniqueInsights.slice(0, 4);
                 
                 if (relevantInsights.length === 0) {
                     insightsContainer.innerHTML = '<p class="no-insights-msg">No clinical insights compiled yet. Log more symptoms to trigger analysis.</p>';
