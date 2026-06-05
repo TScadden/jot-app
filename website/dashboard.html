@@ -180,6 +180,7 @@
 
         /* Logs Widget styling */
         .logs-section {
+            position: relative;
             padding: 2rem;
             border-radius: 24px;
             max-height: 800px;
@@ -315,21 +316,21 @@
 
         /* Back to Top Button */
         .back-to-top-btn {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            width: 48px;
-            height: 48px;
+            position: absolute;
+            bottom: 20px;
+            right: 25px;
+            width: 44px;
+            height: 44px;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            z-index: 9999;
+            z-index: 100;
             opacity: 0;
             visibility: hidden;
             transition: opacity 0.3s ease, visibility 0.3s ease, transform 0.3s ease, background-color 0.3s ease, color 0.3s ease;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
             transform: translateY(10px);
             background: #161622 !important;
             color: #7C6EFF;
@@ -429,6 +430,12 @@
                 </div>
 
                 <div class="logs-timeline" id="logs-list"></div>
+
+                <button id="back-to-top" class="back-to-top-btn glass" onclick="scrollToTop()" aria-label="Back to Top">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="m18 15-6-6-6 6"/>
+                    </svg>
+                </button>
             </div>
         </div>
     </div>
@@ -704,11 +711,6 @@
         fetchDashboardData();
     </script>
     
-    <button id="back-to-top" class="back-to-top-btn glass" onclick="scrollToTop()" aria-label="Back to Top">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="m18 15-6-6-6 6"/>
-        </svg>
-    </button>
 </body>
 
 </html>
