@@ -305,7 +305,7 @@
                 document.getElementById('loading-spinner').style.display = 'none';
 
                 if (response.ok) {
-                    renderStats(data.profile);
+                    renderStats(data.profile, data.insights);
                     renderLogs(data.entries, data.categories);
                 } else {
                     showError('Failed to fetch synchronization data.');
@@ -316,11 +316,27 @@
             }
         }
 
-        function renderStats(profile) {
+        function renderStats(profile, insights) {
             if (!profile) return;
 
-            const score = profile.todayScore || profile.weeklyScore;
-            document.getElementById('stat-bodyload').textContent = score ? `${score}/100` : 'No data';
+            let bodyLoadScore = null;
+            if (insights && insights.length > 0) {
+                const bodyLoadInsight = insights.find(i => i.type === 'BodyLoad');
+                if (bodyLoadInsight) {
+                    const text = bodyLoadInsight.text;
+                    let parsedScore = null;
+                    if (text.includes("Cup %: ")) {
+                        parsedScore = parseInt(text.split("Cup %: ")[1].split(" |")[0].trim(), 10);
+                    } else if (text.includes("Body Load: ")) {
+                        parsedScore = parseInt(text.split("Body Load: ")[1].split(" |")[0].trim(), 10);
+                    }
+                    if (!isNaN(parsedScore) && parsedScore !== null) {
+                        bodyLoadScore = parsedScore;
+                    }
+                }
+            }
+
+            document.getElementById('stat-bodyload').textContent = bodyLoadScore !== null ? `${bodyLoadScore}/100` : 'No data';
             document.getElementById('stat-sleep').textContent = profile.todaySleepMins ? formatMinutes(profile.todaySleepMins) : 'No data';
             document.getElementById('stat-heart').textContent = profile.todayAvgHr ? `${profile.todayAvgHr} bpm` : 'No data';
             document.getElementById('stat-spikes').textContent = profile.todaySpikes !== undefined && profile.todaySpikes !== null ? profile.todaySpikes : 'No data';
