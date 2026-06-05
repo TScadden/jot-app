@@ -1319,7 +1319,7 @@ class FitbitViewModel @Inject constructor(
 
         // ── Generate CSV ──
         val csv = StringBuilder()
-        csv.append("Date,Average HR (BPM),Sleep Duration (mins),Deep Sleep (mins),Spikes (count)\n")
+        csv.append("Date,Average HR (BPM),Sleep Duration,Deep Sleep,Spikes (count)\n")
 
         fun centerPad(text: String, width: Int): String {
             if (text.length >= width) return text
@@ -1329,16 +1329,22 @@ class FitbitViewModel @Inject constructor(
             return " ".repeat(leftPadding) + text + " ".repeat(rightPadding)
         }
 
+        fun formatMinsToHoursMins(mins: Int): String {
+            val h = mins / 60
+            val m = mins % 60
+            return "${h}h ${m}m"
+        }
+
         datesList.sortedDescending().forEach { date ->
             val avgHrVal = avgHrMap[date]?.let { if (it == 0) "No data" else it.toString() } ?: "No data"
-            val sleepMinsVal = sleepDurationMap[date]?.let { if (it == 0) "No data" else it.toString() } ?: "No data"
-            val deepMinsVal = deepSleepMap[date]?.let { if (it == 0) "No data" else it.toString() } ?: "No data"
+            val sleepMinsVal = sleepDurationMap[date]?.let { if (it == 0) "No data" else formatMinsToHoursMins(it) } ?: "No data"
+            val deepMinsVal = deepSleepMap[date]?.let { if (it == 0) "No data" else formatMinsToHoursMins(it) } ?: "No data"
             val spikesVal = spikesMap[date]?.toString() ?: "No data"
 
             val dateC = centerPad(date, 10)
             val avgHrC = centerPad(avgHrVal, 18)
-            val sleepMinsC = centerPad(sleepMinsVal, 21)
-            val deepMinsC = centerPad(deepMinsVal, 17)
+            val sleepMinsC = centerPad(sleepMinsVal, 14)
+            val deepMinsC = centerPad(deepMinsVal, 10)
             val spikesC = centerPad(spikesVal, 14)
 
             csv.append("$dateC,$avgHrC,$sleepMinsC,$deepMinsC,$spikesC\n")

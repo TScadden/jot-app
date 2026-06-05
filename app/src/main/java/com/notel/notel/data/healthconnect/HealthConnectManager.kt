@@ -57,6 +57,28 @@ data class DailyHeartRateSummary(
 class HealthConnectManager(private val context: Context) {
     val healthConnectClient by lazy { HealthConnectClient.getOrCreate(context) }
 
+    private fun deduplicateSleepSessions(sessions: List<SleepSessionRecord>): List<SleepSessionRecord> {
+        val sorted = sessions.sortedBy { it.startTime }
+        val result = mutableListOf<SleepSessionRecord>()
+        for (session in sorted) {
+            if (result.isEmpty()) {
+                result.add(session)
+            } else {
+                val last = result.last()
+                if (session.startTime.isBefore(last.endTime)) {
+                    val lastDuration = Duration.between(last.startTime, last.endTime).toMillis()
+                    val currentDuration = Duration.between(session.startTime, session.endTime).toMillis()
+                    if (currentDuration > lastDuration) {
+                        result[result.size - 1] = session
+                    }
+                } else {
+                    result.add(session)
+                }
+            }
+        }
+        return result
+    }
+
     val permissions by lazy {
         setOf(
             HealthPermission.getReadPermission(HeartRateRecord::class),
@@ -473,14 +495,15 @@ class HealthConnectManager(private val context: Context) {
             } while (pageToken != null)
             
             val formatter = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
-                timeZone = java.util.TimeZone.getTimeZone(ZoneId.systemDefault())
+                timeZone = java.util.TimeZone.getTimeZone(ZoneId.systemDefault().id)
             }
             
             val dailySessions = mutableMapOf<String, Int>()
             
             val sessionIntervals = mutableListOf<Triple<Instant, Instant, Int>>()
             
-            records.forEach { session ->
+            val deduplicatedRecords = deduplicateSleepSessions(records)
+            deduplicatedRecords.forEach { session ->
                 var awake = 0L
                 session.stages.forEach { stage ->
                     if (stage.stage in listOf(SleepSessionRecord.STAGE_TYPE_AWAKE, SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED, SleepSessionRecord.STAGE_TYPE_OUT_OF_BED)) {
@@ -709,13 +732,14 @@ class HealthConnectManager(private val context: Context) {
             } while (pageToken != null)
             
             val formatter = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
-                timeZone = java.util.TimeZone.getTimeZone(ZoneId.systemDefault())
+                timeZone = java.util.TimeZone.getTimeZone(ZoneId.systemDefault().id)
             }
             
             val dailyAsleep = mutableMapOf<String, Int>()
             val dailyDeep = mutableMapOf<String, Int>()
             
-            records.forEach { session ->
+            val deduplicatedRecords = deduplicateSleepSessions(records)
+            deduplicatedRecords.forEach { session ->
                 var deep = 0
                 var awake = 0L
                 session.stages.forEach { stage ->
