@@ -10,6 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./style.css?v=1.9">
     <link rel="icon" type="image/png" href="/jot_app_icon_1773090172459.png">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         .dashboard-container {
             padding-top: 140px !important;
@@ -292,6 +293,22 @@
             transform: translateY(-1px);
         }
 
+        .btn-tracker {
+            background: rgba(124, 110, 255, 0.1);
+            border: 1px solid rgba(124, 110, 255, 0.2);
+            color: #7C6EFF;
+            padding: 0.6rem 1.25rem;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .btn-tracker:hover {
+            background: rgba(124, 110, 255, 0.2);
+            transform: translateY(-1px);
+        }
+
         /* Loading Spinner */
         .loader-wrapper {
             display: flex;
@@ -359,7 +376,8 @@
                 <img src="/jot_app_icon_1773090172459.png" alt="Jot Logo" class="app-icon">
                 <span>Jot</span>
             </a>
-            <div class="nav-actions">
+            <div class="nav-actions" style="display: flex; gap: 0.75rem; align-items: center;">
+                <button class="btn-tracker" id="btn-toggle-graphs" onclick="toggleGraphsView()">Graph Tracker</button>
                 <button class="btn-logout" onclick="handleLogout()">Log Out</button>
             </div>
         </div>
@@ -405,7 +423,7 @@
             </div>
         </div>
 
-        <div class="dashboard-content">
+        <div class="dashboard-content" id="main-dashboard-view">
             <!-- Left Column: AI Wellness Insights -->
             <div class="insights-section">
                 <div class="insights-card glass">
@@ -438,6 +456,41 @@
                 </button>
             </div>
         </div>
+
+        <!-- Hidden Graphs View Container -->
+        <div id="graphs-view" style="display: none; margin-top: 2rem;">
+            <div class="glass" style="padding: 2rem; border-radius: 20px;">
+                <h3 style="margin-bottom: 2rem; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
+                    <span>📈 Wellness Graph Tracker</span>
+                </h3>
+                <div class="graphs-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem;">
+                    <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 280px; position: relative; background: rgba(255,255,255,0.01);">
+                        <h4 style="color: var(--text-secondary); margin-bottom: 1rem;">Sleep Duration (Hours)</h4>
+                        <div style="position: relative; height: 200px;"><canvas id="chart-sleep"></canvas></div>
+                    </div>
+                    <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 280px; position: relative; background: rgba(255,255,255,0.01);">
+                        <h4 style="color: var(--text-secondary); margin-bottom: 1rem;">Deep Sleep (Minutes)</h4>
+                        <div style="position: relative; height: 200px;"><canvas id="chart-deepsleep"></canvas></div>
+                    </div>
+                    <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 280px; position: relative; background: rgba(255,255,255,0.01);">
+                        <h4 style="color: var(--text-secondary); margin-bottom: 1rem;">Heart Rate (Average)</h4>
+                        <div style="position: relative; height: 200px;"><canvas id="chart-hr"></canvas></div>
+                    </div>
+                    <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 280px; position: relative; background: rgba(255,255,255,0.01);">
+                        <h4 style="color: var(--text-secondary); margin-bottom: 1rem;">Heart Rate Variability (HRV)</h4>
+                        <div style="position: relative; height: 200px;"><canvas id="chart-hrv"></canvas></div>
+                    </div>
+                    <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 280px; position: relative; background: rgba(255,255,255,0.01);">
+                        <h4 style="color: var(--text-secondary); margin-bottom: 1rem;">Calories Burned (kcal)</h4>
+                        <div style="position: relative; height: 200px;"><canvas id="chart-calories"></canvas></div>
+                    </div>
+                    <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 280px; position: relative; background: rgba(255,255,255,0.01);">
+                        <h4 style="color: var(--text-secondary); margin-bottom: 1rem;">Number of Jots</h4>
+                        <div style="position: relative; height: 200px;"><canvas id="chart-jots"></canvas></div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -450,6 +503,8 @@
         const nickname = localStorage.getItem('nickname') || 'User';
         const tag = localStorage.getItem('tag') || '00000';
         document.getElementById('user-display-name').textContent = `${nickname} #${tag}`;
+
+        let globalSyncData = null;
 
         // Fetch User Data
         async function fetchDashboardData() {
@@ -467,6 +522,7 @@
                 document.getElementById('loading-spinner').style.display = 'none';
 
                 if (response.ok) {
+                    globalSyncData = data;
                     renderStats(data.profile, data.insights);
                     renderInsights(data.insights);
                     renderLogs(data.entries, data.categories);
@@ -692,6 +748,152 @@
                     behavior: 'smooth'
                 });
             }
+        }
+
+        let activeCharts = {};
+
+        function toggleGraphsView() {
+            const dashView = document.getElementById('main-dashboard-view');
+            const graphsView = document.getElementById('graphs-view');
+            const btn = document.getElementById('btn-toggle-graphs');
+            
+            if (graphsView.style.display === 'none') {
+                dashView.style.display = 'none';
+                graphsView.style.display = 'block';
+                btn.textContent = 'Dashboard';
+                btn.classList.add('active');
+                if (globalSyncData) {
+                    renderGraphs(globalSyncData);
+                }
+            } else {
+                dashView.style.display = 'grid';
+                graphsView.style.display = 'none';
+                btn.textContent = 'Graph Tracker';
+                btn.classList.remove('active');
+            }
+        }
+
+        function renderGraphs(data) {
+            if (!data) return;
+
+            const biometricInsights = data.insights.filter(i => i.type === 'Biometrics');
+            const dateMap = new Map();
+
+            biometricInsights.forEach(insight => {
+                const d = new Date(Number(insight.timestamp));
+                const key = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                let metrics = {};
+                try {
+                    metrics = JSON.parse(insight.text);
+                } catch(e) {}
+                dateMap.set(key, {
+                    rawDate: d,
+                    sleepMins: metrics.sleepMins || 0,
+                    deepSleepMins: metrics.deepSleepMins || 0,
+                    avgHr: metrics.avgHr || 0,
+                    hrv: metrics.hrv || 0,
+                    calories: metrics.calories || 0,
+                    jots: 0
+                });
+            });
+
+            if (data.entries) {
+                data.entries.forEach(entry => {
+                    const d = new Date(Number(entry.timestamp));
+                    const key = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                    if (!dateMap.has(key)) {
+                        dateMap.set(key, {
+                            rawDate: d,
+                            sleepMins: 0,
+                            deepSleepMins: 0,
+                            avgHr: 0,
+                            hrv: 0,
+                            calories: 0,
+                            jots: 0
+                        });
+                    }
+                    dateMap.get(key).jots += 1;
+                });
+            }
+
+            const sortedRecords = Array.from(dateMap.entries())
+                .map(([dateStr, rec]) => ({ dateStr, ...rec }))
+                .sort((a, b) => a.rawDate - b.rawDate);
+
+            const labels = sortedRecords.map(r => r.dateStr);
+
+            function createLineChart(ctxId, label, dataSet, color, isDuration = false) {
+                if (activeCharts[ctxId]) {
+                    activeCharts[ctxId].destroy();
+                }
+
+                const canvas = document.getElementById(ctxId);
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                
+                const gradient = ctx.createLinearGradient(0, 0, 0, 200);
+                gradient.addColorStop(0, `${color}33`);
+                gradient.addColorStop(1, `${color}00`);
+
+                activeCharts[ctxId] = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: label,
+                            data: dataSet,
+                            borderColor: color,
+                            borderWidth: 2.5,
+                            backgroundColor: gradient,
+                            fill: true,
+                            tension: 0.35,
+                            pointBackgroundColor: color,
+                            pointBorderColor: '#ffffff',
+                            pointHoverRadius: 6,
+                            pointRadius: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: '#161622',
+                                borderColor: 'rgba(255,255,255,0.08)',
+                                borderWidth: 1,
+                                titleColor: '#ffffff',
+                                bodyColor: '#a1a1b5',
+                                padding: 10,
+                                displayColors: false
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: { color: 'rgba(255,255,255,0.03)' },
+                                ticks: { color: '#a1a1b5', font: { family: 'Outfit' } }
+                            },
+                            y: {
+                                grid: { color: 'rgba(255,255,255,0.03)' },
+                                ticks: { 
+                                    color: '#a1a1b5', 
+                                    font: { family: 'Outfit' },
+                                    callback: function(value) {
+                                        return isDuration ? value + 'h' : value;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            createLineChart('chart-sleep', 'Sleep Duration', sortedRecords.map(r => (r.sleepMins / 60.0).toFixed(1)), '#42A5F5', true);
+            createLineChart('chart-deepsleep', 'Deep Sleep', sortedRecords.map(r => r.deepSleepMins), '#7C6EFF');
+            createLineChart('chart-hr', 'Heart Rate', sortedRecords.map(r => r.avgHr), '#FF5E62');
+            createLineChart('chart-hrv', 'HRV', sortedRecords.map(r => r.hrv), '#B388FF');
+            createLineChart('chart-calories', 'Calories', sortedRecords.map(r => r.calories), '#FFA726');
+            createLineChart('chart-jots', 'Number of Jots', sortedRecords.map(r => r.jots), '#26A69A');
         }
 
         // Run fetch

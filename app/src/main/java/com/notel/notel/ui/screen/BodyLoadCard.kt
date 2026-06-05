@@ -373,12 +373,20 @@ fun BodyLoadCard(
                     .size(28.dp),
                 enabled = !isLoading
             ) {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = "Sync",
-                    tint = NotelPrimary.copy(alpha = 0.7f),
-                    modifier = Modifier.size(16.dp)
-                )
+                if (isLoading && userTriggeredRefresh) {
+                    CircularProgressIndicator(
+                        color = NotelPrimary,
+                        strokeWidth = 1.5.dp,
+                        modifier = Modifier.size(16.dp)
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Sync",
+                        tint = NotelPrimary.copy(alpha = 0.7f),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
         }
         

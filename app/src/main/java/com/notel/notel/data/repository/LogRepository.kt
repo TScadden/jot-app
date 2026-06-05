@@ -279,11 +279,8 @@ class LogRepository @Inject constructor(
         val targetDay = dateStr ?: java.time.LocalDate.now().toString()
         val now = System.currentTimeMillis()
         
-        // Use cache only for "Today" and if not forced
-        val todayStr = java.time.LocalDate.now().toString()
-        val isToday = targetDay == todayStr
-        
-        if (!forceRefresh && isToday && biometricCache != null && (now - lastBiometricFetch) < 10 * 60 * 1000L) {
+        // Use cache for any day if not forced and within 10 minutes
+        if (!forceRefresh && biometricCache != null && (now - lastBiometricFetch) < 10 * 60 * 1000L) {
             val cachedData = biometricCache!!
             val hrvHistory = cachedData["hrvHistory"] as? List<Pair<String, Double>> ?: emptyList()
             val historyHr = cachedData["historyHr"] as? List<com.notel.notel.data.healthconnect.DailyHeartRateSummary> ?: emptyList()
@@ -295,9 +292,33 @@ class LogRepository @Inject constructor(
 
         val isAvailable = healthConnectManager.checkAvailability() == androidx.health.connect.client.HealthConnectClient.SDK_AVAILABLE
         
+        // Read cached heart rate spikes from preferences to merge
+        val cachedHrList = try {
+            val cachedStr = preferences.historicalHrSpikes.first()
+            if (cachedStr.isNotBlank()) {
+                Json { ignoreUnknownKeys = true }.decodeFromString<List<com.notel.notel.data.healthconnect.DailyHeartRateSummary>>(cachedStr)
+            } else emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+
         // 1. Fetch Historical Aggregates (42-day window for stable trends/ACWR)
         val hrvHistory = if (isAvailable) try { healthConnectManager.readHeartRateVariability(42) } catch(e: Exception) { emptyList() } else emptyList()
-        val historyHr = if (isAvailable) try { healthConnectManager.readHistoricalHeartRateWithSpikes(42) } catch(e: Exception) { emptyList() } else emptyList()
+        
+        // Heavy intraday heart rate query: if we already have 28+ cached days, query only the last 7 days and merge
+        val historyHr = if (isAvailable) {
+            try {
+                val daysToQuery = if (cachedHrList.size >= 28) 7 else 42
+                val freshHr = healthConnectManager.readHistoricalHeartRateWithSpikes(daysToQuery)
+                val mergedMap = (cachedHrList + freshHr).associateBy { it.date }
+                mergedMap.values.sortedByDescending { it.date }.take(42).sortedBy { it.date }
+            } catch(e: Exception) {
+                cachedHrList
+            }
+        } else {
+            cachedHrList
+        }
+
         val sleepHistoryRecords = if (isAvailable) try { healthConnectManager.readHistoricalSleep(42, targetDay) } catch(e: Exception) { emptyList() } else emptyList()
         val calorieHistory = if (isAvailable) try { healthConnectManager.readHistoricalCalories(42) } catch(e: Exception) { emptyList() } else emptyList()
 
@@ -317,6 +338,7 @@ class LogRepository @Inject constructor(
 
             // Also write today's awake-avg HR directly so BodyLoadViewModel's todayAwakeAvgHr
             // flow fires correctly for Health Connect users (previously only Fitbit set this).
+            val todayStr = java.time.LocalDate.now().toString()
             val todayHrEntry = historyHr.find { it.date == todayStr }
             if (todayHrEntry != null && todayHrEntry.awakeAvg > 0) {
                 preferences.setTodayAwakeAvgHr(todayHrEntry.awakeAvg)
@@ -1432,6 +1454,7 @@ class LogRepository @Inject constructor(
             java.time.LocalDate.now()
         }
         val startOfDay = targetLocalDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val endOfDay = startOfDay + (24 * 60 * 60 * 1000L) - 1
         
         val dataLocalDate = try {
             java.time.LocalDate.parse(dataDateStr)

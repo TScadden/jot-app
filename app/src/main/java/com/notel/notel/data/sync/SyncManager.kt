@@ -102,6 +102,9 @@ class SyncManager @Inject constructor(
                 syncCoachSessions()
                 syncCoachMessages()
 
+                // Generate and cache historical biometrics insights before sync
+                generateHistoricalBiometricsInsights()
+
                 // Push AI Insights (including BodyLoad scores) to the server
                 val insightsStr = preferences.aiInsights.first()
                 if (insightsStr.isNotBlank()) {
@@ -119,8 +122,6 @@ class SyncManager @Inject constructor(
                         }
                     }
                 }
-
-
 
                 // Profile is handled at the start for optimistic local updates.
                 preferences.setLastSyncTime(System.currentTimeMillis())
@@ -739,5 +740,73 @@ class SyncManager @Inject constructor(
             runningDebt = Math.max(0.0, runningDebt)
         }
         return (-runningDebt * 60).toInt()
+    }
+
+    private suspend fun generateHistoricalBiometricsInsights() {
+        try {
+            val isAvailable = healthConnectManager.checkAvailability() == androidx.health.connect.client.HealthConnectClient.SDK_AVAILABLE
+            if (!isAvailable) return
+            
+            val insightsStr = preferences.aiInsights.first()
+            val localInsights = try {
+                if (insightsStr.isNotBlank()) {
+                    Json.decodeFromString<List<com.notel.notel.data.local.entity.AiInsight>>(insightsStr)
+                } else emptyList()
+            } catch (e: Exception) { emptyList() }
+            
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).apply {
+                timeZone = java.util.TimeZone.getTimeZone(java.time.ZoneId.systemDefault())
+            }
+            val existingBiometricsDates = localInsights.filter { it.type == "Biometrics" }.map {
+                sdf.format(java.util.Date(it.timestamp))
+            }.toSet()
+            
+            val targetDays = (0..180).map {
+                java.time.LocalDate.now().minusDays(it.toLong()).toString()
+            }.filter { it !in existingBiometricsDates }
+            
+            if (targetDays.isEmpty()) return
+            
+            val hrvHistory = try { healthConnectManager.readHeartRateVariability(180) } catch(e: Exception) { emptyList() }
+            val sleepHistory = try { healthConnectManager.readHistoricalSleepWithDeep(180) } catch(e: Exception) { emptyList() }
+            val calorieHistory = try { healthConnectManager.readHistoricalCalories(180) } catch(e: Exception) { emptyList() }
+            val hrHistory = try { healthConnectManager.readHistoricalHeartRate(180) } catch(e: Exception) { emptyList() }
+            
+            val newInsights = mutableListOf<com.notel.notel.data.local.entity.AiInsight>()
+            
+            targetDays.forEach { dayStr ->
+                val sleepObj = sleepHistory.find { it.date == dayStr }
+                val hrvObj = hrvHistory.find { it.first == dayStr }
+                val calObj = calorieHistory.find { it.first == dayStr }
+                val hrObj = hrHistory.find { it.first == dayStr }
+                
+                val sleepMins = sleepObj?.minutesAsleep ?: 0
+                val deepSleepMins = sleepObj?.deepMinutes ?: 0
+                val hrv = hrvObj?.second ?: 0.0
+                val calories = calObj?.second ?: 0
+                val avgHr = hrObj?.second ?: 0
+                
+                if (sleepMins > 0 || deepSleepMins > 0 || hrv > 0.0 || calories > 0 || avgHr > 0) {
+                    val localDate = java.time.LocalDate.parse(dayStr)
+                    val timestamp = localDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+                    val textJson = """{"sleepMins":$sleepMins,"deepSleepMins":$deepSleepMins,"avgHr":$avgHr,"hrv":$hrv,"calories":$calories}"""
+                    newInsights.add(
+                        com.notel.notel.data.local.entity.AiInsight(
+                            id = "biometrics_$dayStr",
+                            text = textJson,
+                            type = "Biometrics",
+                            timestamp = timestamp
+                        )
+                    )
+                }
+            }
+            
+            if (newInsights.isNotEmpty()) {
+                val merged = (localInsights + newInsights).distinctBy { it.id }
+                preferences.setAiInsights(Json.encodeToString(merged))
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "generateHistoricalBiometricsInsights failed: ${e.message}")
+        }
     }
 }
