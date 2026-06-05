@@ -665,16 +665,34 @@
 
         // Back to top button visibility and action
         const backToTopBtn = document.getElementById('back-to-top');
+        const logsTimeline = document.getElementById('logs-list');
 
+        if (logsTimeline) {
+            logsTimeline.addEventListener('scroll', () => {
+                if (logsTimeline.scrollTop > 300) {
+                    backToTopBtn.classList.add('visible');
+                } else {
+                    backToTopBtn.classList.remove('visible');
+                }
+            });
+        }
+
+        // Also fallback to window scroll for mobile/tablet responsive layout
         window.addEventListener('scroll', () => {
-            if (window.scrollY > 300) {
+            if (window.scrollY > 300 || (logsTimeline && logsTimeline.scrollTop > 300)) {
                 backToTopBtn.classList.add('visible');
-            } else {
+            } else if (window.scrollY <= 300 && (!logsTimeline || logsTimeline.scrollTop <= 300)) {
                 backToTopBtn.classList.remove('visible');
             }
         });
 
         function scrollToTop() {
+            if (logsTimeline) {
+                logsTimeline.scrollTo({
+                    top: 0,
+                    behavior: 'smooth'
+                });
+            }
             window.scrollTo({
                 top: 0,
                 behavior: 'smooth'
