@@ -361,22 +361,22 @@ fun BodyLoadCard(
                 },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = 9.dp)
-                    .size(28.dp),
+                    .padding(end = 8.dp, bottom = 1.dp)
+                    .size(44.dp),
                 enabled = !isLoading
             ) {
                 if (isLoading && userTriggeredRefresh) {
                     CircularProgressIndicator(
                         color = NotelPrimary,
                         strokeWidth = 1.5.dp,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 } else {
                     Icon(
                         imageVector = Icons.Default.Refresh,
                         contentDescription = "Sync",
                         tint = NotelPrimary.copy(alpha = 0.7f),
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
