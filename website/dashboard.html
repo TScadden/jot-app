@@ -366,6 +366,197 @@
             visibility: visible;
             transform: translateY(0);
         }
+
+        /* Project Focus View Styles */
+        .focus-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 900;
+            overflow: hidden;
+            background: #060609;
+        }
+
+        /* Lava Lamp Background styling & animations */
+        .lava-lamp-bg {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            z-index: 1;
+            filter: blur(140px);
+            opacity: 0.75;
+            pointer-events: none;
+        }
+
+        .blob {
+            position: absolute;
+            border-radius: 50%;
+            mix-blend-mode: screen;
+            will-change: transform;
+        }
+
+        .blob-1 {
+            width: 400px;
+            height: 400px;
+            background: var(--primary-color);
+            top: 10%;
+            left: 10%;
+            animation: float-blob-1 25s infinite alternate ease-in-out;
+        }
+
+        .blob-2 {
+            width: 500px;
+            height: 500px;
+            background: var(--secondary-color);
+            bottom: 10%;
+            right: 15%;
+            animation: float-blob-2 30s infinite alternate ease-in-out;
+        }
+
+        .blob-3 {
+            width: 350px;
+            height: 350px;
+            background: #9c27b0;
+            top: 40%;
+            left: 50%;
+            animation: float-blob-3 22s infinite alternate ease-in-out;
+        }
+
+        .blob-4 {
+            width: 450px;
+            height: 450px;
+            background: #00bcd4;
+            bottom: 20%;
+            left: 20%;
+            animation: float-blob-4 28s infinite alternate ease-in-out;
+        }
+
+        @keyframes float-blob-1 {
+            0% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(100px, 80px) scale(1.1); }
+            100% { transform: translate(-50px, 150px) scale(0.9); }
+        }
+
+        @keyframes float-blob-2 {
+            0% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(-150px, -100px) scale(0.9); }
+            100% { transform: translate(80px, 50px) scale(1.1); }
+        }
+
+        @keyframes float-blob-3 {
+            0% { transform: translate(0, 0) scale(1.1); }
+            50% { transform: translate(-80px, 120px) scale(0.95); }
+            100% { transform: translate(120px, -80px) scale(1.05); }
+        }
+
+        @keyframes float-blob-4 {
+            0% { transform: translate(0, 0) scale(0.9); }
+            50% { transform: translate(140px, -140px) scale(1.1); }
+            100% { transform: translate(-100px, 80px) scale(1.0); }
+        }
+
+        /* Glassmorphic Chat Box */
+        .focus-card {
+            position: relative;
+            z-index: 2;
+            width: 90%;
+            max-width: 680px;
+            padding: 3rem;
+            border-radius: 28px;
+            background: rgba(10, 10, 14, 0.4) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            transition: var(--transition);
+        }
+
+        .focus-card:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+            box-shadow: 0 32px 80px rgba(0, 0, 0, 0.7);
+        }
+
+        .focus-title {
+            font-size: 2.2rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #FFF 0%, var(--primary-color) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .focus-subtitle {
+            color: var(--text-muted);
+            margin-bottom: 2.5rem;
+            font-size: 1.05rem;
+        }
+
+        .focus-input-wrapper {
+            position: relative;
+            display: flex;
+            align-items: flex-end;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--glass-border);
+            border-radius: 18px;
+            padding: 0.75rem 1rem;
+            transition: var(--transition);
+        }
+
+        .focus-input-wrapper:focus-within {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 15px rgba(124, 110, 255, 0.2);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .focus-textarea {
+            width: 100%;
+            min-height: 80px;
+            max-height: 300px;
+            border: none;
+            outline: none;
+            background: transparent;
+            color: white;
+            font-family: inherit;
+            font-size: 1.1rem;
+            resize: none;
+            padding-right: 3rem;
+            line-height: 1.5;
+        }
+
+        .btn-focus-send {
+            position: absolute;
+            right: 1.25rem;
+            bottom: 1.25rem;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            width: 42px;
+            height: 42px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: var(--transition);
+            box-shadow: 0 4px 10px rgba(124, 110, 255, 0.3);
+        }
+
+        .btn-focus-send:hover {
+            background: #9084FF;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(124, 110, 255, 0.5);
+        }
+
+        .btn-focus-send:active {
+            transform: translateY(0);
+        }
     </style>
 </head>
 
@@ -377,6 +568,7 @@
                 <span>Jot</span>
             </a>
             <div class="nav-actions" style="display: flex; gap: 0.75rem; align-items: center;">
+                <button class="btn-tracker" id="btn-toggle-focus" onclick="toggleFocusView()">Project Focus</button>
                 <button class="btn-tracker" id="btn-toggle-graphs" onclick="toggleGraphsView()">Graph Tracker</button>
                 <button class="btn-logout" onclick="handleLogout()">Log Out</button>
             </div>
@@ -492,6 +684,28 @@
                         <h4 style="color: var(--text-secondary); margin-bottom: 1rem;">Number of Jots</h4>
                         <div style="position: relative; height: 260px;"><canvas id="chart-jots"></canvas></div>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hidden Project Focus View Container -->
+        <div id="focus-view" class="focus-container" style="display: none;">
+            <div class="lava-lamp-bg">
+                <div class="blob blob-1"></div>
+                <div class="blob blob-2"></div>
+                <div class="blob blob-3"></div>
+                <div class="blob blob-4"></div>
+            </div>
+            <div class="focus-card glass">
+                <h2 class="focus-title">Project Focus</h2>
+                <p class="focus-subtitle">What are you working on right now?</p>
+                <div class="focus-input-wrapper">
+                    <textarea class="focus-textarea" placeholder="Type your thoughts, notes, or project tasks..." autofocus></textarea>
+                    <button class="btn-focus-send">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M22 2 11 13M22 2l-7 20-4-9-9-4Z"/>
+                        </svg>
+                    </button>
                 </div>
             </div>
         </div>
@@ -754,21 +968,55 @@
         function toggleGraphsView() {
             const dashView = document.getElementById('main-dashboard-view');
             const graphsView = document.getElementById('graphs-view');
-            const btn = document.getElementById('btn-toggle-graphs');
+            const focusView = document.getElementById('focus-view');
+            const btnGraphs = document.getElementById('btn-toggle-graphs');
+            const btnFocus = document.getElementById('btn-toggle-focus');
             
             if (graphsView.style.display === 'none') {
                 dashView.style.display = 'none';
+                focusView.style.display = 'none';
                 graphsView.style.display = 'block';
-                btn.textContent = 'Dashboard';
-                btn.classList.add('active');
+                btnGraphs.textContent = 'Dashboard';
+                btnGraphs.classList.add('active');
+                btnFocus.textContent = 'Project Focus';
+                btnFocus.classList.remove('active');
                 if (globalSyncData) {
                     renderGraphs(globalSyncData);
                 }
             } else {
                 dashView.style.display = 'grid';
                 graphsView.style.display = 'none';
-                btn.textContent = 'Graph Tracker';
-                btn.classList.remove('active');
+                btnGraphs.textContent = 'Graph Tracker';
+                btnGraphs.classList.remove('active');
+            }
+        }
+
+        function toggleFocusView() {
+            const dashView = document.getElementById('main-dashboard-view');
+            const graphsView = document.getElementById('graphs-view');
+            const focusView = document.getElementById('focus-view');
+            const btnGraphs = document.getElementById('btn-toggle-graphs');
+            const btnFocus = document.getElementById('btn-toggle-focus');
+            
+            if (focusView.style.display === 'none' || !focusView.style.display) {
+                dashView.style.display = 'none';
+                graphsView.style.display = 'none';
+                focusView.style.display = 'flex';
+                btnFocus.textContent = 'Dashboard';
+                btnFocus.classList.add('active');
+                btnGraphs.textContent = 'Graph Tracker';
+                btnGraphs.classList.remove('active');
+                
+                // Focus the textarea automatically
+                setTimeout(() => {
+                    const textarea = focusView.querySelector('.focus-textarea');
+                    if (textarea) textarea.focus();
+                }, 50);
+            } else {
+                dashView.style.display = 'grid';
+                focusView.style.display = 'none';
+                btnFocus.textContent = 'Project Focus';
+                btnFocus.classList.remove('active');
             }
         }
 
