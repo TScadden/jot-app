@@ -764,6 +764,18 @@ class HealthConnectManager(private val context: Context) {
             val formatter = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
                 timeZone = java.util.TimeZone.getTimeZone(ZoneId.systemDefault().id)
             }
+
+            records.forEach { session ->
+                val dateStr = formatter.format(java.util.Date(session.endTime.toEpochMilli()))
+                if (dateStr == "2026-05-26") {
+                    val packageName = session.metadata.clientRecordOwnerPackageName ?: "unknown"
+                    android.util.Log.d("HealthConnectManager", "RAW May 26 Session: ${session.startTime} to ${session.endTime} from package $packageName")
+                    android.util.Log.d("HealthConnectManager", "  Raw stages count: ${session.stages.size}")
+                    session.stages.forEachIndexed { sIdx, stage ->
+                        android.util.Log.d("HealthConnectManager", "    Stage $sIdx: type=${stage.stage}, ${stage.startTime} to ${stage.endTime} (${java.time.Duration.between(stage.startTime, stage.endTime).toMinutes()} mins)")
+                    }
+                }
+            }
             
             // Group all sessions by the date of their end time (the "wakeup" date),
             // then per date pick only the LONGEST session. Fitbit writes multiple
