@@ -70,6 +70,32 @@ class HealthConnectManager(private val context: Context) {
         }
     }
 
+    private fun <T : Record> filterRecordsByPackagePriority(
+        records: List<T>,
+        getDateStr: (T) -> String
+    ): List<T> {
+        val nonMockRecords = records.filter { getSessionPriority(it.metadata.dataOrigin.packageName) > -100 }
+        val groupedByDate = nonMockRecords.groupBy(getDateStr)
+        val result = mutableListOf<T>()
+        groupedByDate.forEach { (_, dateRecords) ->
+            val maxPriority = dateRecords.maxOfOrNull { getSessionPriority(it.metadata.dataOrigin.packageName) } ?: -999
+            val highestPriorityRecords = dateRecords.filter { getSessionPriority(it.metadata.dataOrigin.packageName) == maxPriority }
+            result.addAll(highestPriorityRecords)
+        }
+        return result
+    }
+
+    private fun <T : Record> selectBestRecord(
+        records: List<T>,
+        getTime: (T) -> Instant
+    ): T? {
+        val nonMockRecords = records.filter { getSessionPriority(it.metadata.dataOrigin.packageName) > -100 }
+        if (nonMockRecords.isEmpty()) return null
+        val maxPriority = nonMockRecords.maxOfOrNull { getSessionPriority(it.metadata.dataOrigin.packageName) } ?: -999
+        val highestPriorityRecords = nonMockRecords.filter { getSessionPriority(it.metadata.dataOrigin.packageName) == maxPriority }
+        return highestPriorityRecords.maxByOrNull(getTime)
+    }
+
     private fun deduplicateSleepSessions(sessions: List<SleepSessionRecord>): List<SleepSessionRecord> {
         val sorted = sessions.sortedBy { it.startTime }
         val result = mutableListOf<SleepSessionRecord>()
@@ -193,8 +219,14 @@ class HealthConnectManager(private val context: Context) {
                 )
             )
             
+            val zoneId = ZoneId.systemDefault()
+            val filteredRecords = filterRecordsByPackagePriority(response.records) { record ->
+                val zdt = java.time.ZonedDateTime.ofInstant(record.startTime, zoneId)
+                zdt.toLocalDate().toString()
+            }
+            
             val result = mutableListOf<Pair<Long, Int>>()
-            response.records.forEach { record ->
+            filteredRecords.forEach { record ->
                 record.samples.forEach { sample ->
                     result.add(sample.time.toEpochMilli() to sample.beatsPerMinute.toInt())
                 }
@@ -214,8 +246,14 @@ class HealthConnectManager(private val context: Context) {
                 )
             )
             
+            val zoneId = ZoneId.systemDefault()
+            val filteredRecords = filterRecordsByPackagePriority(response.records) { record ->
+                val zdt = java.time.ZonedDateTime.ofInstant(record.startTime, zoneId)
+                zdt.toLocalDate().toString()
+            }
+            
             val result = mutableListOf<Pair<Long, Int>>()
-            response.records.forEach { record ->
+            filteredRecords.forEach { record ->
                 record.samples.forEach { sample ->
                     result.add(sample.time.toEpochMilli() to sample.beatsPerMinute.toInt())
                 }
@@ -379,7 +417,12 @@ class HealthConnectManager(private val context: Context) {
                         )
                     )
 
-                    response.records.forEach { record ->
+                    val filteredRecords = filterRecordsByPackagePriority(response.records) { record ->
+                        val zdt = java.time.ZonedDateTime.ofInstant(record.startTime, zoneId)
+                        zdt.toLocalDate().toString()
+                    }
+
+                    filteredRecords.forEach { record ->
                         record.samples.forEach { sample ->
                             val timestamp = sample.time.toEpochMilli()
                             val dateStr = if (timestamp in lastDayStart until lastDayEnd) {
@@ -492,7 +535,10 @@ class HealthConnectManager(private val context: Context) {
                 )
             )
             
-            val rhrList = response.records.map { record ->
+            val filteredRecords = filterRecordsByPackagePriority(response.records) { record ->
+                formatter.format(java.util.Date(record.time.toEpochMilli()))
+            }
+            val rhrList = filteredRecords.map { record ->
                 val dateStr = formatter.format(java.util.Date(record.time.toEpochMilli()))
                 dateStr to record.beatsPerMinute.toInt()
             }.distinctBy { it.first }
@@ -650,13 +696,11 @@ class HealthConnectManager(private val context: Context) {
             val response = healthConnectClient.readRecords(
                 ReadRecordsRequest(
                     recordType = WeightRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start, end),
-                    ascendingOrder = false,
-                    pageSize = 1
+                    timeRangeFilter = TimeRangeFilter.between(start, end)
                 )
             )
-            val weightKg = response.records.firstOrNull()?.weight?.inKilograms ?: return null
-            return (weightKg * 2.20462).toFloat()
+            val bestRecord = selectBestRecord(response.records) { it.time } ?: return null
+            return (bestRecord.weight.inKilograms * 2.20462).toFloat()
         } catch(e: Exception) { return null }
     }
 
@@ -665,12 +709,11 @@ class HealthConnectManager(private val context: Context) {
             val response = healthConnectClient.readRecords(
                 ReadRecordsRequest(
                     recordType = HeightRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(Instant.now().minus(365, ChronoUnit.DAYS), Instant.now()),
-                    ascendingOrder = false
+                    timeRangeFilter = TimeRangeFilter.between(Instant.now().minus(365, ChronoUnit.DAYS), Instant.now())
                 )
             )
-            val latest = response.records.firstOrNull() ?: return null
-            return latest.height.inInches.toFloat()
+            val bestRecord = selectBestRecord(response.records) { it.time } ?: return null
+            return bestRecord.height.inInches.toFloat()
         } catch(e: Exception) { return null }
     }
 
@@ -697,7 +740,11 @@ class HealthConnectManager(private val context: Context) {
                 timeZone = java.util.TimeZone.getTimeZone(java.time.ZoneId.systemDefault())
             }
             
-            val dailyValues = records.groupBy { 
+            val filteredRecords = filterRecordsByPackagePriority(records) { record ->
+                formatter.format(java.util.Date(record.time.toEpochMilli()))
+            }
+
+            val dailyValues = filteredRecords.groupBy { 
                 formatter.format(java.util.Date(it.time.toEpochMilli()))
             }.mapValues { entry ->
                 entry.value.map { it.heartRateVariabilityMillis }.average()
@@ -717,12 +764,11 @@ class HealthConnectManager(private val context: Context) {
             val response = healthConnectClient.readRecords(
                 ReadRecordsRequest(
                     recordType = RespiratoryRateRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start, end),
-                    ascendingOrder = false,
-                    pageSize = 1
+                    timeRangeFilter = TimeRangeFilter.between(start, end)
                 )
             )
-            return response.records.firstOrNull()?.rate
+            val bestRecord = selectBestRecord(response.records) { it.time } ?: return null
+            return bestRecord.rate
         } catch(e: Exception) { return null }
     }
 
@@ -734,12 +780,10 @@ class HealthConnectManager(private val context: Context) {
             val response = healthConnectClient.readRecords(
                 ReadRecordsRequest(
                     recordType = OxygenSaturationRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start, end),
-                    ascendingOrder = false,
-                    pageSize = 1
+                    timeRangeFilter = TimeRangeFilter.between(start, end)
                 )
             )
-            val record = response.records.firstOrNull()
+            val record = selectBestRecord(response.records) { it.time }
             android.util.Log.d("HealthConnectManager", "Oxygen saturation record for $dateStr: $record")
             val rawVal = record?.percentage?.value
             return if (rawVal != null) {
@@ -758,12 +802,11 @@ class HealthConnectManager(private val context: Context) {
             val response = healthConnectClient.readRecords(
                 ReadRecordsRequest(
                     recordType = RestingHeartRateRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start, end),
-                    ascendingOrder = false,
-                    pageSize = 1
+                    timeRangeFilter = TimeRangeFilter.between(start, end)
                 )
             )
-            return response.records.firstOrNull()?.beatsPerMinute?.toInt()
+            val bestRecord = selectBestRecord(response.records) { it.time } ?: return null
+            return bestRecord.beatsPerMinute.toInt()
         } catch(e: Exception) { return null }
     }
 
