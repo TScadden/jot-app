@@ -604,9 +604,12 @@ class SyncManager @Inject constructor(
 
                 // Restore Coach Messages
                 if (body.coachMessages.isNotEmpty()) {
-                    val messageEntities = body.coachMessages.map {
-                        com.notel.notel.data.local.entity.CoachMessageEntity(it.id, it.sessionId, it.role, it.content, it.timestamp, true)
-                    }
+                    val existingSessionIds = (coachSessionDao.getAllSessions().first().map { it.id } + body.coachSessions.map { it.id }).toSet()
+                    val messageEntities = body.coachMessages
+                        .filter { it.sessionId in existingSessionIds }
+                        .map {
+                            com.notel.notel.data.local.entity.CoachMessageEntity(it.id, it.sessionId, it.role, it.content, it.timestamp, true)
+                        }
                     coachMessageDao.insertMessages(messageEntities)
                 }
 
