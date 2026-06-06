@@ -1505,14 +1505,17 @@
             document.getElementById('compare-metric-2').value = '';
             document.getElementById('focus-comparison-results').innerHTML = '';
 
+            const countdownEl = document.getElementById('focus-details-countdown');
             if (isCompleted) {
-                document.getElementById('focus-details-countdown').textContent = `Time remaining: Analysis ready`;
+                countdownEl.textContent = `Analysis ready`;
+                countdownEl.style.color = 'var(--primary-color)';
                 document.getElementById('focus-checkin-area').style.display = 'none';
                 document.getElementById('focus-checkin-locked').style.display = 'none';
                 document.getElementById('focus-analysis-area').style.display = 'block';
             } else {
+                countdownEl.style.color = 'var(--secondary-color)';
                 const leftDays = Math.ceil(leftMs / (24 * 60 * 60 * 1000));
-                document.getElementById('focus-details-countdown').textContent = `Time remaining: ${leftDays} day${leftDays === 1 ? '' : 's'} left`;
+                countdownEl.textContent = `Time remaining: ${leftDays} day${leftDays === 1 ? '' : 's'} left`;
                 document.getElementById('focus-analysis-area').style.display = 'none';
                 
                 const todayStr = new Date().toDateString();
