@@ -52,84 +52,87 @@ class SyncManager @Inject constructor(
     }
 
     suspend fun syncAllData() = withContext(Dispatchers.IO) {
-        if (syncMutex.isLocked) return@withContext
-        syncMutex.withLock {
-            try {
-                if (!preferences.loggedIn.first()) return@withLock
-                
-                Log.d(tag, "Full sync initiated...")
-                
-                // 1. Snapshot Recovery (Server -> Local, then Local -> Server)
-                // Pull cloud data first to recover any existing server state (e.g. after a database wipe or app update)
-                val pullSuccess = pullAllData()
-                if (!pullSuccess) {
-                    Log.w(tag, "Sync pull failed. Aborting sync cycle to prevent local data loss.")
-                    return@withLock
-                }
-
-                // Only push profile data if the user has completed onboarding locally.
-                if (preferences.onboardingComplete.first()) {
-                    val profilePushSuccess = pushProfileData()
-                    if (!profilePushSuccess) {
-                        Log.e(tag, "Profile push failed, aborting full sync to prevent local data loss.")
-                        return@withLock
-                    }
-                }
-                val categories = categoryDao.getAllCategories().first()
-                if (categories.isNotEmpty()) {
-                    val categoryDtos = categories.map {
-                        CategoryDtoModel(it.id, it.name, it.icon, it.colorHex, it.isDefault, it.sortOrder)
-                    }
-                    val catRes = jotApi.syncCategories(SyncCategoriesRequest(categoryDtos))
-                    if (!catRes.isSuccessful) {
-                        Log.e(tag, "Categories sync failed, aborting full sync: ${catRes.errorBody()?.string()}")
-                        return@withLock
-                    }
-                }
-
-                val entries = logEntryDao.getAllEntries().first()
-                if (entries.isNotEmpty()) {
-                    val entryDtos = entries.map {
-                        LogEntryDtoModel(it.id, it.categoryId, it.body, it.chips, it.manualText, it.timestamp)
-                    }
-                    val entryRes = jotApi.syncEntries(SyncEntriesRequest(entryDtos))
-                    if (!entryRes.isSuccessful) {
-                        Log.e(tag, "Entries sync failed, aborting full sync: ${entryRes.errorBody()?.string()}")
-                        return@withLock
-                    }
-                }
-
-                syncDocuments()
-                syncCoachSessions()
-                syncCoachMessages()
-
-                // Generate and cache historical biometrics insights synchronously before pushing
-                generateHistoricalBiometricsInsights()
-
-                // Push AI Insights (including BodyLoad scores) to the server
-                val insightsStr = preferences.aiInsights.first()
-                if (insightsStr.isNotBlank()) {
-                    val localInsights = try {
-                        Json.decodeFromString<List<com.notel.notel.data.local.entity.AiInsight>>(insightsStr)
-                    } catch (e: Exception) { emptyList() }
-                    
-                    if (localInsights.isNotEmpty()) {
-                        val insightDtos = localInsights.map {
-                            InsightDtoModel(it.id, it.text, it.type, it.timestamp)
-                        }
-                        val insightRes = jotApi.syncInsights(SyncInsightsRequest(insightDtos))
-                        if (!insightRes.isSuccessful) {
-                            Log.e(tag, "Insights sync failed: ${insightRes.errorBody()?.string()}")
-                        }
-                    }
-                }
-
-                // Profile is handled at the start for optimistic local updates.
-                preferences.setLastSyncTime(System.currentTimeMillis())
-                Log.d(tag, "Sync cycle complete!")
-            } catch (e: Exception) {
-                Log.e(tag, "Sync cycle failed: ${e.message}")
+        if (!syncMutex.tryLock()) {
+            Log.d(tag, "Sync already in progress. Skipping duplicate request.")
+            return@withContext
+        }
+        try {
+            if (!preferences.loggedIn.first()) return@withContext
+            
+            Log.d(tag, "Full sync initiated...")
+            
+            // 1. Snapshot Recovery (Server -> Local, then Local -> Server)
+            // Pull cloud data first to recover any existing server state (e.g. after a database wipe or app update)
+            val pullSuccess = pullAllData()
+            if (!pullSuccess) {
+                Log.w(tag, "Sync pull failed. Aborting sync cycle to prevent local data loss.")
+                return@withContext
             }
+
+            // Only push profile data if the user has completed onboarding locally.
+            if (preferences.onboardingComplete.first()) {
+                val profilePushSuccess = pushProfileData()
+                if (!profilePushSuccess) {
+                    Log.e(tag, "Profile push failed, aborting full sync to prevent local data loss.")
+                    return@withContext
+                }
+            }
+            val categories = categoryDao.getAllCategories().first()
+            if (categories.isNotEmpty()) {
+                val categoryDtos = categories.map {
+                    CategoryDtoModel(it.id, it.name, it.icon, it.colorHex, it.isDefault, it.sortOrder)
+                }
+                val catRes = jotApi.syncCategories(SyncCategoriesRequest(categoryDtos))
+                if (!catRes.isSuccessful) {
+                    Log.e(tag, "Categories sync failed, aborting full sync: ${catRes.errorBody()?.string()}")
+                    return@withContext
+                }
+            }
+
+            val entries = logEntryDao.getAllEntries().first()
+            if (entries.isNotEmpty()) {
+                val entryDtos = entries.map {
+                    LogEntryDtoModel(it.id, it.categoryId, it.body, it.chips, it.manualText, it.timestamp)
+                }
+                val entryRes = jotApi.syncEntries(SyncEntriesRequest(entryDtos))
+                if (!entryRes.isSuccessful) {
+                    Log.e(tag, "Entries sync failed, aborting full sync: ${entryRes.errorBody()?.string()}")
+                    return@withContext
+                }
+            }
+
+            syncDocuments()
+            syncCoachSessions()
+            syncCoachMessages()
+
+            // Generate and cache historical biometrics insights synchronously before pushing
+            generateHistoricalBiometricsInsights()
+
+            // Push AI Insights (including BodyLoad scores) to the server
+            val insightsStr = preferences.aiInsights.first()
+            if (insightsStr.isNotBlank()) {
+                val localInsights = try {
+                    Json.decodeFromString<List<com.notel.notel.data.local.entity.AiInsight>>(insightsStr)
+                } catch (e: Exception) { emptyList() }
+                
+                if (localInsights.isNotEmpty()) {
+                    val insightDtos = localInsights.map {
+                        InsightDtoModel(it.id, it.text, it.type, it.timestamp)
+                    }
+                    val insightRes = jotApi.syncInsights(SyncInsightsRequest(insightDtos))
+                    if (!insightRes.isSuccessful) {
+                        Log.e(tag, "Insights sync failed: ${insightRes.errorBody()?.string()}")
+                    }
+                }
+            }
+
+            // Profile is handled at the start for optimistic local updates.
+            preferences.setLastSyncTime(System.currentTimeMillis())
+            Log.d(tag, "Sync cycle complete!")
+        } catch (e: Exception) {
+            Log.e(tag, "Sync cycle failed: ${e.message}")
+        } finally {
+            syncMutex.unlock()
         }
     }
 
