@@ -65,7 +65,8 @@ data class WeatherState(
 class BodyLoadViewModel @Inject constructor(
     private val logRepository: LogRepository,
     private val categoryRepository: CategoryRepository,
-    private val preferences: NotelPreferences
+    private val preferences: NotelPreferences,
+    private val syncManager: com.notel.notel.data.sync.SyncManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(BodyLoadState())
@@ -364,6 +365,7 @@ class BodyLoadViewModel @Inject constructor(
                         res.advice ?: ""
                     )
                 }
+                syncManager.syncAllData()
             } catch (e: Exception) {
             } finally {
                 _uiState.update { it.copy(isLoading = false) }
@@ -386,6 +388,7 @@ class BodyLoadViewModel @Inject constructor(
                         res.advice ?: ""
                     )
                 }
+                syncManager.syncAllData()
             } catch (e: Exception) {
             } finally {
                 _uiState.update { it.copy(isLoading = false) }
