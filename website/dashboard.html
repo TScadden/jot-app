@@ -968,6 +968,7 @@
                             const parsed = JSON.parse(data.profile.userLists);
                             if (parsed && typeof parsed === 'object') {
                                 focusState = parsed;
+                                localStorage.setItem('focus_state', JSON.stringify(focusState));
                                 renderActiveTestsHeader();
                                 restoreActiveSubView();
                             }
@@ -1664,6 +1665,7 @@
         }
 
         // Run fetch
+        initFocusState();
         fetchDashboardData();
     </script>
     
