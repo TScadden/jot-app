@@ -916,6 +916,7 @@
                         </div>
                         
                         <div style="display: flex; gap: 1.25rem; justify-content: center; margin-top: 2.5rem; border-top: 1px solid var(--glass-border); padding-top: 1.5rem;">
+                            <button class="btn-primary" style="background: rgba(255, 167, 38, 0.15); border: 1px solid rgba(255, 167, 38, 0.4); color: #FFA726; padding: 0.8rem 1.5rem;" onclick="fastForwardTest()">End Test (Test)</button>
                             <button class="btn-logout" style="background: rgba(255, 94, 98, 0.05);" onclick="cancelActiveTest()">Cancel Experiment</button>
                             <button class="btn-secondary" onclick="closeTestDetails()">Back</button>
                         </div>
@@ -1478,6 +1479,15 @@
                 renderActiveTestsHeader();
                 setFocusSubView('input');
             }
+        }
+
+        function fastForwardTest() {
+            if (!focusState.activeTest) return;
+            const durationMs = focusState.activeTest.durationDays * 24 * 60 * 60 * 1000;
+            focusState.activeTest.startTimestamp = Date.now() - durationMs - 5000;
+            saveFocusState();
+            openTestDetails();
+            renderActiveTestsHeader();
         }
 
 
