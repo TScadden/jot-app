@@ -786,7 +786,23 @@ class HealthConnectManager(private val context: Context) {
                 val deepIntervals = session.stages.filter { it.stage == SleepSessionRecord.STAGE_TYPE_DEEP }.map { it.startTime to it.endTime }
                 val awakeIntervals = session.stages.filter { it.stage in listOf(SleepSessionRecord.STAGE_TYPE_AWAKE, SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED, SleepSessionRecord.STAGE_TYPE_OUT_OF_BED) }.map { it.startTime to it.endTime }
                 
+                if (dateStr == "2026-05-26") {
+                    android.util.Log.d("HealthConnectManager", "May 26 Session: ${session.startTime} to ${session.endTime}")
+                    android.util.Log.d("HealthConnectManager", "Raw deep intervals count: ${deepIntervals.size}")
+                    deepIntervals.forEachIndexed { index, pair ->
+                        android.util.Log.d("HealthConnectManager", "  Deep interval $index: ${pair.first} to ${pair.second} (${java.time.Duration.between(pair.first, pair.second).toMinutes()} mins)")
+                    }
+                }
+                
                 val deep = mergeIntervals(deepIntervals).sumOf { Duration.between(it.first, it.second).toMinutes().toInt() }
+                
+                if (dateStr == "2026-05-26") {
+                    val mergedDeep = mergeIntervals(deepIntervals)
+                    android.util.Log.d("HealthConnectManager", "Merged deep intervals count: ${mergedDeep.size}, total minutes: $deep")
+                    mergedDeep.forEachIndexed { index, pair ->
+                        android.util.Log.d("HealthConnectManager", "  Merged interval $index: ${pair.first} to ${pair.second} (${java.time.Duration.between(pair.first, pair.second).toMinutes()} mins)")
+                    }
+                }
                 val awake = mergeIntervals(awakeIntervals).sumOf { Duration.between(it.first, it.second).toMinutes() }
 
                 val duration = Duration.between(session.startTime, session.endTime).toMinutes()

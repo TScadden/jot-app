@@ -103,11 +103,8 @@ class SyncManager @Inject constructor(
                 syncCoachSessions()
                 syncCoachMessages()
 
-                // Generate and cache historical biometrics insights in the background
-                @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
-                kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
-                    generateHistoricalBiometricsInsights()
-                }
+                // Generate and cache historical biometrics insights synchronously before pushing
+                generateHistoricalBiometricsInsights()
 
                 // Push AI Insights (including BodyLoad scores) to the server
                 val insightsStr = preferences.aiInsights.first()
@@ -764,24 +761,24 @@ class SyncManager @Inject constructor(
                 } else emptyList()
             } catch (e: Exception) { emptyList() }
 
-            // Strip old v1/v2/v3 biometrics insights.
+            // Strip old v1/v2/v3/v4 biometrics insights.
             // They contain inflated deep sleep values from the Fitbit multi-session and overlapping stage bugs.
             // Keeping non-biometrics insights intact.
             val strippedInsights = allLocalInsights.filter { insight ->
-                insight.type != "Biometrics" || insight.id.endsWith("_v4")
+                insight.type != "Biometrics" || insight.id.endsWith("_v5")
             }
 
             val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).apply {
                 timeZone = java.util.TimeZone.getTimeZone(java.time.ZoneId.systemDefault())
             }
-            // Only skip dates we already have a correct v4 entry for
-            val existingV4Dates = strippedInsights.filter { it.type == "Biometrics" && it.id.endsWith("_v4") }.map {
+            // Only skip dates we already have a correct v5 entry for
+            val existingV5Dates = strippedInsights.filter { it.type == "Biometrics" && it.id.endsWith("_v5") }.map {
                 sdf.format(java.util.Date(it.timestamp))
             }.toSet()
             
             val targetDays = (0..180).map {
                 java.time.LocalDate.now().minusDays(it.toLong()).toString()
-            }.filter { it !in existingV4Dates }
+            }.filter { it !in existingV5Dates }
             
             if (targetDays.isEmpty()) return
             
@@ -810,7 +807,7 @@ class SyncManager @Inject constructor(
                     val textJson = """{"sleepMins":$sleepMins,"deepSleepMins":$deepSleepMins,"avgHr":$avgHr,"hrv":$hrv,"calories":$calories}"""
                     newInsights.add(
                         com.notel.notel.data.local.entity.AiInsight(
-                            id = "biometrics_${dayStr}_v4",
+                            id = "biometrics_${dayStr}_v5",
                             text = textJson,
                             type = "Biometrics",
                             timestamp = timestamp
