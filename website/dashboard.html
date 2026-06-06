@@ -485,6 +485,10 @@
                         <div style="position: relative; height: 260px;"><canvas id="chart-calories"></canvas></div>
                     </div>
                     <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 340px; position: relative; background: rgba(255,255,255,0.01);">
+                        <h4 style="color: var(--text-secondary); margin-bottom: 1rem;">Heart Rate Spikes (POTS/MCAS)</h4>
+                        <div style="position: relative; height: 260px;"><canvas id="chart-spikes"></canvas></div>
+                    </div>
+                    <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 340px; position: relative; background: rgba(255,255,255,0.01);">
                         <h4 style="color: var(--text-secondary); margin-bottom: 1rem;">Number of Jots</h4>
                         <div style="position: relative; height: 260px;"><canvas id="chart-jots"></canvas></div>
                     </div>
@@ -797,14 +801,14 @@
                 try {
                     metrics = JSON.parse(insight.text);
                 } catch(e) {}
-                
-                const existing = dateMap.get(key) || {
+                 const existing = dateMap.get(key) || {
                     rawDate: d,
                     sleepMins: 0,
                     deepSleepMins: 0,
                     avgHr: 0,
                     hrv: 0,
                     calories: 0,
+                    spikes: 0,
                     jots: 0
                 };
 
@@ -815,10 +819,10 @@
                     avgHr: metrics.avgHr || existing.avgHr,
                     hrv: metrics.hrv || existing.hrv,
                     calories: metrics.calories || existing.calories,
+                    spikes: metrics.spikes !== undefined ? metrics.spikes : existing.spikes,
                     jots: existing.jots
                 });
             });
-
             if (data.entries) {
                 data.entries.forEach(entry => {
                     const d = new Date(Number(entry.timestamp));
@@ -831,6 +835,7 @@
                             avgHr: 0,
                             hrv: 0,
                             calories: 0,
+                            spikes: 0,
                             jots: 0
                         });
                     }
@@ -928,6 +933,7 @@
             createLineChart('chart-hr', 'Heart Rate', sortedRecords, r => r.avgHr, null, '#FF5E62');
             createLineChart('chart-hrv', 'HRV', sortedRecords, r => r.hrv, null, '#B388FF');
             createLineChart('chart-calories', 'Calories', sortedRecords, r => r.calories, null, '#FFA726');
+            createLineChart('chart-spikes', 'HR Spikes', sortedRecords, r => r.spikes, null, '#E040FB');
             createLineChart('chart-jots', 'Number of Jots', sortedRecords, r => r.jots, null, '#26A69A');
         }
 

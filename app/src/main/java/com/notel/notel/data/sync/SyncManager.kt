@@ -788,6 +788,13 @@ class SyncManager @Inject constructor(
             
             if (targetDays.isEmpty()) return
             
+            val spikesStr = preferences.historicalHrSpikes.first()
+            val cachedSpikes = try {
+                if (spikesStr.isNotBlank()) {
+                    Json { ignoreUnknownKeys = true }.decodeFromString<List<com.notel.notel.data.healthconnect.DailyHeartRateSummary>>(spikesStr)
+                } else emptyList()
+            } catch (e: Exception) { emptyList() }
+
             val hrvHistory = try { healthConnectManager.readHeartRateVariability(180) } catch(e: Exception) { emptyList() }
             val sleepHistory = try { healthConnectManager.readHistoricalSleepWithDeep(180) } catch(e: Exception) { emptyList() }
             val calorieHistory = try { healthConnectManager.readHistoricalCalories(180) } catch(e: Exception) { emptyList() }
@@ -800,17 +807,19 @@ class SyncManager @Inject constructor(
                 val hrvObj = hrvHistory.find { it.first == dayStr }
                 val calObj = calorieHistory.find { it.first == dayStr }
                 val hrObj = hrHistory.find { it.first == dayStr }
+                val spikesObj = cachedSpikes.find { it.date == dayStr }
                 
                 val sleepMins = sleepObj?.minutesAsleep ?: 0
                 val deepSleepMins = sleepObj?.deepMinutes ?: 0
                 val hrv = hrvObj?.second ?: 0.0
                 val calories = calObj?.second ?: 0
                 val avgHr = hrObj?.second ?: 0
+                val spikesCount = spikesObj?.spikeCount ?: 0
                 
-                if (sleepMins > 0 || deepSleepMins > 0 || hrv > 0.0 || calories > 0 || avgHr > 0) {
+                if (sleepMins > 0 || deepSleepMins > 0 || hrv > 0.0 || calories > 0 || avgHr > 0 || spikesCount > 0) {
                     val localDate = java.time.LocalDate.parse(dayStr)
                     val timestamp = localDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
-                    val textJson = """{"sleepMins":$sleepMins,"deepSleepMins":$deepSleepMins,"avgHr":$avgHr,"hrv":$hrv,"calories":$calories}"""
+                    val textJson = """{"sleepMins":$sleepMins,"deepSleepMins":$deepSleepMins,"avgHr":$avgHr,"hrv":$hrv,"calories":$calories,"spikes":$spikesCount}"""
                     newInsights.add(
                         com.notel.notel.data.local.entity.AiInsight(
                             id = "biometrics_${dayStr}_v5",

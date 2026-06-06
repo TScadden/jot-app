@@ -302,16 +302,16 @@ class LogRepository @Inject constructor(
             emptyList()
         }
 
-        // 1. Fetch Historical Aggregates (42-day window for stable trends/ACWR)
+        // 1. Fetch Historical Aggregates (42-day window for stable trends/ACWR, spikes cached up to 180 days)
         val hrvHistory = if (isAvailable) try { healthConnectManager.readHeartRateVariability(42) } catch(e: Exception) { emptyList() } else emptyList()
         
-        // Heavy intraday heart rate query: if we already have 28+ cached days, query only the last 7 days and merge
+        // Heavy intraday heart rate query: if we already have 150+ cached days, query only the last 7 days and merge
         val historyHr = if (isAvailable) {
             try {
-                val daysToQuery = if (cachedHrList.size >= 28) 7 else 42
+                val daysToQuery = if (cachedHrList.size >= 150) 7 else 180
                 val freshHr = healthConnectManager.readHistoricalHeartRateWithSpikes(daysToQuery)
                 val mergedMap = (cachedHrList + freshHr).associateBy { it.date }
-                mergedMap.values.sortedByDescending { it.date }.take(42).sortedBy { it.date }
+                mergedMap.values.sortedByDescending { it.date }.take(180).sortedBy { it.date }
             } catch(e: Exception) {
                 cachedHrList
             }
