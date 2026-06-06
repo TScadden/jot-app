@@ -937,33 +937,18 @@
                             
                             <div id="focus-comparison-panel" style="display: none; margin-top: 1.5rem; padding: 1.5rem; border-radius: 16px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--glass-border); text-align: left;">
                                 <h3 style="font-size: 1.1rem; margin-bottom: 1rem; color: white;">Compare Biometrics</h3>
-                                <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
-                                    <div style="flex: 1; min-width: 140px;">
-                                        <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">Metric A</label>
-                                        <select id="compare-metric-1" class="focus-dropdown" onchange="updateComparison()">
-                                            <option value="">Select a metric</option>
-                                            <option value="sleepMins">Sleep Duration</option>
-                                            <option value="deepSleepMins">Deep Sleep</option>
-                                            <option value="avgHr">Heart Rate</option>
-                                            <option value="hrv">HRV</option>
-                                            <option value="calories">Calories</option>
-                                            <option value="spikes">HR Spikes</option>
-                                            <option value="jots">Number of Jots</option>
-                                        </select>
-                                    </div>
-                                    <div style="flex: 1; min-width: 140px;">
-                                        <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">Metric B</label>
-                                        <select id="compare-metric-2" class="focus-dropdown" onchange="updateComparison()">
-                                            <option value="">Select a metric</option>
-                                            <option value="sleepMins">Sleep Duration</option>
-                                            <option value="deepSleepMins">Deep Sleep</option>
-                                            <option value="avgHr">Heart Rate</option>
-                                            <option value="hrv">HRV</option>
-                                            <option value="calories">Calories</option>
-                                            <option value="spikes">HR Spikes</option>
-                                            <option value="jots">Number of Jots</option>
-                                        </select>
-                                    </div>
+                                <div style="margin-bottom: 1.5rem; max-width: 300px;">
+                                    <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">Select a metric to analyze</label>
+                                    <select id="compare-metric-1" class="focus-dropdown" onchange="updateComparison()">
+                                        <option value="">Select a metric</option>
+                                        <option value="sleepMins">Sleep Duration</option>
+                                        <option value="deepSleepMins">Deep Sleep</option>
+                                        <option value="avgHr">Heart Rate</option>
+                                        <option value="hrv">HRV</option>
+                                        <option value="calories">Calories</option>
+                                        <option value="spikes">HR Spikes</option>
+                                        <option value="jots">Number of Jots</option>
+                                    </select>
                                 </div>
                                 <div id="focus-comparison-results" style="display: flex; flex-direction: column; gap: 1rem;"></div>
                             </div>
@@ -1014,6 +999,7 @@
 
                 if (response.ok) {
                     globalSyncData = data;
+                    parseBiometricRecords(data);
                     renderStats(data.profile, data.insights);
                     renderInsights(data.insights);
                     renderLogs(data.entries, data.categories);
@@ -1502,7 +1488,6 @@
             // Hide comparison details view by default
             document.getElementById('focus-comparison-panel').style.display = 'none';
             document.getElementById('compare-metric-1').value = '';
-            document.getElementById('compare-metric-2').value = '';
             document.getElementById('focus-comparison-results').innerHTML = '';
 
             const countdownEl = document.getElementById('focus-details-countdown');
@@ -1556,22 +1541,12 @@
 
         function updateComparison() {
             const m1 = document.getElementById('compare-metric-1').value;
-            const m2 = document.getElementById('compare-metric-2').value;
             const resultsDiv = document.getElementById('focus-comparison-results');
             resultsDiv.innerHTML = '';
             
             if (m1) {
                 resultsDiv.appendChild(createComparisonCard(m1));
-            }
-            if (m2 && m2 !== m1) {
-                resultsDiv.appendChild(createComparisonCard(m2));
-            }
-
-            if (m1) {
                 renderMetricComparisonCharts(m1);
-            }
-            if (m2 && m2 !== m1) {
-                renderMetricComparisonCharts(m2);
             }
         }
 
@@ -1861,13 +1836,12 @@
             }
         }
 
-        function renderGraphs(data) {
-            if (!data) return;
-
+        function parseBiometricRecords(data) {
+            if (!data) return [];
             const dateMap = new Map();
 
             // Sort by version (no suffix = v1, _v2 = v2, _v3 = v3, etc.) so that the highest version wins.
-            const biometricInsights = data.insights
+            const biometricInsights = (data.insights || [])
                 .filter(i => i.type === 'Biometrics')
                 .sort((a, b) => {
                     const getVersion = (id) => {
@@ -1931,6 +1905,13 @@
                 .map(([dateStr, rec]) => ({ dateStr, ...rec }))
                 .sort((a, b) => a.rawDate - b.rawDate);
             globalSortedRecords = sortedRecords;
+            return sortedRecords;
+        }
+
+        function renderGraphs(data) {
+            if (!data) return;
+
+            const sortedRecords = parseBiometricRecords(data);
 
             function createLineChart(ctxId, label, records, rawValExtractor, formatValExtractor, color, isDuration = false) {
                 const filteredRecords = records.filter(r => {
