@@ -79,6 +79,26 @@ class HealthConnectManager(private val context: Context) {
         return result
     }
 
+    private fun mergeIntervals(intervals: List<Pair<Instant, Instant>>): List<Pair<Instant, Instant>> {
+        if (intervals.isEmpty()) return emptyList()
+        val sorted = intervals.sortedBy { it.first }
+        val result = mutableListOf<Pair<Instant, Instant>>()
+        var current = sorted[0]
+        for (i in 1 until sorted.size) {
+            val next = sorted[i]
+            if (next.first.isBefore(current.second) || next.first == current.second) {
+                if (next.second.isAfter(current.second)) {
+                    current = current.first to next.second
+                }
+            } else {
+                result.add(current)
+                current = next
+            }
+        }
+        result.add(current)
+        return result
+    }
+
     val permissions by lazy {
         setOf(
             HealthPermission.getReadPermission(HeartRateRecord::class),
@@ -272,21 +292,15 @@ class HealthConnectManager(private val context: Context) {
             
             val session = targetSession ?: return null
 
-            var deep = 0
-            var light = 0
-            var rem = 0
-            var awake = 0
-            session.stages.forEach { stage ->
-                val durationMins = ChronoUnit.MINUTES.between(stage.startTime, stage.endTime).toInt()
-                when (stage.stage) {
-                    SleepSessionRecord.STAGE_TYPE_DEEP -> deep += durationMins
-                    SleepSessionRecord.STAGE_TYPE_LIGHT -> light += durationMins
-                    SleepSessionRecord.STAGE_TYPE_REM -> rem += durationMins
-                    SleepSessionRecord.STAGE_TYPE_AWAKE -> awake += durationMins
-                    SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED -> awake += durationMins
-                    SleepSessionRecord.STAGE_TYPE_OUT_OF_BED -> awake += durationMins
-                }
-            }
+            val deepIntervals = session.stages.filter { it.stage == SleepSessionRecord.STAGE_TYPE_DEEP }.map { it.startTime to it.endTime }
+            val lightIntervals = session.stages.filter { it.stage == SleepSessionRecord.STAGE_TYPE_LIGHT }.map { it.startTime to it.endTime }
+            val remIntervals = session.stages.filter { it.stage == SleepSessionRecord.STAGE_TYPE_REM }.map { it.startTime to it.endTime }
+            val awakeIntervals = session.stages.filter { it.stage in listOf(SleepSessionRecord.STAGE_TYPE_AWAKE, SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED, SleepSessionRecord.STAGE_TYPE_OUT_OF_BED) }.map { it.startTime to it.endTime }
+
+            val deep = mergeIntervals(deepIntervals).sumOf { Duration.between(it.first, it.second).toMinutes().toInt() }
+            val light = mergeIntervals(lightIntervals).sumOf { Duration.between(it.first, it.second).toMinutes().toInt() }
+            val rem = mergeIntervals(remIntervals).sumOf { Duration.between(it.first, it.second).toMinutes().toInt() }
+            val awake = mergeIntervals(awakeIntervals).sumOf { Duration.between(it.first, it.second).toMinutes().toInt() }
 
             val timeInBed = ChronoUnit.MINUTES.between(session.startTime, session.endTime).toInt()
             val totalAsleep = timeInBed - awake
@@ -522,12 +536,10 @@ class HealthConnectManager(private val context: Context) {
             
             val deduplicatedRecords = deduplicateSleepSessions(records)
             deduplicatedRecords.forEach { session ->
-                var awake = 0L
-                session.stages.forEach { stage ->
-                    if (stage.stage in listOf(SleepSessionRecord.STAGE_TYPE_AWAKE, SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED, SleepSessionRecord.STAGE_TYPE_OUT_OF_BED)) {
-                        awake += Duration.between(stage.startTime, stage.endTime).toMinutes()
-                    }
-                }
+                val awakeIntervals = session.stages
+                    .filter { it.stage in listOf(SleepSessionRecord.STAGE_TYPE_AWAKE, SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED, SleepSessionRecord.STAGE_TYPE_OUT_OF_BED) }
+                    .map { it.startTime to it.endTime }
+                val awake = mergeIntervals(awakeIntervals).sumOf { Duration.between(it.first, it.second).toMinutes() }
                 val asleep = Duration.between(session.startTime, session.endTime).toMinutes() - awake
                 sessionIntervals.add(Triple(session.startTime, session.endTime, asleep.toInt()))
             }
@@ -771,17 +783,12 @@ class HealthConnectManager(private val context: Context) {
             }
 
             sessionsByDate.map { (dateStr, session) ->
-                var deep = 0
-                var awake = 0L
-                session.stages.forEach { stage ->
-                    val durationMins = ChronoUnit.MINUTES.between(stage.startTime, stage.endTime)
-                    when (stage.stage) {
-                        SleepSessionRecord.STAGE_TYPE_DEEP -> deep += durationMins.toInt()
-                        SleepSessionRecord.STAGE_TYPE_AWAKE,
-                        SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED,
-                        SleepSessionRecord.STAGE_TYPE_OUT_OF_BED -> awake += durationMins
-                    }
-                }
+                val deepIntervals = session.stages.filter { it.stage == SleepSessionRecord.STAGE_TYPE_DEEP }.map { it.startTime to it.endTime }
+                val awakeIntervals = session.stages.filter { it.stage in listOf(SleepSessionRecord.STAGE_TYPE_AWAKE, SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED, SleepSessionRecord.STAGE_TYPE_OUT_OF_BED) }.map { it.startTime to it.endTime }
+                
+                val deep = mergeIntervals(deepIntervals).sumOf { Duration.between(it.first, it.second).toMinutes().toInt() }
+                val awake = mergeIntervals(awakeIntervals).sumOf { Duration.between(it.first, it.second).toMinutes() }
+
                 val duration = Duration.between(session.startTime, session.endTime).toMinutes()
                 val asleep = (duration - awake).toInt().coerceAtLeast(0)
                 DailySleepSummary(
