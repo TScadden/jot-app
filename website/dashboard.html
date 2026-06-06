@@ -1342,7 +1342,11 @@
             }
             
             if (!success) {
-                alert("Could not reach the AI server to generate suggestions. Please ensure your local API server is running on port 3000 and configured with a valid GEMINI_API_KEY.");
+                const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                const msg = isLocal 
+                    ? "Could not reach the AI server to generate suggestions. Please ensure your local API server is running on port 3000 and configured with a valid GEMINI_API_KEY."
+                    : "Could not reach the AI server. The production server at api.jottracker.com may not be deployed with the new focus suggestions endpoint yet. Please redeploy the server updates.";
+                alert(msg);
                 return;
             }
             
