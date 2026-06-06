@@ -1651,6 +1651,17 @@
             createLineChart('chart-jots', 'Number of Jots', sortedRecords, r => r.jots, null, '#26A69A');
         }
 
+        // Bind Enter key to submit and prevent newline
+        const textarea = document.getElementById('focus-input-text');
+        if (textarea) {
+            textarea.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleFocusSubmit();
+                }
+            });
+        }
+
         // Run fetch
         fetchDashboardData();
     </script>
