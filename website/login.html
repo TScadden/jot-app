@@ -231,7 +231,7 @@
             submitBtn.disabled = true;
             submitBtn.textContent = 'Signing In...';
 
-            const API_BASE = "https://api.jottracker.com";
+            const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:3000' : 'https://api.jottracker.com';
             const endpoint = `${API_BASE}/api/auth/login`;
 
             try {
