@@ -650,6 +650,23 @@
             width: 100%;
         }
 
+        .focus-dropdown {
+            width: 100%;
+            padding: 0.6rem 1rem;
+            border-radius: 10px;
+            background: rgba(10, 10, 14, 0.8);
+            border: 1px solid var(--glass-border);
+            color: white;
+            font-family: inherit;
+            font-size: 0.9rem;
+            outline: none;
+            cursor: pointer;
+            box-sizing: border-box;
+        }
+        .focus-dropdown:focus {
+            border-color: var(--primary-color);
+        }
+
         .focus-suggestion-card {
             padding: 1.5rem;
             border-radius: 20px;
@@ -915,6 +932,43 @@
                             <p id="focus-locked-desc" style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0.5rem;">Resets at midnight (12:00 AM)</p>
                         </div>
                         
+                        <div id="focus-analysis-area" style="display: none; margin-top: 1.5rem; text-align: center;">
+                            <button class="btn-primary" onclick="showMetricComparisonUI()">Compare metrics</button>
+                            
+                            <div id="focus-comparison-panel" style="display: none; margin-top: 1.5rem; padding: 1.5rem; border-radius: 16px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--glass-border); text-align: left;">
+                                <h3 style="font-size: 1.1rem; margin-bottom: 1rem; color: white;">Compare Biometrics</h3>
+                                <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
+                                    <div style="flex: 1; min-width: 140px;">
+                                        <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">Metric A</label>
+                                        <select id="compare-metric-1" class="focus-dropdown" onchange="updateComparison()">
+                                            <option value="">Select a metric</option>
+                                            <option value="sleepMins">Sleep Duration</option>
+                                            <option value="deepSleepMins">Deep Sleep</option>
+                                            <option value="avgHr">Heart Rate</option>
+                                            <option value="hrv">HRV</option>
+                                            <option value="calories">Calories</option>
+                                            <option value="spikes">HR Spikes</option>
+                                            <option value="jots">Number of Jots</option>
+                                        </select>
+                                    </div>
+                                    <div style="flex: 1; min-width: 140px;">
+                                        <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">Metric B</label>
+                                        <select id="compare-metric-2" class="focus-dropdown" onchange="updateComparison()">
+                                            <option value="">Select a metric</option>
+                                            <option value="sleepMins">Sleep Duration</option>
+                                            <option value="deepSleepMins">Deep Sleep</option>
+                                            <option value="avgHr">Heart Rate</option>
+                                            <option value="hrv">HRV</option>
+                                            <option value="calories">Calories</option>
+                                            <option value="spikes">HR Spikes</option>
+                                            <option value="jots">Number of Jots</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div id="focus-comparison-results" style="display: flex; flex-direction: column; gap: 1rem;"></div>
+                            </div>
+                        </div>
+                        
                         <div style="display: flex; gap: 1.25rem; justify-content: center; margin-top: 2.5rem; border-top: 1px solid var(--glass-border); padding-top: 1.5rem;">
                             <button class="btn-primary" style="background: rgba(255, 167, 38, 0.15); border: 1px solid rgba(255, 167, 38, 0.4); color: #FFA726; padding: 0.8rem 1.5rem;" onclick="fastForwardTest()">End Test (Test)</button>
                             <button class="btn-logout" style="background: rgba(255, 94, 98, 0.05);" onclick="cancelActiveTest()">Cancel Experiment</button>
@@ -940,6 +994,7 @@
         document.getElementById('user-display-name').textContent = `${nickname} #${tag}`;
 
         let globalSyncData = null;
+        let globalSortedRecords = [];
 
         // Fetch User Data
         async function fetchDashboardData() {
@@ -1276,15 +1331,22 @@
                 const totalMs = test.durationDays * 24 * 60 * 60 * 1000;
                 const leftMs = Math.max(0, totalMs - elapsedMs);
                 
-                const leftDays = Math.ceil(leftMs / (24 * 60 * 60 * 1000));
+                const isCompleted = leftMs <= 0;
+                let textToShow = '';
+                if (isCompleted) {
+                    textToShow = `📈 Analysis ready`;
+                } else {
+                    const leftDays = Math.ceil(leftMs / (24 * 60 * 60 * 1000));
+                    textToShow = `⏳ ${leftDays} day${leftDays === 1 ? '' : 's'} left`;
+                }
                 
                 const tile = document.createElement('div');
                 tile.className = 'focus-active-tile glass';
                 tile.onclick = () => openTestDetails();
                 tile.innerHTML = `
                     <div style="font-weight: 600; font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; color: white;">${test.title}</div>
-                    <div style="font-size: 0.75rem; color: var(--secondary-color); font-weight: 800; display: flex; align-items: center; gap: 0.25rem;">
-                        <span>⏳</span> ${leftDays} day${leftDays === 1 ? '' : 's'} left
+                    <div style="font-size: 0.75rem; color: ${isCompleted ? 'var(--primary-color)' : 'var(--secondary-color)'}; font-weight: 800; display: flex; align-items: center; gap: 0.25rem;">
+                        ${textToShow}
                     </div>
                 `;
                 header.appendChild(tile);
@@ -1416,6 +1478,16 @@
             }, 2000);
         }
 
+        const METRICS_CONFIG = {
+            sleepMins: { label: 'Sleep Duration', formatter: v => `${(v / 60).toFixed(1)} hrs`, aggregator: 'average' },
+            deepSleepMins: { label: 'Deep Sleep', formatter: v => `${(v / 60).toFixed(1)} hrs`, aggregator: 'average' },
+            avgHr: { label: 'Heart Rate', formatter: v => `${Math.round(v)} bpm`, aggregator: 'average' },
+            hrv: { label: 'HRV', formatter: v => `${Math.round(v)} ms`, aggregator: 'average' },
+            calories: { label: 'Calories', formatter: v => `${Math.round(v)} kcal`, aggregator: 'average' },
+            spikes: { label: 'HR Spikes', formatter: v => `${Math.round(v)}`, aggregator: 'average' },
+            jots: { label: 'Number of Jots', formatter: v => `${Math.round(v)}`, aggregator: 'sum' }
+        };
+
         function openTestDetails() {
             if (!focusState.activeTest) return;
             const test = focusState.activeTest;
@@ -1425,38 +1497,167 @@
             const elapsedMs = Date.now() - test.startTimestamp;
             const totalMs = test.durationDays * 24 * 60 * 60 * 1000;
             const leftMs = Math.max(0, totalMs - elapsedMs);
-            const leftDays = Math.ceil(leftMs / (24 * 60 * 60 * 1000));
-            document.getElementById('focus-details-countdown').textContent = `Time remaining: ${leftDays} day${leftDays === 1 ? '' : 's'}`;
+            const isCompleted = leftMs <= 0;
             
-            const todayStr = new Date().toDateString();
-            const isFirstDay = test.lockDayStr === todayStr;
-            const checkedIn = test.logs[todayStr] !== undefined || isFirstDay;
-            
-            if (checkedIn) {
+            // Hide comparison details view by default
+            document.getElementById('focus-comparison-panel').style.display = 'none';
+            document.getElementById('compare-metric-1').value = '';
+            document.getElementById('compare-metric-2').value = '';
+            document.getElementById('focus-comparison-results').innerHTML = '';
+
+            if (isCompleted) {
+                document.getElementById('focus-details-countdown').textContent = `Time remaining: Analysis ready`;
                 document.getElementById('focus-checkin-area').style.display = 'none';
-                document.getElementById('focus-checkin-locked').style.display = 'block';
-                
-                const statusIcon = document.getElementById('focus-locked-icon');
-                const statusTitle = document.getElementById('focus-locked-title');
-                const statusDesc = document.getElementById('focus-locked-desc');
-                
-                if (isFirstDay) {
-                    statusIcon.textContent = '🔒';
-                    statusTitle.textContent = 'New test locked in!';
-                    statusTitle.style.color = 'var(--primary-color)';
-                    statusDesc.textContent = 'Your check-in opens at midnight (12:00 AM) so you have time to perform the experiment first.';
-                } else {
-                    statusIcon.textContent = '✅';
-                    statusTitle.textContent = 'Response logged for today!';
-                    statusTitle.style.color = '#4ECDC4';
-                    statusDesc.textContent = 'Resets at midnight (12:00 AM)';
-                }
-            } else {
-                document.getElementById('focus-checkin-area').style.display = 'block';
                 document.getElementById('focus-checkin-locked').style.display = 'none';
+                document.getElementById('focus-analysis-area').style.display = 'block';
+            } else {
+                const leftDays = Math.ceil(leftMs / (24 * 60 * 60 * 1000));
+                document.getElementById('focus-details-countdown').textContent = `Time remaining: ${leftDays} day${leftDays === 1 ? '' : 's'} left`;
+                document.getElementById('focus-analysis-area').style.display = 'none';
+                
+                const todayStr = new Date().toDateString();
+                const isFirstDay = test.lockDayStr === todayStr;
+                const checkedIn = test.logs[todayStr] !== undefined || isFirstDay;
+                
+                if (checkedIn) {
+                    document.getElementById('focus-checkin-area').style.display = 'none';
+                    document.getElementById('focus-checkin-locked').style.display = 'block';
+                    
+                    const statusIcon = document.getElementById('focus-locked-icon');
+                    const statusTitle = document.getElementById('focus-locked-title');
+                    const statusDesc = document.getElementById('focus-locked-desc');
+                    
+                    if (isFirstDay) {
+                        statusIcon.textContent = '🔒';
+                        statusTitle.textContent = 'New test locked in!';
+                        statusTitle.style.color = 'var(--primary-color)';
+                        statusDesc.textContent = 'Your check-in opens at midnight (12:00 AM) so you have time to perform the experiment first.';
+                    } else {
+                        statusIcon.textContent = '✅';
+                        statusTitle.textContent = 'Response logged for today!';
+                        statusTitle.style.color = '#4ECDC4';
+                        statusDesc.textContent = 'Resets at midnight (12:00 AM)';
+                    }
+                } else {
+                    document.getElementById('focus-checkin-area').style.display = 'block';
+                    document.getElementById('focus-checkin-locked').style.display = 'none';
+                }
             }
             
             setFocusSubView('details');
+        }
+
+        function showMetricComparisonUI() {
+            document.getElementById('focus-comparison-panel').style.display = 'block';
+        }
+
+        function updateComparison() {
+            const m1 = document.getElementById('compare-metric-1').value;
+            const m2 = document.getElementById('compare-metric-2').value;
+            const resultsDiv = document.getElementById('focus-comparison-results');
+            resultsDiv.innerHTML = '';
+            
+            if (m1) {
+                resultsDiv.appendChild(createComparisonCard(m1));
+            }
+            if (m2 && m2 !== m1) {
+                resultsDiv.appendChild(createComparisonCard(m2));
+            }
+        }
+
+        function createComparisonCard(metricKey) {
+            const config = METRICS_CONFIG[metricKey];
+            if (!config) return document.createElement('div');
+            
+            const comparison = getMetricDataComparison(metricKey);
+            
+            const card = document.createElement('div');
+            card.style.cssText = "padding: 1rem; border-radius: 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.5rem;";
+            
+            const changeColor = comparison.percentChange >= 0 
+                ? (metricKey === 'avgHr' || metricKey === 'spikes' ? '#FF5E62' : '#4ECDC4') 
+                : (metricKey === 'avgHr' || metricKey === 'spikes' ? '#4ECDC4' : '#FF5E62');
+            
+            const direction = comparison.percentChange >= 0 ? '▲' : '▼';
+            const changeText = isNaN(comparison.percentChange) 
+                ? 'No comparative data' 
+                : `<span style="color: ${changeColor}; font-weight: 800;">${direction} ${Math.abs(comparison.percentChange).toFixed(1)}%</span>`;
+
+            card.innerHTML = `
+                <div style="font-weight: 600; font-size: 0.95rem; color: white;">${config.label}</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.25rem;">
+                    <div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted);">BEFORE TEST</div>
+                        <div style="font-size: 1.1rem; font-weight: 700; color: var(--secondary-color);">${config.formatter(comparison.beforeVal)}</div>
+                        <div style="font-size: 0.7rem; color: var(--text-muted);">${comparison.beforeCount} days of data</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted);">DURING TEST</div>
+                        <div style="font-size: 1.1rem; font-weight: 700; color: var(--primary-color);">${config.formatter(comparison.afterVal)}</div>
+                        <div style="font-size: 0.7rem; color: var(--text-muted);">${comparison.afterCount} days of data</div>
+                    </div>
+                </div>
+                <div style="margin-top: 0.25rem; font-size: 0.85rem; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 0.5rem; display: flex; justify-content: space-between;">
+                    <span>Overall Change:</span>
+                    <span>${changeText}</span>
+                </div>
+            `;
+            return card;
+        }
+
+        function getMetricDataComparison(metricKey) {
+            const test = focusState.activeTest;
+            if (!test) return { beforeVal: 0, afterVal: 0, percentChange: 0, beforeCount: 0, afterCount: 0 };
+            
+            const durationDays = test.durationDays;
+            const startMs = test.startTimestamp;
+            const oneDayMs = 24 * 60 * 60 * 1000;
+            
+            // Before period: [startMs - durationDays days, startMs - 1 day]
+            const beforeStart = startMs - (durationDays * oneDayMs);
+            const beforeEnd = startMs - oneDayMs;
+            
+            // After period: [startMs, startMs + (durationDays - 1) days]
+            const afterStart = startMs;
+            const afterEnd = startMs + (durationDays * oneDayMs) - 1000;
+            
+            let beforeSum = 0, beforeCount = 0;
+            let afterSum = 0, afterCount = 0;
+            
+            globalSortedRecords.forEach(rec => {
+                const recTime = rec.rawDate.getTime();
+                const val = rec[metricKey] || 0;
+                
+                if (recTime >= beforeStart && recTime <= beforeEnd) {
+                    beforeSum += val;
+                    if (val > 0) beforeCount++;
+                } else if (recTime >= afterStart && recTime <= afterEnd) {
+                    afterSum += val;
+                    if (val > 0) afterCount++;
+                }
+            });
+            
+            const config = METRICS_CONFIG[metricKey];
+            let beforeVal = 0, afterVal = 0;
+            
+            if (config.aggregator === 'average') {
+                beforeVal = beforeCount > 0 ? beforeSum / beforeCount : 0;
+                afterVal = afterCount > 0 ? afterSum / afterCount : 0;
+            } else {
+                beforeVal = beforeSum;
+                afterVal = afterSum;
+            }
+            
+            let percentChange = 0;
+            if (beforeVal > 0) {
+                percentChange = ((afterVal - beforeVal) / beforeVal) * 100;
+            } else if (afterVal > 0) {
+                percentChange = 100;
+            } else {
+                percentChange = NaN;
+            }
+            
+            return { beforeVal, afterVal, percentChange, beforeCount, afterCount };
         }
 
         function closeTestDetails() {
@@ -1591,6 +1792,7 @@
             const sortedRecords = Array.from(dateMap.entries())
                 .map(([dateStr, rec]) => ({ dateStr, ...rec }))
                 .sort((a, b) => a.rawDate - b.rawDate);
+            globalSortedRecords = sortedRecords;
 
             function createLineChart(ctxId, label, records, rawValExtractor, formatValExtractor, color, isDuration = false) {
                 const filteredRecords = records.filter(r => {
