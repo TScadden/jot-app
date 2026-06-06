@@ -57,6 +57,19 @@ data class DailyHeartRateSummary(
 class HealthConnectManager(private val context: Context) {
     val healthConnectClient by lazy { HealthConnectClient.getOrCreate(context) }
 
+    private fun getSessionPriority(packageName: String): Int {
+        return when (packageName) {
+            "com.fitbit.FitbitMobile" -> 100
+            "com.ouraring.oura" -> 90
+            "com.google.android.apps.fitness" -> 80
+            "com.sec.android.app.shealth" -> 80
+            "com.urbandroid.sleep" -> 70
+            "com.sleepcycle.android" -> 70
+            "com.notel.notel" -> -100
+            else -> 0
+        }
+    }
+
     private fun deduplicateSleepSessions(sessions: List<SleepSessionRecord>): List<SleepSessionRecord> {
         val sorted = sessions.sortedBy { it.startTime }
         val result = mutableListOf<SleepSessionRecord>()
@@ -66,10 +79,18 @@ class HealthConnectManager(private val context: Context) {
             } else {
                 val last = result.last()
                 if (session.startTime.isBefore(last.endTime)) {
-                    val lastDuration = Duration.between(last.startTime, last.endTime).toMillis()
-                    val currentDuration = Duration.between(session.startTime, session.endTime).toMillis()
-                    if (currentDuration > lastDuration) {
+                    val lastPkg = last.metadata.dataOrigin.packageName
+                    val currentPkg = session.metadata.dataOrigin.packageName
+                    val lastPriority = getSessionPriority(lastPkg)
+                    val currentPriority = getSessionPriority(currentPkg)
+                    if (currentPriority > lastPriority) {
                         result[result.size - 1] = session
+                    } else if (currentPriority == lastPriority) {
+                        val lastDuration = Duration.between(last.startTime, last.endTime).toMillis()
+                        val currentDuration = Duration.between(session.startTime, session.endTime).toMillis()
+                        if (currentDuration > lastDuration) {
+                            result[result.size - 1] = session
+                        }
                     }
                 } else {
                     result.add(session)
@@ -278,12 +299,16 @@ class HealthConnectManager(private val context: Context) {
             )
             
             var targetSession: SleepSessionRecord? = null
-            var maxDuration = 0L
+            var maxPriority = -999
+            var maxDuration = -1L
 
             response.records.forEach { session ->
                 if (session.endTime.isAfter(startOfDay) && session.endTime.isBefore(endOfDay.plus(12, ChronoUnit.HOURS))) {
+                    val pkg = session.metadata.dataOrigin.packageName
+                    val priority = getSessionPriority(pkg)
                     val duration = ChronoUnit.MINUTES.between(session.startTime, session.endTime)
-                    if (duration > maxDuration) {
+                    if (priority > maxPriority || (priority == maxPriority && duration > maxDuration)) {
+                        maxPriority = priority
                         maxDuration = duration
                         targetSession = session
                     }
@@ -787,10 +812,21 @@ class HealthConnectManager(private val context: Context) {
             deduplicatedRecords.forEach { session ->
                 val dateStr = formatter.format(java.util.Date(session.endTime.toEpochMilli()))
                 val existing = sessionsByDate[dateStr]
+                
+                val pkg = session.metadata.dataOrigin.packageName
+                val priority = getSessionPriority(pkg)
                 val thisDuration = Duration.between(session.startTime, session.endTime).toMillis()
-                val existingDuration = if (existing != null) Duration.between(existing.startTime, existing.endTime).toMillis() else -1L
-                if (thisDuration > existingDuration) {
+                
+                if (existing == null) {
                     sessionsByDate[dateStr] = session
+                } else {
+                    val existingPkg = existing.metadata.dataOrigin.packageName
+                    val existingPriority = getSessionPriority(existingPkg)
+                    val existingDuration = Duration.between(existing.startTime, existing.endTime).toMillis()
+                    
+                    if (priority > existingPriority || (priority == existingPriority && thisDuration > existingDuration)) {
+                        sessionsByDate[dateStr] = session
+                    }
                 }
             }
 
