@@ -910,9 +910,9 @@
                         </div>
                         
                         <div class="focus-checkin-locked" id="focus-checkin-locked" style="display: none; padding: 1rem 0;">
-                            <div style="font-size: 3rem; margin-bottom: 0.75rem;">✅</div>
-                            <p style="font-size: 1.2rem; font-weight: 600; color: #4ECDC4;">Response logged for today!</p>
-                            <p style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0.5rem;">Resets at midnight (12:00 AM)</p>
+                            <div id="focus-locked-icon" style="font-size: 3rem; margin-bottom: 0.75rem;">✅</div>
+                            <p id="focus-locked-title" style="font-size: 1.2rem; font-weight: 600; color: #4ECDC4;">Response logged for today!</p>
+                            <p id="focus-locked-desc" style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0.5rem;">Resets at midnight (12:00 AM)</p>
                         </div>
                         
                         <div style="display: flex; gap: 1.25rem; justify-content: center; margin-top: 2.5rem; border-top: 1px solid var(--glass-border); padding-top: 1.5rem;">
@@ -1393,11 +1393,13 @@
 
         function lockInFocusTest() {
             const s = focusState.selectedSuggestion;
+            const now = Date.now();
             focusState.activeTest = {
                 title: s.title,
                 desc: s.desc,
                 durationDays: focusState.setupDuration,
-                startTimestamp: Date.now(),
+                startTimestamp: now,
+                lockDayStr: new Date(now).toDateString(),
                 logs: {}
             };
             
@@ -1409,7 +1411,7 @@
             
             setTimeout(() => {
                 card.classList.remove('lock-glow');
-                openTestDetails();
+                setFocusSubView('input');
             }, 2000);
         }
 
@@ -1426,11 +1428,28 @@
             document.getElementById('focus-details-countdown').textContent = `Time remaining: ${leftDays} day${leftDays === 1 ? '' : 's'}`;
             
             const todayStr = new Date().toDateString();
-            const checkedIn = test.logs[todayStr] !== undefined;
+            const isFirstDay = test.lockDayStr === todayStr;
+            const checkedIn = test.logs[todayStr] !== undefined || isFirstDay;
             
             if (checkedIn) {
                 document.getElementById('focus-checkin-area').style.display = 'none';
                 document.getElementById('focus-checkin-locked').style.display = 'block';
+                
+                const statusIcon = document.getElementById('focus-locked-icon');
+                const statusTitle = document.getElementById('focus-locked-title');
+                const statusDesc = document.getElementById('focus-locked-desc');
+                
+                if (isFirstDay) {
+                    statusIcon.textContent = '🔒';
+                    statusTitle.textContent = 'New test locked in!';
+                    statusTitle.style.color = 'var(--primary-color)';
+                    statusDesc.textContent = 'Your check-in opens at midnight (12:00 AM) so you have time to perform the experiment first.';
+                } else {
+                    statusIcon.textContent = '✅';
+                    statusTitle.textContent = 'Response logged for today!';
+                    statusTitle.style.color = '#4ECDC4';
+                    statusDesc.textContent = 'Resets at midnight (12:00 AM)';
+                }
             } else {
                 document.getElementById('focus-checkin-area').style.display = 'block';
                 document.getElementById('focus-checkin-locked').style.display = 'none';
