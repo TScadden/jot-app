@@ -583,7 +583,7 @@ class HealthConnectManager(private val context: Context) {
             
             val start = anchorDate.minusDays(days.toLong()).truncatedTo(ChronoUnit.DAYS).toInstant()
             
-            val records = mutableListOf<SleepSessionRecord>()
+            val rawRecords = mutableListOf<SleepSessionRecord>()
             var pageToken: String? = null
             do {
                 val pageResponse = healthConnectClient.readRecords(
@@ -593,12 +593,17 @@ class HealthConnectManager(private val context: Context) {
                         pageToken = pageToken
                     )
                 )
-                records.addAll(pageResponse.records)
+                rawRecords.addAll(pageResponse.records)
                 pageToken = pageResponse.pageToken
             } while (pageToken != null)
             
             val formatter = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
                 timeZone = java.util.TimeZone.getTimeZone(ZoneId.systemDefault().id)
+            }
+
+            // Strip low-priority mock records before dedup
+            val records = filterRecordsByPackagePriority(rawRecords) { record ->
+                formatter.format(java.util.Date(record.endTime.toEpochMilli()))
             }
             
             val dailySessions = mutableMapOf<String, Int>()
@@ -815,7 +820,7 @@ class HealthConnectManager(private val context: Context) {
             val end = ZonedDateTime.now(ZoneId.systemDefault()).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
             val start = end.minus(days.toLong(), ChronoUnit.DAYS)
             
-            val records = mutableListOf<SleepSessionRecord>()
+            val rawRecords = mutableListOf<SleepSessionRecord>()
             var pageToken: String? = null
             do {
                 val pageResponse = healthConnectClient.readRecords(
@@ -825,7 +830,7 @@ class HealthConnectManager(private val context: Context) {
                         pageToken = pageToken
                     )
                 )
-                records.addAll(pageResponse.records)
+                rawRecords.addAll(pageResponse.records)
                 pageToken = pageResponse.pageToken
             } while (pageToken != null)
             
@@ -833,8 +838,11 @@ class HealthConnectManager(private val context: Context) {
                 timeZone = java.util.TimeZone.getTimeZone(ZoneId.systemDefault().id)
             }
 
+            // Strip low-priority mock records (com.notel.notel = -100) before dedup
+            val records = filterRecordsByPackagePriority(rawRecords) { record ->
+                formatter.format(java.util.Date(record.endTime.toEpochMilli()))
+            }
 
-            
             // Group all sessions by the date of their end time (the "wakeup" date),
             // then per date pick only the LONGEST session. Fitbit writes multiple
             // SleepSessionRecord entries per night (one full-session + sub-stage entries)
