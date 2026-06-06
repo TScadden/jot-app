@@ -1350,7 +1350,7 @@
         }
 
         function restoreActiveSubView() {
-            if (focusState.activeTest && focusState.currentSubView !== 'details') {
+            if (focusState.activeTest && focusState.currentSubView === 'details') {
                 openTestDetails();
             } else {
                 setFocusSubView(focusState.currentSubView || 'input');
