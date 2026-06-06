@@ -37,6 +37,14 @@ a {
     transition: var(--transition);
 }
 
+button {
+    border: none;
+    outline: none;
+    background: none;
+    font-family: inherit;
+    cursor: pointer;
+}
+
 /* Glassmorphism */
 .glass {
     background: rgba(10, 10, 14, 0.1) !important;
@@ -142,6 +150,8 @@ nav.glass {
     padding: 0.8rem 1.5rem;
     border-radius: 12px;
     font-weight: 600;
+    border: none;
+    outline: none;
     box-shadow: 0 4px 15px var(--primary-glow);
 }
 
