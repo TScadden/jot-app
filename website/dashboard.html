@@ -609,14 +609,10 @@
                         year: 'numeric'
                     }) : 'Unknown Date';
 
-                    // Parse parts from text: "Cup %: X | Factors: Y | Advice: Z"
-                    let advice = insight.text;
+                    // Parse parts from text: "Cup %: X | Factors: Y"
                     let factors = null;
                     let score = null;
 
-                    if (insight.text.includes("Advice: ")) {
-                        advice = insight.text.split("Advice: ")[1].trim();
-                    }
                     if (insight.text.includes("Factors: ")) {
                         factors = insight.text.split("Factors: ")[1].split(" |")[0].trim();
                     }
@@ -632,7 +628,6 @@
                                 <span class="insight-date">${date}</span>
                                 ${score ? `<span class="insight-score-badge">Cup Load: ${score}%</span>` : ''}
                             </div>
-                            <p class="insight-advice">"${advice}"</p>
                             ${factors && factors !== 'None' ? `<div class="insight-factors"><strong>Factors:</strong> ${factors}</div>` : ''}
                         </div>
                     `;

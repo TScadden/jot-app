@@ -1584,7 +1584,7 @@ class LogRepository @Inject constructor(
         }
 
         // Save BodyLoad as an insight so the week summary gets it!
-        val bodyLoadText = "Cup %: $finalScore | Factors: ${factors.joinToString(", ")} | Advice: $finalAdvice"
+        val bodyLoadText = "Cup %: $finalScore | Factors: ${factors.joinToString(", ")}"
         saveAiInsight(bodyLoadText, "BodyLoad", startOfDay)
 
         return Result.success(
