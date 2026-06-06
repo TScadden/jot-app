@@ -963,9 +963,9 @@
                     renderLogs(data.entries, data.categories);
                     
                     // Sync focus state from server user profile
-                    if (data.profile && data.profile.userLists) {
+                    if (data.profile && data.profile.focusState) {
                         try {
-                            const parsed = JSON.parse(data.profile.userLists);
+                            const parsed = JSON.parse(data.profile.focusState);
                             if (parsed && typeof parsed === 'object') {
                                 focusState = parsed;
                                 localStorage.setItem('focus_state', JSON.stringify(focusState));
@@ -1256,7 +1256,7 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        userLists: JSON.stringify(focusState)
+                        focusState: JSON.stringify(focusState)
                     })
                 });
             } catch (e) {
