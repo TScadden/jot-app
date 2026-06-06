@@ -1566,6 +1566,13 @@
             if (m2 && m2 !== m1) {
                 resultsDiv.appendChild(createComparisonCard(m2));
             }
+
+            if (m1) {
+                renderMetricComparisonCharts(m1);
+            }
+            if (m2 && m2 !== m1) {
+                renderMetricComparisonCharts(m2);
+            }
         }
 
         function createComparisonCard(metricKey) {
@@ -1573,9 +1580,8 @@
             if (!config) return document.createElement('div');
             
             const comparison = getMetricDataComparison(metricKey);
-            
             const card = document.createElement('div');
-            card.style.cssText = "padding: 1rem; border-radius: 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.5rem;";
+            card.style.cssText = "padding: 1.5rem; border-radius: 16px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem;";
             
             const changeColor = comparison.percentChange >= 0 
                 ? (metricKey === 'avgHr' || metricKey === 'spikes' ? '#FF5E62' : '#4ECDC4') 
@@ -1587,25 +1593,154 @@
                 : `<span style="color: ${changeColor}; font-weight: 800;">${direction} ${Math.abs(comparison.percentChange).toFixed(1)}%</span>`;
 
             card.innerHTML = `
-                <div style="font-weight: 600; font-size: 0.95rem; color: white;">${config.label}</div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.25rem;">
+                <div style="font-weight: 600; font-size: 1rem; color: white;">${config.label}</div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.5rem;">
                     <div>
-                        <div style="font-size: 0.75rem; color: var(--text-muted);">BEFORE TEST</div>
-                        <div style="font-size: 1.1rem; font-weight: 700; color: var(--secondary-color);">${config.formatter(comparison.beforeVal)}</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">BEFORE TEST</div>
+                        <div style="font-size: 1.25rem; font-weight: 700; color: #FF5E62; margin-top: 0.1rem;">${config.formatter(comparison.beforeVal)}</div>
                         <div style="font-size: 0.7rem; color: var(--text-muted);">${comparison.beforeCount} days of data</div>
                     </div>
                     <div>
-                        <div style="font-size: 0.75rem; color: var(--text-muted);">DURING TEST</div>
-                        <div style="font-size: 1.1rem; font-weight: 700; color: var(--primary-color);">${config.formatter(comparison.afterVal)}</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">DURING TEST</div>
+                        <div style="font-size: 1.25rem; font-weight: 700; color: #7C6EFF; margin-top: 0.1rem;">${config.formatter(comparison.afterVal)}</div>
                         <div style="font-size: 0.7rem; color: var(--text-muted);">${comparison.afterCount} days of data</div>
                     </div>
                 </div>
-                <div style="margin-top: 0.25rem; font-size: 0.85rem; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 0.5rem; display: flex; justify-content: space-between;">
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.5rem; height: 130px;">
+                    <div style="position: relative; height: 100%;"><canvas id="chart-before-${metricKey}"></canvas></div>
+                    <div style="position: relative; height: 100%;"><canvas id="chart-during-${metricKey}"></canvas></div>
+                </div>
+                
+                <div style="margin-top: 0.5rem; font-size: 0.9rem; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 0.5rem; display: flex; justify-content: space-between;">
                     <span>Overall Change:</span>
                     <span>${changeText}</span>
                 </div>
             `;
             return card;
+        }
+
+        function renderMetricComparisonCharts(metricKey) {
+            const test = focusState.activeTest;
+            if (!test) return;
+            
+            const durationDays = test.durationDays;
+            const startMs = test.startTimestamp;
+            const oneDayMs = 24 * 60 * 60 * 1000;
+            
+            const beforeStart = startMs - (durationDays * oneDayMs);
+            const beforeEnd = startMs - oneDayMs;
+            const afterStart = startMs;
+            const afterEnd = startMs + (durationDays * oneDayMs) - 1000;
+            
+            const beforeRecords = globalSortedRecords.filter(rec => {
+                const recTime = rec.rawDate.getTime();
+                return recTime >= beforeStart && recTime <= beforeEnd;
+            });
+            
+            const duringRecords = globalSortedRecords.filter(rec => {
+                const recTime = rec.rawDate.getTime();
+                return recTime >= afterStart && recTime <= afterEnd;
+            });
+            
+            const isDuration = metricKey === 'sleepMins' || metricKey === 'deepSleepMins';
+            
+            renderComparisonChart(`chart-before-${metricKey}`, 'Before Test', beforeRecords, metricKey, '#FF5E62', isDuration);
+            renderComparisonChart(`chart-during-${metricKey}`, 'During Test', duringRecords, metricKey, '#7C6EFF', isDuration);
+        }
+
+        function renderComparisonChart(canvasId, label, records, metricKey, color, isDuration = false) {
+            const config = METRICS_CONFIG[metricKey];
+            if (!config) return;
+
+            const rawValExtractor = r => r[metricKey] || 0;
+            const formatValExtractor = metricKey === 'sleepMins' || metricKey === 'deepSleepMins' 
+                ? (r => (r[metricKey] / 60.0).toFixed(1)) 
+                : null;
+
+            const chartLabels = records.map(r => r.dateStr);
+            const chartData = records.map(r => formatValExtractor ? formatValExtractor(r) : rawValExtractor(r));
+
+            if (activeCharts[canvasId]) {
+                activeCharts[canvasId].destroy();
+            }
+
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            
+            const gradient = ctx.createLinearGradient(0, 0, 0, 100);
+            gradient.addColorStop(0, `${color}22`);
+            gradient.addColorStop(1, `${color}00`);
+
+            activeCharts[canvasId] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: chartLabels,
+                    datasets: [{
+                        label: label,
+                        data: chartData,
+                        borderColor: color,
+                        borderWidth: 2,
+                        backgroundColor: gradient,
+                        fill: true,
+                        tension: 0.3,
+                        pointBackgroundColor: color,
+                        pointBorderColor: '#ffffff',
+                        pointHoverRadius: 4,
+                        pointHoverBorderWidth: 1.5,
+                        pointRadius: records.length > 10 ? 0 : 2,
+                        pointHitRadius: 10
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(10, 10, 14, 0.95)',
+                            titleFont: { family: 'Outfit', size: 11, weight: '600' },
+                            bodyFont: { family: 'Outfit', size: 11 },
+                            borderColor: 'rgba(255,255,255,0.08)',
+                            borderWidth: 1,
+                            padding: 8,
+                            cornerRadius: 8,
+                            displayColors: false,
+                            callbacks: {
+                                label: function(context) {
+                                    let val = context.raw;
+                                    if (isDuration) {
+                                        return `${val} hrs`;
+                                    }
+                                    return config.formatter(val);
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: 'rgba(255,255,255,0.02)' },
+                            ticks: { 
+                                color: '#7c7c90', 
+                                font: { family: 'Outfit', size: 9 },
+                                maxTicksLimit: 5,
+                                maxRotation: 0
+                            }
+                        },
+                        y: {
+                            grid: { color: 'rgba(255,255,255,0.02)' },
+                            ticks: { 
+                                color: '#7c7c90', 
+                                font: { family: 'Outfit', size: 9 },
+                                callback: function(value) {
+                                    return isDuration ? value + 'h' : value;
+                                }
+                            }
+                        }
+                    }
+            });
         }
 
         function getMetricDataComparison(metricKey) {
