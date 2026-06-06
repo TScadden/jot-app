@@ -1315,6 +1315,7 @@
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<span class="spinner" style="width: 18px; height: 18px; border-width: 2px; border-top-color: white; animation: spin 0.8s linear infinite; display: inline-block;"></span>';
             
+            let success = false;
             try {
                 const response = await fetch(`${API_BASE}/api/ai/focus-suggestions`, {
                     method: 'POST',
@@ -1329,18 +1330,19 @@
                     const data = await response.json();
                     if (data.result && Array.isArray(data.result) && data.result.length > 0) {
                         focusState.suggestions = data.result;
-                    } else {
-                        focusState.suggestions = generateTestSuggestions(struggle);
+                        success = true;
                     }
-                } else {
-                    focusState.suggestions = generateTestSuggestions(struggle);
                 }
             } catch (err) {
-                console.error("Failed to query Gemini, using fallback:", err);
-                focusState.suggestions = generateTestSuggestions(struggle);
+                console.error("Failed to query Gemini AI:", err);
             } finally {
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = originalContent;
+            }
+            
+            if (!success) {
+                alert("Could not reach the AI server to generate suggestions. Please ensure your local API server is running on port 3000 and configured with a valid GEMINI_API_KEY.");
+                return;
             }
             
             textarea.value = '';
@@ -1452,34 +1454,6 @@
             }
         }
 
-        function generateTestSuggestions(struggleText) {
-            const lower = struggleText.toLowerCase();
-            if (lower.includes('sleep') || lower.includes('tired') || lower.includes('woke up') || lower.includes('night')) {
-                return [
-                    { title: "No screens 1 hour before bed", desc: "Turn off all phones, computers, and TVs 60 minutes before bedtime." },
-                    { title: "Magnesium/Chamomile night routine", desc: "Take a calming warm herbal tea or supplement 30 minutes before sleep." },
-                    { title: "Keep bedroom at 65°F / 18°C", desc: "Lower room temperature to optimize deep sleep cycles." },
-                    { title: "Fixed wakeup time schedule", desc: "Wake up at the exact same hour every single day, including weekends." },
-                    { title: "10-min morning light exposure", desc: "Get natural morning sunlight into your eyes within 30 minutes of waking up." }
-                ];
-            } else if (lower.includes('stress') || lower.includes('anxious') || lower.includes('crappy') || lower.includes('mood') || lower.includes('work')) {
-                return [
-                    { title: "Daily 5-min Box Breathing", desc: "Inhale 4s, hold 4s, exhale 4s, hold 4s. Repeat 5 times daily." },
-                    { title: "No caffeine after 12:00 PM", desc: "Avoid caffeine consumption in the afternoon to prevent neural over-stimulation." },
-                    { title: "15-minute nature walk", desc: "Walk outdoors without your phone to decompress cortisol levels." },
-                    { title: "Gratitude log check-in", desc: "Write down 3 things you are grateful for every evening." },
-                    { title: "Cold face immersion", desc: "Splash ice cold water on your face for 30 seconds to trigger the vagal response." }
-                ];
-            } else {
-                return [
-                    { title: "No screens 1 hour before bed", desc: "Turn off all phones, computers, and TVs 60 minutes before bedtime." },
-                    { title: "Daily 5-min Box Breathing", desc: "Calm your nervous system using a box breathing cycle twice a day." },
-                    { title: "15-minute nature walk", desc: "Walk outdoors without your phone to decompress cortisol levels." },
-                    { title: "No caffeine after 12:00 PM", desc: "Avoid caffeine consumption in the afternoon to prevent neural over-stimulation." },
-                    { title: "Fixed wakeup time schedule", desc: "Wake up at the exact same hour every single day, including weekends." }
-                ];
-            }
-        }
 
         function toggleFocusView() {
             const dashView = document.getElementById('main-dashboard-view');
