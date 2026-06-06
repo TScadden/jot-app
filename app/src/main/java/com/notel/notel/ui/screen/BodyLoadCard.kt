@@ -294,20 +294,12 @@ fun BodyLoadCard(
                             }
                         }
 
-                        if (isLoading && userTriggeredRefresh) {
-                            CircularProgressIndicator(
-                                color = NotelPrimary,
-                                strokeWidth = 1.5.dp,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        } else {
-                            Text(
-                                text = if (score > 0) "$score" else "-",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Black,
-                                color = NotelTextPrimary
-                            )
-                        }
+                        Text(
+                            text = if (score > 0) "$score" else "-",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Black,
+                            color = NotelTextPrimary
+                        )
                     }
                     
                     VerticalDivider(modifier = Modifier.height(32.dp).padding(horizontal = 4.dp), color = Color.White.copy(alpha = 0.1f))
