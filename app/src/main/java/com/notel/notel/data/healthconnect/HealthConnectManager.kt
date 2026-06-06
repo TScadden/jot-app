@@ -768,7 +768,7 @@ class HealthConnectManager(private val context: Context) {
             records.forEach { session ->
                 val dateStr = formatter.format(java.util.Date(session.endTime.toEpochMilli()))
                 if (dateStr == "2026-05-26") {
-                    val packageName = session.metadata.clientRecordOwnerPackageName ?: "unknown"
+                    val packageName = session.metadata.clientPackageName ?: "unknown"
                     android.util.Log.d("HealthConnectManager", "RAW May 26 Session: ${session.startTime} to ${session.endTime} from package $packageName")
                     android.util.Log.d("HealthConnectManager", "  Raw stages count: ${session.stages.size}")
                     session.stages.forEachIndexed { sIdx, stage ->
