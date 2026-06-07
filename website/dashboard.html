@@ -720,7 +720,28 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
-        @media (max-width: 992px) {
+        @media (max-width: 768px) {
+            .nav-content {
+                flex-direction: column !important;
+                gap: 0.75rem !important;
+                padding: 0.75rem 1rem !important;
+                align-items: center !important;
+            }
+            .nav-actions {
+                width: 100% !important;
+                justify-content: center !important;
+                gap: 0.5rem !important;
+            }
+            .btn-tracker, .btn-logout {
+                padding: 0.4rem 0.55rem !important;
+                font-size: 0.75rem !important;
+                border-radius: 8px !important;
+                flex: 1 !important;
+                text-align: center !important;
+                white-space: nowrap !important;
+            }
+        }
+        @media (min-width: 769px) and (max-width: 992px) {
             .btn-tracker, .btn-logout {
                 padding: 0.35rem 0.65rem !important;
                 font-size: 0.75rem !important;
