@@ -463,6 +463,8 @@ fun ProjectFocusScreen(
                                             val isToday = dateStr == todayStr
                                             val isFuture = date.isAfter(java.time.LocalDate.now())
                                             val logValue = test.logs[dateStr]
+                                            val hasLog = logValue != null
+                                            val logOrMissed = logValue ?: (!isToday && !isFuture)
 
                                             Box(
                                                 modifier = Modifier
@@ -472,7 +474,7 @@ fun ProjectFocusScreen(
                                                     .background(
                                                         when {
                                                             logValue == true -> Color(0xFF4CAF50).copy(alpha = 0.25f)
-                                                            logValue == false -> Color(0xFFEF5350).copy(alpha = 0.15f)
+                                                            logValue == false || (!hasLog && !isToday && !isFuture) -> Color(0xFFEF5350).copy(alpha = 0.15f)
                                                             isToday -> NotelPrimary.copy(alpha = 0.1f)
                                                             else -> Color.White.copy(alpha = 0.04f)
                                                         }
@@ -481,7 +483,7 @@ fun ProjectFocusScreen(
                                                         1.dp,
                                                         when {
                                                             logValue == true -> Color(0xFF4CAF50).copy(alpha = 0.4f)
-                                                            logValue == false -> Color(0xFFEF5350).copy(alpha = 0.3f)
+                                                            logValue == false || (!hasLog && !isToday && !isFuture) -> Color(0xFFEF5350).copy(alpha = 0.3f)
                                                             isToday -> NotelPrimary.copy(alpha = 0.4f)
                                                             else -> Color.White.copy(alpha = 0.05f)
                                                         },
@@ -491,7 +493,7 @@ fun ProjectFocusScreen(
                                             ) {
                                                 when {
                                                     logValue == true -> Text("✓", color = Color(0xFF4CAF50), fontSize = 14.sp, fontWeight = FontWeight.Black)
-                                                    logValue == false -> Text("✗", color = Color(0xFFEF5350), fontSize = 14.sp, fontWeight = FontWeight.Black)
+                                                    logValue == false || (!hasLog && !isToday && !isFuture) -> Text("✗", color = Color(0xFFEF5350), fontSize = 14.sp, fontWeight = FontWeight.Black)
                                                     isFuture -> Text(
                                                         "${dayOffset + 1}",
                                                         color = Color.White.copy(alpha = 0.15f),
