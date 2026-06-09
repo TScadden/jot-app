@@ -783,9 +783,13 @@ class SyncManager @Inject constructor(
                 sdf.format(java.util.Date(it.timestamp))
             }.toSet()
             
+            // Always include the last 7 days in the targetDays list for re-evaluation
             val targetDays = (0..180).map {
                 java.time.LocalDate.now().minusDays(it.toLong()).toString()
-            }.filter { it !in existingV6Dates }
+            }.filter { 
+                it !in existingV6Dates || 
+                java.time.LocalDate.parse(it).isAfter(java.time.LocalDate.now().minusDays(7))
+            }
             
             if (targetDays.isEmpty()) return
             
@@ -833,7 +837,8 @@ class SyncManager @Inject constructor(
             }
             
             if (newInsights.isNotEmpty()) {
-                val merged = (strippedInsights + newInsights).distinctBy { it.id }
+                // Swap order to (newInsights + strippedInsights) so new updates overwrite existing records in distinctBy
+                val merged = (newInsights + strippedInsights).distinctBy { it.id }
                 preferences.setAiInsights(Json.encodeToString(merged))
                 // Push the corrected biometrics to the server directly (no recursive syncAllData)
                 val insightDtos = merged.map {
