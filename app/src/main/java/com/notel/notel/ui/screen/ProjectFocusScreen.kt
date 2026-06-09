@@ -159,7 +159,7 @@ fun ProjectFocusScreen(
                                     brush = Brush.linearGradient(
                                         listOf(
                                             NotelPrimary.copy(alpha = 0.4f),
-                                            NotelSecondary.copy(alpha = 0.2f)
+                                            NotelAccent.copy(alpha = 0.2f)
                                         )
                                     ),
                                     shape = RoundedCornerShape(24.dp)
