@@ -459,22 +459,24 @@
             width: 170px;
             padding: 0.75rem 1rem;
             border-radius: 14px;
-            background: rgba(124, 110, 255, 0.12) !important;
+            background: #0d0d17 !important;
             border: 1.5px solid rgba(124, 110, 255, 0.4) !important;
             box-shadow: -8px 0 16px rgba(0,0,0,0.5), 0 10px 25px rgba(0,0,0,0.3);
             cursor: pointer;
             transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), 
                         opacity 0.3s ease, 
                         box-shadow 0.3s ease, 
-                        margin 0.3s ease;
+                        margin 0.3s ease,
+                        width 0.3s ease;
             display: flex;
             flex-direction: column;
             gap: 0.35rem;
             text-align: left;
             position: relative;
             margin-left: -115px;
-            transform: rotate(var(--card-rotation, 0deg)) translateY(var(--card-y-offset, 0px));
+            transform: translateY(var(--card-y-offset, 0px));
             transform-origin: bottom center;
+            overflow: hidden;
         }
 
         .focus-active-tile:first-child {
@@ -492,11 +494,18 @@
 
         .focus-active-tests-row .focus-active-tile:hover {
             opacity: 1 !important;
-            transform: scale(1.18) rotate(0deg) translateY(-18px);
+            width: 240px;
+            transform: scale(1.05) translateY(-5px);
             z-index: 1000 !important;
             box-shadow: 0 15px 35px rgba(124, 110, 255, 0.35), -10px 0 25px rgba(0,0,0,0.5);
-            background: rgba(124, 110, 255, 0.25) !important;
+            background: #141424 !important;
             border-color: var(--primary-color) !important;
+        }
+
+        .focus-active-tile:hover .active-tile-title {
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
         }
 
         /* Lava Lamp Background styling & animations */
@@ -1473,13 +1482,12 @@
 
                 const tile = document.createElement('div');
                 tile.className = 'focus-active-tile glass';
-                tile.style.setProperty('--card-rotation', `${rotation}deg`);
                 tile.style.setProperty('--card-y-offset', `${yOffset}px`);
                 tile.style.zIndex = idx + 1;
                 
                 tile.onclick = () => openTestDetails(test.id);
                 tile.innerHTML = `
-                    <div style="font-weight: 600; font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; color: white;">${test.title}</div>
+                    <div class="active-tile-title" style="font-weight: 600; font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; color: white;">${test.title}</div>
                     <div style="font-size: 0.75rem; color: ${isCompleted ? 'var(--primary-color)' : 'var(--secondary-color)'}; font-weight: 800; display: flex; align-items: center; gap: 0.25rem;">
                         ${textToShow}
                     </div>
