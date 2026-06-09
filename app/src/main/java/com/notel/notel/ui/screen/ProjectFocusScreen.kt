@@ -354,21 +354,32 @@ fun ProjectFocusScreen(
                                             Row(
                                                 modifier = Modifier.padding(16.dp),
                                                 verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                                horizontalArrangement = Arrangement.SpaceBetween
                                             ) {
-                                                Text("✅", fontSize = 24.sp)
-                                                Column {
-                                                    Text(
-                                                        "Checked in today!",
-                                                        color = Color(0xFF4CAF50),
-                                                        fontSize = 15.sp,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                    Text(
-                                                        "Great work. Come back tomorrow to log again.",
-                                                        color = Color(0xFF4CAF50).copy(alpha = 0.7f),
-                                                        fontSize = 12.sp
-                                                    )
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Text("✅", fontSize = 24.sp)
+                                                    Column {
+                                                        Text(
+                                                            "Checked in today!",
+                                                            color = Color(0xFF4CAF50),
+                                                            fontSize = 15.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                        Text(
+                                                            "Great work. Come back tomorrow.",
+                                                            color = Color(0xFF4CAF50).copy(alpha = 0.7f),
+                                                            fontSize = 11.sp
+                                                        )
+                                                    }
+                                                }
+                                                TextButton(
+                                                    onClick = { viewModel.undoCheckIn(todayStr) }
+                                                ) {
+                                                    Text("Undo", color = Color(0xFFEF5350), fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                                 }
                                             }
                                         }

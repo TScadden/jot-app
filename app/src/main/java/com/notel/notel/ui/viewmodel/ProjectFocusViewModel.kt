@@ -120,6 +120,24 @@ class ProjectFocusViewModel @Inject constructor(
         }
     }
 
+    /** Remove check-in for a given date and sync back to server */
+    fun undoCheckIn(dateStr: String) {
+        val current = _uiState.value.activeTest ?: return
+        val updatedLogs = current.logs.toMutableMap()
+        updatedLogs.remove(dateStr)
+        val updated = current.copy(logs = updatedLogs)
+        _uiState.value = _uiState.value.copy(activeTest = updated)
+
+        viewModelScope.launch {
+            val focusStateObj = FocusStateDto(activeTest = updated)
+            val json = lenientJson.encodeToString(focusStateObj)
+            preferences.setFocusState(json)
+            try {
+                api.syncProfile(SyncProfileRequest(focusState = json))
+            } catch (e: Exception) {}
+        }
+    }
+
     private fun parseFocusState(json: String): FocusStateDto? {
         if (json.isBlank() || json == "{}") return null
         return try {

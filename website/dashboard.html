@@ -1005,6 +1005,7 @@
                             <div id="focus-locked-icon" style="font-size: 3rem; margin-bottom: 0.75rem;">✅</div>
                             <p id="focus-locked-title" style="font-size: 1.2rem; font-weight: 600; color: #4ECDC4;">Response logged for today!</p>
                             <p id="focus-locked-desc" style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0.5rem;">Resets at midnight (12:00 AM)</p>
+                            <button class="btn-logout" id="btn-undo-web" onclick="undoDailyCheckIn()" style="margin-top: 1rem; padding: 0.5rem 1.5rem; font-size: 0.85rem; border-color: rgba(255, 94, 98, 0.3); background: rgba(255, 94, 98, 0.05); color: #FF5E62;">Undo Check-In</button>
                         </div>
                         
                         <div id="focus-analysis-area" style="display: none; margin-top: 1.5rem; text-align: center;">
@@ -1588,8 +1589,8 @@
                 countdownEl.textContent = `Time remaining: ${leftDays} day${leftDays === 1 ? '' : 's'} left`;
                 document.getElementById('focus-analysis-area').style.display = 'none';
                 
-                const todayStr = new Date().toDateString();
-                const isFirstDay = test.lockDayStr === todayStr;
+                const todayStr = getLocalDateString();
+                const isFirstDay = test.lockDayStr === new Date().toDateString();
                 const checkedIn = test.logs[todayStr] !== undefined || isFirstDay;
                 
                 if (checkedIn) {
@@ -1863,13 +1864,31 @@
             setFocusSubView('input');
         }
 
+        function getLocalDateString() {
+            const d = new Date();
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
         function submitDailyCheckIn(didIt) {
             if (!focusState.activeTest) return;
-            const todayStr = new Date().toDateString();
+            const todayStr = getLocalDateString();
             focusState.activeTest.logs[todayStr] = didIt;
             
             document.getElementById('focus-checkin-area').style.display = 'none';
             document.getElementById('focus-checkin-locked').style.display = 'block';
+            saveFocusState();
+        }
+
+        function undoDailyCheckIn() {
+            if (!focusState.activeTest) return;
+            const todayStr = getLocalDateString();
+            delete focusState.activeTest.logs[todayStr];
+            
+            document.getElementById('focus-checkin-area').style.display = 'block';
+            document.getElementById('focus-checkin-locked').style.display = 'none';
             saveFocusState();
         }
 
