@@ -547,7 +547,10 @@ fun ProjectFocusScreen(
                     (elapsedMs / (24L * 60L * 60L * 1000L)).toInt() + 1
                 )
                 val todayStr = java.time.LocalDate.now().toString()
-                val checkedInToday = test.logs[todayStr] == true
+                val todayToDateString = java.time.format.DateTimeFormatter.ofPattern("EEE MMM dd yyyy", java.util.Locale.US)
+                    .format(java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault()))
+                val isFirstDay = test.lockDayStr == todayToDateString
+                val checkedInToday = test.logs.containsKey(todayStr) || isFirstDay
 
                 var isExpanded by remember { mutableStateOf(false) }
 
@@ -782,8 +785,8 @@ fun ProjectFocusScreen(
                                     } else if (checkedInToday) {
                                         Surface(
                                             shape = RoundedCornerShape(18.dp),
-                                            color = Color(0xFF4CAF50).copy(alpha = 0.1f),
-                                            border = BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.3f)),
+                                            color = if (isFirstDay) NotelPrimary.copy(alpha = 0.1f) else Color(0xFF4CAF50).copy(alpha = 0.1f),
+                                            border = BorderStroke(1.dp, if (isFirstDay) NotelPrimary.copy(alpha = 0.3f) else Color(0xFF4CAF50).copy(alpha = 0.3f)),
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
                                             Row(
@@ -796,25 +799,27 @@ fun ProjectFocusScreen(
                                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                                                     modifier = Modifier.weight(1f)
                                                 ) {
-                                                    Text("✅", fontSize = 24.sp)
+                                                    Text(if (isFirstDay) "🔒" else "✅", fontSize = 24.sp)
                                                     Column {
                                                         Text(
-                                                            "Checked in today!",
-                                                            color = Color(0xFF4CAF50),
+                                                            text = if (isFirstDay) "New test locked in!" else "Response logged for today!",
+                                                            color = if (isFirstDay) NotelPrimary else Color(0xFF4CAF50),
                                                             fontSize = 15.sp,
                                                             fontWeight = FontWeight.Bold
                                                         )
                                                         Text(
-                                                            "Great work. Come back tomorrow.",
-                                                            color = Color(0xFF4CAF50).copy(alpha = 0.7f),
+                                                            text = if (isFirstDay) "Your check-in opens at midnight (12:00 AM) so you have time to perform the experiment first." else "Resets at midnight (12:00 AM)",
+                                                            color = (if (isFirstDay) NotelPrimary else Color(0xFF4CAF50)).copy(alpha = 0.7f),
                                                             fontSize = 11.sp
                                                         )
                                                     }
                                                 }
-                                                TextButton(
-                                                    onClick = { viewModel.undoCheckIn(todayStr) }
-                                                ) {
-                                                    Text("Undo", color = Color(0xFFEF5350), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                if (!isFirstDay) {
+                                                    TextButton(
+                                                        onClick = { viewModel.undoCheckIn(todayStr) }
+                                                    ) {
+                                                        Text("Undo", color = Color(0xFFEF5350), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                    }
                                                 }
                                             }
                                         }

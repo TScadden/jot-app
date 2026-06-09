@@ -25,6 +25,7 @@ data class ActiveProjectTest(
     val desc: String? = null,
     val durationDays: Int,
     val startTimestamp: Long,
+    val lockDayStr: String? = null,
     val logs: Map<String, Boolean> = emptyMap()
 )
 
@@ -198,12 +199,15 @@ class ProjectFocusViewModel @Inject constructor(
             System.currentTimeMillis()
         }
         val testId = "test_${System.currentTimeMillis()}_${(0..9999).random()}"
+        val todayStr = java.time.format.DateTimeFormatter.ofPattern("EEE MMM dd yyyy", java.util.Locale.US)
+            .format(java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault()))
         val test = ActiveProjectTest(
             id = testId,
             title = suggestion.title,
             desc = suggestion.desc,
             durationDays = _uiState.value.setupDuration,
             startTimestamp = startMs,
+            lockDayStr = todayStr,
             logs = emptyMap()
         )
         val updatedTests = _uiState.value.activeTests.toMutableList().apply { add(test) }
