@@ -336,6 +336,7 @@ class SyncManager @Inject constructor(
                     currentStreak = preferences.currentStreak.first(),
                     bestStreak = preferences.bestStreak.first(),
                     userLists = userListsJson,
+                    focusState = preferences.focusState.first().let { if (it == "{}") null else it },
                     reminders = remindersJson,
                     weeklyScore = weeklyScoreValue,
                     shareDataWithFriends = preferences.shareDataWithFriends.first(),
@@ -527,6 +528,7 @@ class SyncManager @Inject constructor(
                     profile.todayScore?.let { preferences.setTodayScore(it) }
                     profile.todaySpikes?.let { preferences.setTodaySpikes(it) }
                     profile.todaySleepDebt?.let { preferences.setTodaySleepDebt(it) }
+                    profile.focusState?.let { if (it.isNotBlank() && it != "{}") preferences.setFocusState(it) }
                     profile.userLists?.let { serverJson ->
                         if (serverJson.isNotBlank()) {
                             val pulledLists = try { Json.decodeFromString<List<UserListSyncDto>>(serverJson) } catch(e: Exception) { emptyList() }

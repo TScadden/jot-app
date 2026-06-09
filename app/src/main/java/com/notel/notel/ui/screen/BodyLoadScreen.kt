@@ -51,6 +51,7 @@ fun BodyLoadScreen(
     onNavigateToReminders: () -> Unit = {},
     onNavigateToLists: () -> Unit = {},
     onNavigateToNotes: () -> Unit = {},
+    onNavigateToProjectFocus: () -> Unit = {},
     quickLogViewModel: QuickLogViewModel = hiltViewModel(),
     habitViewModel: HabitViewModel = hiltViewModel(),
     reminderViewModel: ReminderViewModel = hiltViewModel(),
@@ -609,6 +610,60 @@ fun BodyLoadScreen(
                                 Text(
                                     text = if (notes.isEmpty()) "No notes yet"
                                            else "${notes.size} ${if (notes.size == 1) "Note" else "Notes"}",
+                                    color = NotelTextSecondary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+
+                    // ── Project Focus Tile ────────────────────────────────────
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(76.dp)
+                            .border(
+                                width = 3.dp,
+                                color = NotelPrimary.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(22.dp)
+                            )
+                            .border(
+                                width = 6.dp,
+                                color = NotelPrimary.copy(alpha = 0.04f),
+                                shape = RoundedCornerShape(24.dp)
+                            )
+                            .liquidGlass(
+                                shape = RoundedCornerShape(20.dp),
+                                color = NotelSurface,
+                                alpha = 0.8f,
+                                showBorder = true
+                            )
+                            .clickable { onNavigateToProjectFocus() }
+                            .padding(horizontal = 20.dp, vertical = 12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Start
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Science,
+                                contentDescription = null,
+                                tint = NotelPrimary,
+                                modifier = Modifier.size(28.dp)
+                            )
+                            Spacer(Modifier.width(14.dp))
+                            Column {
+                                Text(
+                                    text = "Project Focus",
+                                    color = NotelTextPrimary,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Track your experiments",
                                     color = NotelTextSecondary,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium

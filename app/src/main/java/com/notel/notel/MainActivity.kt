@@ -202,11 +202,15 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToHabits = { navController.navigate("habits") },
                                 onNavigateToReminders = { navController.navigate("reminders") },
                                 onNavigateToLists = { navController.navigate("lists") },
-                                onNavigateToNotes = { navController.navigate("notes") }
+                                onNavigateToNotes = { navController.navigate("notes") },
+                                onNavigateToProjectFocus = { navController.navigate("project_focus") }
                             )
                         }
                         composable("habits") {
                             HabitsScreen(onBack = { navController.popBackStack() })
+                        }
+                        composable("project_focus") {
+                            com.notel.notel.ui.screen.ProjectFocusScreen(onBack = { navController.popBackStack() })
                         }
                         composable("reminders") {
                             RemindersScreen(onBack = { navController.popBackStack() })

@@ -112,6 +112,7 @@ class NotelPreferences @Inject constructor(
         val TODAY_SCORE = intPreferencesKey("today_score")
         val TODAY_SPIKES = intPreferencesKey("today_spikes")
         val TODAY_SLEEP_DEBT = intPreferencesKey("today_sleep_debt")
+        val FOCUS_STATE = stringPreferencesKey("focus_state")
     }
 
     val historicalDailyStats: Flow<String> = context.dataStore.data.map { it[HISTORICAL_DAILY_STATS] ?: "{}" }
@@ -175,6 +176,7 @@ class NotelPreferences @Inject constructor(
     val todayScore: Flow<Int> = context.dataStore.data.map { it[TODAY_SCORE] ?: 0 }
     val todaySpikes: Flow<Int> = context.dataStore.data.map { it[TODAY_SPIKES] ?: 0 }
     val todaySleepDebt: Flow<Int> = context.dataStore.data.map { it[TODAY_SLEEP_DEBT] ?: 0 }
+    val focusState: Flow<String> = context.dataStore.data.map { it[FOCUS_STATE] ?: "{}" }
     
     suspend fun setWeeklyScore(score: Int) {
         context.dataStore.edit { it[WEEKLY_SCORE] = score }
@@ -626,6 +628,10 @@ class NotelPreferences @Inject constructor(
  
     suspend fun setTodaySleepDebt(debt: Int) {
         context.dataStore.edit { it[TODAY_SLEEP_DEBT] = debt }
+    }
+
+    suspend fun setFocusState(json: String) {
+        context.dataStore.edit { it[FOCUS_STATE] = json }
     }
 
     suspend fun setUserNickname(nickname: String) {
