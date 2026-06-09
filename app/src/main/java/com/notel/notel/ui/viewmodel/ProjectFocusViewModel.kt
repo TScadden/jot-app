@@ -20,6 +20,7 @@ import javax.inject.Inject
 
 @Serializable
 data class ActiveProjectTest(
+    val id: String? = null,
     val title: String,
     val desc: String? = null,
     val durationDays: Int,
@@ -29,8 +30,10 @@ data class ActiveProjectTest(
 
 @Serializable
 data class FocusStateDto(
+    val activeTests: List<ActiveProjectTest> = emptyList(),
     val activeTest: ActiveProjectTest? = null,
-    val currentSubView: String = "input", // "input", "suggestions", "setup", "splash", "details"
+    val selectedTestId: String? = null,
+    val currentSubView: String = "input",
     val suggestions: List<FocusSuggestion> = emptyList(),
     val selectedSuggestion: FocusSuggestion? = null,
     val setupDuration: Int = 7
@@ -38,7 +41,9 @@ data class FocusStateDto(
 
 data class ProjectFocusUiState(
     val isLoading: Boolean = false,
+    val activeTests: List<ActiveProjectTest> = emptyList(),
     val activeTest: ActiveProjectTest? = null,
+    val selectedTestId: String? = null,
     val currentSubView: String = "input",
     val suggestions: List<FocusSuggestion> = emptyList(),
     val selectedSuggestion: FocusSuggestion? = null,
@@ -73,7 +78,9 @@ class ProjectFocusViewModel @Inject constructor(
             val json = preferences.focusState.first()
             val parsed = parseFocusState(json)
             _uiState.value = _uiState.value.copy(
+                activeTests = parsed?.activeTests ?: emptyList(),
                 activeTest = parsed?.activeTest,
+                selectedTestId = parsed?.selectedTestId,
                 currentSubView = parsed?.currentSubView ?: "input",
                 suggestions = parsed?.suggestions ?: emptyList(),
                 selectedSuggestion = parsed?.selectedSuggestion,
@@ -93,7 +100,9 @@ class ProjectFocusViewModel @Inject constructor(
                         preferences.setFocusState(focusJson)
                         val parsed = parseFocusState(focusJson)
                         _uiState.value = _uiState.value.copy(
+                            activeTests = parsed?.activeTests ?: emptyList(),
                             activeTest = parsed?.activeTest,
+                            selectedTestId = parsed?.selectedTestId,
                             currentSubView = parsed?.currentSubView ?: "input",
                             suggestions = parsed?.suggestions ?: emptyList(),
                             selectedSuggestion = parsed?.selectedSuggestion,
@@ -105,7 +114,9 @@ class ProjectFocusViewModel @Inject constructor(
                         val localJson = preferences.focusState.first()
                         val parsed = parseFocusState(localJson)
                         _uiState.value = _uiState.value.copy(
+                            activeTests = parsed?.activeTests ?: emptyList(),
                             activeTest = parsed?.activeTest,
+                            selectedTestId = parsed?.selectedTestId,
                             currentSubView = parsed?.currentSubView ?: "input",
                             suggestions = parsed?.suggestions ?: emptyList(),
                             selectedSuggestion = parsed?.selectedSuggestion,
@@ -186,23 +197,33 @@ class ProjectFocusViewModel @Inject constructor(
         } else {
             System.currentTimeMillis()
         }
+        val testId = "test_${System.currentTimeMillis()}_${(0..9999).random()}"
         val test = ActiveProjectTest(
+            id = testId,
             title = suggestion.title,
             desc = suggestion.desc,
             durationDays = _uiState.value.setupDuration,
             startTimestamp = startMs,
             logs = emptyMap()
         )
+        val updatedTests = _uiState.value.activeTests.toMutableList().apply { add(test) }
         _uiState.value = _uiState.value.copy(
+            activeTests = updatedTests,
             activeTest = test,
+            selectedTestId = testId,
             currentSubView = "splash"
         )
         saveCurrentState()
     }
 
     fun cancelActiveTest() {
+        val targetId = _uiState.value.selectedTestId
+        val updatedTests = _uiState.value.activeTests.filter { it.id != targetId }
+        val fallbackTest = updatedTests.firstOrNull()
         _uiState.value = _uiState.value.copy(
-            activeTest = null,
+            activeTests = updatedTests,
+            activeTest = fallbackTest,
+            selectedTestId = fallbackTest?.id,
             currentSubView = "input",
             suggestions = emptyList(),
             selectedSuggestion = null
@@ -213,7 +234,9 @@ class ProjectFocusViewModel @Inject constructor(
     private fun saveCurrentState() {
         viewModelScope.launch {
             val state = FocusStateDto(
+                activeTests = _uiState.value.activeTests,
                 activeTest = _uiState.value.activeTest,
+                selectedTestId = _uiState.value.selectedTestId,
                 currentSubView = _uiState.value.currentSubView,
                 suggestions = _uiState.value.suggestions,
                 selectedSuggestion = _uiState.value.selectedSuggestion,
@@ -229,21 +252,41 @@ class ProjectFocusViewModel @Inject constructor(
 
     /** Log a daily check-in for the active test and sync back to server */
     fun checkIn(dateStr: String, didIt: Boolean) {
-        val current = _uiState.value.activeTest ?: return
-        val updatedLogs = current.logs.toMutableMap()
-        updatedLogs[dateStr] = didIt
-        val updated = current.copy(logs = updatedLogs)
-        _uiState.value = _uiState.value.copy(activeTest = updated)
+        val targetId = _uiState.value.selectedTestId
+        val updatedTests = _uiState.value.activeTests.map { test ->
+            if (test.id == targetId || (targetId == null && test.title == _uiState.value.activeTest?.title)) {
+                val updatedLogs = test.logs.toMutableMap()
+                updatedLogs[dateStr] = didIt
+                test.copy(logs = updatedLogs)
+            } else {
+                test
+            }
+        }
+        val current = updatedTests.find { it.id == targetId || (targetId == null && it.title == _uiState.value.activeTest?.title) }
+        _uiState.value = _uiState.value.copy(
+            activeTests = updatedTests,
+            activeTest = current
+        )
         saveCurrentState()
     }
 
     /** Remove check-in for a given date and sync back to server */
     fun undoCheckIn(dateStr: String) {
-        val current = _uiState.value.activeTest ?: return
-        val updatedLogs = current.logs.toMutableMap()
-        updatedLogs.remove(dateStr)
-        val updated = current.copy(logs = updatedLogs)
-        _uiState.value = _uiState.value.copy(activeTest = updated)
+        val targetId = _uiState.value.selectedTestId
+        val updatedTests = _uiState.value.activeTests.map { test ->
+            if (test.id == targetId || (targetId == null && test.title == _uiState.value.activeTest?.title)) {
+                val updatedLogs = test.logs.toMutableMap()
+                updatedLogs.remove(dateStr)
+                test.copy(logs = updatedLogs)
+            } else {
+                test
+            }
+        }
+        val current = updatedTests.find { it.id == targetId || (targetId == null && it.title == _uiState.value.activeTest?.title) }
+        _uiState.value = _uiState.value.copy(
+            activeTests = updatedTests,
+            activeTest = current
+        )
         saveCurrentState()
     }
 
