@@ -10,6 +10,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -200,6 +201,20 @@ fun ProjectFocusScreen(
                             )
                         }
                     },
+                    actions = {
+                        if (uiState.activeTest != null && uiState.currentSubView == "details") {
+                            TextButton(
+                                onClick = { viewModel.setSubView("input") }
+                            ) {
+                                Text(
+                                    text = "Create Project",
+                                    color = NotelPrimary,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
+                    },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                 )
             }
@@ -217,7 +232,7 @@ fun ProjectFocusScreen(
                         }
                     }
                 }
-                uiState.activeTest == null -> {
+                uiState.activeTest == null || uiState.currentSubView in listOf("input", "suggestions", "setup", "splash") -> {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -528,6 +543,18 @@ fun ProjectFocusScreen(
                                             Spacer(Modifier.height(12.dp))
                                             Text(err, color = MaterialTheme.colorScheme.error, fontSize = 12.sp, textAlign = TextAlign.Center)
                                         }
+
+                                        if (uiState.activeTests.isNotEmpty()) {
+                                            Spacer(Modifier.height(16.dp))
+                                            Button(
+                                                onClick = { viewModel.setSubView("details") },
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.08f)),
+                                                shape = RoundedCornerShape(16.dp),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Text("Cancel", color = Color.White)
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -561,6 +588,46 @@ fun ProjectFocusScreen(
                     contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
+                    // ── Active Projects Row ──────────────────────────────
+                    if (uiState.activeTests.isNotEmpty()) {
+                        item {
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                contentPadding = PaddingValues(bottom = 8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                items(uiState.activeTests.size) { idx ->
+                                    val t = uiState.activeTests[idx]
+                                    val isSelected = t.id == uiState.selectedTestId
+                                    Surface(
+                                        onClick = { viewModel.selectActiveTest(t.id ?: "") },
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = if (isSelected) NotelPrimary.copy(alpha = 0.20f) else Color.White.copy(alpha = 0.03f),
+                                        border = BorderStroke(1.dp, if (isSelected) NotelPrimary else Color.White.copy(alpha = 0.08f)),
+                                        modifier = Modifier.widthIn(min = 120.dp, max = 180.dp)
+                                    ) {
+                                        Column(modifier = Modifier.padding(12.dp)) {
+                                            Text(
+                                                text = t.title,
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Spacer(Modifier.height(4.dp))
+                                            Text(
+                                                text = "${t.durationDays} Days",
+                                                color = NotelTextSecondary,
+                                                fontSize = 10.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // ── Header Card ──────────────────────────────────────
                     item {
                         Box(

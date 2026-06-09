@@ -220,6 +220,16 @@ class ProjectFocusViewModel @Inject constructor(
         saveCurrentState()
     }
 
+    fun selectActiveTest(testId: String) {
+        val test = _uiState.value.activeTests.find { it.id == testId }
+        _uiState.value = _uiState.value.copy(
+            selectedTestId = testId,
+            activeTest = test,
+            currentSubView = "details"
+        )
+        saveCurrentState()
+    }
+
     fun cancelActiveTest() {
         val targetId = _uiState.value.selectedTestId
         val updatedTests = _uiState.value.activeTests.filter { it.id != targetId }
