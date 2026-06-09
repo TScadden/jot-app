@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.remote.JotApi
 import com.notel.notel.data.remote.SyncProfileRequest
+import com.notel.notel.data.remote.FocusSuggestion
+import com.notel.notel.data.remote.FocusSuggestionsRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,12 +29,22 @@ data class ActiveProjectTest(
 
 @Serializable
 data class FocusStateDto(
-    val activeTest: ActiveProjectTest? = null
+    val activeTest: ActiveProjectTest? = null,
+    val currentSubView: String = "input", // "input", "suggestions", "setup", "splash", "details"
+    val suggestions: List<FocusSuggestion> = emptyList(),
+    val selectedSuggestion: FocusSuggestion? = null,
+    val setupDuration: Int = 7
 )
 
 data class ProjectFocusUiState(
     val isLoading: Boolean = false,
     val activeTest: ActiveProjectTest? = null,
+    val currentSubView: String = "input",
+    val suggestions: List<FocusSuggestion> = emptyList(),
+    val selectedSuggestion: FocusSuggestion? = null,
+    val setupDuration: Int = 7,
+    val isSuggestionsLoading: Boolean = false,
+    val startTomorrow: Boolean = false,
     val error: String? = null
 )
 
@@ -60,7 +72,13 @@ class ProjectFocusViewModel @Inject constructor(
         viewModelScope.launch {
             val json = preferences.focusState.first()
             val parsed = parseFocusState(json)
-            _uiState.value = _uiState.value.copy(activeTest = parsed?.activeTest)
+            _uiState.value = _uiState.value.copy(
+                activeTest = parsed?.activeTest,
+                currentSubView = parsed?.currentSubView ?: "input",
+                suggestions = parsed?.suggestions ?: emptyList(),
+                selectedSuggestion = parsed?.selectedSuggestion,
+                setupDuration = parsed?.setupDuration ?: 7
+            )
         }
     }
 
@@ -76,6 +94,10 @@ class ProjectFocusViewModel @Inject constructor(
                         val parsed = parseFocusState(focusJson)
                         _uiState.value = _uiState.value.copy(
                             activeTest = parsed?.activeTest,
+                            currentSubView = parsed?.currentSubView ?: "input",
+                            suggestions = parsed?.suggestions ?: emptyList(),
+                            selectedSuggestion = parsed?.selectedSuggestion,
+                            setupDuration = parsed?.setupDuration ?: 7,
                             isLoading = false
                         )
                     } else {
@@ -84,6 +106,10 @@ class ProjectFocusViewModel @Inject constructor(
                         val parsed = parseFocusState(localJson)
                         _uiState.value = _uiState.value.copy(
                             activeTest = parsed?.activeTest,
+                            currentSubView = parsed?.currentSubView ?: "input",
+                            suggestions = parsed?.suggestions ?: emptyList(),
+                            selectedSuggestion = parsed?.selectedSuggestion,
+                            setupDuration = parsed?.setupDuration ?: 7,
                             isLoading = false
                         )
                     }
@@ -99,6 +125,108 @@ class ProjectFocusViewModel @Inject constructor(
         }
     }
 
+    fun submitStruggle(struggle: String) {
+        if (struggle.isBlank()) return
+        _uiState.value = _uiState.value.copy(isSuggestionsLoading = true, error = null)
+        viewModelScope.launch {
+            try {
+                val res = api.getFocusSuggestions(FocusSuggestionsRequest(struggle))
+                if (res.isSuccessful && res.body() != null) {
+                    val list = res.body()!!.result
+                    _uiState.value = _uiState.value.copy(
+                        suggestions = list,
+                        currentSubView = "suggestions",
+                        isSuggestionsLoading = false
+                    )
+                    saveCurrentState()
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        isSuggestionsLoading = false,
+                        error = "Failed to load suggestions from server: ${res.code()}"
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isSuggestionsLoading = false,
+                    error = e.message
+                )
+            }
+        }
+    }
+
+    fun selectSuggestion(s: FocusSuggestion) {
+        _uiState.value = _uiState.value.copy(
+            selectedSuggestion = s,
+            currentSubView = "setup",
+            startTomorrow = false
+        )
+        saveCurrentState()
+    }
+
+    fun changeDuration(increment: Boolean) {
+        val cur = _uiState.value.setupDuration
+        val next = if (increment) (cur + 1).coerceAtMost(30) else (cur - 1).coerceAtLeast(3)
+        _uiState.value = _uiState.value.copy(setupDuration = next)
+        saveCurrentState()
+    }
+
+    fun setStartTomorrow(tomorrow: Boolean) {
+        _uiState.value = _uiState.value.copy(startTomorrow = tomorrow)
+    }
+
+    fun setSubView(subView: String) {
+        _uiState.value = _uiState.value.copy(currentSubView = subView)
+        saveCurrentState()
+    }
+
+    fun lockInProject() {
+        val suggestion = _uiState.value.selectedSuggestion ?: return
+        val startMs = if (_uiState.value.startTomorrow) {
+            System.currentTimeMillis() + (24L * 60L * 60L * 1000L)
+        } else {
+            System.currentTimeMillis()
+        }
+        val test = ActiveProjectTest(
+            title = suggestion.title,
+            desc = suggestion.desc,
+            durationDays = _uiState.value.setupDuration,
+            startTimestamp = startMs,
+            logs = emptyMap()
+        )
+        _uiState.value = _uiState.value.copy(
+            activeTest = test,
+            currentSubView = "splash"
+        )
+        saveCurrentState()
+    }
+
+    fun cancelActiveTest() {
+        _uiState.value = _uiState.value.copy(
+            activeTest = null,
+            currentSubView = "input",
+            suggestions = emptyList(),
+            selectedSuggestion = null
+        )
+        saveCurrentState()
+    }
+
+    private fun saveCurrentState() {
+        viewModelScope.launch {
+            val state = FocusStateDto(
+                activeTest = _uiState.value.activeTest,
+                currentSubView = _uiState.value.currentSubView,
+                suggestions = _uiState.value.suggestions,
+                selectedSuggestion = _uiState.value.selectedSuggestion,
+                setupDuration = _uiState.value.setupDuration
+            )
+            val json = lenientJson.encodeToString(state)
+            preferences.setFocusState(json)
+            try {
+                api.syncProfile(SyncProfileRequest(focusState = json))
+            } catch(e: Exception) {}
+        }
+    }
+
     /** Log a daily check-in for the active test and sync back to server */
     fun checkIn(dateStr: String, didIt: Boolean) {
         val current = _uiState.value.activeTest ?: return
@@ -106,18 +234,7 @@ class ProjectFocusViewModel @Inject constructor(
         updatedLogs[dateStr] = didIt
         val updated = current.copy(logs = updatedLogs)
         _uiState.value = _uiState.value.copy(activeTest = updated)
-
-        viewModelScope.launch {
-            val focusStateObj = FocusStateDto(activeTest = updated)
-            val json = lenientJson.encodeToString(focusStateObj)
-            preferences.setFocusState(json)
-            // Push to server so the website sees it too
-            try {
-                api.syncProfile(SyncProfileRequest(focusState = json))
-            } catch (e: Exception) {
-                // Best effort — local is already saved
-            }
-        }
+        saveCurrentState()
     }
 
     /** Remove check-in for a given date and sync back to server */
@@ -127,15 +244,7 @@ class ProjectFocusViewModel @Inject constructor(
         updatedLogs.remove(dateStr)
         val updated = current.copy(logs = updatedLogs)
         _uiState.value = _uiState.value.copy(activeTest = updated)
-
-        viewModelScope.launch {
-            val focusStateObj = FocusStateDto(activeTest = updated)
-            val json = lenientJson.encodeToString(focusStateObj)
-            preferences.setFocusState(json)
-            try {
-                api.syncProfile(SyncProfileRequest(focusState = json))
-            } catch (e: Exception) {}
-        }
+        saveCurrentState()
     }
 
     private fun parseFocusState(json: String): FocusStateDto? {

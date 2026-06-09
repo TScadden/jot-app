@@ -7,6 +7,17 @@ import retrofit2.http.POST
 import retrofit2.http.GET
 
 @Serializable
+data class FocusSuggestionsRequest(
+    val struggle: String
+)
+
+@Serializable
+data class FocusSuggestion(
+    val title: String,
+    val desc: String
+)
+
+@Serializable
 data class AiRequest(
     val entries: List<LogEntryDtoModel> = emptyList(),
     val categories: Map<Int, String> = emptyMap(),
@@ -588,6 +599,9 @@ interface JotApi {
 
     @POST("api/ai/coach/title")
     suspend fun getCoachTitle(@Body request: TitleRequest): Response<TitleResponse>
+
+    @POST("api/ai/focus-suggestions")
+    suspend fun getFocusSuggestions(@Body request: FocusSuggestionsRequest): Response<AiResponse<List<FocusSuggestion>>>
 
     // ── SYNC ─────────────────────────────────────────────
     @retrofit2.http.GET("api/sync/pull")

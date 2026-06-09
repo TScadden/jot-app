@@ -3,7 +3,7 @@ package com.notel.notel.ui.screen
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.*
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -19,9 +19,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.*
+import androidx.compose.ui.graphics.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -33,6 +32,141 @@ import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.ProjectFocusViewModel
 import kotlin.math.ceil
 
+@Composable
+fun BlobBackground() {
+    val infiniteTransition = rememberInfiniteTransition(label = "goo_liquid")
+
+    val phase1 by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 2f * Math.PI.toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(25000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "phase1"
+    )
+
+    val phase2 by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = -2f * Math.PI.toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(30000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "phase2"
+    )
+
+    val phase3 by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 2f * Math.PI.toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(35000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "phase3"
+    )
+
+    val phase4 by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = -2f * Math.PI.toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(40000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "phase4"
+    )
+
+    androidx.compose.foundation.Canvas(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0A0A0E))
+            .blur(60.dp)
+    ) {
+        val width = size.width
+        val height = size.height
+
+        // 1. Violet Goo Layer (Back) - flows slowly
+        val path1 = Path().apply {
+            moveTo(0f, height)
+            val baseHeight = height * 0.25f
+            val amplitude = 90f
+            for (x in 0..width.toInt() step 6) {
+                val xFloat = x.toFloat()
+                val y = baseHeight + amplitude * kotlin.math.sin((xFloat / width * 2f * Math.PI.toFloat()) + phase1)
+                lineTo(xFloat, y)
+            }
+            lineTo(width, height)
+            close()
+        }
+        drawPath(
+            path = path1,
+            brush = Brush.verticalGradient(
+                colors = listOf(Color(0xFF9C27B0).copy(alpha = 0.50f), Color.Transparent)
+            )
+        )
+
+        // 2. Cyan Goo Layer - flows opposite direction
+        val path2 = Path().apply {
+            moveTo(0f, height)
+            val baseHeight = height * 0.40f
+            val amplitude = 110f
+            for (x in 0..width.toInt() step 6) {
+                val xFloat = x.toFloat()
+                val y = baseHeight + amplitude * kotlin.math.sin((xFloat / width * 1.5f * Math.PI.toFloat()) + phase2)
+                lineTo(xFloat, y)
+            }
+            lineTo(width, height)
+            close()
+        }
+        drawPath(
+            path = path2,
+            brush = Brush.verticalGradient(
+                colors = listOf(Color(0xFF00BCD4).copy(alpha = 0.45f), Color.Transparent)
+            )
+        )
+
+        // 3. Orange Goo Layer
+        val path3 = Path().apply {
+            moveTo(0f, height)
+            val baseHeight = height * 0.55f
+            val amplitude = 100f
+            for (x in 0..width.toInt() step 6) {
+                val xFloat = x.toFloat()
+                val y = baseHeight + amplitude * kotlin.math.sin((xFloat / width * 2.5f * Math.PI.toFloat()) + phase3)
+                lineTo(xFloat, y)
+            }
+            lineTo(width, height)
+            close()
+        }
+        drawPath(
+            path = path3,
+            brush = Brush.verticalGradient(
+                colors = listOf(Color(0xFFFF7E6E).copy(alpha = 0.42f), Color.Transparent)
+            )
+        )
+
+        // 4. Purple Goo Layer (Front)
+        val path4 = Path().apply {
+            moveTo(0f, height)
+            val baseHeight = height * 0.68f
+            val amplitude = 120f
+            for (x in 0..width.toInt() step 6) {
+                val xFloat = x.toFloat()
+                val y = baseHeight + amplitude * kotlin.math.sin((xFloat / width * 1.8f * Math.PI.toFloat()) + phase4)
+                lineTo(xFloat, y)
+            }
+            lineTo(width, height)
+            close()
+        }
+        drawPath(
+            path = path4,
+            brush = Brush.verticalGradient(
+                colors = listOf(Color(0xFF7C6EFF).copy(alpha = 0.55f), Color.Transparent)
+            )
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProjectFocusScreen(
@@ -42,100 +176,373 @@ fun ProjectFocusScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
 
-    Scaffold(
-        containerColor = NotelBackground,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        "Project Focus",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = NotelTextPrimary
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = NotelTextPrimary
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = NotelBackground)
-            )
-        }
-    ) { padding ->
-        when {
-            uiState.isLoading -> {
-                Box(
-                    modifier = Modifier.fillMaxSize().padding(padding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(color = NotelPrimary, modifier = Modifier.size(36.dp))
-                        Spacer(Modifier.height(16.dp))
-                        Text("Syncing your projects…", color = NotelTextSecondary, fontSize = 14.sp)
-                    }
-                }
-            }
-            uiState.activeTest == null -> {
-                // No active project
-                Box(
-                    modifier = Modifier.fillMaxSize().padding(padding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(horizontal = 40.dp)
-                    ) {
-                        Text("🔬", fontSize = 52.sp)
-                        Spacer(Modifier.height(20.dp))
+    Box(modifier = Modifier.fillMaxSize()) {
+        BlobBackground()
+
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                TopAppBar(
+                    title = {
                         Text(
-                            "No Active Project",
-                            color = NotelTextPrimary,
-                            fontSize = 22.sp,
+                            "Project Focus",
+                            style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center
+                            color = NotelTextPrimary
                         )
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            "Start a Project Focus experiment from the website at jottracker.com to track your progress here.",
-                            color = NotelTextSecondary,
-                            fontSize = 14.sp,
-                            textAlign = TextAlign.Center,
-                            lineHeight = 20.sp
-                        )
-                        Spacer(Modifier.height(28.dp))
-                        Button(
-                            onClick = {
-                                val intent = Intent(
-                                    Intent.ACTION_VIEW,
-                                    Uri.parse("https://jottracker.com/login")
-                                )
-                                context.startActivity(intent)
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
-                            shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Go to jottracker.com", fontWeight = FontWeight.Bold)
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = NotelTextPrimary
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                )
+            }
+        ) { padding ->
+            when {
+                uiState.isLoading -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize().padding(padding),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(color = NotelPrimary, modifier = Modifier.size(36.dp))
+                            Spacer(Modifier.height(16.dp))
+                            Text("Syncing your projects…", color = NotelTextSecondary, fontSize = 14.sp)
                         }
                     }
                 }
-            }
-            else -> {
+                uiState.activeTest == null -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding)
+                            .padding(horizontal = 20.dp, vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        // Glassmorphic Card Container centered
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .offset(y = (-40).dp)
+                                .clip(RoundedCornerShape(28.dp))
+                                .background(Color(0x590A0A0E))
+                                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(28.dp))
+                                .padding(24.dp)
+                        ) {
+                            when (uiState.currentSubView) {
+                                "suggestions" -> {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(
+                                            text = "Select a Test",
+                                            color = NotelTextPrimary,
+                                            fontSize = 22.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Spacer(Modifier.height(6.dp))
+                                        Text(
+                                            text = "Pick one of the weekly tests compiled from your struggle to begin:",
+                                            color = NotelTextSecondary,
+                                            fontSize = 13.sp,
+                                            textAlign = TextAlign.Center
+                                        )
+                                        Spacer(Modifier.height(16.dp))
+                                        
+                                        // Hardcap height for suggestion list so it fits nicely on smaller screens
+                                        Box(modifier = Modifier.heightIn(max = 280.dp)) {
+                                            LazyColumn(
+                                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                                            ) {
+                                                items(uiState.suggestions.size) { idx ->
+                                                    val s = uiState.suggestions[idx]
+                                                    Surface(
+                                                        onClick = { viewModel.selectSuggestion(s) },
+                                                        shape = RoundedCornerShape(20.dp),
+                                                        color = Color.White.copy(alpha = 0.03f),
+                                                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    ) {
+                                                        Column(modifier = Modifier.padding(16.dp)) {
+                                                            Text(s.title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                                            Spacer(Modifier.height(4.dp))
+                                                            Text(s.desc, color = NotelTextSecondary, fontSize = 12.sp, lineHeight = 16.sp)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        
+                                        Spacer(Modifier.height(16.dp))
+                                        Button(
+                                            onClick = { viewModel.setSubView("input") },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.08f)),
+                                            shape = RoundedCornerShape(16.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text("Back", color = Color.White)
+                                        }
+                                    }
+                                }
+                                "setup" -> {
+                                    val selected = uiState.selectedSuggestion
+                                    if (selected != null) {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(
+                                                "Test Duration",
+                                                color = NotelTextPrimary,
+                                                fontSize = 22.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Spacer(Modifier.height(16.dp))
+                                            Text(
+                                                selected.title,
+                                                color = NotelPrimary,
+                                                fontSize = 18.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Spacer(Modifier.height(8.dp))
+                                            Text(
+                                                selected.desc,
+                                                color = NotelTextSecondary,
+                                                fontSize = 13.sp,
+                                                textAlign = TextAlign.Center,
+                                                lineHeight = 18.sp
+                                            )
+                                            Spacer(Modifier.height(28.dp))
+                                            
+                                            // Setup controls styled exactly like website buttons
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                            ) {
+                                                Button(
+                                                    onClick = { viewModel.changeDuration(false) },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.05f)),
+                                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                                                ) {
+                                                    Text("- Remove Day", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                                
+                                                Text(
+                                                    "${uiState.setupDuration} Days",
+                                                    color = Color.White,
+                                                    fontSize = 20.sp,
+                                                    fontWeight = FontWeight.Black
+                                                )
+                                                
+                                                Button(
+                                                    onClick = { viewModel.changeDuration(true) },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.05f)),
+                                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                                                ) {
+                                                    Text("+ Add Day", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                            
+                                            Spacer(Modifier.height(24.dp))
+                                            Text(
+                                                "Start Date",
+                                                color = NotelTextSecondary,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Spacer(Modifier.height(8.dp))
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                            ) {
+                                                Surface(
+                                                    onClick = { viewModel.setStartTomorrow(false) },
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    color = if (!uiState.startTomorrow) NotelPrimary.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.03f),
+                                                    border = BorderStroke(1.dp, if (!uiState.startTomorrow) NotelPrimary else Color.White.copy(alpha = 0.08f)),
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Text(
+                                                        text = "Today",
+                                                        color = if (!uiState.startTomorrow) NotelPrimary else Color.White,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 13.sp,
+                                                        modifier = Modifier.padding(vertical = 10.dp),
+                                                        textAlign = TextAlign.Center
+                                                    )
+                                                }
+                                                Surface(
+                                                    onClick = { viewModel.setStartTomorrow(true) },
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    color = if (uiState.startTomorrow) NotelPrimary.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.03f),
+                                                    border = BorderStroke(1.dp, if (uiState.startTomorrow) NotelPrimary else Color.White.copy(alpha = 0.08f)),
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Text(
+                                                        text = "Tomorrow",
+                                                        color = if (uiState.startTomorrow) NotelPrimary else Color.White,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 13.sp,
+                                                        modifier = Modifier.padding(vertical = 10.dp),
+                                                        textAlign = TextAlign.Center
+                                                    )
+                                                }
+                                            }
+
+                                            Spacer(Modifier.height(32.dp))
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                            ) {
+                                                Button(
+                                                    onClick = { viewModel.setSubView("suggestions") },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.08f)),
+                                                    shape = RoundedCornerShape(16.dp),
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Text("Back", color = Color.White)
+                                                }
+                                                Button(
+                                                    onClick = { viewModel.lockInProject() },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
+                                                    shape = RoundedCornerShape(16.dp),
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Text("Lock it In", color = Color.White)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                "splash" -> {
+                                    LaunchedEffect(Unit) {
+                                        kotlinx.coroutines.delay(2000)
+                                        viewModel.setSubView("details")
+                                    }
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
+                                    ) {
+                                        Text("🔒", fontSize = 64.sp)
+                                        Spacer(Modifier.height(16.dp))
+                                        Text(
+                                            "Test Locked In!",
+                                            color = Color.White,
+                                            fontSize = 24.sp,
+                                            fontWeight = FontWeight.Black
+                                        )
+                                        Spacer(Modifier.height(8.dp))
+                                        Text(
+                                            "Your wellness experiment has been synced. Let's get to work!",
+                                            color = NotelTextSecondary,
+                                            fontSize = 14.sp,
+                                            textAlign = TextAlign.Center,
+                                            lineHeight = 20.sp
+                                        )
+                                    }
+                                }
+                                else -> {
+                                    var struggleText by remember { mutableStateOf("") }
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
+                                    ) {
+                                        Text(
+                                            "Project Focus",
+                                            color = NotelTextPrimary,
+                                            fontSize = 24.sp,
+                                            fontWeight = FontWeight.Black
+                                        )
+                                        Spacer(Modifier.height(6.dp))
+                                        Text(
+                                            "What are you trying to work towards?",
+                                            color = NotelTextSecondary,
+                                            fontSize = 14.sp,
+                                            textAlign = TextAlign.Center
+                                        )
+                                        Spacer(Modifier.height(24.dp))
+                                        
+                                        // Glassmorphic Text Box exactly matching website's focus-input-wrapper
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(18.dp))
+                                                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(18.dp))
+                                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                                        ) {
+                                            androidx.compose.foundation.text.BasicTextField(
+                                                value = struggleText,
+                                                onValueChange = { struggleText = it },
+                                                textStyle = LocalTextStyle.current.copy(color = Color.White, fontSize = 15.sp),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(end = 44.dp)
+                                                    .heightIn(min = 60.dp, max = 150.dp),
+                                                decorationBox = { innerTextField ->
+                                                    if (struggleText.isEmpty()) {
+                                                        Text(
+                                                            text = "Type something you are struggling with (e.g., sleep, stress)...",
+                                                            color = NotelTextSecondary.copy(alpha = 0.5f),
+                                                            fontSize = 14.sp
+                                                        )
+                                                    }
+                                                    innerTextField()
+                                                }
+                                            )
+                                            
+                                            IconButton(
+                                                onClick = { viewModel.submitStruggle(struggleText) },
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomEnd)
+                                                    .size(36.dp)
+                                                    .background(NotelPrimary, RoundedCornerShape(12.dp)),
+                                                enabled = struggleText.isNotBlank() && !uiState.isSuggestionsLoading
+                                            ) {
+                                                if (uiState.isSuggestionsLoading) {
+                                                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                                } else {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Send,
+                                                        contentDescription = "Send",
+                                                        tint = Color.White,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        
+                                        uiState.error?.let { err ->
+                                            Spacer(Modifier.height(12.dp))
+                                            Text(err, color = MaterialTheme.colorScheme.error, fontSize = 12.sp, textAlign = TextAlign.Center)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                else -> {
                 val test = uiState.activeTest!!
                 val startMs = test.startTimestamp
                 val durationMs = test.durationDays.toLong() * 24L * 60L * 60L * 1000L
                 val elapsedMs = System.currentTimeMillis() - startMs
-                val leftMs = maxOf(0L, durationMs - elapsedMs)
+                val leftMs = if (elapsedMs < 0L) durationMs else maxOf(0L, durationMs - elapsedMs)
                 val isCompleted = leftMs <= 0L
-                val daysLeft = ceil(leftMs / (24.0 * 60.0 * 60.0 * 1000.0)).toInt()
-                val daysElapsed = minOf(
+                val daysLeft = if (elapsedMs < 0L) test.durationDays else ceil(leftMs / (24.0 * 60.0 * 60.0 * 1000.0)).toInt()
+                val daysElapsed = if (elapsedMs < 0L) 0 else minOf(
                     test.durationDays,
                     (elapsedMs / (24L * 60L * 60L * 1000L)).toInt() + 1
                 )
@@ -344,7 +751,35 @@ fun ProjectFocusScreen(
                                     )
                                     Spacer(Modifier.height(10.dp))
 
-                                    if (checkedInToday) {
+                                    if (elapsedMs < 0L) {
+                                        Surface(
+                                            shape = RoundedCornerShape(18.dp),
+                                            color = Color.White.copy(alpha = 0.03f),
+                                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(16.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                            ) {
+                                                Text("🔒", fontSize = 24.sp)
+                                                Column {
+                                                    Text(
+                                                        "Day 0: Waiting to start",
+                                                        color = NotelPrimary,
+                                                        fontSize = 15.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                    Text(
+                                                        "Your experiment will begin tomorrow. Get ready!",
+                                                        color = NotelTextSecondary,
+                                                        fontSize = 11.sp
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    } else if (checkedInToday) {
                                         Surface(
                                             shape = RoundedCornerShape(18.dp),
                                             color = Color(0xFF4CAF50).copy(alpha = 0.1f),
@@ -593,3 +1028,6 @@ fun ProjectFocusScreen(
         }
     }
 }
+}
+
+
