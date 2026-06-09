@@ -1409,7 +1409,7 @@
 
             // Always default to chatbox input on refresh
             focusState.currentSubView = 'input';
-            saveFocusState();
+            localStorage.setItem('focus_state', JSON.stringify(focusState));
             
             renderActiveTestsHeader();
             restoreActiveSubView();
