@@ -459,22 +459,44 @@
             width: 170px;
             padding: 0.75rem 1rem;
             border-radius: 14px;
-            background: rgba(124, 110, 255, 0.04) !important;
-            border: 1px solid rgba(124, 110, 255, 0.25) !important;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+            background: rgba(124, 110, 255, 0.12) !important;
+            border: 1.5px solid rgba(124, 110, 255, 0.4) !important;
+            box-shadow: -8px 0 16px rgba(0,0,0,0.5), 0 10px 25px rgba(0,0,0,0.3);
             cursor: pointer;
-            transition: var(--transition);
+            transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), 
+                        opacity 0.3s ease, 
+                        box-shadow 0.3s ease, 
+                        margin 0.3s ease;
             display: flex;
             flex-direction: column;
             gap: 0.35rem;
             text-align: left;
+            position: relative;
+            margin-left: -115px;
+            transform: rotate(var(--card-rotation, 0deg)) translateY(var(--card-y-offset, 0px));
+            transform-origin: bottom center;
         }
 
-        .focus-active-tile:hover {
-            transform: translateY(-3px);
-            background: rgba(124, 110, 255, 0.08) !important;
+        .focus-active-tile:first-child {
+            margin-left: 0;
+        }
+
+        .focus-active-tests-row:hover .focus-active-tile {
+            opacity: 0.45;
+            margin-left: -70px;
+        }
+        
+        .focus-active-tests-row:hover .focus-active-tile:first-child {
+            margin-left: 0;
+        }
+
+        .focus-active-tests-row .focus-active-tile:hover {
+            opacity: 1 !important;
+            transform: scale(1.18) rotate(0deg) translateY(-18px);
+            z-index: 1000 !important;
+            box-shadow: 0 15px 35px rgba(124, 110, 255, 0.35), -10px 0 25px rgba(0,0,0,0.5);
+            background: rgba(124, 110, 255, 0.25) !important;
             border-color: var(--primary-color) !important;
-            box-shadow: 0 15px 35px rgba(124, 110, 255, 0.15);
         }
 
         /* Lava Lamp Background styling & animations */
@@ -1350,7 +1372,9 @@
         }
 
         let focusState = {
-            activeTest: null, // { title, desc, durationDays, startTimestamp, logs: {} }
+            activeTests: [], // List of active tests: [ { id, title, desc, durationDays, startTimestamp, lockDayStr, logs: {} } ]
+            activeTest: null, // Legacy reference fallback
+            selectedTestId: null, // Current open test ID
             suggestions: [],
             selectedSuggestion: null,
             setupDuration: 7,
@@ -1365,6 +1389,15 @@
                     focusState = JSON.parse(saved);
                 } catch(e) {}
             }
+            
+            // Legacy Migration to array structure
+            if (!focusState.activeTests) {
+                focusState.activeTests = [];
+            }
+            if (focusState.activeTest && !focusState.activeTests.some(t => t.title === focusState.activeTest.title)) {
+                focusState.activeTests.push(focusState.activeTest);
+            }
+
             // Always default to chatbox input on refresh
             focusState.currentSubView = 'input';
             saveFocusState();
@@ -1402,41 +1435,68 @@
             if (header) header.innerHTML = '';
             if (mobileHeader) mobileHeader.innerHTML = '';
             
-            if (focusState.activeTest) {
-                const test = focusState.activeTest;
+            if (!focusState.activeTests) {
+                focusState.activeTests = [];
+            }
+            
+            const activeTests = focusState.activeTests;
+            const N = activeTests.length;
+            
+            activeTests.forEach((test, idx) => {
+                if (!test.id) {
+                    test.id = 'test_' + test.startTimestamp + '_' + idx;
+                }
+                
                 const elapsedMs = Date.now() - test.startTimestamp;
                 const totalMs = test.durationDays * 24 * 60 * 60 * 1000;
-                const leftMs = Math.max(0, totalMs - elapsedMs);
                 
-                const isCompleted = leftMs <= 0;
+                let isCompleted = false;
                 let textToShow = '';
-                if (isCompleted) {
-                    textToShow = `📈 Analysis ready`;
+                if (elapsedMs < 0) {
+                    textToShow = `⏳ Day 0 / ${test.durationDays}`;
                 } else {
-                    const leftDays = Math.ceil(leftMs / (24 * 60 * 60 * 1000));
-                    textToShow = `⏳ ${leftDays} day${leftDays === 1 ? '' : 's'} left`;
+                    const leftMs = Math.max(0, totalMs - elapsedMs);
+                    isCompleted = leftMs <= 0;
+                    if (isCompleted) {
+                        textToShow = `📈 Analysis ready`;
+                    } else {
+                        const leftDays = Math.ceil(leftMs / (24 * 60 * 60 * 1000));
+                        textToShow = `⏳ ${leftDays} day${leftDays === 1 ? '' : 's'} left`;
+                    }
                 }
                 
-                const createTile = () => {
-                    const tile = document.createElement('div');
-                    tile.className = 'focus-active-tile glass';
-                    tile.onclick = () => openTestDetails();
-                    tile.innerHTML = `
-                        <div style="font-weight: 600; font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; color: white;">${test.title}</div>
-                        <div style="font-size: 0.75rem; color: ${isCompleted ? 'var(--primary-color)' : 'var(--secondary-color)'}; font-weight: 800; display: flex; align-items: center; gap: 0.25rem;">
-                            ${textToShow}
-                        </div>
-                    `;
-                    return tile;
-                };
+                // Rotational offsets for stacked/fanned layout
+                const centerIdx = (N - 1) / 2;
+                const d = idx - centerIdx;
+                const rotation = d * 6;
+                const yOffset = Math.abs(d) * 4;
+
+                const tile = document.createElement('div');
+                tile.className = 'focus-active-tile glass';
+                tile.style.setProperty('--card-rotation', `${rotation}deg`);
+                tile.style.setProperty('--card-y-offset', `${yOffset}px`);
+                tile.style.zIndex = idx + 1;
+                
+                tile.onclick = () => openTestDetails(test.id);
+                tile.innerHTML = `
+                    <div style="font-weight: 600; font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; color: white;">${test.title}</div>
+                    <div style="font-size: 0.75rem; color: ${isCompleted ? 'var(--primary-color)' : 'var(--secondary-color)'}; font-weight: 800; display: flex; align-items: center; gap: 0.25rem;">
+                        ${textToShow}
+                    </div>
+                `;
 
                 if (header) {
-                    header.appendChild(createTile());
+                    header.appendChild(tile);
                 }
+                
                 if (mobileHeader) {
-                    mobileHeader.appendChild(createTile());
+                    const mobileTile = tile.cloneNode(true);
+                    mobileTile.onclick = () => openTestDetails(test.id);
+                    mobileTile.style.margin = '0';
+                    mobileTile.style.transform = 'none';
+                    mobileHeader.appendChild(mobileTile);
                 }
-            }
+            });
         }
 
         function setFocusSubView(view) {
@@ -1450,8 +1510,9 @@
         }
 
         function restoreActiveSubView() {
-            if (focusState.activeTest && focusState.currentSubView === 'details') {
-                openTestDetails();
+            if (focusState.activeTests && focusState.activeTests.length > 0 && focusState.currentSubView === 'details') {
+                const testId = focusState.selectedTestId || focusState.activeTests[0].id;
+                openTestDetails(testId);
             } else {
                 setFocusSubView(focusState.currentSubView || 'input');
                 if (focusState.currentSubView === 'setup') {
@@ -1586,7 +1647,9 @@
             if (focusState.startTomorrow) {
                 startMs += 24 * 60 * 60 * 1000;
             }
-            focusState.activeTest = {
+            const testId = 'test_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            const newTest = {
+                id: testId,
                 title: s.title,
                 desc: s.desc,
                 durationDays: focusState.setupDuration,
@@ -1594,6 +1657,13 @@
                 lockDayStr: new Date().toDateString(),
                 logs: {}
             };
+            
+            if (!focusState.activeTests) {
+                focusState.activeTests = [];
+            }
+            focusState.activeTests.push(newTest);
+            focusState.activeTest = newTest; // Legacy fallback
+            focusState.selectedTestId = testId;
             
             const card = document.getElementById('focus-card-element');
             card.classList.add('lock-glow');
@@ -1603,7 +1673,7 @@
             
             setTimeout(() => {
                 card.classList.remove('lock-glow');
-                openTestDetails();
+                openTestDetails(testId);
             }, 2000);
         }
 
@@ -1617,9 +1687,18 @@
             jots: { label: 'Number of Jots', formatter: v => `${Math.round(v)}`, aggregator: 'sum' }
         };
 
-        function openTestDetails() {
-            if (!focusState.activeTest) return;
-            const test = focusState.activeTest;
+        function openTestDetails(testId) {
+            if (!focusState.activeTests) {
+                focusState.activeTests = [];
+            }
+            // Fallback to activeTest or first active test if testId is missing
+            const targetId = testId || focusState.selectedTestId || (focusState.activeTests[0] ? focusState.activeTests[0].id : null);
+            const test = focusState.activeTests.find(t => t.id === targetId);
+            if (!test) return;
+            
+            focusState.selectedTestId = test.id;
+            focusState.activeTest = test; // Legacy fallback sync
+            saveFocusState();
             
             document.getElementById('focus-details-title').textContent = test.title;
             
@@ -1954,9 +2033,13 @@
         }
 
         function submitDailyCheckIn(didIt) {
-            if (!focusState.activeTest) return;
+            const test = focusState.activeTests.find(t => t.id === focusState.selectedTestId);
+            if (!test) return;
             const todayStr = getLocalDateString();
-            focusState.activeTest.logs[todayStr] = didIt;
+            test.logs[todayStr] = didIt;
+            
+            // Compatibility sync
+            focusState.activeTest = test;
             
             document.getElementById('focus-checkin-area').style.display = 'none';
             document.getElementById('focus-checkin-locked').style.display = 'block';
@@ -1964,9 +2047,13 @@
         }
 
         function undoDailyCheckIn() {
-            if (!focusState.activeTest) return;
+            const test = focusState.activeTests.find(t => t.id === focusState.selectedTestId);
+            if (!test) return;
             const todayStr = getLocalDateString();
-            delete focusState.activeTest.logs[todayStr];
+            delete test.logs[todayStr];
+            
+            // Compatibility sync
+            focusState.activeTest = test;
             
             document.getElementById('focus-checkin-area').style.display = 'block';
             document.getElementById('focus-checkin-locked').style.display = 'none';
@@ -1975,18 +2062,22 @@
 
         function cancelActiveTest() {
             if (confirm("Are you sure you want to cancel this experiment?")) {
-                focusState.activeTest = null;
+                focusState.activeTests = focusState.activeTests.filter(t => t.id !== focusState.selectedTestId);
+                focusState.activeTest = focusState.activeTests[0] || null;
+                focusState.selectedTestId = null;
                 renderActiveTestsHeader();
                 setFocusSubView('input');
+                saveFocusState();
             }
         }
 
         function fastForwardTest() {
-            if (!focusState.activeTest) return;
-            const durationMs = focusState.activeTest.durationDays * 24 * 60 * 60 * 1000;
-            focusState.activeTest.startTimestamp = Date.now() - durationMs - 5000;
+            const test = focusState.activeTests.find(t => t.id === focusState.selectedTestId);
+            if (!test) return;
+            const durationMs = test.durationDays * 24 * 60 * 60 * 1000;
+            test.startTimestamp = Date.now() - durationMs - 5000;
             saveFocusState();
-            openTestDetails();
+            openTestDetails(test.id);
             renderActiveTestsHeader();
         }
 
