@@ -1365,6 +1365,10 @@
                     focusState = JSON.parse(saved);
                 } catch(e) {}
             }
+            // Always default to chatbox input on refresh
+            focusState.currentSubView = 'input';
+            saveFocusState();
+            
             renderActiveTestsHeader();
             restoreActiveSubView();
             initGooBackground(); // Initialize fluid background
