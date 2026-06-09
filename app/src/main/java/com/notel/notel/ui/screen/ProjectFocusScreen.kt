@@ -137,10 +137,12 @@ fun ProjectFocusScreen(
                 val daysLeft = ceil(leftMs / (24.0 * 60.0 * 60.0 * 1000.0)).toInt()
                 val daysElapsed = minOf(
                     test.durationDays,
-                    (elapsedMs / (24L * 60L * 60L * 1000L)).toInt()
+                    (elapsedMs / (24L * 60L * 60L * 1000L)).toInt() + 1
                 )
                 val todayStr = java.time.LocalDate.now().toString()
                 val checkedInToday = test.logs[todayStr] == true
+
+                var isExpanded by remember { mutableStateOf(false) }
 
                 LazyColumn(
                     modifier = Modifier
@@ -173,22 +175,36 @@ fun ProjectFocusScreen(
                                     ),
                                     shape = RoundedCornerShape(24.dp)
                                 )
+                                .clickable { isExpanded = !isExpanded }
                                 .padding(20.dp)
                         ) {
                             Column {
-                                // Status badge
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (isCompleted) Color(0xFF4CAF50).copy(alpha = 0.15f)
-                                           else NotelPrimary.copy(alpha = 0.12f)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = if (isCompleted) "✅ Complete — Results Ready" else "⏳ In Progress",
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                        color = if (isCompleted) Color(0xFF4CAF50) else NotelPrimary,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Black,
-                                        letterSpacing = 0.5.sp
+                                    // Status badge
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isCompleted) Color(0xFF4CAF50).copy(alpha = 0.15f)
+                                               else NotelPrimary.copy(alpha = 0.12f)
+                                    ) {
+                                        Text(
+                                            text = if (isCompleted) "✅ Complete — Results Ready" else "⏳ In Progress",
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                            color = if (isCompleted) Color(0xFF4CAF50) else NotelPrimary,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Black,
+                                            letterSpacing = 0.5.sp
+                                        )
+                                    }
+
+                                    Icon(
+                                        imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                        contentDescription = if (isExpanded) "Collapse" else "Expand",
+                                        tint = NotelTextSecondary,
+                                        modifier = Modifier.size(24.dp)
                                     )
                                 }
 
@@ -261,9 +277,270 @@ fun ProjectFocusScreen(
                         }
                     }
 
-                    // ── Completed: Show results link ─────────────────────
-                    if (isCompleted) {
+                    // ── Everything below is only shown when expanded ─────
+                    if (isExpanded) {
+                        // ── Completed: Show results link ─────────────────────
+                        if (isCompleted) {
+                            item {
+                                Surface(
+                                    onClick = {
+                                        val intent = Intent(
+                                            Intent.ACTION_VIEW,
+                                            Uri.parse("https://jottracker.com/login")
+                                        )
+                                        context.startActivity(intent)
+                                    },
+                                    shape = RoundedCornerShape(20.dp),
+                                    color = Color(0xFF4CAF50).copy(alpha = 0.1f),
+                                    border = BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.35f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(18.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.OpenInBrowser,
+                                            contentDescription = null,
+                                            tint = Color(0xFF4CAF50),
+                                            modifier = Modifier.size(28.dp)
+                                        )
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                "View Your Results",
+                                                color = Color(0xFF4CAF50),
+                                                fontSize = 16.sp,
+                                                fontWeight = FontWeight.ExtraBold
+                                            )
+                                            Text(
+                                                "Tap to open jottracker.com and see your full analysis",
+                                                color = Color(0xFF4CAF50).copy(alpha = 0.75f),
+                                                fontSize = 12.sp,
+                                                lineHeight = 16.sp
+                                            )
+                                        }
+                                        Icon(
+                                            Icons.Default.ChevronRight,
+                                            contentDescription = null,
+                                            tint = Color(0xFF4CAF50).copy(alpha = 0.7f),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // ── Daily Check-In Card ──────────────────────────────
+                        if (!isCompleted) {
+                            item {
+                                Column {
+                                    Text(
+                                        "Today's Check-In",
+                                        color = NotelTextSecondary,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Black,
+                                        letterSpacing = 1.sp
+                                    )
+                                    Spacer(Modifier.height(10.dp))
+
+                                    if (checkedInToday) {
+                                        Surface(
+                                            shape = RoundedCornerShape(18.dp),
+                                            color = Color(0xFF4CAF50).copy(alpha = 0.1f),
+                                            border = BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.3f)),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(16.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                            ) {
+                                                Text("✅", fontSize = 24.sp)
+                                                Column {
+                                                    Text(
+                                                        "Checked in today!",
+                                                        color = Color(0xFF4CAF50),
+                                                        fontSize = 15.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                    Text(
+                                                        "Great work. Come back tomorrow to log again.",
+                                                        color = Color(0xFF4CAF50).copy(alpha = 0.7f),
+                                                        fontSize = 12.sp
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                        ) {
+                                            // Yes button
+                                            val isLocalYes = test.logs[todayStr] == true
+                                            Surface(
+                                                onClick = { viewModel.checkIn(todayStr, true) },
+                                                modifier = Modifier.weight(1f),
+                                                shape = RoundedCornerShape(18.dp),
+                                                color = if (isLocalYes) NotelPrimary.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.03f),
+                                                border = BorderStroke(1.dp, if (isLocalYes) NotelPrimary else Color.White.copy(alpha = 0.08f))
+                                            ) {
+                                                Column(
+                                                    modifier = Modifier.padding(16.dp),
+                                                    horizontalAlignment = Alignment.CenterHorizontally
+                                                ) {
+                                                    Text("✅", fontSize = 28.sp)
+                                                    Spacer(Modifier.height(6.dp))
+                                                    Text(
+                                                        "Yes, I did it",
+                                                        color = if (isLocalYes) NotelPrimary else NotelTextSecondary,
+                                                        fontSize = 13.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        textAlign = TextAlign.Center
+                                                    )
+                                                }
+                                            }
+                                            // No button
+                                            val isLocalNo = test.logs[todayStr] == false
+                                            Surface(
+                                                onClick = { viewModel.checkIn(todayStr, false) },
+                                                modifier = Modifier.weight(1f),
+                                                shape = RoundedCornerShape(18.dp),
+                                                color = if (isLocalNo) Color(0xFFEF5350).copy(alpha = 0.2f) else Color.White.copy(alpha = 0.03f),
+                                                border = BorderStroke(1.dp, if (isLocalNo) Color(0xFFEF5350) else Color.White.copy(alpha = 0.08f))
+                                            ) {
+                                                Column(
+                                                    modifier = Modifier.padding(16.dp),
+                                                    horizontalAlignment = Alignment.CenterHorizontally
+                                                ) {
+                                                    Text("😞", fontSize = 28.sp)
+                                                    Spacer(Modifier.height(6.dp))
+                                                    Text(
+                                                        "Not today",
+                                                        color = if (isLocalNo) Color(0xFFEF5350) else NotelTextSecondary,
+                                                        fontSize = 13.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        textAlign = TextAlign.Center
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // ── Log Calendar ─────────────────────────────────────
                         item {
+                            Column {
+                                Text(
+                                    "Log History",
+                                    color = NotelTextSecondary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 1.sp
+                                )
+                                Spacer(Modifier.height(10.dp))
+
+                                val startDate = java.time.Instant.ofEpochMilli(startMs)
+                                    .atZone(java.time.ZoneOffset.UTC)
+                                    .toLocalDate()
+
+                                val totalDays = test.durationDays
+                                val dayRows = (0 until totalDays).chunked(7)
+
+                                dayRows.forEach { week ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 3.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        week.forEach { dayOffset ->
+                                            val date = startDate.plusDays(dayOffset.toLong())
+                                            val dateStr = date.toString()
+                                            val isToday = dateStr == todayStr
+                                            val isFuture = date.isAfter(java.time.LocalDate.now())
+                                            val logValue = test.logs[dateStr]
+
+                                            Box(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .aspectRatio(1f)
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .background(
+                                                        when {
+                                                            logValue == true -> Color(0xFF4CAF50).copy(alpha = 0.25f)
+                                                            logValue == false -> Color(0xFFEF5350).copy(alpha = 0.15f)
+                                                            isToday -> NotelPrimary.copy(alpha = 0.1f)
+                                                            else -> Color.White.copy(alpha = 0.04f)
+                                                        }
+                                                    )
+                                                    .border(
+                                                        1.dp,
+                                                        when {
+                                                            logValue == true -> Color(0xFF4CAF50).copy(alpha = 0.4f)
+                                                            logValue == false -> Color(0xFFEF5350).copy(alpha = 0.3f)
+                                                            isToday -> NotelPrimary.copy(alpha = 0.4f)
+                                                            else -> Color.White.copy(alpha = 0.05f)
+                                                        },
+                                                        RoundedCornerShape(10.dp)
+                                                    ),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                when {
+                                                    logValue == true -> Text("✓", color = Color(0xFF4CAF50), fontSize = 14.sp, fontWeight = FontWeight.Black)
+                                                    logValue == false -> Text("✗", color = Color(0xFFEF5350), fontSize = 14.sp, fontWeight = FontWeight.Black)
+                                                    isFuture -> Text(
+                                                        "${dayOffset + 1}",
+                                                        color = Color.White.copy(alpha = 0.15f),
+                                                        fontSize = 10.sp
+                                                    )
+                                                    else -> Text(
+                                                        "${dayOffset + 1}",
+                                                        color = if (isToday) NotelPrimary else NotelTextSecondary,
+                                                        fontSize = 10.sp,
+                                                        fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        // Fill remaining empty cells in last row
+                                        if (week.size < 7) {
+                                            repeat(7 - week.size) {
+                                                Spacer(modifier = Modifier.weight(1f))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // ── Legend ───────────────────────────────────────────
+                        item {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                modifier = Modifier.padding(top = 4.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Box(Modifier.size(8.dp).background(Color(0xFF4CAF50).copy(alpha = 0.7f), CircleShape))
+                                    Text("Completed", color = NotelTextSecondary, fontSize = 11.sp)
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Box(Modifier.size(8.dp).background(Color(0xFFEF5350).copy(alpha = 0.7f), CircleShape))
+                                    Text("Missed", color = NotelTextSecondary, fontSize = 11.sp)
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Box(Modifier.size(8.dp).background(Color.White.copy(alpha = 0.1f), CircleShape))
+                                    Text("Upcoming", color = NotelTextSecondary, fontSize = 11.sp)
+                                }
+                            }
+                        }
+
+                        // ── Bottom link to website ───────────────────────────
+                        item {
+                            Spacer(Modifier.height(8.dp))
                             Surface(
                                 onClick = {
                                     val intent = Intent(
@@ -272,288 +549,31 @@ fun ProjectFocusScreen(
                                     )
                                     context.startActivity(intent)
                                 },
-                                shape = RoundedCornerShape(20.dp),
-                                color = Color(0xFF4CAF50).copy(alpha = 0.1f),
-                                border = BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.35f)),
+                                shape = RoundedCornerShape(16.dp),
+                                color = NotelPrimary.copy(alpha = 0.07f),
+                                border = BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.2f)),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(18.dp),
+                                    modifier = Modifier.padding(14.dp),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     Icon(
                                         Icons.Default.OpenInBrowser,
                                         contentDescription = null,
-                                        tint = Color(0xFF4CAF50),
-                                        modifier = Modifier.size(28.dp)
+                                        tint = NotelPrimary.copy(alpha = 0.7f),
+                                        modifier = Modifier.size(18.dp)
                                     )
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            "View Your Results",
-                                            color = Color(0xFF4CAF50),
-                                            fontSize = 16.sp,
-                                            fontWeight = FontWeight.ExtraBold
-                                        )
-                                        Text(
-                                            "Tap to open jottracker.com and see your full analysis",
-                                            color = Color(0xFF4CAF50).copy(alpha = 0.75f),
-                                            fontSize = 12.sp,
-                                            lineHeight = 16.sp
-                                        )
-                                    }
-                                    Icon(
-                                        Icons.Default.ChevronRight,
-                                        contentDescription = null,
-                                        tint = Color(0xFF4CAF50).copy(alpha = 0.7f),
-                                        modifier = Modifier.size(20.dp)
+                                    Text(
+                                        "Manage projects on jottracker.com",
+                                        color = NotelPrimary.copy(alpha = 0.8f),
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium
                                     )
                                 }
                             }
                         }
-                    }
-
-                    // ── Daily Check-In Card ──────────────────────────────
-                    if (!isCompleted) {
-                        item {
-                            Column {
-                                Text(
-                                    "Today's Check-In",
-                                    color = NotelTextSecondary,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Black,
-                                    letterSpacing = 1.sp
-                                )
-                                Spacer(Modifier.height(10.dp))
-
-                                if (checkedInToday) {
-                                    Surface(
-                                        shape = RoundedCornerShape(18.dp),
-                                        color = Color(0xFF4CAF50).copy(alpha = 0.1f),
-                                        border = BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.3f)),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(16.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                        ) {
-                                            Text("✅", fontSize = 24.sp)
-                                            Column {
-                                                Text(
-                                                    "Checked in today!",
-                                                    color = Color(0xFF4CAF50),
-                                                    fontSize = 15.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                                Text(
-                                                    "Great work. Come back tomorrow to log again.",
-                                                    color = Color(0xFF4CAF50).copy(alpha = 0.7f),
-                                                    fontSize = 12.sp
-                                                )
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                    ) {
-                                        // Yes button
-                                        Surface(
-                                            onClick = { viewModel.checkIn(todayStr, true) },
-                                            modifier = Modifier.weight(1f),
-                                            shape = RoundedCornerShape(18.dp),
-                                            color = NotelPrimary.copy(alpha = 0.1f),
-                                            border = BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.35f))
-                                        ) {
-                                            Column(
-                                                modifier = Modifier.padding(16.dp),
-                                                horizontalAlignment = Alignment.CenterHorizontally
-                                            ) {
-                                                Text("✅", fontSize = 28.sp)
-                                                Spacer(Modifier.height(6.dp))
-                                                Text(
-                                                    "Yes, I did it",
-                                                    color = NotelPrimary,
-                                                    fontSize = 13.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    textAlign = TextAlign.Center
-                                                )
-                                            }
-                                        }
-                                        // No button
-                                        Surface(
-                                            onClick = { viewModel.checkIn(todayStr, false) },
-                                            modifier = Modifier.weight(1f),
-                                            shape = RoundedCornerShape(18.dp),
-                                            color = Color.White.copy(alpha = 0.03f),
-                                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
-                                        ) {
-                                            Column(
-                                                modifier = Modifier.padding(16.dp),
-                                                horizontalAlignment = Alignment.CenterHorizontally
-                                            ) {
-                                                Text("😞", fontSize = 28.sp)
-                                                Spacer(Modifier.height(6.dp))
-                                                Text(
-                                                    "Not today",
-                                                    color = NotelTextSecondary,
-                                                    fontSize = 13.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    textAlign = TextAlign.Center
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // ── Log Calendar ─────────────────────────────────────
-                    item {
-                        Column {
-                            Text(
-                                "Log History",
-                                color = NotelTextSecondary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Black,
-                                letterSpacing = 1.sp
-                            )
-                            Spacer(Modifier.height(10.dp))
-
-                            val startDate = java.time.Instant.ofEpochMilli(startMs)
-                                .atZone(java.time.ZoneId.systemDefault())
-                                .toLocalDate()
-
-                            val totalDays = test.durationDays
-                            val dayRows = (0 until totalDays).chunked(7)
-
-                            dayRows.forEach { week ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 3.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    week.forEach { dayOffset ->
-                                        val date = startDate.plusDays(dayOffset.toLong())
-                                        val dateStr = date.toString()
-                                        val isToday = dateStr == todayStr
-                                        val isFuture = date.isAfter(java.time.LocalDate.now())
-                                        val logValue = test.logs[dateStr]
-
-                                        Box(
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .aspectRatio(1f)
-                                                .clip(RoundedCornerShape(10.dp))
-                                                .background(
-                                                    when {
-                                                        logValue == true -> Color(0xFF4CAF50).copy(alpha = 0.25f)
-                                                        logValue == false -> Color(0xFFEF5350).copy(alpha = 0.15f)
-                                                        isToday -> NotelPrimary.copy(alpha = 0.1f)
-                                                        else -> Color.White.copy(alpha = 0.04f)
-                                                    }
-                                                )
-                                                .border(
-                                                    1.dp,
-                                                    when {
-                                                        logValue == true -> Color(0xFF4CAF50).copy(alpha = 0.4f)
-                                                        logValue == false -> Color(0xFFEF5350).copy(alpha = 0.3f)
-                                                        isToday -> NotelPrimary.copy(alpha = 0.4f)
-                                                        else -> Color.White.copy(alpha = 0.05f)
-                                                    },
-                                                    RoundedCornerShape(10.dp)
-                                                ),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            when {
-                                                logValue == true -> Text("✓", color = Color(0xFF4CAF50), fontSize = 14.sp, fontWeight = FontWeight.Black)
-                                                logValue == false -> Text("✗", color = Color(0xFFEF5350), fontSize = 14.sp, fontWeight = FontWeight.Black)
-                                                isFuture -> Text(
-                                                    "${dayOffset + 1}",
-                                                    color = Color.White.copy(alpha = 0.15f),
-                                                    fontSize = 10.sp
-                                                )
-                                                else -> Text(
-                                                    "${dayOffset + 1}",
-                                                    color = if (isToday) NotelPrimary else NotelTextSecondary,
-                                                    fontSize = 10.sp,
-                                                    fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal
-                                                )
-                                            }
-                                        }
-                                    }
-                                    // Fill remaining empty cells in last row
-                                    if (week.size < 7) {
-                                        repeat(7 - week.size) {
-                                            Spacer(modifier = Modifier.weight(1f))
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // ── Legend ───────────────────────────────────────────
-                    item {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            modifier = Modifier.padding(top = 4.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Box(Modifier.size(8.dp).background(Color(0xFF4CAF50).copy(alpha = 0.7f), CircleShape))
-                                Text("Completed", color = NotelTextSecondary, fontSize = 11.sp)
-                            }
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Box(Modifier.size(8.dp).background(Color(0xFFEF5350).copy(alpha = 0.7f), CircleShape))
-                                Text("Missed", color = NotelTextSecondary, fontSize = 11.sp)
-                            }
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Box(Modifier.size(8.dp).background(Color.White.copy(alpha = 0.1f), CircleShape))
-                                Text("Upcoming", color = NotelTextSecondary, fontSize = 11.sp)
-                            }
-                        }
-                    }
-
-                    // ── Bottom link to website ───────────────────────────
-                    item {
-                        Spacer(Modifier.height(8.dp))
-                        Surface(
-                            onClick = {
-                                val intent = Intent(
-                                    Intent.ACTION_VIEW,
-                                    Uri.parse("https://jottracker.com/login")
-                                )
-                                context.startActivity(intent)
-                            },
-                            shape = RoundedCornerShape(16.dp),
-                            color = NotelPrimary.copy(alpha = 0.07f),
-                            border = BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.2f)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.OpenInBrowser,
-                                    contentDescription = null,
-                                    tint = NotelPrimary.copy(alpha = 0.7f),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Text(
-                                    "Manage projects on jottracker.com",
-                                    color = NotelPrimary.copy(alpha = 0.8f),
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                        }
-                        Spacer(Modifier.height(60.dp))
                     }
                 }
             }
