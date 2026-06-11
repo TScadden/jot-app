@@ -245,19 +245,24 @@ class ProjectFocusViewModel @Inject constructor(
         saveCurrentState()
     }
 
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
     private fun saveCurrentState() {
+        val state = FocusStateDto(
+            activeTests = _uiState.value.activeTests,
+            activeTest = _uiState.value.activeTest,
+            selectedTestId = _uiState.value.selectedTestId,
+            currentSubView = _uiState.value.currentSubView,
+            suggestions = _uiState.value.suggestions,
+            selectedSuggestion = _uiState.value.selectedSuggestion,
+            setupDuration = _uiState.value.setupDuration
+        )
+        val json = lenientJson.encodeToString(state)
+        
         viewModelScope.launch {
-            val state = FocusStateDto(
-                activeTests = _uiState.value.activeTests,
-                activeTest = _uiState.value.activeTest,
-                selectedTestId = _uiState.value.selectedTestId,
-                currentSubView = _uiState.value.currentSubView,
-                suggestions = _uiState.value.suggestions,
-                selectedSuggestion = _uiState.value.selectedSuggestion,
-                setupDuration = _uiState.value.setupDuration
-            )
-            val json = lenientJson.encodeToString(state)
             preferences.setFocusState(json)
+        }
+        
+        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 api.syncProfile(SyncProfileRequest(focusState = json))
             } catch(e: Exception) {}

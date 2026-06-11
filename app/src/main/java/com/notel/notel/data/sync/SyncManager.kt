@@ -528,7 +528,25 @@ class SyncManager @Inject constructor(
                     profile.todayScore?.let { preferences.setTodayScore(it) }
                     profile.todaySpikes?.let { preferences.setTodaySpikes(it) }
                     profile.todaySleepDebt?.let { preferences.setTodaySleepDebt(it) }
-                    profile.focusState?.let { if (it.isNotBlank()) preferences.setFocusState(it) }
+                    profile.focusState?.let { serverJson ->
+                        if (serverJson.isNotBlank()) {
+                            val localJson = preferences.focusState.first()
+                            val shouldOverwrite = try {
+                                if (localJson.isBlank() || localJson == "{}") {
+                                    true
+                                } else {
+                                    val localHasTests = localJson.contains("\"activeTests\":[{\"")
+                                    val serverHasTests = serverJson.contains("\"activeTests\":[{\"")
+                                    serverHasTests || !localHasTests
+                                }
+                            } catch (e: Exception) {
+                                true
+                            }
+                            if (shouldOverwrite) {
+                                preferences.setFocusState(serverJson)
+                            }
+                        }
+                    }
                     profile.userLists?.let { serverJson ->
                         if (serverJson.isNotBlank()) {
                             val pulledLists = try { Json.decodeFromString<List<UserListSyncDto>>(serverJson) } catch(e: Exception) { emptyList() }
