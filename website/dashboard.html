@@ -659,61 +659,57 @@
         .focus-input-wrapper {
             position: relative;
             display: flex;
-            align-items: flex-end;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid var(--glass-border);
-            border-radius: 18px;
-            padding: 0.75rem 1rem;
+            align-items: center;
+            background: #1e1e1e;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 32px;
+            padding: 0.75rem 1.5rem;
             transition: var(--transition);
+            width: 100%;
+            box-sizing: border-box;
+            gap: 1rem;
         }
 
         .focus-input-wrapper:focus-within {
-            border-color: var(--primary-color);
-            box-shadow: 0 0 15px rgba(124, 110, 255, 0.2);
-            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.05);
+            background: #232323;
         }
 
         .focus-textarea {
             width: 100%;
-            min-height: 48px;
+            min-height: 24px;
             max-height: 300px;
             border: none;
             outline: none;
             background: transparent;
             color: white;
             font-family: inherit;
-            font-size: 1.1rem;
+            font-size: 1.05rem;
             resize: none;
-            padding-right: 3rem;
+            padding: 0;
+            margin: 0;
             line-height: 1.5;
         }
 
         .btn-focus-send {
-            position: absolute;
-            right: 1.25rem;
-            bottom: 1.25rem;
-            background: var(--primary-color);
-            color: white;
+            background: transparent;
+            color: #e3e3e3;
             border: none;
-            border-radius: 12px;
-            width: 42px;
-            height: 42px;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
             transition: var(--transition);
-            box-shadow: 0 4px 10px rgba(124, 110, 255, 0.3);
+            flex-shrink: 0;
         }
 
         .btn-focus-send:hover {
-            background: #9084FF;
-            transform: translateY(-2px);
-            box-shadow: 0 6px 15px rgba(124, 110, 255, 0.5);
-        }
-
-        .btn-focus-send:active {
-            transform: translateY(0);
+            background: rgba(255, 255, 255, 0.08);
+            color: white;
         }
 
         /* Suggestions UI Grid and setup */
@@ -983,6 +979,13 @@
                         <h2 class="focus-title">Project Focus</h2>
                         <p class="focus-subtitle">What are you trying to work towards?</p>
                         <div class="focus-input-wrapper">
+                            <div class="plus-icon-container" style="position: relative; display: flex; align-items: center; cursor: pointer; flex-shrink: 0; padding-right: 2px;">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e3e3e3" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                                </svg>
+                                <div style="position: absolute; top: -1px; right: -1px; width: 6px; height: 6px; background-color: #1a73e8; border-radius: 50%;"></div>
+                            </div>
                             <textarea id="focus-input-text" class="focus-textarea" placeholder="Type something you are struggling with (e.g., sleep, stress)..." autofocus></textarea>
                             <button class="btn-focus-send" onclick="handleFocusSubmit()">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
