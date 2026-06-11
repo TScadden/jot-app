@@ -37,7 +37,8 @@ data class FocusStateDto(
     val currentSubView: String = "input",
     val suggestions: List<FocusSuggestion> = emptyList(),
     val selectedSuggestion: FocusSuggestion? = null,
-    val setupDuration: Int = 7
+    val setupDuration: Int = 7,
+    val lastUpdated: Long = 0L
 )
 
 data class ProjectFocusUiState(
@@ -98,18 +99,52 @@ class ProjectFocusViewModel @Inject constructor(
                 if (response.isSuccessful) {
                     val focusJson = response.body()?.profile?.focusState
                     if (!focusJson.isNullOrBlank() && focusJson != "{}") {
-                        preferences.setFocusState(focusJson)
-                        val parsed = parseFocusState(focusJson)
-                        _uiState.value = _uiState.value.copy(
-                            activeTests = parsed?.activeTests ?: emptyList(),
-                            activeTest = parsed?.activeTest,
-                            selectedTestId = parsed?.selectedTestId,
-                            currentSubView = parsed?.currentSubView ?: "input",
-                            suggestions = parsed?.suggestions ?: emptyList(),
-                            selectedSuggestion = parsed?.selectedSuggestion,
-                            setupDuration = parsed?.setupDuration ?: 7,
-                            isLoading = false
-                        )
+                        val localJson = preferences.focusState.first()
+                        val shouldOverwrite = try {
+                            if (localJson.isBlank() || localJson == "{}") {
+                                true
+                            } else {
+                                val regex = "\"lastUpdated\"\\s*:\\s*\"?(\\d+)\"?".toRegex()
+                                val localTime = regex.find(localJson)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                                val serverTime = regex.find(focusJson)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                                if (localTime > 0L || serverTime > 0L) {
+                                    serverTime >= localTime
+                                } else {
+                                    val localHasTests = localJson.contains("\"activeTests\":[{\"")
+                                    val serverHasTests = focusJson.contains("\"activeTests\":[{\"")
+                                    serverHasTests || !localHasTests
+                                }
+                            }
+                        } catch (e: Exception) {
+                            true
+                        }
+                        
+                        if (shouldOverwrite) {
+                            preferences.setFocusState(focusJson)
+                            val parsed = parseFocusState(focusJson)
+                            _uiState.value = _uiState.value.copy(
+                                activeTests = parsed?.activeTests ?: emptyList(),
+                                activeTest = parsed?.activeTest,
+                                selectedTestId = parsed?.selectedTestId,
+                                currentSubView = parsed?.currentSubView ?: "input",
+                                suggestions = parsed?.suggestions ?: emptyList(),
+                                selectedSuggestion = parsed?.selectedSuggestion,
+                                setupDuration = parsed?.setupDuration ?: 7,
+                                isLoading = false
+                            )
+                        } else {
+                            val parsed = parseFocusState(localJson)
+                            _uiState.value = _uiState.value.copy(
+                                activeTests = parsed?.activeTests ?: emptyList(),
+                                activeTest = parsed?.activeTest,
+                                selectedTestId = parsed?.selectedTestId,
+                                currentSubView = parsed?.currentSubView ?: "input",
+                                suggestions = parsed?.suggestions ?: emptyList(),
+                                selectedSuggestion = parsed?.selectedSuggestion,
+                                setupDuration = parsed?.setupDuration ?: 7,
+                                isLoading = false
+                            )
+                        }
                     } else {
                         // Use local cache if server has nothing
                         val localJson = preferences.focusState.first()
@@ -254,7 +289,8 @@ class ProjectFocusViewModel @Inject constructor(
             currentSubView = _uiState.value.currentSubView,
             suggestions = _uiState.value.suggestions,
             selectedSuggestion = _uiState.value.selectedSuggestion,
-            setupDuration = _uiState.value.setupDuration
+            setupDuration = _uiState.value.setupDuration,
+            lastUpdated = System.currentTimeMillis()
         )
         val json = lenientJson.encodeToString(state)
         

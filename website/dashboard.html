@@ -1409,7 +1409,8 @@
             selectedSuggestion: null,
             setupDuration: 7,
             startTomorrow: false,
-            currentSubView: 'input' // 'input', 'suggestions', 'setup', 'splash', 'details'
+            currentSubView: 'input', // 'input', 'suggestions', 'setup', 'splash', 'details'
+            lastUpdated: 0
         };
 
         function initFocusState() {
@@ -1447,6 +1448,7 @@
         }
 
         function saveFocusState() {
+            focusState.lastUpdated = Date.now();
             localStorage.setItem('focus_state', JSON.stringify(focusState));
             syncFocusStateToServer();
         }

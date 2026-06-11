@@ -535,9 +535,16 @@ class SyncManager @Inject constructor(
                                 if (localJson.isBlank() || localJson == "{}") {
                                     true
                                 } else {
-                                    val localHasTests = localJson.contains("\"activeTests\":[{\"")
-                                    val serverHasTests = serverJson.contains("\"activeTests\":[{\"")
-                                    serverHasTests || !localHasTests
+                                    val regex = "\"lastUpdated\"\\s*:\\s*\"?(\\d+)\"?".toRegex()
+                                    val localTime = regex.find(localJson)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                                    val serverTime = regex.find(serverJson)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                                    if (localTime > 0L || serverTime > 0L) {
+                                        serverTime >= localTime
+                                    } else {
+                                        val localHasTests = localJson.contains("\"activeTests\":[{\"")
+                                        val serverHasTests = serverJson.contains("\"activeTests\":[{\"")
+                                        serverHasTests || !localHasTests
+                                    }
                                 }
                             } catch (e: Exception) {
                                 true
