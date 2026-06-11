@@ -690,21 +690,19 @@
                         0 0 25px rgba(124, 110, 255, 0.25);
         }
 
-        .focus-textarea {
+        .focus-input {
             width: 100%;
-            min-height: 24px;
-            max-height: 300px;
+            height: 24px;
             border: none;
             outline: none;
             background: transparent;
             color: white;
             font-family: inherit;
             font-size: 1.05rem;
-            resize: none;
             padding: 0;
             margin: 0;
-            line-height: 1.5;
-            text-align: center;
+            line-height: 24px;
+            text-align: left;
         }
 
         .btn-focus-send {
@@ -995,7 +993,7 @@
                         <h2 class="focus-title">Project Focus</h2>
                         <p class="focus-subtitle">What are you trying to work towards?</p>
                         <div class="focus-input-wrapper">
-                            <textarea id="focus-input-text" class="focus-textarea" placeholder="Type something you are struggling with (e.g., sleep, stress)..." autofocus></textarea>
+                            <input type="text" id="focus-input-text" class="focus-input" placeholder="Type something you are struggling with (e.g., sleep, stress)..." autofocus>
                             <button class="btn-focus-send" onclick="handleFocusSubmit()">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                                     <path d="M22 2 11 13M22 2l-7 20-4-9-9-4Z"/>
@@ -2249,10 +2247,10 @@
                 } catch(e) {}
                 initFocusState();
                 
-                // Focus the textarea automatically
+                // Focus the input automatically
                 setTimeout(() => {
-                    const textarea = focusView.querySelector('.focus-textarea');
-                    if (textarea) textarea.focus();
+                    const input = focusView.querySelector('.focus-input');
+                    if (input) input.focus();
                 }, 50);
             } else {
                 dashView.style.display = 'grid';
