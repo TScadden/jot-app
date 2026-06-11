@@ -704,6 +704,7 @@
             padding: 0;
             margin: 0;
             line-height: 1.5;
+            text-align: center;
         }
 
         .btn-focus-send {
@@ -1430,8 +1431,17 @@
                 focusState.activeTests.push(focusState.activeTest);
             }
 
-            // Always default to chatbox input on refresh
-            focusState.currentSubView = 'input';
+            // Restore subview dynamically based on active tests
+            if (focusState.activeTests && focusState.activeTests.length > 0) {
+                if (focusState.currentSubView === 'input' || !focusState.currentSubView) {
+                    focusState.currentSubView = 'details';
+                }
+                if (!focusState.selectedTestId) {
+                    focusState.selectedTestId = focusState.activeTests[0].id;
+                }
+            } else {
+                focusState.currentSubView = 'input';
+            }
             localStorage.setItem('focus_state', JSON.stringify(focusState));
             
             renderActiveTestsHeader();
