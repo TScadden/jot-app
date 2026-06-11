@@ -177,6 +177,10 @@ fun ProjectFocusScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
 
+    LaunchedEffect(Unit) {
+        viewModel.syncFromServer()
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         BlobBackground()
 
@@ -1055,6 +1059,46 @@ fun ProjectFocusScreen(
                                     Box(Modifier.size(8.dp).background(Color.White.copy(alpha = 0.1f), CircleShape))
                                     Text("Upcoming", color = NotelTextSecondary, fontSize = 11.sp)
                                 }
+                            }
+                        }
+
+                        // ── Cancel Experiment Button ─────────────────────────
+                        item {
+                            var showCancelDialog by remember { mutableStateOf(false) }
+
+                            if (showCancelDialog) {
+                                AlertDialog(
+                                    onDismissRequest = { showCancelDialog = false },
+                                    title = { Text("Cancel Experiment", color = Color.White) },
+                                    text = { Text("Are you sure you want to cancel this experiment? This will delete all logged progress for it.", color = NotelTextSecondary) },
+                                    confirmButton = {
+                                        TextButton(
+                                            onClick = {
+                                                showCancelDialog = false
+                                                viewModel.cancelActiveTest()
+                                            }
+                                        ) {
+                                            Text("Yes", color = Color(0xFFEF5350), fontWeight = FontWeight.Bold)
+                                        }
+                                    },
+                                    dismissButton = {
+                                        TextButton(onClick = { showCancelDialog = false }) {
+                                            Text("No", color = Color.White)
+                                        }
+                                    },
+                                    containerColor = Color(0xFF161622)
+                                )
+                            }
+
+                            Spacer(Modifier.height(8.dp))
+                            Button(
+                                onClick = { showCancelDialog = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF5350).copy(alpha = 0.1f)),
+                                border = BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.35f)),
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Cancel Experiment", color = Color(0xFFEF5350), fontWeight = FontWeight.Bold)
                             }
                         }
 

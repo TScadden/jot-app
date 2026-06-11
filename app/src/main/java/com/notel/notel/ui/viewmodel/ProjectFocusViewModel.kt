@@ -90,7 +90,7 @@ class ProjectFocusViewModel @Inject constructor(
         }
     }
 
-    private fun syncFromServer() {
+    fun syncFromServer() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
