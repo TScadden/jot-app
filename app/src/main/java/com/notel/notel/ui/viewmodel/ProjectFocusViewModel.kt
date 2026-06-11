@@ -297,8 +297,16 @@ class ProjectFocusViewModel @Inject constructor(
         kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 preferences.setFocusState(json)
-                api.syncProfile(SyncProfileRequest(focusState = json))
-            } catch(e: Exception) {}
+                android.util.Log.d("ProjectFocusViewModel", "Pushing focusState to server: $json")
+                val res = api.syncProfile(SyncProfileRequest(focusState = json))
+                if (res.isSuccessful) {
+                    android.util.Log.d("ProjectFocusViewModel", "Successfully pushed focusState to server")
+                } else {
+                    android.util.Log.e("ProjectFocusViewModel", "Failed to push focusState to server: ${res.code()} - ${res.errorBody()?.string()}")
+                }
+            } catch(e: Exception) {
+                android.util.Log.e("ProjectFocusViewModel", "Error pushing focusState to server: ${e.message}", e)
+            }
         }
     }
 
