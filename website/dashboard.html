@@ -1145,10 +1145,14 @@
                         try {
                             const parsed = JSON.parse(data.profile.focusState);
                             if (parsed && typeof parsed === 'object') {
-                                focusState = parsed;
-                                localStorage.setItem('focus_state', JSON.stringify(focusState));
-                                renderActiveTestsHeader();
-                                restoreActiveSubView();
+                                const localTime = focusState.lastUpdated || 0;
+                                const serverTime = parsed.lastUpdated || 0;
+                                if (serverTime >= localTime) {
+                                    focusState = parsed;
+                                    localStorage.setItem('focus_state', JSON.stringify(focusState));
+                                    renderActiveTestsHeader();
+                                    restoreActiveSubView(true); // pass true to prevent immediate back-push
+                                }
                             }
                         } catch(e) {
                             console.error("Failed to restore focusState from sync:", e);
@@ -1447,10 +1451,14 @@
             initGooBackground(); // Initialize fluid background
         }
 
-        function saveFocusState() {
-            focusState.lastUpdated = Date.now();
+        function saveFocusState(preventSync) {
+            if (!preventSync) {
+                focusState.lastUpdated = Date.now();
+            }
             localStorage.setItem('focus_state', JSON.stringify(focusState));
-            syncFocusStateToServer();
+            if (!preventSync) {
+                syncFocusStateToServer();
+            }
         }
 
         async function syncFocusStateToServer() {
@@ -1539,7 +1547,7 @@
             });
         }
 
-        function setFocusSubView(view) {
+        function setFocusSubView(view, preventSync) {
             focusState.currentSubView = view;
             const panels = ['input', 'suggestions', 'setup', 'splash', 'details'];
             panels.forEach(p => {
@@ -1563,15 +1571,15 @@
             if (focusView) focusView.classList.toggle('scroll-align-top', isDetails);
             if (wrapper) wrapper.classList.toggle('scroll-align-top', isDetails);
             
-            saveFocusState();
+            saveFocusState(preventSync);
         }
 
-        function restoreActiveSubView() {
+        function restoreActiveSubView(preventSync) {
             if (focusState.activeTests && focusState.activeTests.length > 0 && focusState.currentSubView === 'details') {
                 const testId = focusState.selectedTestId || focusState.activeTests[0].id;
-                openTestDetails(testId);
+                openTestDetails(testId, preventSync);
             } else {
-                setFocusSubView(focusState.currentSubView || 'input');
+                setFocusSubView(focusState.currentSubView || 'input', preventSync);
                 if (focusState.currentSubView === 'setup') {
                     if (focusState.selectedSuggestion) {
                         document.getElementById('focus-setup-test-title').textContent = focusState.selectedSuggestion.title;
@@ -1744,7 +1752,7 @@
             jots: { label: 'Number of Jots', formatter: v => `${Math.round(v)}`, aggregator: 'sum' }
         };
 
-        function openTestDetails(testId) {
+        function openTestDetails(testId, preventSync) {
             if (!focusState.activeTests) {
                 focusState.activeTests = [];
             }
@@ -1755,7 +1763,7 @@
             
             focusState.selectedTestId = test.id;
             focusState.activeTest = test; // Legacy fallback sync
-            saveFocusState();
+            saveFocusState(preventSync);
             
             document.getElementById('focus-details-title').textContent = test.title;
             
