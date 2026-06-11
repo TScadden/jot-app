@@ -615,6 +615,12 @@
             transition: var(--transition);
         }
 
+        .focus-card.input-mode {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+
         /* Purple Ring Edge Glow Animation */
         .focus-card.lock-glow {
             animation: lock-glow-ring 2s cubic-bezier(0.25, 1, 0.5, 1);
@@ -979,13 +985,6 @@
                         <h2 class="focus-title">Project Focus</h2>
                         <p class="focus-subtitle">What are you trying to work towards?</p>
                         <div class="focus-input-wrapper">
-                            <div class="plus-icon-container" style="position: relative; display: flex; align-items: center; cursor: pointer; flex-shrink: 0; padding-right: 2px;">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e3e3e3" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                                    <line x1="12" y1="5" x2="12" y2="19"></line>
-                                    <line x1="5" y1="12" x2="19" y2="12"></line>
-                                </svg>
-                                <div style="position: absolute; top: -1px; right: -1px; width: 6px; height: 6px; background-color: #1a73e8; border-radius: 50%;"></div>
-                            </div>
                             <textarea id="focus-input-text" class="focus-textarea" placeholder="Type something you are struggling with (e.g., sleep, stress)..." autofocus></textarea>
                             <button class="btn-focus-send" onclick="handleFocusSubmit()">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -1530,6 +1529,16 @@
                 if (el) el.style.display = (p === view) ? 'block' : 'none';
             });
             
+            const isInput = (view === 'input');
+            const cardEl = document.getElementById('focus-card-element');
+            if (cardEl) {
+                if (isInput) {
+                    cardEl.classList.add('input-mode');
+                } else {
+                    cardEl.classList.remove('input-mode');
+                }
+            }
+
             const isDetails = (view === 'details');
             const focusView = document.getElementById('focus-view');
             const wrapper = document.querySelector('.focus-content-wrapper');

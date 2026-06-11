@@ -258,12 +258,9 @@ class ProjectFocusViewModel @Inject constructor(
         )
         val json = lenientJson.encodeToString(state)
         
-        viewModelScope.launch {
-            preferences.setFocusState(json)
-        }
-        
         kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
+                preferences.setFocusState(json)
                 api.syncProfile(SyncProfileRequest(focusState = json))
             } catch(e: Exception) {}
         }
