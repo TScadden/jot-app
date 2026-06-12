@@ -2580,7 +2580,15 @@
             }, 50);
         }
         function closeFocusInfoModal(event) {
-            if (event) event.stopPropagation();
+            if (event) {
+                event.stopPropagation();
+                const overlay = document.getElementById('focus-info-modal');
+                const isOverlay = event.target === overlay;
+                const isCloseBtn = event.target.classList.contains('btn-close') || event.target.closest('.btn-close') !== null;
+                if (!isOverlay && !isCloseBtn) {
+                    return; // Ignore clicks inside the card
+                }
+            }
             const now = Date.now();
             if (now - lastFocusInfoToggleTime < 2000) return;
             lastFocusInfoToggleTime = now;
