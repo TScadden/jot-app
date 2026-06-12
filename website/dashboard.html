@@ -1433,17 +1433,8 @@
                 focusState.activeTests.push(focusState.activeTest);
             }
 
-            // Restore subview dynamically based on active tests
-            if (focusState.activeTests && focusState.activeTests.length > 0) {
-                if (focusState.currentSubView === 'input' || !focusState.currentSubView) {
-                    focusState.currentSubView = 'details';
-                }
-                if (!focusState.selectedTestId) {
-                    focusState.selectedTestId = focusState.activeTests[0].id;
-                }
-            } else {
-                focusState.currentSubView = 'input';
-            }
+            // Always start on input view when reloading/re-entering page
+            focusState.currentSubView = 'input';
             localStorage.setItem('focus_state', JSON.stringify(focusState));
             
             renderActiveTestsHeader();
