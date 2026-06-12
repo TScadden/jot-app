@@ -1165,7 +1165,7 @@ fun ProjectFocusScreen(
                 },
                 text = {
                     Text(
-                        text = "Project Focus helps you run self-experiments to tackle personal struggles (like improving sleep, managing stress, or optimizing productivity) by generating custom AI suggestions and tracking your progress over time.\n\nOur core goal is to \"use data to generate outcomes\".",
+                        text = "Project Focus helps you run self-experiments to tackle personal struggles (like improving sleep, managing stress, or optimizing productivity) by generating custom AI suggestions and tracking your progress over time.\n\nOur core goal is to use data to generate outcomes.",
                         color = NotelTextSecondary,
                         fontSize = 14.sp,
                         lineHeight = 20.sp
