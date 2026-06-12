@@ -2568,12 +2568,20 @@
             });
         }
 
+        let lastFocusInfoToggleTime = 0;
+
         function showFocusInfoModal(event) {
             if (event) event.stopPropagation();
+            const now = Date.now();
+            if (now - lastFocusInfoToggleTime < 2000) return;
+            lastFocusInfoToggleTime = now;
             document.getElementById('focus-info-modal').style.display = 'flex';
         }
         function closeFocusInfoModal(event) {
             if (event) event.stopPropagation();
+            const now = Date.now();
+            if (now - lastFocusInfoToggleTime < 2000) return;
+            lastFocusInfoToggleTime = now;
             document.getElementById('focus-info-modal').style.display = 'none';
         }
 

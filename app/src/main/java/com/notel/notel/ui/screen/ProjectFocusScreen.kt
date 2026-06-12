@@ -1150,7 +1150,8 @@ fun ProjectFocusScreen(
                         }
                     }
                 }
-            }
+            } // closes when block
+        } // closes Scaffold content
         if (showHelpDialog) {
             AlertDialog(
                 onDismissRequest = { showHelpDialog = false },
@@ -1205,7 +1206,6 @@ fun ProjectFocusScreen(
             )
         }
     }
-}
 }
 
 
