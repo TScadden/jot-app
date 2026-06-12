@@ -1119,10 +1119,7 @@
                 <div class="focus-card glass" id="focus-card-element">
                     <!-- Panel 1: Input -->
                     <div id="focus-panel-input">
-                        <h2 class="focus-title" style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; position: relative;">
-                            <span>Project Focus</span>
-                            <button class="focus-info-btn" onclick="showFocusInfoModal(event)" type="button">?</button>
-                        </h2>
+                        <h2 class="focus-title">Project Focus</h2>
                         <div class="focus-input-wrapper">
                             <input type="text" id="focus-input-text" class="focus-input" placeholder="Type something you are struggling with (e.g., sleep, stress)..." autofocus>
                             <button class="btn-focus-send" onclick="handleFocusSubmit()">
@@ -2568,66 +2565,14 @@
             });
         }
 
-        let lastFocusInfoToggleTime = 0;
 
-        function showFocusInfoModal(event) {
-            console.log("[HelpModal] showFocusInfoModal triggered");
-            if (event) event.stopPropagation();
-            const now = Date.now();
-            if (now - lastFocusInfoToggleTime < 2000) {
-                console.log("[HelpModal] showFocusInfoModal cooldown active, ignoring");
-                return;
-            }
-            lastFocusInfoToggleTime = now;
-            setTimeout(() => {
-                console.log("[HelpModal] Displaying modal (display = flex)");
-                document.getElementById('focus-info-modal').style.display = 'flex';
-            }, 50);
-        }
-        function closeFocusInfoModal(event) {
-            console.log("[HelpModal] closeFocusInfoModal triggered", event ? event.target : "no event");
-            if (event) {
-                event.stopPropagation();
-                const overlay = document.getElementById('focus-info-modal');
-                const isOverlay = event.target === overlay;
-                const isCloseBtn = event.target.classList.contains('btn-close') || event.target.closest('.btn-close') !== null;
-                console.log("[HelpModal] close checks:", { isOverlay, isCloseBtn });
-                if (!isOverlay && !isCloseBtn) {
-                    console.log("[HelpModal] Clicked inside card, ignoring close");
-                    return; // Ignore clicks inside the card
-                }
-            }
-            const now = Date.now();
-            if (now - lastFocusInfoToggleTime < 2000) {
-                console.log("[HelpModal] closeFocusInfoModal cooldown active, ignoring close");
-                return;
-            }
-            lastFocusInfoToggleTime = now;
-            console.log("[HelpModal] Hiding modal (display = none)");
-            document.getElementById('focus-info-modal').style.display = 'none';
-        }
 
         // Run fetch
         initFocusState();
         fetchDashboardData();
     </script>
 
-    <!-- Project Focus Info Modal -->
-    <div id="focus-info-modal" class="modal-overlay" style="display: none;" onclick="closeFocusInfoModal(event)">
-        <div class="modal-card glass" onclick="event.stopPropagation()">
-            <div class="modal-header">
-                <h3>About Project Focus</h3>
-                <button class="btn-close" onclick="closeFocusInfoModal(event)">✕</button>
-            </div>
-            <div class="modal-body">
-                <p><strong>Project Focus</strong> helps you run self-experiments to tackle personal struggles (like improving sleep, managing stress, or optimizing productivity) by generating custom AI suggestions and tracking your progress over time.</p>
-                <div class="modal-goal">
-                    <span class="goal-label">Core Goal:</span>
-                    <span class="goal-text">"Use data to generate outcomes"</span>
-                </div>
-            </div>
-        </div>
-    </div>
+
     
 </body>
 

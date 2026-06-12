@@ -1164,37 +1164,12 @@ fun ProjectFocusScreen(
                     )
                 },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(
-                            text = "Project Focus helps you run self-experiments to tackle personal struggles (like improving sleep, managing stress, or optimizing productivity) by generating custom AI suggestions and tracking your progress over time.",
-                            color = NotelTextSecondary,
-                            fontSize = 14.sp,
-                            lineHeight = 20.sp
-                        )
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(NotelPrimary.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
-                                .border(1.dp, NotelPrimary.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-                                .padding(12.dp)
-                        ) {
-                            Column {
-                                Text(
-                                    text = "Core Goal:",
-                                    color = NotelPrimary,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp
-                                )
-                                Spacer(Modifier.height(4.dp))
-                                Text(
-                                    text = "\"Use data to generate outcomes\"",
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Medium,
-                                    fontSize = 14.sp
-                                )
-                            }
-                        }
-                    }
+                    Text(
+                        text = "Project Focus helps you run self-experiments to tackle personal struggles (like improving sleep, managing stress, or optimizing productivity) by generating custom AI suggestions and tracking your progress over time.\n\nOur core goal is to \"use data to generate outcomes\".",
+                        color = NotelTextSecondary,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp
+                    )
                 },
                 confirmButton = {
                     TextButton(onClick = { showHelpDialog = false }) {
