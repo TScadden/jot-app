@@ -176,6 +176,7 @@ fun ProjectFocusScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    var showHelpDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.syncFromServer()
@@ -215,6 +216,15 @@ fun ProjectFocusScreen(
                                     color = NotelPrimary,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 14.sp
+                                )
+                            }
+                        }
+                        if (uiState.currentSubView == "input") {
+                            IconButton(onClick = { showHelpDialog = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.HelpOutline,
+                                    contentDescription = "Help",
+                                    tint = NotelTextPrimary
                                 )
                             }
                         }
@@ -1141,6 +1151,58 @@ fun ProjectFocusScreen(
                     }
                 }
             }
+        if (showHelpDialog) {
+            AlertDialog(
+                onDismissRequest = { showHelpDialog = false },
+                title = {
+                    Text(
+                        text = "About Project Focus",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            text = "Project Focus helps you run self-experiments to tackle personal struggles (like improving sleep, managing stress, or optimizing productivity) by generating custom AI suggestions and tracking your progress over time.",
+                            color = NotelTextSecondary,
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(NotelPrimary.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
+                                .border(1.dp, NotelPrimary.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                                .padding(12.dp)
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Core Goal:",
+                                    color = NotelPrimary,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = "\"Use data to generate outcomes\"",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showHelpDialog = false }) {
+                        Text("Got it", color = NotelPrimary, fontWeight = FontWeight.Bold)
+                    }
+                },
+                containerColor = Color(0xFF161622),
+                shape = RoundedCornerShape(24.dp)
+            )
         }
     }
 }

@@ -1105,7 +1105,10 @@
                 <div class="focus-card glass" id="focus-card-element">
                     <!-- Panel 1: Input -->
                     <div id="focus-panel-input">
-                        <h2 class="focus-title">Project Focu<span style="position: relative;">s<span class="focus-info-trigger" onclick="showFocusInfoModal()">?</span></span></h2>
+                        <h2 class="focus-title" style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; position: relative;">
+                            <span>Project Focus</span>
+                            <span class="focus-info-trigger" onclick="showFocusInfoModal()" style="position: static; font-size: 1.1rem; width: 22px; height: 22px; display: inline-flex; margin-top: -4px;">?</span>
+                        </h2>
                         <div class="focus-input-wrapper">
                             <input type="text" id="focus-input-text" class="focus-input" placeholder="Type something you are struggling with (e.g., sleep, stress)..." autofocus>
                             <button class="btn-focus-send" onclick="handleFocusSubmit()">
@@ -1206,7 +1209,6 @@
                         </div>
                         
                         <div style="display: flex; gap: 1.25rem; justify-content: center; margin-top: 2.5rem; border-top: 1px solid var(--glass-border); padding-top: 1.5rem;">
-                            <button class="btn-primary" style="background: rgba(255, 167, 38, 0.15); border: 1px solid rgba(255, 167, 38, 0.4); color: #FFA726; padding: 0.8rem 1.5rem;" onclick="fastForwardTest()">End Test (Test)</button>
                             <button class="btn-logout" style="background: rgba(255, 94, 98, 0.05);" onclick="cancelActiveTest()">Cancel Experiment</button>
                             <button class="btn-secondary" onclick="closeTestDetails()">Back</button>
                         </div>
