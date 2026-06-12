@@ -12,6 +12,20 @@
     <link rel="icon" type="image/png" href="/jot_app_icon_1773090172459.png">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
+        /* Prevent text selection globally except in input fields/textareas */
+        * {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+        input, textarea, select, [contenteditable="true"] {
+            -webkit-user-select: text !important;
+            -moz-user-select: text !important;
+            -ms-user-select: text !important;
+            user-select: text !important;
+        }
+
         .dashboard-container {
             padding-top: 140px !important;
             padding-bottom: 60px !important;
@@ -891,7 +905,7 @@
         }
         .modal-card {
             width: 90%;
-            max-width: 440px;
+            max-width: 360px;
             background: rgba(20, 20, 30, 0.85);
             border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: 20px;
@@ -1107,7 +1121,7 @@
                     <div id="focus-panel-input">
                         <h2 class="focus-title" style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; position: relative;">
                             <span>Project Focus</span>
-                            <span class="focus-info-trigger" onclick="showFocusInfoModal()" style="position: static; font-size: 1.1rem; width: 22px; height: 22px; display: inline-flex; margin-top: -4px;">?</span>
+                            <span class="focus-info-trigger" onclick="showFocusInfoModal(event)" style="position: static; font-size: 1.1rem; width: 22px; height: 22px; display: inline-flex; margin-top: -4px;">?</span>
                         </h2>
                         <div class="focus-input-wrapper">
                             <input type="text" id="focus-input-text" class="focus-input" placeholder="Type something you are struggling with (e.g., sleep, stress)..." autofocus>
@@ -2554,7 +2568,8 @@
             });
         }
 
-        function showFocusInfoModal() {
+        function showFocusInfoModal(event) {
+            if (event) event.stopPropagation();
             document.getElementById('focus-info-modal').style.display = 'flex';
         }
         function closeFocusInfoModal(event) {
