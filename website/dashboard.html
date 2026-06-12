@@ -1447,7 +1447,7 @@
             localStorage.setItem('focus_state', JSON.stringify(focusState));
             
             renderActiveTestsHeader();
-            restoreActiveSubView();
+            restoreActiveSubView(true);
             initGooBackground(); // Initialize fluid background
         }
 
@@ -2250,9 +2250,8 @@
                 btnGraphs.textContent = 'Graph Tracker';
                 btnGraphs.classList.remove('active');
                 
-                // Pull latest project focus state from the server/app
                 try {
-                    await fetchSyncData();
+                    await fetchDashboardData();
                 } catch(e) {}
                 initFocusState();
                 
