@@ -231,6 +231,9 @@ class SettingsViewModel @Inject constructor(
     val habitReminderEnabled = preferences.habitReminderEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
+    val projectReminderEnabled = preferences.projectReminderEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
     fun markSettingsTutorialSeen() {
         viewModelScope.launch { preferences.setSettingsTutorialSeen(true) }
     }
@@ -594,6 +597,13 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setProjectReminderEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferences.setProjectReminderEnabled(enabled)
+            syncManager.pushProfileData()
+        }
+    }
+
     fun clearHabitData() {
         viewModelScope.launch {
             habitRepository.clearHabitData()
@@ -759,6 +769,12 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             // Guaranteed notification for testing/video
             com.notel.notel.util.NotificationHelper(context).showHabitReminder()
+        }
+    }
+
+    fun testProjectNotification(context: android.content.Context) {
+        viewModelScope.launch {
+            com.notel.notel.util.NotificationHelper(context).showProjectReminder()
         }
     }
 

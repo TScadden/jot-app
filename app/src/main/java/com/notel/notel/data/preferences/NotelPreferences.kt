@@ -76,6 +76,7 @@ class NotelPreferences @Inject constructor(
         val SPIKE_DELTA_THRESHOLD = intPreferencesKey("spike_delta_threshold")
         val HR_LAST_POKED_BPM = intPreferencesKey("hr_last_poked_bpm")
         val HABIT_REMINDER_ENABLED = booleanPreferencesKey("habit_reminder_enabled")
+        val PROJECT_REMINDER_ENABLED = booleanPreferencesKey("project_reminder_enabled")
         val HR_LAST_ALERT_TIME = longPreferencesKey("hr_last_alert_time")
         val HR_LAST_SAMPLE_TIME = longPreferencesKey("hr_last_sample_time")
         val HABIT_REMINDER_USER_DISABLED = booleanPreferencesKey("habit_reminder_user_disabled")
@@ -152,6 +153,7 @@ class NotelPreferences @Inject constructor(
     val spikeDeltaThreshold: Flow<Int> = context.dataStore.data.map { it[SPIKE_DELTA_THRESHOLD] ?: 30 }
     val hrLastPokedBpm: Flow<Int> = context.dataStore.data.map { it[HR_LAST_POKED_BPM] ?: 0 }
     val habitReminderEnabled: Flow<Boolean> = context.dataStore.data.map { it[HABIT_REMINDER_ENABLED] ?: false }
+    val projectReminderEnabled: Flow<Boolean> = context.dataStore.data.map { it[PROJECT_REMINDER_ENABLED] ?: true }
     val redditSubreddits: Flow<String> = context.dataStore.data.map { it[REDDIT_SUBREDDITS] ?: "[]" }
     val redditSummaries: Flow<String> = context.dataStore.data.map { it[REDDIT_SUMMARIES] ?: "" }
     val hrLastAlertTime: Flow<Long> = context.dataStore.data.map { it[HR_LAST_ALERT_TIME] ?: 0L }
@@ -587,6 +589,10 @@ class NotelPreferences @Inject constructor(
                 it[HABIT_REMINDER_USER_DISABLED] = false
             }
         }
+    }
+
+    suspend fun setProjectReminderEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[PROJECT_REMINDER_ENABLED] = enabled }
     }
 
     suspend fun autoEnableHabitReminders() {

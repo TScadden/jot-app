@@ -8,6 +8,7 @@ import com.notel.notel.worker.BodyLoadReminderWorker
 import com.notel.notel.worker.BiometricsSyncWorker
 import com.notel.notel.worker.CupReminderWorker
 import com.notel.notel.worker.HabitReminderWorker
+import com.notel.notel.worker.ProjectReminderWorker
 import com.notel.notel.service.HrSpikeMonitorService
 import com.notel.notel.data.preferences.NotelPreferences
 import kotlinx.coroutines.CoroutineScope
@@ -41,6 +42,7 @@ class NotelApp : Application(), Configuration.Provider {
         lifecycleTracker.startTracking()
         scheduleHabitReminder()
         scheduleCupReminder()
+        scheduleProjectReminder()
         com.notel.notel.worker.RedditRefreshWorker.schedule(this)
         BiometricsSyncWorker.schedule(this)
         
@@ -103,6 +105,31 @@ class NotelApp : Application(), Configuration.Provider {
 
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
             "cup_reminder",
+            ExistingPeriodicWorkPolicy.UPDATE,
+            dailyWorkRequest
+        )
+    }
+
+    private fun scheduleProjectReminder() {
+        val calendar = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 20) // 8:00 PM
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+        }
+        
+        if (calendar.timeInMillis <= System.currentTimeMillis()) {
+            calendar.add(Calendar.DAY_OF_YEAR, 1)
+        }
+
+        val delay = calendar.timeInMillis - System.currentTimeMillis()
+
+        val dailyWorkRequest = PeriodicWorkRequestBuilder<ProjectReminderWorker>(24, TimeUnit.HOURS)
+            .setInitialDelay(delay, TimeUnit.MILLISECONDS)
+            .addTag("project_reminder")
+            .build()
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "project_reminder",
             ExistingPeriodicWorkPolicy.UPDATE,
             dailyWorkRequest
         )

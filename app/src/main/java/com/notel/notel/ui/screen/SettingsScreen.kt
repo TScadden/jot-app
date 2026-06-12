@@ -97,6 +97,7 @@ fun SettingsScreen(
     val hrDeltaEnabled by viewModel.hrDeltaEnabled.collectAsState()
     val spikeDeltaThreshold by viewModel.spikeDeltaThreshold.collectAsState()
     val habitReminderEnabled by viewModel.habitReminderEnabled.collectAsState()
+    val projectReminderEnabled by viewModel.projectReminderEnabled.collectAsState()
     val userContextHidden by viewModel.userContextHidden.collectAsState()
     val userNickname by viewModel.userNickname.collectAsState()
     val userTag by viewModel.userTag.collectAsState()
@@ -2254,6 +2255,27 @@ fun SettingsScreen(
                                 )
                             )
                         }
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Project Reminders", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                                Text(
+                                    "Daily ping at 8:00 PM if you have unchecked project tasks remaining.",
+                                    color = NotelTextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
+                            Switch(
+                                checked = projectReminderEnabled,
+                                onCheckedChange = { checkAndToggle(it) { enabled -> viewModel.setProjectReminderEnabled(enabled) } },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = NotelPrimary,
+                                    checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
+                                    uncheckedThumbColor = NotelTextSecondary,
+                                    uncheckedTrackColor = NotelSurfaceHigh
+                                )
+                            )
+                        }
                         
 
 
@@ -2785,6 +2807,12 @@ fun DebugScreen(
             item {
                 GlassyButton(onClick = { viewModel.testHabitNotification(context) }, modifier = Modifier.fillMaxWidth()) {
                     Text("Habit", color = NotelTextPrimary, fontSize = 10.sp)
+                }
+            }
+            
+            item {
+                GlassyButton(onClick = { viewModel.testProjectNotification(context) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Project", color = NotelTextPrimary, fontSize = 10.sp)
                 }
             }
             item {
