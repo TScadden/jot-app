@@ -317,8 +317,8 @@ fun ProjectFocusScreen(
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
                                             Text("Back", color = Color.White)
-                                        }
                                     }
+                                }
                                 "measure" -> {
                                     val selected = uiState.selectedSuggestion
                                     if (selected != null) {
