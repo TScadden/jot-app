@@ -1722,11 +1722,11 @@
                 }
             }
 
-            const isDetails = (view === 'details');
+            const isScrollable = (view === 'details' || view === 'suggestions' || view === 'measure' || view === 'setup');
             const focusView = document.getElementById('focus-view');
             const wrapper = document.querySelector('.focus-content-wrapper');
-            if (focusView) focusView.classList.toggle('scroll-align-top', isDetails);
-            if (wrapper) wrapper.classList.toggle('scroll-align-top', isDetails);
+            if (focusView) focusView.classList.toggle('scroll-align-top', isScrollable);
+            if (wrapper) wrapper.classList.toggle('scroll-align-top', isScrollable);
             
             saveFocusState(preventSync);
         }
