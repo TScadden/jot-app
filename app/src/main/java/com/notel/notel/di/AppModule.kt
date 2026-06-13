@@ -103,7 +103,7 @@ object AppModule {
     fun provideJotApi(okHttpClient: OkHttpClient): JotApi {
         val json = Json { ignoreUnknownKeys = true }
         return Retrofit.Builder()
-            .baseUrl("http://3.138.56.92:3000/")
+            .baseUrl("https://api.jottracker.com/")
             .client(okHttpClient)
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()
