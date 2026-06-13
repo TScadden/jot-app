@@ -26,7 +26,8 @@ data class ActiveProjectTest(
     val durationDays: Int,
     val startTimestamp: Long,
     val lockDayStr: String? = null,
-    val logs: Map<String, Boolean> = emptyMap()
+    val logs: Map<String, Boolean> = emptyMap(),
+    val measureMetric: String? = null
 )
 
 @Serializable
@@ -38,7 +39,8 @@ data class FocusStateDto(
     val suggestions: List<FocusSuggestion> = emptyList(),
     val selectedSuggestion: FocusSuggestion? = null,
     val setupDuration: Int = 7,
-    val lastUpdated: Long = 0L
+    val lastUpdated: Long = 0L,
+    val selectedMeasureMetric: String? = null
 )
 
 data class ProjectFocusUiState(
@@ -52,6 +54,7 @@ data class ProjectFocusUiState(
     val setupDuration: Int = 7,
     val isSuggestionsLoading: Boolean = false,
     val startTomorrow: Boolean = false,
+    val selectedMeasureMetric: String = "",
     val error: String? = null
 )
 
@@ -86,7 +89,8 @@ class ProjectFocusViewModel @Inject constructor(
                 currentSubView = "input",
                 suggestions = parsed?.suggestions ?: emptyList(),
                 selectedSuggestion = parsed?.selectedSuggestion,
-                setupDuration = parsed?.setupDuration ?: 7
+                setupDuration = parsed?.setupDuration ?: 7,
+                selectedMeasureMetric = parsed?.selectedMeasureMetric ?: ""
             )
         }
     }
@@ -130,6 +134,7 @@ class ProjectFocusViewModel @Inject constructor(
                                 suggestions = parsed?.suggestions ?: emptyList(),
                                 selectedSuggestion = parsed?.selectedSuggestion,
                                 setupDuration = parsed?.setupDuration ?: 7,
+                                selectedMeasureMetric = parsed?.selectedMeasureMetric ?: "",
                                 isLoading = false
                             )
                         } else {
@@ -142,6 +147,7 @@ class ProjectFocusViewModel @Inject constructor(
                                 suggestions = parsed?.suggestions ?: emptyList(),
                                 selectedSuggestion = parsed?.selectedSuggestion,
                                 setupDuration = parsed?.setupDuration ?: 7,
+                                selectedMeasureMetric = parsed?.selectedMeasureMetric ?: "",
                                 isLoading = false
                             )
                         }
@@ -157,6 +163,7 @@ class ProjectFocusViewModel @Inject constructor(
                             suggestions = parsed?.suggestions ?: emptyList(),
                             selectedSuggestion = parsed?.selectedSuggestion,
                             setupDuration = parsed?.setupDuration ?: 7,
+                            selectedMeasureMetric = parsed?.selectedMeasureMetric ?: "",
                             isLoading = false
                         )
                     }
@@ -204,8 +211,17 @@ class ProjectFocusViewModel @Inject constructor(
     fun selectSuggestion(s: FocusSuggestion) {
         _uiState.value = _uiState.value.copy(
             selectedSuggestion = s,
-            currentSubView = "setup",
+            currentSubView = "measure",
+            selectedMeasureMetric = "",
             startTomorrow = false
+        )
+        saveCurrentState()
+    }
+
+    fun selectMeasureMetric(metric: String) {
+        _uiState.value = _uiState.value.copy(
+            selectedMeasureMetric = metric,
+            currentSubView = "setup"
         )
         saveCurrentState()
     }
@@ -243,6 +259,7 @@ class ProjectFocusViewModel @Inject constructor(
             durationDays = _uiState.value.setupDuration,
             startTimestamp = startMs,
             lockDayStr = todayStr,
+            measureMetric = _uiState.value.selectedMeasureMetric.ifBlank { null },
             logs = emptyMap()
         )
         val updatedTests = _uiState.value.activeTests.toMutableList().apply { add(test) }
@@ -290,7 +307,8 @@ class ProjectFocusViewModel @Inject constructor(
             suggestions = _uiState.value.suggestions,
             selectedSuggestion = _uiState.value.selectedSuggestion,
             setupDuration = _uiState.value.setupDuration,
-            lastUpdated = System.currentTimeMillis()
+            lastUpdated = System.currentTimeMillis(),
+            selectedMeasureMetric = _uiState.value.selectedMeasureMetric
         )
         val json = lenientJson.encodeToString(state)
         

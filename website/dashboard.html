@@ -1140,6 +1140,43 @@
                         <button class="btn-secondary" style="margin-top: 1rem; color: white;" onclick="setFocusSubView('input')">Back</button>
                     </div>
 
+                    <!-- Panel 2.5: Measure -->
+                    <div id="focus-panel-measure" style="display: none;">
+                        <h2 class="focus-title">Target Metric</h2>
+                        <p class="focus-subtitle" style="margin-bottom: 1.5rem;">What metric do you want to measure to track success?</p>
+                        
+                        <div class="focus-suggestions-grid" style="grid-template-columns: 1fr; max-width: 400px; margin: 0 auto 1.5rem auto; gap: 0.75rem;">
+                            <div class="focus-suggestion-card" onclick="selectFocusMeasureMetric('sleepMins')" style="padding: 1rem; cursor: pointer; text-align: left;">
+                                <div class="suggestion-title" style="font-weight: bold; color: white; font-size: 1rem;">Sleep Duration 🛌</div>
+                            </div>
+                            <div class="focus-suggestion-card" onclick="selectFocusMeasureMetric('deepSleepMins')" style="padding: 1rem; cursor: pointer; text-align: left;">
+                                <div class="suggestion-title" style="font-weight: bold; color: white; font-size: 1rem;">Deep Sleep 🌌</div>
+                            </div>
+                            <div class="focus-suggestion-card" onclick="selectFocusMeasureMetric('avgHr')" style="padding: 1rem; cursor: pointer; text-align: left;">
+                                <div class="suggestion-title" style="font-weight: bold; color: white; font-size: 1rem;">Heart Rate ❤️</div>
+                            </div>
+                            <div class="focus-suggestion-card" onclick="selectFocusMeasureMetric('hrv')" style="padding: 1rem; cursor: pointer; text-align: left;">
+                                <div class="suggestion-title" style="font-weight: bold; color: white; font-size: 1rem;">HRV ⚡</div>
+                            </div>
+                            <div class="focus-suggestion-card" onclick="selectFocusMeasureMetric('calories')" style="padding: 1rem; cursor: pointer; text-align: left;">
+                                <div class="suggestion-title" style="font-weight: bold; color: white; font-size: 1rem;">Calories 🍏</div>
+                            </div>
+                            <div class="focus-suggestion-card" onclick="selectFocusMeasureMetric('spikes')" style="padding: 1rem; cursor: pointer; text-align: left;">
+                                <div class="suggestion-title" style="font-weight: bold; color: white; font-size: 1rem;">HR Spikes 📈</div>
+                            </div>
+                            <div class="focus-suggestion-card" onclick="selectFocusMeasureMetric('jots')" style="padding: 1rem; cursor: pointer; text-align: left;">
+                                <div class="suggestion-title" style="font-weight: bold; color: white; font-size: 1rem;">Number of Jots 📝</div>
+                            </div>
+                            <div class="focus-suggestion-card" onclick="selectFocusMeasureMetric('')" style="padding: 1rem; cursor: pointer; text-align: left;">
+                                <div class="suggestion-title" style="font-weight: bold; color: white; font-size: 1rem;">None / Subjective 🧠</div>
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 1rem; justify-content: center;">
+                            <button class="btn-secondary" onclick="setFocusSubView('suggestions')">Back</button>
+                        </div>
+                    </div>
+
                     <!-- Panel 3: Setup -->
                     <div id="focus-panel-setup" style="display: none;">
                         <h2 class="focus-title">Test Duration</h2>
@@ -1166,7 +1203,7 @@
                         </div>
 
                         <div style="display: flex; gap: 1rem; justify-content: center; margin-top: 1.5rem;">
-                            <button class="btn-secondary" onclick="setFocusSubView('suggestions')">Back</button>
+                            <button class="btn-secondary" onclick="setFocusSubView('measure')">Back</button>
                             <button class="btn-primary" onclick="lockInFocusTest()">Lock it In</button>
                         </div>
                     </div>
@@ -1669,7 +1706,7 @@
 
         function setFocusSubView(view, preventSync) {
             focusState.currentSubView = view;
-            const panels = ['input', 'suggestions', 'setup', 'splash', 'details'];
+            const panels = ['input', 'suggestions', 'measure', 'setup', 'splash', 'details'];
             panels.forEach(p => {
                 const el = document.getElementById(`focus-panel-${p}`);
                 if (el) el.style.display = (p === view) ? 'block' : 'none';
@@ -1773,12 +1810,18 @@
             focusState.selectedSuggestion = s;
             focusState.setupDuration = 7;
             focusState.startTomorrow = false;
+            focusState.selectedMeasureMetric = '';
             
             document.getElementById('focus-setup-test-title').textContent = s.title;
             document.getElementById('focus-setup-test-desc').textContent = s.desc;
             document.getElementById('focus-duration-val').textContent = `${focusState.setupDuration} Days`;
             updateStartTomorrowButtons();
             
+            setFocusSubView('measure');
+        }
+
+        function selectFocusMeasureMetric(metricKey) {
+            focusState.selectedMeasureMetric = metricKey;
             setFocusSubView('setup');
         }
 
@@ -1840,6 +1883,7 @@
                 durationDays: focusState.setupDuration,
                 startTimestamp: startMs,
                 lockDayStr: new Date().toDateString(),
+                measureMetric: focusState.selectedMeasureMetric || null,
                 logs: {}
             };
             
@@ -1904,6 +1948,12 @@
                 document.getElementById('focus-checkin-area').style.display = 'none';
                 document.getElementById('focus-checkin-locked').style.display = 'none';
                 document.getElementById('focus-analysis-area').style.display = 'block';
+                
+                if (test.measureMetric) {
+                    document.getElementById('compare-metric-1').value = test.measureMetric;
+                    showMetricComparisonUI();
+                    updateComparison();
+                }
             } else {
                 countdownEl.style.color = 'var(--secondary-color)';
                 

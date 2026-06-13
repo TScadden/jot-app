@@ -61,14 +61,7 @@ class SyncManager @Inject constructor(
             
             Log.d(tag, "Full sync initiated...")
             
-            // 1. Snapshot Recovery (Server -> Local, then Local -> Server)
-            // Pull cloud data first to recover any existing server state (e.g. after a database wipe or app update)
-            val pullSuccess = pullAllData()
-            if (!pullSuccess) {
-                Log.w(tag, "Sync pull failed. Aborting sync cycle to prevent local data loss.")
-                return@withContext
-            }
-
+            // 1. Push local updates to the cloud first so local changes aren't overwritten by old cloud state
             // Only push profile data if the user has completed onboarding locally.
             if (preferences.onboardingComplete.first()) {
                 val profilePushSuccess = pushProfileData()
@@ -99,6 +92,13 @@ class SyncManager @Inject constructor(
                     Log.e(tag, "Entries sync failed, aborting full sync: ${entryRes.errorBody()?.string()}")
                     return@withContext
                 }
+            }
+
+            // 2. Pull cloud data to update local database with any other devices' changes
+            val pullSuccess = pullAllData()
+            if (!pullSuccess) {
+                Log.w(tag, "Sync pull failed. Aborting sync cycle to prevent local data loss.")
+                return@withContext
             }
 
             syncDocuments()

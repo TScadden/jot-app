@@ -246,7 +246,7 @@ fun ProjectFocusScreen(
                         }
                     }
                 }
-                uiState.activeTest == null || uiState.currentSubView in listOf("input", "suggestions", "setup", "splash") -> {
+                uiState.activeTest == null || uiState.currentSubView in listOf("input", "suggestions", "measure", "setup", "splash") -> {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -317,6 +317,74 @@ fun ProjectFocusScreen(
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
                                             Text("Back", color = Color.White)
+                                        }
+                                    }
+                                "measure" -> {
+                                    val selected = uiState.selectedSuggestion
+                                    if (selected != null) {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(
+                                                "Target Metric",
+                                                color = NotelTextPrimary,
+                                                fontSize = 22.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Spacer(Modifier.height(6.dp))
+                                            Text(
+                                                "What metric do you want to measure to track success?",
+                                                color = NotelTextSecondary,
+                                                fontSize = 13.sp,
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Spacer(Modifier.height(16.dp))
+                                            
+                                            val metrics = listOf(
+                                                Pair("sleepMins", "Sleep Duration 🛌"),
+                                                Pair("deepSleepMins", "Deep Sleep 🌌"),
+                                                Pair("avgHr", "Heart Rate ❤️"),
+                                                Pair("hrv", "HRV ⚡"),
+                                                Pair("calories", "Calories 🍏"),
+                                                Pair("spikes", "HR Spikes 📈"),
+                                                Pair("jots", "Number of Jots 📝"),
+                                                Pair("", "None / Subjective 🧠")
+                                            )
+
+                                            Box(modifier = Modifier.heightIn(max = 240.dp)) {
+                                                LazyColumn(
+                                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                                ) {
+                                                    items(metrics.size) { idx ->
+                                                        val (key, label) = metrics[idx]
+                                                        Surface(
+                                                            onClick = { viewModel.selectMeasureMetric(key) },
+                                                            shape = RoundedCornerShape(16.dp),
+                                                            color = Color.White.copy(alpha = 0.03f),
+                                                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                                                            modifier = Modifier.fillMaxWidth()
+                                                        ) {
+                                                            Row(
+                                                                modifier = Modifier.padding(14.dp),
+                                                                verticalAlignment = Alignment.CenterVertically
+                                                            ) {
+                                                                Text(label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            
+                                            Spacer(Modifier.height(16.dp))
+                                            Button(
+                                                onClick = { viewModel.setSubView("suggestions") },
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.08f)),
+                                                shape = RoundedCornerShape(16.dp),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Text("Back", color = Color.White)
+                                            }
                                         }
                                     }
                                 }
@@ -435,7 +503,7 @@ fun ProjectFocusScreen(
                                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                                             ) {
                                                 Button(
-                                                    onClick = { viewModel.setSubView("suggestions") },
+                                                    onClick = { viewModel.setSubView("measure") },
                                                     colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.08f)),
                                                     shape = RoundedCornerShape(16.dp),
                                                     modifier = Modifier.weight(1f)
