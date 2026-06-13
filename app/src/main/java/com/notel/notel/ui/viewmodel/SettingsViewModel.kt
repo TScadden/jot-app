@@ -1103,6 +1103,67 @@ class SettingsViewModel @Inject constructor(
             addSystemLog("Developer: Streak updated to current=$current, best=$best")
         }
     }
+
+    fun exportDatabase(context: android.content.Context) {
+        viewModelScope.launch {
+            try {
+                // Force Room to checkpoint/flush WAL to disk
+                database.openHelper.writableDatabase.query("PRAGMA checkpoint(FULL)")
+                
+                val dbFile = context.getDatabasePath("notel_db")
+                if (!dbFile.exists()) {
+                    addSystemLog("❌ Export failed: Database file does not exist")
+                    android.widget.Toast.makeText(context, "Database file not found", android.widget.Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+
+                // Copy main db, shm, and wal if they exist
+                val filesToCopy = listOf("notel_db", "notel_db-shm", "notel_db-wal")
+                var successCount = 0
+                
+                // 1. Export to external files dir (no permissions needed, accessible via USB)
+                val targetDir = context.getExternalFilesDir(null)
+                if (targetDir != null) {
+                    for (fileName in filesToCopy) {
+                        val srcFile = if (fileName == "notel_db") dbFile else context.getDatabasePath(fileName)
+                        if (srcFile.exists()) {
+                            val destFile = java.io.File(targetDir, fileName)
+                            srcFile.copyTo(destFile, overwrite = true)
+                            successCount++
+                        }
+                    }
+                }
+                
+                // 2. Also try copying to public Downloads folder if we can
+                try {
+                    val publicDownloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+                    if (publicDownloadsDir.exists() || publicDownloadsDir.mkdirs()) {
+                        for (fileName in filesToCopy) {
+                            val srcFile = if (fileName == "notel_db") dbFile else context.getDatabasePath(fileName)
+                            if (srcFile.exists()) {
+                                val destFile = java.io.File(publicDownloadsDir, fileName)
+                                srcFile.copyTo(destFile, overwrite = true)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Ignore public directory permission failures
+                }
+
+                if (successCount > 0) {
+                    val msg = "Exported to Android/data/com.notel.notel/files/ and Downloads/"
+                    addSystemLog("✅ Database exported successfully")
+                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+                } else {
+                    addSystemLog("❌ Database export failed")
+                    android.widget.Toast.makeText(context, "Failed to copy database files", android.widget.Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                addSystemLog("❌ Export error: ${e.message}")
+                android.widget.Toast.makeText(context, "Error: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
 }
 
 @kotlinx.serialization.Serializable

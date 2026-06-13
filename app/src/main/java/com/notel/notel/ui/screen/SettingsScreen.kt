@@ -2551,6 +2551,27 @@ fun SettingsScreen(
                         Text("Clear Key Metrics Cache", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
                     }
                 }
+
+                Spacer(Modifier.height(24.dp))
+                Text("DATABASE EXPORT", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                GlassyCard(shape = RoundedCornerShape(16.dp), color = NotelSurface) {
+                    Text(
+                        "Export your local SQLite database file (notel_db) to your phone's public downloads and external storage so you can pull/access it directly.",
+                        color = NotelTextSecondary,
+                        fontSize = 12.sp
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    GlassyButton(
+                        onClick = { viewModel.exportDatabase(context) },
+                        modifier = Modifier.fillMaxWidth(),
+                        containerColor = NotelPrimary
+                    ) {
+                        Icon(Icons.Default.Save, "Export DB", tint = Color.White)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Export Database", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
 
             if (currentMenu == SettingsMenu.MAIN) {
