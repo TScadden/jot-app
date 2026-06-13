@@ -317,6 +317,7 @@ fun ProjectFocusScreen(
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
                                             Text("Back", color = Color.White)
+                                        }
                                     }
                                 }
                                 "measure" -> {
