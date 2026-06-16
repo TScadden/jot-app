@@ -220,8 +220,6 @@ data class SyncProfileRequest(
     val autoAiSuggestions: Boolean? = null,
     val eventCounters: String? = null,
     val counterHistory: String? = null,
-    val redditSubreddits: String? = null,
-    val redditSummaries: String? = null,
     val currentStreak: Int? = null,
     val bestStreak: Int? = null,
     val userLists: String? = null,
@@ -287,8 +285,6 @@ data class ProfileDtoModel(
     val autoAiSuggestions: Boolean? = null,
     val eventCounters: String? = null,
     val counterHistory: String? = null,
-    val redditSubreddits: String? = null,
-    val redditSummaries: String? = null,
     val currentStreak: Int? = null,
     val bestStreak: Int? = null,
     val userLists: String? = null,
@@ -392,41 +388,6 @@ data class ClassifyAndCleanResponse(
 @Serializable
 data class ClassifyCoachNoteResponse(
     val categoryId: Int
-)
-
-@Serializable
-data class RedditPost(
-    val title: String,
-    val author: String? = null,
-    val url: String? = null,
-    val comments: List<String> = emptyList()
-)
-
-@Serializable
-data class FetchSubredditRequest(
-    val subreddit: String,
-    val userContext: String? = null
-)
-
-@Serializable
-data class FetchSubredditResponse(
-    val result: String,
-    val subreddit: String? = null,
-    val postsAnalyzed: Int = 0,
-    val posts: List<RedditPost>? = null,
-    val error: String? = null
-)
-
-@Serializable
-data class SummarizeSubredditRequest(
-    val subreddit: String,
-    val posts: List<RedditPost> = emptyList(),
-    val userContext: String? = null
-)
-
-@Serializable
-data class SummarizeSubredditResponse(
-    val result: String
 )
 
 @Serializable
@@ -591,12 +552,6 @@ interface JotApi {
 
     @POST("api/ai/classify-coach-note")
     suspend fun classifyCoachNote(@Body request: ClassifyAndCleanRequest): Response<AiResponse<ClassifyCoachNoteResponse>>
-
-    @POST("api/ai/fetch-subreddit")
-    suspend fun fetchSubreddit(@Body request: FetchSubredditRequest): Response<FetchSubredditResponse>
-
-    @POST("api/ai/summarize-subreddit")
-    suspend fun summarizeSubreddit(@Body request: SummarizeSubredditRequest): Response<SummarizeSubredditResponse>
 
     @POST("api/ai/coach")
     suspend fun getCoachReply(@Body request: CoachRequest): Response<AiResponse<String>>

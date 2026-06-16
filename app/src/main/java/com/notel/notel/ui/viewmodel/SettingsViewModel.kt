@@ -69,19 +69,7 @@ class SettingsViewModel @Inject constructor(
     val knowledgeBase = preferences.knowledgeBase
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
-    val redditSubreddits: StateFlow<List<LinkedSubreddit>> = preferences.redditSubreddits
-        .map { json ->
-            try {
-                if (json.isNotBlank() && json != "[]") Json.decodeFromString<List<LinkedSubreddit>>(json)
-                else emptyList()
-            } catch (e: Exception) { emptyList() }
-        }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
     val professionalUpdates = preferences.professionalUpdates
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
-
-    val redditSummaries = preferences.redditSummaries
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
     val processedFiles = preferences.processedFiles
@@ -125,15 +113,6 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-
-    private val _isRefreshingReddit = MutableStateFlow<String?>(null) // subreddit name currently refreshing
-    val isRefreshingReddit = _isRefreshingReddit.asStateFlow()
-
-    private val _redditError = MutableSharedFlow<String>()
-    val redditError = _redditError.asSharedFlow()
-
-    private val _redditSynced = MutableSharedFlow<String>()
-    val redditSynced = _redditSynced.asSharedFlow()
 
     private val _isRecovering = MutableStateFlow(false)
     val isRecovering = _isRecovering.asStateFlow()
@@ -183,16 +162,6 @@ class SettingsViewModel @Inject constructor(
             val missing = docs.filter { it.extractedText.isNullOrBlank() }
             missing.forEach { doc ->
                 logRepository.extractAndCacheDocumentText(doc)
-            }
-        }
-    }
-
-    private fun cleanKnowledgeBase() {
-        viewModelScope.launch {
-            val kb = preferences.knowledgeBase.first()
-            if (kb.contains("[REDDIT r/")) {
-                val lines = kb.split("\n\n").filter { !it.contains("[REDDIT r/") }
-                preferences.setKnowledgeBase(lines.joinToString("\n\n"))
             }
         }
     }
@@ -1019,143 +988,7 @@ class SettingsViewModel @Inject constructor(
                 _isManualSyncing.value = false
             }
         }
-    }
-
-    private val _redditRefreshQueue = MutableStateFlow<List<String>>(emptyList())
-    val redditRefreshQueue = _redditRefreshQueue.asStateFlow()
-    private var isProcessingQueue = false
-
-    fun addOrRefreshSubreddit(input: String) {
-        var sub = input.trim().lowercase()
-        if (sub.contains("reddit.com/r/")) {
-            sub = sub.substringAfter("reddit.com/r/").substringBefore("/").substringBefore("?")
-        }
-        sub = sub.removePrefix("/r/").removePrefix("r/").removePrefix("/").removeSuffix("/").trim()
-
-        if (sub.isEmpty() || !sub.matches(Regex("^[a-z0-9_]{2,21}$"))) return
-        if (_redditRefreshQueue.value.contains(sub)) return
-
-        _redditRefreshQueue.update { it + sub }
-        processRefreshQueue()
-    }
-
-    private fun processRefreshQueue() {
-        if (isProcessingQueue) return
-        viewModelScope.launch {
-            isProcessingQueue = true
-            while (_redditRefreshQueue.value.isNotEmpty()) {
-                val sub = _redditRefreshQueue.value.first()
-                _isRefreshingReddit.value = sub
-                try {
-                    val ctx = preferences.userContext.first()
-                    val request = com.notel.notel.data.remote.FetchSubredditRequest(subreddit = sub, userContext = ctx)
-                    val response = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        jotApi.fetchSubreddit(request)
-                    }
-
-                    if (response.isSuccessful) {
-                        val body = response.body()
-                        if (body?.result != null) {
-                            // 1. Update/add to subreddit list with timestamp
-                            val currentStr = preferences.redditSubreddits.first()
-                            val current: MutableList<LinkedSubreddit> = try {
-                                if (currentStr.isNotBlank() && currentStr != "[]") 
-                                    Json.decodeFromString(kotlinx.serialization.builtins.ListSerializer(LinkedSubreddit.serializer()), currentStr).toMutableList()
-                                else mutableListOf()
-                            } catch (e: Exception) { mutableListOf() }
-                            
-                            val existing = current.indexOfFirst { it.name == sub }
-                            val currentAutoUpdate = if (existing >= 0) current[existing].autoUpdate else true // Default to true for new ones
-                            val entry = LinkedSubreddit(
-                                name = sub, 
-                                lastFetched = System.currentTimeMillis(), 
-                                postsAnalyzed = body.posts?.size ?: 0, 
-                                autoUpdate = currentAutoUpdate,
-                                scannedPosts = body.posts ?: emptyList()
-                            )
-                            if (existing >= 0) current[existing] = entry else current.add(0, entry)
-                            preferences.setRedditSubreddits(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(LinkedSubreddit.serializer()), current))
-
-                            // 2. Replace old Reddit summary entry for this subreddit and prepend fresh one
-                            val timestamp = java.text.SimpleDateFormat("MMMM d, yyyy", java.util.Locale.US).format(java.util.Date())
-                            val redditMarker = "[REDDIT r/$sub]"
-                            val newEntry = "[ADDED $timestamp] $redditMarker\n${body.result}"
-                            val currentRedditSummaries = preferences.redditSummaries.first()
-                            val filteredReddit = currentRedditSummaries.split("\n\n")
-                                .filter { !it.contains(redditMarker) }
-                                .joinToString("\n\n")
-                            val updatedReddit = if (filteredReddit.isBlank()) newEntry else "$newEntry\n\n$filteredReddit"
-                            preferences.setRedditSummaries(updatedReddit)
-                            syncManager.syncAllData()
-                            _redditSynced.emit("Integrated r/$sub community knowledge")
-                        } else {
-                            _redditError.emit("No content returned for r/$sub")
-                        }
-                    } else {
-                        val errMsg = response.errorBody()?.string()?.let {
-                            try { org.json.JSONObject(it).optString("error", "Failed to fetch subreddit") } catch (_: Exception) { "Failed to fetch subreddit" }
-                        } ?: "Failed to fetch subreddit"
-                        _redditError.emit(errMsg)
-                    }
-                } catch (e: Exception) {
-                    _redditError.emit("Connection error scanning r/$sub")
-                    e.printStackTrace()
-                } finally {
-                    _isRefreshingReddit.value = null
-                    _redditRefreshQueue.update { it.drop(1) }
-                    kotlinx.coroutines.delay(500)
-                }
-            }
-            isProcessingQueue = false
-        }
-    }
-
-    fun removeSubreddit(subredditName: String) {
-        viewModelScope.launch {
-            val currentStr = preferences.redditSubreddits.first()
-            val current: MutableList<LinkedSubreddit> = try {
-                if (currentStr.isNotBlank() && currentStr != "[]") Json.decodeFromString(currentStr) else mutableListOf()
-            } catch (e: Exception) { mutableListOf() }
-            current.removeAll { it.name == subredditName }
-            preferences.setRedditSubreddits(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(LinkedSubreddit.serializer()), current))
-
-            // Also remove its summary entry
-            val redditMarker = "[REDDIT r/$subredditName]"
-            val currentRedditSummaries = preferences.redditSummaries.first()
-            val filteredReddit = currentRedditSummaries.split("\n\n").filter { !it.contains(redditMarker) }.joinToString("\n\n")
-            preferences.setRedditSummaries(filteredReddit)
-            syncManager.syncAllData()
-        }
-    }
-
-    fun toggleAutoUpdate(subredditName: String) {
-        viewModelScope.launch {
-            val currentStr = preferences.redditSubreddits.first()
-            val current: MutableList<LinkedSubreddit> = try {
-                if (currentStr.isNotBlank() && currentStr != "[]") Json.decodeFromString(currentStr) else mutableListOf()
-            } catch (e: Exception) { mutableListOf() }
-            val idx = current.indexOfFirst { it.name == subredditName }
-            if (idx >= 0) {
-                current[idx] = current[idx].copy(autoUpdate = !current[idx].autoUpdate)
-                preferences.setRedditSubreddits(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(LinkedSubreddit.serializer()), current))
-                syncManager.syncAllData()
-            }
-        }
-    }
-
-    fun getSubredditSummary(subredditName: String): String {
-        val summaries = redditSummaries.value
-        val marker = "r/$subredditName]"
-        val entries = summaries.split("\n\n")
-        val found = entries.find { it.contains(marker) }
-        return found?.substringAfter(marker)?.trim() ?: "No summary found."
-    }
-
-    fun getSubredditPosts(subredditName: String): List<com.notel.notel.data.remote.RedditPost> {
-        return redditSubreddits.value.find { it.name == subredditName }?.scannedPosts ?: emptyList()
-    }
-
-    fun refreshThisWeeksScores() {
+       fun refreshThisWeeksScores() {() {
         viewModelScope.launch {
             var cats = categories.value
             if (cats.isEmpty()) {

@@ -331,8 +331,6 @@ class SyncManager @Inject constructor(
                     autoAiSuggestions = preferences.autoAiSuggestions.first(),
                     eventCounters = preferences.eventCounters.first(),
                     counterHistory = preferences.counterHistory.first(),
-                    redditSubreddits = preferences.redditSubreddits.first(),
-                    redditSummaries = preferences.redditSummaries.first(),
                     currentStreak = preferences.currentStreak.first(),
                     bestStreak = preferences.bestStreak.first(),
                     userLists = userListsJson,
@@ -522,8 +520,6 @@ class SyncManager @Inject constructor(
                             preferences.setCounterHistory(Json.encodeToString(merged))
                         }
                     }
-                    profile.redditSubreddits?.let { if (it.isNotBlank()) preferences.setRedditSubreddits(it) }
-                    profile.redditSummaries?.let { if (it.isNotBlank()) preferences.setRedditSummaries(it) }
                     profile.currentStreak?.let { preferences.setCurrentStreak(it) }
                     profile.bestStreak?.let { preferences.setBestStreak(it) }
                     profile.weeklyScore?.let { preferences.setWeeklyScore(it) }

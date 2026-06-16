@@ -43,7 +43,6 @@ class NotelApp : Application(), Configuration.Provider {
         scheduleHabitReminder()
         scheduleCupReminder()
         scheduleProjectReminder()
-        com.notel.notel.worker.RedditRefreshWorker.schedule(this)
         BiometricsSyncWorker.schedule(this)
         
         // Start HR Monitor Service safely when app enters foreground
