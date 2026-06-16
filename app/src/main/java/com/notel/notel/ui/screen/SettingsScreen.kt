@@ -2,6 +2,8 @@ package com.notel.notel.ui.screen
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import android.accounts.AccountManager
+import android.app.Activity
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
@@ -47,13 +49,25 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.foundation.border
 import kotlinx.coroutines.*
 
+
 enum class SettingsMenu {
-    MAIN, USER_PROFILE, CONNECTED_APPS, AI_AND_KNOWLEDGE, EVENT_COUNTERS, MEMBERSHIP, NOTIFICATIONS, SYNC_SETTINGS, DEBUG
+    MAIN, USER_PROFILE, CONNECTED_APPS, AI_AND_KNOWLEDGE, EVENT_COUNTERS, MEMBERSHIP, NOTIFICATIONS, SYNC_SETTINGS, JOT_LIVE, DEBUG
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -82,6 +96,8 @@ fun SettingsScreen(
     val isGeneratingDeepResearch by viewModel.isGeneratingDeepResearch.collectAsState()
     
     val healthConnectConnected by viewModel.healthConnectConnected.collectAsState()
+    val googleCalendarConnected by viewModel.googleCalendarConnected.collectAsState()
+    val googleCalendarEmail by viewModel.googleCalendarEmail.collectAsState()
     val redditSubreddits by viewModel.redditSubreddits.collectAsState()
     val isRefreshingReddit by viewModel.isRefreshingReddit.collectAsState()
     
@@ -110,6 +126,17 @@ fun SettingsScreen(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         // No-op, the collectAsState will refresh
+    }
+
+    val googleAccountChooserLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val accountName = result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
+            if (accountName != null) {
+                viewModel.connectGoogleCalendar(accountName)
+            }
+        }
     }
 
     fun checkAndToggle(enabled: Boolean, onToggle: (Boolean) -> Unit) {
@@ -183,6 +210,22 @@ fun SettingsScreen(
     val activity = context as? android.app.Activity
     val fitbitViewModel: com.notel.notel.ui.viewmodel.FitbitViewModel = hiltViewModel()
     val fitbitState by fitbitViewModel.state.collectAsState()
+    
+    var showAllTimeTelemetryGraph by remember { mutableStateOf(false) }
+    val telemetryHistoryStr by viewModel.heartRateHistory.collectAsState()
+    val isPullingTelemetry by viewModel.isPullingTelemetry.collectAsState()
+    val telemetryPoints = remember(telemetryHistoryStr) {
+        try {
+            if (telemetryHistoryStr.isNotBlank() && telemetryHistoryStr != "[]") {
+                val rawList = kotlinx.serialization.json.Json.decodeFromString<List<com.notel.notel.data.TelemetryPoint>>(telemetryHistoryStr)
+                downsampleTelemetryPoints(rawList)
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
     
     var currentMenu by androidx.compose.runtime.saveable.rememberSaveable(
         stateSaver = androidx.compose.runtime.saveable.Saver(
@@ -308,6 +351,7 @@ fun SettingsScreen(
                         SettingsMenu.MEMBERSHIP -> "Membership"
                         SettingsMenu.NOTIFICATIONS -> "Notifications"
                         SettingsMenu.SYNC_SETTINGS -> "Sync Settings"
+                        SettingsMenu.JOT_LIVE -> "Jot Live Beta"
                         SettingsMenu.DEBUG -> "Developer Terminal"
                     }
                     Text(titleText, fontWeight = FontWeight.Bold, color = NotelTextPrimary) 
@@ -326,6 +370,16 @@ fun SettingsScreen(
                             modifier = Modifier.onGloballyPositioned { coordWallet = it }
                         ) {
                             Icon(Icons.Default.Wallet, "Membership", tint = NotelPrimary)
+                        }
+                    }
+                    if (currentMenu == SettingsMenu.JOT_LIVE) {
+                        IconButton(
+                            onClick = {
+                                showAllTimeTelemetryGraph = true
+                                viewModel.pullTelemetryFromServer()
+                            }
+                        ) {
+                            Icon(Icons.Default.ShowChart, "Show Telemetry Graph", tint = NotelPrimary)
                         }
                     }
                 },
@@ -549,6 +603,7 @@ fun SettingsScreen(
                     SettingsMenuCard("Event Counters", Icons.Default.Timer, modifier = Modifier.onGloballyPositioned { coordEventCounters = it }) { currentMenu = SettingsMenu.EVENT_COUNTERS }
                     SettingsMenuCard("Notifications", Icons.Default.Notifications) { currentMenu = SettingsMenu.NOTIFICATIONS }
                     SettingsMenuCard("Sync Settings", Icons.Default.Sync) { currentMenu = SettingsMenu.SYNC_SETTINGS }
+                    SettingsMenuCard("Jot Live Beta", Icons.Default.Bluetooth) { currentMenu = SettingsMenu.JOT_LIVE }
                 }
 
 
@@ -1508,8 +1563,6 @@ fun SettingsScreen(
                 }
                 Spacer(Modifier.height(24.dp))
             }
-
-
             if (currentMenu == SettingsMenu.CONNECTED_APPS) {
                 var viewingSubreddit by remember { mutableStateOf<String?>(null) }
 
@@ -1664,6 +1717,68 @@ fun SettingsScreen(
                         containerColor = NotelPrimary.copy(alpha = 0.8f)
                     ) {
                         Text("Connect Health Data", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            Text("INTEGRATED APPS", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(8.dp))
+
+            GlassyCard(
+                shape = RoundedCornerShape(16.dp),
+                color = NotelSurface
+            ) {
+                if (googleCalendarConnected) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.CalendarMonth, null, tint = NotelPrimary, modifier = Modifier.size(28.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Google Calendar Active", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                            Text("Connected as $googleCalendarEmail", color = NotelTextSecondary, fontSize = 12.sp)
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    GlassyButton(
+                        onClick = { viewModel.disconnectGoogleCalendar() },
+                        modifier = Modifier.fillMaxWidth(),
+                        containerColor = NotelSurfaceHigh
+                    ) {
+                        Text("Disconnect Google Calendar", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
+                    }
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.CalendarMonth, null, tint = NotelTextSecondary, modifier = Modifier.size(28.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Google Calendar", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                            Text("Let your AI Clinical Advocate schedule events and update calendars.", color = NotelTextSecondary, fontSize = 12.sp)
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    GlassyButton(
+                        onClick = {
+                            try {
+                                val intent = AccountManager.newChooseAccountIntent(
+                                    null,
+                                    null,
+                                    arrayOf("com.google"),
+                                    false,
+                                    null,
+                                    null,
+                                    null,
+                                    null
+                                )
+                                googleAccountChooserLauncher.launch(intent)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        containerColor = NotelPrimary.copy(alpha = 0.8f)
+                    ) {
+                        Text("Connect Google Calendar", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -2551,28 +2666,75 @@ fun SettingsScreen(
                         Text("Clear Key Metrics Cache", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
                     }
                 }
+            }
 
-                Spacer(Modifier.height(24.dp))
-                Text("DATABASE EXPORT", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(8.dp))
-                GlassyCard(shape = RoundedCornerShape(16.dp), color = NotelSurface) {
-                    Text(
-                        "Export your local SQLite database file (notel_db) to your phone's public downloads and external storage so you can pull/access it directly.",
-                        color = NotelTextSecondary,
-                        fontSize = 12.sp
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    GlassyButton(
-                        onClick = { viewModel.exportDatabase(context) },
-                        modifier = Modifier.fillMaxWidth(),
-                        containerColor = NotelPrimary
-                    ) {
-                        Icon(Icons.Default.Save, "Export DB", tint = Color.White)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Export Database", color = Color.White, fontWeight = FontWeight.Bold)
+            if (currentMenu == SettingsMenu.JOT_LIVE) {
+                val hasAsked by viewModel.hasVisibleBandAsked.collectAsState()
+                var showAskedDialog by remember { mutableStateOf(false) }
+                var showWarningDialog by remember { mutableStateOf(false) }
+                var lastAskedState by remember { mutableStateOf<Boolean?>(null) }
+
+                LaunchedEffect(hasAsked) {
+                    if (lastAskedState != hasAsked) {
+                        lastAskedState = hasAsked
+                        if (!hasAsked) {
+                            showAskedDialog = true
+                        }
                     }
                 }
+
+                if (showAskedDialog) {
+                    AlertDialog(
+                        onDismissRequest = { 
+                            showAskedDialog = false
+                            viewModel.markVisibleBandAsked()
+                        },
+                        title = { Text("Visible Band", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
+                        text = { Text("Do you have a Visible Band?", color = NotelTextSecondary) },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                showAskedDialog = false
+                                viewModel.markVisibleBandAsked()
+                            }) {
+                                Text("Yes", color = NotelPrimary, fontWeight = FontWeight.Bold)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = {
+                                showAskedDialog = false
+                                showWarningDialog = true
+                            }) {
+                                Text("No", color = NotelTextSecondary)
+                            }
+                        },
+                        containerColor = NotelSurface
+                    )
+                }
+
+                if (showWarningDialog) {
+                    AlertDialog(
+                        onDismissRequest = {
+                            showWarningDialog = false
+                            viewModel.markVisibleBandAsked()
+                        },
+                        title = { Text("Notice", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
+                        text = { Text("This feature may not work and works best with a visible band.", color = NotelTextSecondary) },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                showWarningDialog = false
+                                viewModel.markVisibleBandAsked()
+                            }) {
+                                Text("OK", color = NotelPrimary, fontWeight = FontWeight.Bold)
+                            }
+                        },
+                        containerColor = NotelSurface
+                    )
+                }
+
+                // Render the main Jot Live monitor panel content
+                JotLiveScreenContent(viewModel = viewModel)
             }
+
 
             if (currentMenu == SettingsMenu.MAIN) {
                 Spacer(Modifier.height(16.dp))
@@ -2685,6 +2847,86 @@ fun SettingsScreen(
             }
             Spacer(Modifier.height(48.dp))
         }
+    if (showAllTimeTelemetryGraph) {
+        Dialog(onDismissRequest = { showAllTimeTelemetryGraph = false }) {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = NotelSurface,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(420.dp)
+                    .liquidGlass(shape = RoundedCornerShape(24.dp), color = NotelSurface, alpha = 0.95f)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "ALL-TIME TELEMETRY HISTORY",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NotelTextPrimary
+                        )
+                        IconButton(onClick = { showAllTimeTelemetryGraph = false }) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = NotelTextSecondary)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    if (isPullingTelemetry) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(220.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator(color = NotelPrimary, modifier = Modifier.size(32.dp))
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text("Fetching live heart history from server...", color = NotelTextSecondary, fontSize = 11.sp)
+                            }
+                        }
+                    } else {
+                        if (telemetryPoints.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(220.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("No telemetry history found on server.", color = NotelTextSecondary, fontSize = 12.sp)
+                            }
+                        } else {
+                            InteractiveTelemetryGraph(
+                                records = telemetryPoints,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(220.dp),
+                                lineColor = NotelPrimary
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(
+                        text = "Total Points: ${telemetryPoints.size} | Sync: Connected",
+                        fontSize = 11.sp,
+                        color = NotelTextSecondary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+    }
     }
     }
 }
@@ -3050,3 +3292,1356 @@ fun DocumentTile(
         }
     }
 }
+
+@Composable
+fun JotLiveScreenContent(
+    viewModel: SettingsViewModel
+) {
+    val context = LocalContext.current
+    val connectionState by viewModel.bleConnectionState.collectAsState()
+    val scannedDevices by viewModel.scannedBleDevices.collectAsState()
+    val liveHeartRate by viewModel.liveHeartRate.collectAsState()
+    val rawBytes by viewModel.bleRawBytes.collectAsState()
+    
+    val isServiceRunning by viewModel.isHrLoggingServiceRunning.collectAsState()
+    val isSwitchingConnection by viewModel.isBleSwitchingConnection.collectAsState()
+
+    var savedFiles by remember {
+        mutableStateOf(context.filesDir.listFiles { _, name -> name.endsWith(".csv") }?.toList() ?: emptyList())
+    }
+
+
+
+    var selectedGraphFile by remember { mutableStateOf<java.io.File?>(null) }
+    var showGattParamsDialog by remember { mutableStateOf(false) }
+
+    val refreshFilesList = {
+        savedFiles = context.filesDir.listFiles { _, name -> name.endsWith(".csv") }?.toList() ?: emptyList()
+    }
+
+    val activeFileName by viewModel.hrActiveFileName.collectAsState()
+
+    val activeFile = remember(activeFileName) {
+        val fileName = activeFileName
+        if (fileName != null) {
+            java.io.File(context.filesDir, fileName)
+        } else null
+    }
+
+    var liveSessionPoints by remember { mutableStateOf<List<com.notel.notel.data.HeartRateRecord>>(emptyList()) }
+
+    val serviceMinHr by viewModel.hrSessionMin.collectAsState()
+    val serviceMaxHr by viewModel.hrSessionMax.collectAsState()
+    val serviceMax15sJump by viewModel.hrMax15sJump.collectAsState()
+
+    val realtimeMin = if (isServiceRunning) (serviceMinHr ?: 0) else 0
+    val realtimeMax = if (isServiceRunning) (serviceMaxHr ?: 0) else 0
+    val realtime15sJump = if (isServiceRunning) (serviceMax15sJump ?: 0) else 0
+
+    LaunchedEffect(isServiceRunning, liveHeartRate, activeFile) {
+        if (isServiceRunning && activeFile != null && activeFile.exists()) {
+            val list = mutableListOf<com.notel.notel.data.HeartRateRecord>()
+            try {
+                activeFile.bufferedReader().useLines { lines ->
+                    lines.forEach { line ->
+                        val parts = line.split(",")
+                        if (parts.size >= 2) {
+                            // CSV stores BPM as "[76 BPM]" — strip brackets and label before parsing
+                            val rawBpm = parts[1].replace("[", "").replace("]", "").replace("BPM", "").trim()
+                            rawBpm.toIntOrNull()?.let { bpm ->
+                                val time = parts[0].trim()
+                                if (time.contains(":") && !time.contains("BPM")) {
+                                    list.add(com.notel.notel.data.HeartRateRecord(time, bpm))
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            liveSessionPoints = list
+        } else {
+            liveSessionPoints = emptyList()
+        }
+    }
+
+    val requiredPermissions = remember {
+        val basePermissions = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            arrayOf(
+                Manifest.permission.BLUETOOTH_SCAN,
+                Manifest.permission.BLUETOOTH_CONNECT
+            )
+        } else {
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.BLUETOOTH,
+                Manifest.permission.BLUETOOTH_ADMIN
+            )
+        }
+        
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            basePermissions + Manifest.permission.POST_NOTIFICATIONS
+        } else {
+            basePermissions
+        }
+    }
+
+    var hasPermissions by remember {
+        mutableStateOf(
+            requiredPermissions.all {
+                ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+            }
+        )
+    }
+
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        hasPermissions = results.values.all { it }
+    }
+
+    if (!hasPermissions) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Warning,
+                contentDescription = "Warning",
+                tint = NotelPrimary,
+                modifier = Modifier.size(48.dp)
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "Permissions Required",
+                color = NotelTextPrimary,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "Jot Live Beta requires Bluetooth and Notification permissions to connect to your band and record logs in the background.",
+                color = NotelTextSecondary,
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            GlassyButton(
+                onClick = { launcher.launch(requiredPermissions) },
+                containerColor = NotelPrimary
+            ) {
+                Text("Grant Permissions", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+        }
+        return
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "JOT LIVE BETA",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = NotelPrimary,
+            letterSpacing = 2.sp,
+            modifier = Modifier.padding(vertical = 8.dp)
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Pulse heart animation card
+        HeartMonitorCard(
+            connectionState = if (isServiceRunning) com.notel.notel.data.ConnectionState.Connected("Background Log", "ACTIVE") else connectionState,
+            heartRate = liveHeartRate,
+            modifier = Modifier.height(260.dp)
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Session statistics card
+        GlassyCard(
+            shape = RoundedCornerShape(16.dp),
+            color = NotelSurface
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp),
+                horizontalArrangement = Arrangement.SpaceAround,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("HIGHEST", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = NotelTextSecondary)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = if (realtimeMax > 0) "$realtimeMax" else "-",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NotelPrimary
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text("BPM", fontSize = 8.sp, color = NotelTextSecondary)
+                    }
+                }
+                Box(modifier = Modifier.width(1.dp).height(24.dp).background(NotelSurfaceHigh))
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("MAX JUMP (15S)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = NotelTextSecondary)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = if (realtime15sJump > 0) "$realtime15sJump" else "-",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NotelPrimary
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text("BPM", fontSize = 8.sp, color = NotelTextSecondary)
+                    }
+                }
+                Box(modifier = Modifier.width(1.dp).height(24.dp).background(NotelSurfaceHigh))
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("LOWEST", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = NotelTextSecondary)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = if (realtimeMin > 0) "$realtimeMin" else "-",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NotelPrimary
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text("BPM", fontSize = 8.sp, color = NotelTextSecondary)
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Device Controls & Scan List Panel
+        GlassyCard(
+            shape = RoundedCornerShape(16.dp),
+            color = NotelSurface
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (isServiceRunning && !isSwitchingConnection) "ACTIVE SESSION LOG" else "BAND MONITORING",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NotelTextPrimary
+                    )
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (isServiceRunning && !isSwitchingConnection) {
+                            IconButton(onClick = { showGattParamsDialog = true }) {
+                                Icon(Icons.Default.Settings, "GATT Params", tint = NotelTextSecondary)
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Button(
+                                onClick = {
+                                    viewModel.stopHrLoggingService()
+                                    refreshFilesList()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF4D4D).copy(alpha = 0.2f)),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Text("STOP LOG", color = Color(0xFFFF4D4D), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        } else {
+                            val isScanning = connectionState is com.notel.notel.data.ConnectionState.Scanning
+                            Button(
+                                onClick = {
+                                    if (isScanning) viewModel.stopBleScan() else viewModel.startBleScan()
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isScanning) Color(0xFFFF4D4D).copy(alpha = 0.2f) else NotelPrimary
+                                ),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                if (isScanning) {
+                                    CircularProgressIndicator(modifier = Modifier.size(12.dp), color = Color(0xFFFF4D4D), strokeWidth = 2.dp)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("STOP SCAN", color = Color(0xFFFF4D4D), fontSize = 10.sp)
+                                } else {
+                                    Icon(Icons.Default.Refresh, "Scan", modifier = Modifier.size(12.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("SCAN BAND", fontSize = 10.sp, color = Color.White)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (isServiceRunning && !isSwitchingConnection) {
+                    Text("LIVE GRAPH (SESSION HISTORY)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = NotelPrimary)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    InteractiveHeartRateGraph(
+                        records = liveSessionPoints,
+                        lineColor = NotelPrimary,
+                        modifier = Modifier.fillMaxWidth().height(160.dp)
+                    )
+                } else if (scannedDevices.isEmpty() && connectionState is com.notel.notel.data.ConnectionState.Scanning) {
+                    Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), color = NotelPrimary)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Searching for BLE heart rate bands...", color = NotelTextSecondary, fontSize = 11.sp)
+                        }
+                    }
+                } else if (scannedDevices.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {
+                        Text("No band connected. Tap SCAN BAND to scan.", color = NotelTextSecondary, fontSize = 12.sp)
+                    }
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        scannedDevices.forEach { device ->
+                            DeviceRow(
+                                device = device,
+                                onClick = {
+                                    if (isSwitchingConnection) {
+                                        viewModel.connectBleDevice(device)
+                                    } else {
+                                        viewModel.startHrLoggingService(device)
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Saved sessions CSV log lists
+        SavedSessionsPanel(
+            savedFiles = savedFiles,
+            onViewGraph = { file -> selectedGraphFile = file },
+            onShare = { file -> shareCsvFile(context, file) },
+            onDelete = { file ->
+                viewModel.deleteSessionCsvFile(file) {
+                    refreshFilesList()
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+
+    selectedGraphFile?.let { file ->
+        SessionGraphDialog(
+            file = file,
+            onDismissRequest = { selectedGraphFile = null }
+        )
+    }
+}
+
+@Composable
+fun InteractiveTelemetryGraph(
+    records: List<com.notel.notel.data.TelemetryPoint>,
+    modifier: Modifier = Modifier,
+    lineColor: Color = NotelPrimary
+) {
+    if (records.size < 2) {
+        Box(
+            modifier = modifier.background(NotelSurfaceHigh.copy(alpha = 0.5f), RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("No telemetry data synchronized yet.", color = NotelTextSecondary, fontSize = 11.sp)
+        }
+        return
+    }
+
+    val minBpm = records.minOf { it.bpm }
+    val maxBpm = records.maxOf { it.bpm }
+
+    val minLimit = (minBpm - 5).coerceAtLeast(0)
+    val maxLimit = maxBpm + 5
+    val range = maxLimit - minLimit
+
+    var touchX by remember { mutableStateOf<Float?>(null) }
+    var selectedRecord by remember { mutableStateOf<com.notel.notel.data.TelemetryPoint?>(null) }
+
+    val textPaint = remember {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.GRAY
+            textSize = 28f
+            typeface = android.graphics.Typeface.MONOSPACE
+            textAlign = android.graphics.Paint.Align.RIGHT
+        }
+    }
+
+    val labelPaint = remember {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            textSize = 24f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            textAlign = android.graphics.Paint.Align.CENTER
+        }
+    }
+
+    val sdf = remember { java.text.SimpleDateFormat("MM/dd h:mm a", java.util.Locale.getDefault()) }
+    val tooltipSdf = remember { java.text.SimpleDateFormat("MMM dd, h:mm:ss a", java.util.Locale.getDefault()) }
+
+    Box(
+        modifier = modifier
+            .background(NotelSurfaceHigh.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+            .border(1.dp, NotelSurfaceHigh, RoundedCornerShape(12.dp))
+    ) {
+        androidx.compose.foundation.Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = 16.dp, bottom = 24.dp, start = 16.dp, end = 52.dp)
+                .pointerInput(records) {
+                    detectDragGestures(
+                        onDragStart = { offset -> touchX = offset.x },
+                        onDrag = { change, _ -> touchX = change.position.x },
+                        onDragEnd = { touchX = null; selectedRecord = null },
+                        onDragCancel = { touchX = null; selectedRecord = null }
+                    )
+                }
+        ) {
+            val width = size.width
+            val height = size.height
+
+            val yLines = 3
+            for (i in 0 until yLines) {
+                val fraction = i.toFloat() / (yLines - 1)
+                val y = height * fraction
+                val value = maxLimit - (fraction * range).toInt()
+                
+                drawLine(
+                    color = NotelSurfaceHigh,
+                    start = Offset(0f, y),
+                    end = Offset(width, y),
+                    strokeWidth = 1.dp.toPx()
+                )
+                
+                drawIntoCanvas { canvas ->
+                    canvas.nativeCanvas.drawText(
+                        "$value",
+                        width + 42.dp.toPx(),
+                        y + 4.dp.toPx(),
+                        textPaint
+                    )
+                }
+            }
+
+            val path = androidx.compose.ui.graphics.Path()
+            val fillPath = androidx.compose.ui.graphics.Path()
+
+            records.forEachIndexed { index, record ->
+                val x = index * (width / (records.size - 1))
+                val y = height - (record.bpm - minLimit) * (height / range)
+
+                if (index == 0) {
+                    path.moveTo(x, y)
+                    fillPath.moveTo(x, height)
+                    fillPath.lineTo(x, y)
+                } else {
+                    path.lineTo(x, y)
+                    fillPath.lineTo(x, y)
+                }
+
+                if (index == records.size - 1) {
+                    fillPath.lineTo(x, height)
+                    fillPath.close()
+                }
+            }
+
+            drawPath(
+                path = fillPath,
+                brush = Brush.verticalGradient(
+                    colors = listOf(lineColor.copy(alpha = 0.2f), Color.Transparent)
+                )
+            )
+
+            drawPath(
+                path = path,
+                color = lineColor,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+            )
+
+            if (records.size >= 2) {
+                val indicesToShow = listOf(0, records.size / 2, records.size - 1)
+                indicesToShow.forEach { idx ->
+                    val record = records[idx]
+                    val x = idx * (width / (records.size - 1))
+                    val cleanTime = sdf.format(java.util.Date(record.timestamp))
+
+                    drawIntoCanvas { canvas ->
+                        canvas.nativeCanvas.drawText(
+                            cleanTime,
+                            x,
+                            height + 18.dp.toPx(),
+                            labelPaint
+                        )
+                    }
+                }
+            }
+
+            touchX?.let { tx ->
+                val coercedX = tx.coerceIn(0f, width)
+                val index = (coercedX / width * (records.size - 1)).toInt().coerceIn(0, records.size - 1)
+                val record = records[index]
+                selectedRecord = record
+
+                val x = index * (width / (records.size - 1))
+                val y = height - (record.bpm - minLimit) * (height / range)
+
+                drawLine(
+                    color = Color.White.copy(alpha = 0.5f),
+                    start = Offset(x, 0f),
+                    end = Offset(x, height),
+                    strokeWidth = 1.dp.toPx()
+                )
+
+                drawCircle(
+                    color = lineColor,
+                    radius = 4.dp.toPx(),
+                    center = Offset(x, y)
+                )
+                drawCircle(
+                    color = Color.White,
+                    radius = 2.dp.toPx(),
+                    center = Offset(x, y)
+                )
+            }
+        }
+
+        selectedRecord?.let { record ->
+            Card(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(8.dp)
+                    .border(1.dp, lineColor.copy(alpha = 0.3f), RoundedCornerShape(8.dp)),
+                colors = CardDefaults.cardColors(containerColor = NotelSurfaceHigh),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "${record.bpm} BPM",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = lineColor
+                    )
+                    Text(
+                        text = tooltipSdf.format(java.util.Date(record.timestamp)),
+                        fontSize = 9.sp,
+                        color = NotelTextSecondary
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun HeartMonitorCard(
+    connectionState: com.notel.notel.data.ConnectionState,
+    heartRate: Int?,
+    modifier: Modifier = Modifier
+) {
+    val bpm = heartRate ?: 70
+    val pulseDuration = (60000 / bpm).coerceIn(300, 2000)
+
+    val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition(label = "pulse")
+    val scale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.25f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            animation = androidx.compose.animation.core.tween(durationMillis = pulseDuration / 2, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+        ),
+        label = "heartScale"
+    )
+
+    GlassyCard(
+        shape = RoundedCornerShape(24.dp),
+        color = NotelSurface,
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                val tintColor = if (heartRate != null) NotelPrimary else NotelTextSecondary.copy(alpha = 0.3f)
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.size(110.dp)
+                ) {
+                    if (heartRate != null) {
+                        Box(
+                            modifier = Modifier
+                                .size(90.dp)
+                                .scale(scale)
+                                .background(NotelPrimary.copy(alpha = 0.1f), shape = CircleShape)
+                        )
+                    }
+
+                    Icon(
+                        imageVector = Icons.Default.Favorite,
+                        contentDescription = "Pulsing Heart",
+                        tint = tintColor,
+                        modifier = Modifier
+                            .size(75.dp)
+                            .scale(if (heartRate != null) scale else 1f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = heartRate?.toString() ?: "--",
+                    fontSize = 48.sp,
+                    fontWeight = FontWeight.Black,
+                    color = NotelTextPrimary
+                )
+
+                Text(
+                    text = "BPM",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = NotelPrimary,
+                    letterSpacing = 2.sp
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                val statusText = when (connectionState) {
+                    is com.notel.notel.data.ConnectionState.Disconnected -> "DISCONNECTED"
+                    is com.notel.notel.data.ConnectionState.Scanning -> "SCANNING FOR DEVICE..."
+                    is com.notel.notel.data.ConnectionState.Connecting -> "CONNECTING..."
+                    is com.notel.notel.data.ConnectionState.Connected -> "CONNECTED: ${connectionState.deviceName.uppercase()}"
+                    is com.notel.notel.data.ConnectionState.Error -> "ERROR: ${connectionState.message.uppercase()}"
+                }
+                val statusColor = when (connectionState) {
+                    is com.notel.notel.data.ConnectionState.Connected -> Color(0xFF4CAF50)
+                    is com.notel.notel.data.ConnectionState.Scanning -> Color(0xFFFFC107)
+                    is com.notel.notel.data.ConnectionState.Connecting -> Color(0xFF2196F3)
+                    is com.notel.notel.data.ConnectionState.Error -> Color(0xFFF44336)
+                    else -> NotelTextSecondary
+                }
+
+                Text(
+                    text = statusText,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = statusColor,
+                    letterSpacing = 1.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun InteractiveHeartRateGraph(
+    records: List<com.notel.notel.data.HeartRateRecord>,
+    modifier: Modifier = Modifier,
+    lineColor: Color = NotelPrimary
+) {
+    if (records.size < 2) {
+        Box(
+            modifier = modifier.background(NotelSurfaceHigh.copy(alpha = 0.5f), RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Awaiting data coordinates...", color = NotelTextSecondary, fontSize = 11.sp)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text("(Graph averages every 10s. Display starts in ~20-30s)", color = NotelTextSecondary.copy(alpha = 0.6f), fontSize = 9.sp)
+            }
+        }
+        return
+    }
+
+    val minBpm = records.minOf { it.bpm }
+    val maxBpm = records.maxOf { it.bpm }
+
+    val minLimit = (minBpm - 5).coerceAtLeast(0)
+    val maxLimit = maxBpm + 5
+    val range = maxLimit - minLimit
+
+    var touchX by remember { mutableStateOf<Float?>(null) }
+    var selectedRecord by remember { mutableStateOf<com.notel.notel.data.HeartRateRecord?>(null) }
+
+    val textPaint = remember {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.GRAY
+            textSize = 28f
+            typeface = android.graphics.Typeface.MONOSPACE
+            textAlign = android.graphics.Paint.Align.RIGHT
+        }
+    }
+
+    val labelPaint = remember {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            textSize = 24f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            textAlign = android.graphics.Paint.Align.CENTER
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .background(NotelSurfaceHigh.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+            .border(1.dp, NotelSurfaceHigh, RoundedCornerShape(12.dp))
+    ) {
+        androidx.compose.foundation.Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = 16.dp, bottom = 24.dp, start = 16.dp, end = 52.dp)
+                .pointerInput(records) {
+                    detectDragGestures(
+                        onDragStart = { offset ->
+                            touchX = offset.x
+                        },
+                        onDrag = { change, _ ->
+                            touchX = change.position.x
+                        },
+                        onDragEnd = {
+                            touchX = null
+                            selectedRecord = null
+                        },
+                        onDragCancel = {
+                            touchX = null
+                            selectedRecord = null
+                        }
+                    )
+                }
+        ) {
+            val width = size.width
+            val height = size.height
+
+            val yLines = 3
+            for (i in 0 until yLines) {
+                val fraction = i.toFloat() / (yLines - 1)
+                val y = height * fraction
+                val value = maxLimit - (fraction * range).toInt()
+                
+                drawLine(
+                    color = NotelSurfaceHigh,
+                    start = Offset(0f, y),
+                    end = Offset(width, y),
+                    strokeWidth = 1.dp.toPx()
+                )
+                
+                drawIntoCanvas { canvas ->
+                    canvas.nativeCanvas.drawText(
+                        "$value",
+                        width + 42.dp.toPx(),
+                        y + 4.dp.toPx(),
+                        textPaint
+                    )
+                }
+            }
+
+            val path = androidx.compose.ui.graphics.Path()
+            val fillPath = androidx.compose.ui.graphics.Path()
+
+            records.forEachIndexed { index, record ->
+                val x = index * (width / (records.size - 1))
+                val y = height - (record.bpm - minLimit) * (height / range)
+
+                if (index == 0) {
+                    path.moveTo(x, y)
+                    fillPath.moveTo(x, height)
+                    fillPath.lineTo(x, y)
+                } else {
+                    path.lineTo(x, y)
+                    fillPath.lineTo(x, y)
+                }
+
+                if (index == records.size - 1) {
+                    fillPath.lineTo(x, height)
+                    fillPath.close()
+                }
+            }
+
+            drawPath(
+                path = fillPath,
+                brush = Brush.verticalGradient(
+                    colors = listOf(lineColor.copy(alpha = 0.2f), Color.Transparent)
+                )
+            )
+
+            drawPath(
+                path = path,
+                color = lineColor,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+            )
+
+            if (records.size >= 2) {
+                val indicesToShow = listOf(0, records.size / 2, records.size - 1)
+                indicesToShow.forEach { idx ->
+                    val record = records[idx]
+                    val x = idx * (width / (records.size - 1))
+                    
+                    val rawTime = record.timestamp
+                    val cleanTime = if (rawTime.contains(" ")) {
+                        val parts = rawTime.split(" ")
+                        val time = parts.getOrNull(1) ?: ""
+                        val amPm = parts.getOrNull(2) ?: ""
+                        val shortTime = if (time.contains(":")) time.substringBeforeLast(":") else time
+                        if (amPm.isNotEmpty()) "$shortTime $amPm" else shortTime
+                    } else {
+                        if (rawTime.contains(":")) {
+                            rawTime.substringBeforeLast(":")
+                        } else rawTime
+                    }
+
+                    drawIntoCanvas { canvas ->
+                        canvas.nativeCanvas.drawText(
+                            cleanTime,
+                            x,
+                            height + 18.dp.toPx(),
+                            labelPaint
+                        )
+                    }
+                }
+            }
+
+            touchX?.let { tx ->
+                val coercedX = tx.coerceIn(0f, width)
+                val index = (coercedX / width * (records.size - 1)).toInt().coerceIn(0, records.size - 1)
+                val record = records[index]
+                selectedRecord = record
+
+                val x = index * (width / (records.size - 1))
+                val y = height - (record.bpm - minLimit) * (height / range)
+
+                drawLine(
+                    color = Color.White.copy(alpha = 0.5f),
+                    start = Offset(x, 0f),
+                    end = Offset(x, height),
+                    strokeWidth = 1.dp.toPx()
+                )
+
+                drawCircle(
+                    color = lineColor,
+                    radius = 4.dp.toPx(),
+                    center = Offset(x, y)
+                )
+                drawCircle(
+                    color = Color.White,
+                    radius = 2.dp.toPx(),
+                    center = Offset(x, y)
+                )
+            }
+        }
+
+        selectedRecord?.let { record ->
+            Card(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(8.dp)
+                    .border(1.dp, lineColor.copy(alpha = 0.3f), RoundedCornerShape(8.dp)),
+                colors = CardDefaults.cardColors(containerColor = NotelSurfaceHigh),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "${record.bpm} BPM",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = lineColor
+                    )
+                    Box(modifier = Modifier.width(1.dp).height(10.dp).background(NotelTextSecondary))
+                    val displayTime = if (record.timestamp.contains(" ")) {
+                        val parts = record.timestamp.split(" ")
+                        val time = parts.getOrNull(1) ?: ""
+                        val amPm = parts.getOrNull(2) ?: ""
+                        if (amPm.isNotEmpty()) "$time $amPm" else time
+                    } else {
+                        record.timestamp
+                    }
+                    Text(
+                        text = displayTime,
+                        fontSize = 10.sp,
+                        color = NotelTextPrimary,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DeviceRow(device: com.notel.notel.data.BleDevice, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(NotelSurfaceHigh.copy(alpha = 0.5f))
+            .clickable { onClick() }
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column {
+            Text(text = device.name, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = NotelTextPrimary)
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(text = device.address, fontSize = 10.sp, color = NotelTextSecondary, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+        }
+
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(NotelPrimary.copy(alpha = 0.15f))
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = "Record",
+                    tint = NotelPrimary,
+                    modifier = Modifier.size(12.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("RECORD", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = NotelPrimary)
+            }
+        }
+    }
+}
+
+@Composable
+fun SavedSessionsPanel(
+    savedFiles: List<java.io.File>,
+    onViewGraph: (java.io.File) -> Unit,
+    onShare: (java.io.File) -> Unit,
+    onDelete: (java.io.File) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    GlassyCard(
+        shape = RoundedCornerShape(16.dp),
+        color = NotelSurface,
+        modifier = modifier
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "SAVED CSV SESSIONS",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = NotelTextPrimary,
+                letterSpacing = 1.sp
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (savedFiles.isEmpty()) {
+                Text(
+                    text = "No saved logs found. Start a recording session to log data.",
+                    color = NotelTextSecondary,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    savedFiles.sortedByDescending { it.lastModified() }.forEach { file ->
+                        SavedSessionRow(
+                            file = file,
+                            onViewGraph = { onViewGraph(file) },
+                            onShare = { onShare(file) },
+                            onDownload = { downloadCsvFile(context, file) },
+                            onDelete = { onDelete(file) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SavedSessionRow(
+    file: java.io.File,
+    onViewGraph: () -> Unit,
+    onShare: () -> Unit,
+    onDownload: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(NotelSurfaceHigh.copy(alpha = 0.5f))
+            .border(1.dp, NotelSurfaceHigh, RoundedCornerShape(12.dp))
+            .padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            val displayName = try {
+                val rawPart = file.name.replace("heart_rate_session_", "").replace(".csv", "")
+                val parser = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault())
+                val formatter = java.text.SimpleDateFormat("MMM d, yyyy h:mm a", java.util.Locale.getDefault())
+                val parsedDate = parser.parse(rawPart)
+                if (parsedDate != null) {
+                    "SESSION: " + formatter.format(parsedDate).uppercase()
+                } else {
+                    file.name.substringBeforeLast(".csv").uppercase()
+                }
+            } catch (e: Exception) {
+                file.name.substringBeforeLast(".csv").uppercase()
+            }
+            Text(
+                text = displayName,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = NotelTextPrimary
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            val lengthText = try {
+                var duration: String? = null
+                file.bufferedReader().useLines { lines ->
+                    for (line in lines) {
+                        if (line.contains("Duration:")) {
+                            duration = line.substringAfter("Duration:").trim()
+                            break
+                        }
+                    }
+                }
+                duration ?: {
+                    val linesCount = file.readLines().count { line ->
+                        val parts = line.split(",")
+                        if (parts.size >= 2) {
+                            val bpmClean = parts[1].replace("[", "").replace("]", "").replace("BPM", "").trim()
+                            bpmClean.toIntOrNull() != null && parts[0].contains(":") && !parts[0].contains("BPM")
+                        } else false
+                    }
+                    val totalSeconds = linesCount * 10
+                    val hours = totalSeconds / 3600
+                    val minutes = (totalSeconds % 3600) / 60
+                    val seconds = totalSeconds % 60
+                    when {
+                        hours > 0 -> "${hours}h ${minutes}m ${seconds}s"
+                        minutes > 0 -> "${minutes}m ${seconds}s"
+                        else -> "${seconds}s"
+                    }
+                }()
+            } catch (e: Exception) {
+                "Unknown length"
+            }
+            Text(
+                text = "Duration: $lengthText",
+                fontSize = 10.sp,
+                color = NotelTextSecondary
+            )
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(NotelPrimary.copy(alpha = 0.15f))
+                    .clickable { onViewGraph() }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                Text("GRAPH", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = NotelPrimary)
+            }
+
+            IconButton(onClick = onShare, modifier = Modifier.size(28.dp)) {
+                Icon(
+                    imageVector = Icons.Default.Share,
+                    contentDescription = "Share",
+                    tint = NotelPrimary,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+
+            IconButton(onClick = onDownload, modifier = Modifier.size(28.dp)) {
+                Icon(
+                    imageVector = Icons.Default.Download,
+                    contentDescription = "Download",
+                    tint = NotelPrimary,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+
+            IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "Delete",
+                    tint = Color(0xFFFF4D4D),
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun SessionGraphDialog(file: java.io.File, onDismissRequest: () -> Unit) {
+    val points = remember(file) {
+        val list = mutableListOf<com.notel.notel.data.HeartRateRecord>()
+        try {
+            file.bufferedReader().useLines { lines ->
+                lines.forEach { line ->
+                    val parts = line.split(",")
+                    if (parts.size >= 2) {
+                        // CSV stores BPM as "[76 BPM]" — strip brackets and label before parsing
+                        val rawBpm = parts[1].replace("[", "").replace("]", "").replace("BPM", "").trim()
+                        rawBpm.toIntOrNull()?.let { bpm ->
+                            val time = parts[0].trim()
+                            if (time.contains(":") && !time.contains("BPM")) {
+                                list.add(com.notel.notel.data.HeartRateRecord(time, bpm))
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        list
+    }
+
+    Dialog(onDismissRequest = onDismissRequest) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(380.dp)
+                .border(1.dp, NotelSurfaceHigh, RoundedCornerShape(24.dp)),
+            colors = CardDefaults.cardColors(containerColor = NotelSurface)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "SESSION TREND GRAPH",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = NotelTextPrimary,
+                    letterSpacing = 1.sp
+                )
+
+                if (points.size < 2) {
+                    Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        Text("Awaiting more logs to draw chart...", color = NotelTextSecondary, fontSize = 12.sp)
+                    }
+                } else {
+                    val minBpm = points.minOf { it.bpm }
+                    val maxBpm = points.maxOf { it.bpm }
+                    val avgBpm = points.map { it.bpm }.average().toInt()
+
+                    Column(modifier = Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.Center) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            StatPill(label = "MIN HR", value = "$minBpm")
+                            StatPill(label = "AVG HR", value = "$avgBpm")
+                            StatPill(label = "MAX HR", value = "$maxBpm")
+                        }
+
+                        InteractiveHeartRateGraph(
+                            records = points,
+                            lineColor = NotelPrimary,
+                            modifier = Modifier.fillMaxWidth().height(160.dp)
+                        )
+                    }
+                }
+
+                Button(
+                    onClick = onDismissRequest,
+                    colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("CLOSE GRAPH", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun StatPill(label: String, value: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(text = label, fontSize = 9.sp, color = NotelTextSecondary, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(text = value, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = NotelTextPrimary)
+    }
+}
+
+@Composable
+fun GattParamsDialog(
+    rawBytes: String?,
+    onDismissRequest: () -> Unit,
+    onSwitchConnection: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismissRequest) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, NotelSurfaceHigh, RoundedCornerShape(24.dp)),
+            colors = CardDefaults.cardColors(containerColor = NotelSurface)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "GATT BLUETOOTH PARAMS",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = NotelTextPrimary,
+                    letterSpacing = 1.sp
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GattParamRow(label = "Heart Rate Service (GATT API)", value = "0000180d-0000-1000-8000-00805f9b34fb")
+                    GattParamRow(label = "HR Measurement (Endpoint)", value = "00002a37-0000-1000-8000-00805f9b34fb")
+                    GattParamRow(label = "Notification Descriptor", value = "00002902-0000-1000-8000-00805f9b34fb")
+                    GattParamRow(label = "Raw Bytes Stream (Live)", value = rawBytes ?: "Disconnected")
+                }
+
+                Button(
+                    onClick = {
+                        onSwitchConnection()
+                        onDismissRequest()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Switch Connection", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+
+                Button(
+                    onClick = onDismissRequest,
+                    colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("CLOSE SETTINGS", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun GattParamRow(label: String, value: String) {
+    Column {
+        Text(text = label.uppercase(), fontSize = 8.sp, color = NotelTextSecondary, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = value,
+            fontSize = 10.sp,
+            color = if (value.startsWith("Receiving") || value.startsWith("Awaiting") || value.startsWith("...")) NotelTextSecondary else NotelTextPrimary,
+            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+private fun shareCsvFile(context: android.content.Context, file: java.io.File) {
+    try {
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.provider",
+            file
+        )
+        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "text/csv"
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(android.content.Intent.createChooser(intent, "Share Heart Rate CSV"))
+    } catch (e: Exception) {
+        android.widget.Toast.makeText(context, "Failed to share file: ${e.localizedMessage}", android.widget.Toast.LENGTH_SHORT).show()
+    }
+}
+
+private fun downloadCsvFile(context: android.content.Context, file: java.io.File) {
+    try {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            val contentResolver = context.contentResolver
+            val contentValues = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, file.name)
+                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/csv")
+                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+            }
+            val uri = contentResolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+            if (uri != null) {
+                contentResolver.openOutputStream(uri).use { outputStream ->
+                    file.inputStream().use { inputStream ->
+                        inputStream.copyTo(outputStream!!)
+                    }
+                }
+                android.widget.Toast.makeText(context, "Saved to Downloads folder", android.widget.Toast.LENGTH_SHORT).show()
+            } else {
+                android.widget.Toast.makeText(context, "Failed to create file in Downloads", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+            if (!downloadsDir.exists()) {
+                downloadsDir.mkdirs()
+            }
+            val destFile = java.io.File(downloadsDir, file.name)
+            file.copyTo(destFile, overwrite = true)
+            android.widget.Toast.makeText(context, "Saved to Downloads: ${destFile.absolutePath}", android.widget.Toast.LENGTH_LONG).show()
+        }
+    } catch (e: Exception) {
+        android.widget.Toast.makeText(context, "Download failed: ${e.localizedMessage}", android.widget.Toast.LENGTH_SHORT).show()
+    }
+}
+
+private fun downsampleTelemetryPoints(points: List<com.notel.notel.data.TelemetryPoint>): List<com.notel.notel.data.TelemetryPoint> {
+    if (points.size <= 200) return points
+    val sortedPoints = points.sortedBy { it.timestamp }
+    val firstTime = sortedPoints.first().timestamp
+    val lastTime = sortedPoints.last().timestamp
+    val totalDurationMs = lastTime - firstTime
+    val bucketMs = when {
+        totalDurationMs <= 21_600_000L -> 60_000L      // <= 6 hours: 1 min
+        totalDurationMs <= 86_400_000L -> 300_000L     // <= 24 hours: 5 min
+        totalDurationMs <= 259_200_000L -> 900_000L    // <= 3 days: 15 min
+        else -> 3_600_000L                             // > 3 days: 1 hour
+    }
+    return sortedPoints.groupBy { (it.timestamp - firstTime) / bucketMs }
+        .map { (_, group) ->
+            val avgBpm = group.map { it.bpm }.average().toInt()
+            val avgTimestamp = group.map { it.timestamp }.average().toLong()
+            com.notel.notel.data.TelemetryPoint(timestamp = avgTimestamp, bpm = avgBpm)
+        }
+        .sortedBy { it.timestamp }
+}
+

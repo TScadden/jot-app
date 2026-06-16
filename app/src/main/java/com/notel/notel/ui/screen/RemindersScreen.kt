@@ -231,7 +231,7 @@ fun RemindersScreen(
         AddReminderSheet(
             sheetState = sheetState,
             onDismiss = { showAddSheet = false },
-            onSave = { title, type, fixedH, fixedM, intervalH, intervalM, startH, startM, endH, endM ->
+            onSave = { title, type, fixedH, fixedM, intervalH, intervalM, startH, startM, endH, endM, daysConfig ->
                 viewModel.addReminder(
                     title           = title,
                     type            = type,
@@ -242,7 +242,8 @@ fun RemindersScreen(
                     startHour       = startH,
                     startMinute     = startM,
                     endHour         = endH,
-                    endMinute       = endM
+                    endMinute       = endM,
+                    daysOfWeekConfig = daysConfig
                 )
                 showAddSheet = false
             }
@@ -259,7 +260,21 @@ private fun ReminderCard(
     onDelete: () -> Unit
 ) {
     val timeLabel = if (reminder.type == "FIXED") {
-        formatTime(reminder.fixedHour, reminder.fixedMinute)
+        if (reminder.daysOfWeekConfig.isNotBlank()) {
+            try {
+                val configs = kotlinx.serialization.json.Json.decodeFromString<List<com.notel.notel.data.local.entity.DayTimeConfig>>(reminder.daysOfWeekConfig)
+                val enabled = configs.filter { it.isEnabled }
+                if (enabled.isNotEmpty()) {
+                    enabled.joinToString(", ") { "${it.dayName} ${formatTime(it.hour, it.minute)}" }
+                } else {
+                    formatTime(reminder.fixedHour, reminder.fixedMinute)
+                }
+            } catch (e: Exception) {
+                formatTime(reminder.fixedHour, reminder.fixedMinute)
+            }
+        } else {
+            formatTime(reminder.fixedHour, reminder.fixedMinute)
+        }
     } else {
         val intervalStr = if (reminder.intervalHours > 0) {
             "Every ${reminder.intervalHours}h"
@@ -332,8 +347,9 @@ private fun ReminderCard(
 private fun AddReminderSheet(
     sheetState: SheetState,
     onDismiss: () -> Unit,
-    onSave: (String, String, Int, Int, Int, Int, Int, Int, Int, Int) -> Unit
+    onSave: (String, String, Int, Int, Int, Int, Int, Int, Int, Int, String) -> Unit
 ) {
+    val context = LocalContext.current
     var title           by remember { mutableStateOf("") }
     var type            by remember { mutableStateOf("FIXED") }   // "FIXED" | "INTERVAL"
     var fixedHour       by remember { mutableIntStateOf(8) }
@@ -344,6 +360,19 @@ private fun AddReminderSheet(
     var startMinute     by remember { mutableIntStateOf(0) }
     var endHour         by remember { mutableIntStateOf(21) }
     var endMinute       by remember { mutableIntStateOf(0) }
+
+    var customizeDays by remember { mutableStateOf(false) }
+    val daysList = remember {
+        mutableStateListOf(
+            com.notel.notel.data.local.entity.DayTimeConfig(java.util.Calendar.MONDAY, "Mon", false, 9, 0),
+            com.notel.notel.data.local.entity.DayTimeConfig(java.util.Calendar.TUESDAY, "Tue", false, 9, 0),
+            com.notel.notel.data.local.entity.DayTimeConfig(java.util.Calendar.WEDNESDAY, "Wed", false, 9, 0),
+            com.notel.notel.data.local.entity.DayTimeConfig(java.util.Calendar.THURSDAY, "Thu", false, 9, 0),
+            com.notel.notel.data.local.entity.DayTimeConfig(java.util.Calendar.FRIDAY, "Fri", false, 9, 0),
+            com.notel.notel.data.local.entity.DayTimeConfig(java.util.Calendar.SATURDAY, "Sat", false, 9, 0),
+            com.notel.notel.data.local.entity.DayTimeConfig(java.util.Calendar.SUNDAY, "Sun", false, 9, 0)
+        )
+    }
 
     val canSave = title.isNotBlank()
 
@@ -394,14 +423,84 @@ private fun AddReminderSheet(
             AnimatedContent(targetState = type, label = "type_fields") { currentType ->
                 when (currentType) {
                     "FIXED" -> {
-                        Column {
-                            Text("Time", color = NotelTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                            Spacer(Modifier.height(8.dp))
-                            TimePickerRow(
-                                hour = fixedHour, minute = fixedMinute,
-                                onHourChange = { fixedHour = it },
-                                onMinuteChange = { fixedMinute = it }
-                            )
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Custom days & times", color = NotelTextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                Switch(
+                                    checked = customizeDays,
+                                    onCheckedChange = { customizeDays = it },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Color.White,
+                                        checkedTrackColor = NotelPrimary,
+                                        uncheckedThumbColor = NotelTextSecondary,
+                                        uncheckedTrackColor = NotelSurfaceHigh.copy(alpha = 0.2f)
+                                    )
+                                )
+                            }
+                            if (customizeDays) {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    daysList.forEachIndexed { index, dayConfig ->
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Checkbox(
+                                                checked = dayConfig.isEnabled,
+                                                onCheckedChange = { checked ->
+                                                    daysList[index] = dayConfig.copy(isEnabled = checked)
+                                                },
+                                                colors = CheckboxDefaults.colors(checkedColor = NotelPrimary)
+                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(
+                                                text = dayConfig.dayName,
+                                                color = if (dayConfig.isEnabled) NotelTextPrimary else NotelTextSecondary,
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                modifier = Modifier.width(60.dp)
+                                            )
+                                            Spacer(Modifier.weight(1f))
+                                            if (dayConfig.isEnabled) {
+                                                TextButton(
+                                                    onClick = {
+                                                        android.app.TimePickerDialog(
+                                                            context,
+                                                            { _, selectedHour, selectedMinute ->
+                                                                daysList[index] = dayConfig.copy(hour = selectedHour, minute = selectedMinute)
+                                                            },
+                                                            dayConfig.hour,
+                                                            dayConfig.minute,
+                                                            false
+                                                        ).show()
+                                                    }
+                                                ) {
+                                                    Text(
+                                                        text = formatTime(dayConfig.hour, dayConfig.minute),
+                                                        color = NotelPrimary,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 14.sp
+                                                    )
+                                                }
+                                            } else {
+                                                Text("Disabled", color = NotelTextSecondary.copy(alpha = 0.5f), fontSize = 12.sp)
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                Column {
+                                    Text("Time", color = NotelTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                    Spacer(Modifier.height(8.dp))
+                                    TimePickerRow(
+                                        hour = fixedHour, minute = fixedMinute,
+                                        onHourChange = { fixedHour = it },
+                                        onMinuteChange = { fixedMinute = it }
+                                    )
+                                }
+                            }
                         }
                     }
                     "INTERVAL" -> {
@@ -448,7 +547,14 @@ private fun AddReminderSheet(
 
             Button(
                 onClick = {
-                    onSave(title, type, fixedHour, fixedMinute, intervalHours, intervalMinutes, startHour, startMinute, endHour, endMinute)
+                    val daysConfigStr = if (customizeDays) {
+                        val enabledList = daysList.toList()
+                        kotlinx.serialization.json.Json.encodeToString(
+                            kotlinx.serialization.builtins.ListSerializer(com.notel.notel.data.local.entity.DayTimeConfig.serializer()),
+                            enabledList
+                        )
+                    } else ""
+                    onSave(title, type, fixedHour, fixedMinute, intervalHours, intervalMinutes, startHour, startMinute, endHour, endMinute, daysConfigStr)
                 },
                 enabled = canSave,
                 modifier = Modifier.fillMaxWidth().height(52.dp),

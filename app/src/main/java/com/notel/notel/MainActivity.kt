@@ -89,6 +89,7 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(Unit) {
                 notelPreferences.updateStreak()
                 com.notel.notel.worker.BodyLoadWorker.schedule(context)
+                com.notel.notel.data.BleManager.getInstance(context).scanAndAutoStart(context, notelPreferences)
             }
             
             DisposableEffect(activity) {

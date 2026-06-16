@@ -18,5 +18,15 @@ data class Reminder(
     val startMinute: Int = 0,
     val endHour: Int = 21,
     val endMinute: Int = 0,
-    val isEnabled: Boolean = true
+    val isEnabled: Boolean = true,
+    val daysOfWeekConfig: String = ""
+)
+
+@Serializable
+data class DayTimeConfig(
+    val dayOfWeek: Int,
+    val dayName: String,
+    val isEnabled: Boolean = false,
+    val hour: Int = 8,
+    val minute: Int = 0
 )

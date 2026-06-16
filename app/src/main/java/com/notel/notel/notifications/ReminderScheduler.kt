@@ -22,6 +22,7 @@ object ReminderScheduler {
     const val EXTRA_END_HOUR         = "end_hour"
     const val EXTRA_END_MINUTE       = "end_minute"
     const val EXTRA_SLOT_INDEX       = "slot_index"
+    const val EXTRA_DAYS_CONFIG      = "days_config"
 
     /** Returns true if the app can schedule exact alarms (Android 12+ gating). */
     fun canScheduleExactAlarms(context: Context): Boolean {
@@ -48,8 +49,12 @@ object ReminderScheduler {
     /** Cancel all alarms for the given reminder. */
     fun cancel(context: Context, reminder: Reminder) {
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        // Cancel the single FIXED alarm
+        // Cancel the single FIXED legacy alarm
         am.cancel(buildPendingIntent(context, reminder, slotIndex = 0))
+        // Cancel weekday specific alarms (1 to 7 corresponding to Calendar.SUNDAY to Calendar.SATURDAY)
+        for (i in 1..7) {
+            am.cancel(buildPendingIntent(context, reminder, slotIndex = i))
+        }
         // Cancel up to 48 INTERVAL slots
         for (i in 0..47) {
             am.cancel(buildPendingIntent(context, reminder, slotIndex = i))
@@ -59,6 +64,21 @@ object ReminderScheduler {
     // ── Fixed ─────────────────────────────────────────────────────────────
 
     private fun scheduleFixed(context: Context, reminder: Reminder) {
+        if (reminder.daysOfWeekConfig.isNotBlank()) {
+            try {
+                val configs = kotlinx.serialization.json.Json.decodeFromString<List<com.notel.notel.data.local.entity.DayTimeConfig>>(reminder.daysOfWeekConfig)
+                val enabledConfigs = configs.filter { it.isEnabled }
+                if (enabledConfigs.isNotEmpty()) {
+                    for (config in enabledConfigs) {
+                        val trigger = nextWeekdayOccurrence(config.dayOfWeek, config.hour, config.minute)
+                        setExact(context, trigger, buildPendingIntent(context, reminder, slotIndex = config.dayOfWeek))
+                    }
+                    return
+                }
+            } catch (e: Exception) {
+                // Fallback to legacy daily if parsing fails
+            }
+        }
         val trigger = nextOccurrence(reminder.fixedHour, reminder.fixedMinute)
         setExact(context, trigger, buildPendingIntent(context, reminder, slotIndex = 0))
     }
@@ -127,6 +147,20 @@ object ReminderScheduler {
         return cal.timeInMillis
     }
 
+    private fun nextWeekdayOccurrence(dayOfWeek: Int, hour: Int, minute: Int): Long {
+        val cal = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, hour)
+            set(Calendar.MINUTE, minute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val now = Calendar.getInstance()
+        while (cal.get(Calendar.DAY_OF_WEEK) != dayOfWeek || cal.timeInMillis <= now.timeInMillis) {
+            cal.add(Calendar.DAY_OF_YEAR, 1)
+        }
+        return cal.timeInMillis
+    }
+
     private fun setExact(context: Context, triggerMs: Long, pi: PendingIntent) {
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -152,6 +186,7 @@ object ReminderScheduler {
             putExtra(EXTRA_END_HOUR, reminder.endHour)
             putExtra(EXTRA_END_MINUTE, reminder.endMinute)
             putExtra(EXTRA_SLOT_INDEX, slotIndex)
+            putExtra(EXTRA_DAYS_CONFIG, reminder.daysOfWeekConfig)
         }
         return PendingIntent.getBroadcast(
             context,

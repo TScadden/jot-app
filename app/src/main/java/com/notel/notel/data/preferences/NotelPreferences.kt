@@ -114,6 +114,43 @@ class NotelPreferences @Inject constructor(
         val TODAY_SPIKES = intPreferencesKey("today_spikes")
         val TODAY_SLEEP_DEBT = intPreferencesKey("today_sleep_debt")
         val FOCUS_STATE = stringPreferencesKey("focus_state")
+        val HAS_VISIBLE_BAND_ASKED = booleanPreferencesKey("has_visible_band_asked")
+        val LAST_CONNECTED_DEVICE_ADDRESS = stringPreferencesKey("last_connected_device_address")
+        val LAST_CONNECTED_DEVICE_NAME = stringPreferencesKey("last_connected_device_name")
+        val HEART_RATE_HISTORY = stringPreferencesKey("heart_rate_history")
+        val GOOGLE_CALENDAR_CONNECTED = booleanPreferencesKey("google_calendar_connected")
+        val GOOGLE_CALENDAR_EMAIL = stringPreferencesKey("google_calendar_email")
+    }
+
+    val googleCalendarConnected: Flow<Boolean> = context.dataStore.data.map { it[GOOGLE_CALENDAR_CONNECTED] ?: false }
+    suspend fun setGoogleCalendarConnected(connected: Boolean) {
+        context.dataStore.edit { it[GOOGLE_CALENDAR_CONNECTED] = connected }
+    }
+
+    val googleCalendarEmail: Flow<String> = context.dataStore.data.map { it[GOOGLE_CALENDAR_EMAIL] ?: "" }
+    suspend fun setGoogleCalendarEmail(email: String) {
+        context.dataStore.edit { it[GOOGLE_CALENDAR_EMAIL] = email }
+    }
+
+
+    val hasVisibleBandAsked: Flow<Boolean> = context.dataStore.data.map { it[HAS_VISIBLE_BAND_ASKED] ?: false }
+    suspend fun setHasVisibleBandAsked(asked: Boolean) {
+        context.dataStore.edit { it[HAS_VISIBLE_BAND_ASKED] = asked }
+    }
+
+    val lastConnectedDeviceAddress: Flow<String> = context.dataStore.data.map { it[LAST_CONNECTED_DEVICE_ADDRESS] ?: "" }
+    suspend fun setLastConnectedDeviceAddress(address: String) {
+        context.dataStore.edit { it[LAST_CONNECTED_DEVICE_ADDRESS] = address }
+    }
+
+    val lastConnectedDeviceName: Flow<String> = context.dataStore.data.map { it[LAST_CONNECTED_DEVICE_NAME] ?: "" }
+    suspend fun setLastConnectedDeviceName(name: String) {
+        context.dataStore.edit { it[LAST_CONNECTED_DEVICE_NAME] = name }
+    }
+
+    val heartRateHistory: Flow<String> = context.dataStore.data.map { it[HEART_RATE_HISTORY] ?: "[]" }
+    suspend fun setHeartRateHistory(historyJson: String) {
+        context.dataStore.edit { it[HEART_RATE_HISTORY] = historyJson }
     }
 
     val historicalDailyStats: Flow<String> = context.dataStore.data.map { it[HISTORICAL_DAILY_STATS] ?: "{}" }

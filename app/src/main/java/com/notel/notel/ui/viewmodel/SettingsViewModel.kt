@@ -17,6 +17,11 @@ import com.notel.notel.service.HrSpikeMonitorService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlinx.coroutines.flow.first
+import com.notel.notel.data.BleManager
+import com.notel.notel.data.BleDevice
+import com.notel.notel.data.ConnectionState
+import com.notel.notel.service.HeartRateLoggingService
+import java.io.File
 import com.notel.notel.data.sync.SyncManager
 
 @HiltViewModel
@@ -100,6 +105,27 @@ class SettingsViewModel @Inject constructor(
     private val _healthConnectConnected = MutableStateFlow(false)
     val healthConnectConnected = _healthConnectConnected.asStateFlow()
 
+    val googleCalendarConnected = preferences.googleCalendarConnected
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val googleCalendarEmail = preferences.googleCalendarEmail
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+
+    fun connectGoogleCalendar(email: String) {
+        viewModelScope.launch {
+            preferences.setGoogleCalendarConnected(true)
+            preferences.setGoogleCalendarEmail(email)
+        }
+    }
+
+    fun disconnectGoogleCalendar() {
+        viewModelScope.launch {
+            preferences.setGoogleCalendarConnected(false)
+            preferences.setGoogleCalendarEmail("")
+        }
+    }
+
+
     private val _isRefreshingReddit = MutableStateFlow<String?>(null) // subreddit name currently refreshing
     val isRefreshingReddit = _isRefreshingReddit.asStateFlow()
 
@@ -144,6 +170,7 @@ class SettingsViewModel @Inject constructor(
         checkHealthConnectStatus()
         cleanKnowledgeBase()
         backfillDocumentExtractions()
+        migrateOldCsvFiles()
     }
 
     /**
@@ -166,6 +193,116 @@ class SettingsViewModel @Inject constructor(
             if (kb.contains("[REDDIT r/")) {
                 val lines = kb.split("\n\n").filter { !it.contains("[REDDIT r/") }
                 preferences.setKnowledgeBase(lines.joinToString("\n\n"))
+            }
+        }
+    }
+
+    private fun migrateOldCsvFiles() {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val csvFiles = context.filesDir.listFiles { _, name -> 
+                    name.startsWith("heart_rate_session_") && name.endsWith(".csv") 
+                } ?: return@launch
+                
+                for (file in csvFiles) {
+                    val lines = file.readLines()
+                    if (lines.isEmpty()) continue
+                    
+                    // Check if this file has already been migrated or uses the old format
+                    val needsMigration = lines.any { it.startsWith("====") }
+                    if (!needsMigration) continue
+                    
+                    // Parse data rows
+                    val dataRows = lines.filter { line ->
+                        val parts = line.split(",")
+                        if (parts.size >= 2) {
+                            val bpmClean = parts[1].replace("[", "").replace("]", "").replace("BPM", "").trim()
+                            bpmClean.toIntOrNull() != null && parts[0].contains(":") && !parts[0].contains("BPM")
+                        } else false
+                    }
+                    
+                    if (dataRows.isEmpty()) continue
+                    
+                    // Extract values from old headers if possible
+                    var dateStr = "N/A"
+                    var startTimeStr = "N/A"
+                    var endTimeStr = "N/A"
+                    var durationText = "Unknown"
+                    var minHrVal = "0"
+                    var maxHrVal = "0"
+                    var max15sJumpVal = "0"
+                    
+                    for (line in lines) {
+                        when {
+                            line.contains("Date:") -> dateStr = line.substringAfter("Date:").trim()
+                            line.contains("Start Time:") -> startTimeStr = line.substringAfter("Start Time:").trim()
+                            line.contains("End Time:") -> endTimeStr = line.substringAfter("End Time:").trim()
+                            line.contains("Duration:") -> durationText = line.substringAfter("Duration:").trim()
+                            line.contains("[ MIN HR ]") -> minHrVal = line.substringAfter("MIN HR ]").replace("BPM", "").trim()
+                            line.contains("[ AVG HR ]") -> {} // recalculated below
+                            line.contains("[ MAX HR ]") -> maxHrVal = line.substringAfter("MAX HR ]").replace("BPM", "").trim()
+                            line.contains("[ 15S MAX JUMP ]") -> max15sJumpVal = line.substringAfter("15S MAX JUMP ]").replace("BPM", "").trim()
+                        }
+                    }
+                    
+                    val heartRates = dataRows.mapNotNull { line ->
+                        val bpmClean = line.split(",")[1].replace("[", "").replace("]", "").replace("BPM", "").trim()
+                        bpmClean.toIntOrNull()
+                    }
+                    if (heartRates.isEmpty()) continue
+                    
+                    val avgHr = heartRates.average().toInt()
+                    
+                    // Recalculate spikes >= 100 BPM
+                    val spikesOver100 = dataRows.mapNotNull { line ->
+                        val parts = line.split(",")
+                        if (parts.size >= 2) {
+                            val timeStr = parts[0].trim()
+                            val bpmClean = parts[1].replace("[", "").replace("]", "").replace("BPM", "").trim()
+                            val bpmVal = bpmClean.toIntOrNull()
+                            if (bpmVal != null && bpmVal >= 100) timeStr to bpmVal else null
+                        } else null
+                    }
+                    
+                    val spikesText = if (spikesOver100.isEmpty()) {
+                        "  [ SPIKES ],None detected\n"
+                    } else {
+                        val spikesLines = spikesOver100.map { (time, bpm) ->
+                            val timeOnly = if (time.contains(" ")) time.substringAfter(" ") else time
+                            "  [ SPIKE ],$timeOnly ([$bpm BPM])\n"
+                        }
+                        "  [ SPIKES ],${spikesOver100.size} detected:\n" + spikesLines.joinToString("")
+                    }
+                    
+                    // Rewrite file with new format and [XX BPM] formatted heart rates
+                    file.bufferedWriter().use { writer ->
+                        writer.write("-----------------------------------------------------,\n")
+                        writer.write("               JOT LIVE SESSION LOG,\n")
+                        writer.write("-----------------------------------------------------,\n")
+                        writer.write("  Date:,$dateStr\n")
+                        writer.write("  Start Time:,$startTimeStr\n")
+                        writer.write("  End Time:,$endTimeStr\n")
+                        writer.write("  Duration:,$durationText\n")
+                        writer.write("-----------------------------------------------------,\n")
+                        writer.write("  STATISTICS:,\n")
+                        writer.write("  [ MIN HR ],$minHrVal BPM\n")
+                        writer.write("  [ AVG HR ],$avgHr BPM\n")
+                        writer.write("  [ MAX HR ],$maxHrVal BPM\n")
+                        writer.write("  [ 15S MAX JUMP ],$max15sJumpVal BPM\n")
+                        writer.write(spikesText)
+                        writer.write("-----------------------------------------------------,\n\n")
+                        writer.write("Timestamp,Heart Rate\n")
+                        
+                        dataRows.forEach { line ->
+                            val parts = line.split(",")
+                            val timeStr = parts[0].trim()
+                            val bpmClean = parts[1].replace("[", "").replace("]", "").replace("BPM", "").trim()
+                            writer.write("$timeStr,[$bpmClean BPM]\n")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }
@@ -1104,63 +1241,90 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun exportDatabase(context: android.content.Context) {
+    // --- JOT LIVE HEART RATE BLE ---
+    private val bleManager = BleManager.getInstance(context)
+
+    val bleConnectionState = bleManager.connectionState
+    val scannedBleDevices = bleManager.scannedDevices
+    val liveHeartRate = bleManager.liveHeartRate
+    val bleRawBytes = bleManager.rawBytes
+    val isBleSwitchingConnection = bleManager.isSwitchingConnection
+
+    val isHrLoggingServiceRunning = HeartRateLoggingService.isServiceRunning
+    val hrActiveFileName = HeartRateLoggingService.activeFileName
+    val hrSessionMin = HeartRateLoggingService.sessionMinHr
+    val hrSessionMax = HeartRateLoggingService.sessionMaxHr
+    val hrMax15sJump = HeartRateLoggingService.max15sJump
+
+    val hasVisibleBandAsked = preferences.hasVisibleBandAsked
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    val heartRateHistory = preferences.heartRateHistory
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "[]")
+
+    private val _isPullingTelemetry = MutableStateFlow(false)
+    val isPullingTelemetry = _isPullingTelemetry.asStateFlow()
+
+    fun pullTelemetryFromServer() {
         viewModelScope.launch {
-            try {
-                // Force Room to checkpoint/flush WAL to disk
-                database.openHelper.writableDatabase.query("PRAGMA checkpoint(FULL)")
-                
-                val dbFile = context.getDatabasePath("notel_db")
-                if (!dbFile.exists()) {
-                    addSystemLog("❌ Export failed: Database file does not exist")
-                    android.widget.Toast.makeText(context, "Database file not found", android.widget.Toast.LENGTH_LONG).show()
-                    return@launch
-                }
+            _isPullingTelemetry.value = true
+            syncManager.pullAllData()
+            _isPullingTelemetry.value = false
+        }
+    }
 
-                // Copy main db, shm, and wal if they exist
-                val filesToCopy = listOf("notel_db", "notel_db-shm", "notel_db-wal")
-                var successCount = 0
-                
-                // 1. Export to external files dir (no permissions needed, accessible via USB)
-                val targetDir = context.getExternalFilesDir(null)
-                if (targetDir != null) {
-                    for (fileName in filesToCopy) {
-                        val srcFile = if (fileName == "notel_db") dbFile else context.getDatabasePath(fileName)
-                        if (srcFile.exists()) {
-                            val destFile = java.io.File(targetDir, fileName)
-                            srcFile.copyTo(destFile, overwrite = true)
-                            successCount++
-                        }
-                    }
-                }
-                
-                // 2. Also try copying to public Downloads folder if we can
-                try {
-                    val publicDownloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
-                    if (publicDownloadsDir.exists() || publicDownloadsDir.mkdirs()) {
-                        for (fileName in filesToCopy) {
-                            val srcFile = if (fileName == "notel_db") dbFile else context.getDatabasePath(fileName)
-                            if (srcFile.exists()) {
-                                val destFile = java.io.File(publicDownloadsDir, fileName)
-                                srcFile.copyTo(destFile, overwrite = true)
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    // Ignore public directory permission failures
-                }
+    fun markVisibleBandAsked() {
+        viewModelScope.launch {
+            preferences.setHasVisibleBandAsked(true)
+            syncManager.pushProfileData()
+        }
+    }
 
-                if (successCount > 0) {
-                    val msg = "Exported to Android/data/com.notel.notel/files/ and Downloads/"
-                    addSystemLog("✅ Database exported successfully")
-                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
-                } else {
-                    addSystemLog("❌ Database export failed")
-                    android.widget.Toast.makeText(context, "Failed to copy database files", android.widget.Toast.LENGTH_LONG).show()
+    fun startBleScan() {
+        bleManager.startScanning()
+    }
+
+    fun stopBleScan() {
+        bleManager.stopScanning()
+    }
+
+    fun connectBleDevice(device: BleDevice) {
+        bleManager.connectToDevice(device)
+    }
+
+    fun disconnectBle(explicit: Boolean) {
+        bleManager.disconnect(explicit)
+    }
+
+    fun setBleSwitchingConnection(value: Boolean) {
+        bleManager.setSwitchingConnection(value)
+    }
+
+    fun startHrLoggingService(device: BleDevice) {
+        val intent = android.content.Intent(context, HeartRateLoggingService::class.java).apply {
+            action = HeartRateLoggingService.ACTION_START
+            putExtra(HeartRateLoggingService.EXTRA_DEVICE_ADDRESS, device.address)
+            putExtra(HeartRateLoggingService.EXTRA_DEVICE_NAME, device.name)
+        }
+        androidx.core.content.ContextCompat.startForegroundService(context, intent)
+        addSystemLog("Jot Live: Background session started for ${device.name}")
+    }
+
+    fun stopHrLoggingService() {
+        val intent = android.content.Intent(context, HeartRateLoggingService::class.java).apply {
+            action = HeartRateLoggingService.ACTION_STOP
+        }
+        context.startService(intent)
+        addSystemLog("Jot Live: Background session stopped")
+    }
+
+    fun deleteSessionCsvFile(file: File, onDeleted: () -> Unit) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            if (file.exists() && file.delete()) {
+                addSystemLog("Jot Live: Log file ${file.name} deleted")
+                launch(kotlinx.coroutines.Dispatchers.Main) {
+                    onDeleted()
                 }
-            } catch (e: Exception) {
-                addSystemLog("❌ Export error: ${e.message}")
-                android.widget.Toast.makeText(context, "Error: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
             }
         }
     }

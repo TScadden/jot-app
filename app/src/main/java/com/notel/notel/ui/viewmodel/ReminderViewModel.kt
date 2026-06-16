@@ -29,7 +29,8 @@ class ReminderViewModel @Inject constructor(
         startHour: Int = 8,
         startMinute: Int = 0,
         endHour: Int = 21,
-        endMinute: Int = 0
+        endMinute: Int = 0,
+        daysOfWeekConfig: String = ""
     ) {
         if (title.isBlank()) return
         viewModelScope.launch {
@@ -44,7 +45,8 @@ class ReminderViewModel @Inject constructor(
                     startHour       = startHour,
                     startMinute     = startMinute,
                     endHour         = endHour,
-                    endMinute       = endMinute
+                    endMinute       = endMinute,
+                    daysOfWeekConfig = daysOfWeekConfig
                 )
             )
         }

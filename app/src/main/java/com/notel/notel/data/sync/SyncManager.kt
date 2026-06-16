@@ -344,7 +344,9 @@ class SyncManager @Inject constructor(
                     todayAvgHr = todayHr,
                     todayScore = todayScoreVal,
                     todaySpikes = todaySpikeCount,
-                    todaySleepDebt = todaySleepDebtVal
+                    todaySleepDebt = todaySleepDebtVal,
+                    hasVisibleBandAsked = preferences.hasVisibleBandAsked.first(),
+                    heartRateHistory = preferences.heartRateHistory.first()
                 )
             )
             if (response.isSuccessful) {
@@ -495,6 +497,8 @@ class SyncManager @Inject constructor(
                         }
                     }
                     profile.autoAiSuggestions?.let { preferences.setAutoAiSuggestions(it) }
+                    profile.hasVisibleBandAsked?.let { preferences.setHasVisibleBandAsked(it) }
+                    profile.heartRateHistory?.let { preferences.setHeartRateHistory(it) }
                     // C. Restore AI Context/Doctor's Notes (with Smarter Merging for counters)
                     profile.eventCounters?.let { serverJson ->
                         if (serverJson.isNotBlank()) {

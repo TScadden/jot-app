@@ -33,6 +33,7 @@ class ReminderReceiver : BroadcastReceiver() {
         val endHour       = intent.getIntExtra(ReminderScheduler.EXTRA_END_HOUR, 21)
         val endMinute     = intent.getIntExtra(ReminderScheduler.EXTRA_END_MINUTE, 0)
         val slotIndex     = intent.getIntExtra(ReminderScheduler.EXTRA_SLOT_INDEX, 0)
+        val daysConfig    = intent.getStringExtra(ReminderScheduler.EXTRA_DAYS_CONFIG) ?: ""
 
         // Show the notification
         showNotification(context, reminderId, title)
@@ -50,20 +51,30 @@ class ReminderReceiver : BroadcastReceiver() {
             startMinute   = startMinute,
             endHour       = endHour,
             endMinute     = endMinute,
-            isEnabled     = true
+            isEnabled     = true,
+            daysOfWeekConfig = daysConfig
         )
 
         when (type) {
             "FIXED" -> {
-                // Reschedule for same time tomorrow
-                val tomorrow = Calendar.getInstance().apply {
-                    set(Calendar.HOUR_OF_DAY, fixedHour)
-                    set(Calendar.MINUTE, fixedMinute)
-                    set(Calendar.SECOND, 0)
-                    set(Calendar.MILLISECOND, 0)
-                    add(Calendar.DAY_OF_YEAR, 1)
+                if (daysConfig.isNotBlank()) {
+                    // Reschedule for next week (7 days later)
+                    val nextWeek = Calendar.getInstance().apply {
+                        timeInMillis = System.currentTimeMillis()
+                        add(Calendar.DAY_OF_YEAR, 7)
+                    }
+                    setExact(context, nextWeek.timeInMillis, buildPendingIntent(context, reminder, slotIndex = slotIndex, daysConfig = daysConfig))
+                } else {
+                    // Reschedule for same time tomorrow
+                    val tomorrow = Calendar.getInstance().apply {
+                        set(Calendar.HOUR_OF_DAY, fixedHour)
+                        set(Calendar.MINUTE, fixedMinute)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                        add(Calendar.DAY_OF_YEAR, 1)
+                    }
+                    setExact(context, tomorrow.timeInMillis, buildPendingIntent(context, reminder, slotIndex = 0, daysConfig = ""))
                 }
-                setExact(context, tomorrow.timeInMillis, buildPendingIntent(context, reminder, slotIndex = 0))
             }
             "INTERVAL" -> {
                 // Find next slot after the current one; if none left today, schedule all for tomorrow
@@ -72,14 +83,14 @@ class ReminderReceiver : BroadcastReceiver() {
                 val nextSlot = slots.drop(slotIndex + 1).firstOrNull { it > now }
                 if (nextSlot != null) {
                     val nextIndex = slots.indexOf(nextSlot)
-                    setExact(context, nextSlot, buildPendingIntent(context, reminder, slotIndex = nextIndex))
+                    setExact(context, nextSlot, buildPendingIntent(context, reminder, slotIndex = nextIndex, daysConfig = daysConfig))
                 } else {
                     // No more slots today — schedule all slots for tomorrow
                     slots.forEachIndexed { idx, slotMs ->
                         setExact(
                             context,
                             slotMs + AlarmManager.INTERVAL_DAY,
-                            buildPendingIntent(context, reminder, slotIndex = idx)
+                            buildPendingIntent(context, reminder, slotIndex = idx, daysConfig = daysConfig)
                         )
                     }
                 }
@@ -132,7 +143,7 @@ class ReminderReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun buildPendingIntent(context: Context, reminder: Reminder, slotIndex: Int): PendingIntent {
+    private fun buildPendingIntent(context: Context, reminder: Reminder, slotIndex: Int, daysConfig: String): PendingIntent {
         val requestCode = reminder.id * 1000 + slotIndex
         val intent = Intent(context, ReminderReceiver::class.java).apply {
             putExtra(ReminderScheduler.EXTRA_REMINDER_ID, reminder.id)
@@ -147,6 +158,7 @@ class ReminderReceiver : BroadcastReceiver() {
             putExtra(ReminderScheduler.EXTRA_END_HOUR, reminder.endHour)
             putExtra(ReminderScheduler.EXTRA_END_MINUTE, reminder.endMinute)
             putExtra(ReminderScheduler.EXTRA_SLOT_INDEX, slotIndex)
+            putExtra(ReminderScheduler.EXTRA_DAYS_CONFIG, daysConfig)
         }
         return PendingIntent.getBroadcast(
             context, requestCode, intent,

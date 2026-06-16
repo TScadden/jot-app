@@ -233,7 +233,9 @@ data class SyncProfileRequest(
     val todayAvgHr: Int? = null,
     val todayScore: Int? = null,
     val todaySpikes: Int? = null,
-    val todaySleepDebt: Int? = null
+    val todaySleepDebt: Int? = null,
+    val hasVisibleBandAsked: Boolean? = null,
+    val heartRateHistory: String? = null
 )
 
 @Serializable
@@ -298,7 +300,9 @@ data class ProfileDtoModel(
     val todayAvgHr: Int? = null,
     val todayScore: Int? = null,
     val todaySpikes: Int? = null,
-    val todaySleepDebt: Int? = null
+    val todaySleepDebt: Int? = null,
+    val hasVisibleBandAsked: Boolean? = null,
+    val heartRateHistory: String? = null
 )
 
 @Serializable
