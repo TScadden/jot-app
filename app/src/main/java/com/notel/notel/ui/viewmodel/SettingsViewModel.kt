@@ -147,7 +147,6 @@ class SettingsViewModel @Inject constructor(
 
     init {
         checkHealthConnectStatus()
-        cleanKnowledgeBase()
         backfillDocumentExtractions()
         migrateOldCsvFiles()
     }
@@ -988,7 +987,9 @@ class SettingsViewModel @Inject constructor(
                 _isManualSyncing.value = false
             }
         }
-       fun refreshThisWeeksScores() {() {
+    }
+
+    fun refreshThisWeeksScores() {
         viewModelScope.launch {
             var cats = categories.value
             if (cats.isEmpty()) {
@@ -1181,14 +1182,7 @@ data class CounterHistoryItem(
     val endedAt: Long
 )
 
-@kotlinx.serialization.Serializable
-data class LinkedSubreddit(
-    val name: String,
-    val lastFetched: Long = 0L,
-    val postsAnalyzed: Int = 0,
-    val autoUpdate: Boolean = false,
-    val scannedPosts: List<com.notel.notel.data.remote.RedditPost> = emptyList()
-)
+
 
 data class SystemLog(
     val body: String,
