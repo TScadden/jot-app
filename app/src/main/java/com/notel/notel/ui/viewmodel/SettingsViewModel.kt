@@ -1162,6 +1162,19 @@ class SettingsViewModel @Inject constructor(
             }
         }
     }
+
+    fun deleteAccount(onSuccess: () -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch {
+            logRepository.deleteAccountData().fold(
+                onSuccess = {
+                    onSuccess()
+                },
+                onFailure = { error ->
+                    onError(error.message ?: "Failed to delete account data")
+                }
+            )
+        }
+    }
 }
 
 @kotlinx.serialization.Serializable

@@ -1697,4 +1697,27 @@ class LogRepository @Inject constructor(
         val d2 = java.time.Instant.ofEpochMilli(t2).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
         return d1 == d2
     }
+
+    suspend fun deleteAccountData(): Result<Unit> {
+        return try {
+            // 1. Delete account from cloud server
+            val response = jotApi.deleteAccount()
+            if (!response.isSuccessful) {
+                return Result.failure(Exception(response.errorBody()?.string() ?: "Cloud delete failed"))
+            }
+
+            // 2. Clear all local Knowledge Documents files from disk
+            clearAllDocuments()
+
+            // 3. Clear Room database tables
+            db.clearAllTables()
+
+            // 4. Reset sync preferences and session tokens
+            preferences.clearAll() // or equivalent clear preferences helper
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }

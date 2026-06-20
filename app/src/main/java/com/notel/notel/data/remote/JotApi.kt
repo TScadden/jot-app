@@ -493,6 +493,9 @@ interface JotApi {
     @POST("api/auth/update-nickname")
     suspend fun updateNickname(@Body request: UpdateNicknameRequest): Response<UpdateNicknameResponse>
 
+    @retrofit2.http.DELETE("api/auth/delete-account")
+    suspend fun deleteAccount(): Response<GenericResponse>
+
     @POST("api/friends/request")
     suspend fun sendFriendRequest(@Body request: FriendRequestApiRequest): Response<GenericResponse>
 

@@ -512,13 +512,13 @@ fun SettingsScreen(
                             Text("Personal Context", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 14.sp)
                             IconButton(
                                 onClick = { viewModel.toggleUserContextHidden() },
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(48.dp) // Accessibility: Touch target >= 48dp
                             ) {
                                 Icon(
                                     if (userContextHidden) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                    contentDescription = "Toggle Visibility",
+                                    contentDescription = if (userContextHidden) "Show personal context" else "Hide personal context",
                                     tint = NotelPrimary,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(24.dp) // Maintain visually clean icon size
                                 )
                             }
                         }
@@ -602,6 +602,24 @@ fun SettingsScreen(
                     SettingsMenuCard("Notifications", Icons.Default.Notifications) { currentMenu = SettingsMenu.NOTIFICATIONS }
                     SettingsMenuCard("Sync Settings", Icons.Default.Sync) { currentMenu = SettingsMenu.SYNC_SETTINGS }
                     SettingsMenuCard("Jot Live Beta", Icons.Default.Bluetooth) { currentMenu = SettingsMenu.JOT_LIVE }
+
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        text = "Privacy Policy",
+                        color = NotelPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                try {
+                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://jottracker.com/privacy"))
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {}
+                            }
+                            .padding(vertical = 12.dp),
+                        textAlign = TextAlign.Center
+                    )
                 }
 
 
@@ -663,24 +681,24 @@ fun SettingsScreen(
                                     }
                                     IconButton(
                                         onClick = { viewModel.toggleArchiveCounter(counter.id) },
-                                        modifier = Modifier.size(28.dp)
+                                        modifier = Modifier.size(48.dp)
                                     ) {
-                                        Icon(Icons.Default.Archive, "Archive", tint = NotelTextSecondary, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Default.Archive, "Archive counter ${counter.name}", tint = NotelTextSecondary, modifier = Modifier.size(20.dp))
                                     }
                                     IconButton(
                                         onClick = { 
                                             editCounter = counter
                                             showCounterDialog = true
                                         },
-                                        modifier = Modifier.size(28.dp)
+                                        modifier = Modifier.size(48.dp)
                                     ) {
-                                        Icon(Icons.Default.Edit, "Edit", tint = NotelTextSecondary, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Default.Edit, "Edit counter ${counter.name}", tint = NotelTextSecondary, modifier = Modifier.size(20.dp))
                                     }
                                     IconButton(
                                         onClick = { viewModel.endCounterAndSave(counter.id) },
-                                        modifier = Modifier.size(28.dp)
+                                        modifier = Modifier.size(48.dp)
                                     ) {
-                                        Icon(Icons.Default.Delete, "End", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Default.Delete, "End counter ${counter.name}", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
                                     }
                                 }
                             }
@@ -714,15 +732,15 @@ fun SettingsScreen(
                                         }
                                         IconButton(
                                             onClick = { viewModel.toggleArchiveCounter(counter.id) },
-                                            modifier = Modifier.size(28.dp)
+                                            modifier = Modifier.size(48.dp)
                                         ) {
-                                            Icon(Icons.Default.Unarchive, "Unarchive", tint = NotelTextSecondary, modifier = Modifier.size(16.dp))
+                                            Icon(Icons.Default.Unarchive, "Unarchive counter ${counter.name}", tint = NotelTextSecondary, modifier = Modifier.size(20.dp))
                                         }
                                         IconButton(
                                             onClick = { viewModel.endCounterAndSave(counter.id) },
-                                            modifier = Modifier.size(28.dp)
+                                            modifier = Modifier.size(48.dp)
                                         ) {
-                                            Icon(Icons.Default.Delete, "End", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                                            Icon(Icons.Default.Delete, "End counter ${counter.name}", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
                                         }
                                     }
                                 }
@@ -1985,6 +2003,94 @@ fun SettingsScreen(
                     },
                     dismissButton = {
                         TextButton(onClick = { showProfileDialog = false }) {
+                            Text("Cancel", color = NotelTextSecondary)
+                        }
+                    },
+                    containerColor = NotelSurface
+                )
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // Privacy & Deletion section (GDPR & CCPA Compliant)
+            var showDeleteAccountConfirmDialog by remember { mutableStateOf(false) }
+            var isDeletingAccount by remember { mutableStateOf(false) }
+            var accountDeleteError by remember { mutableStateOf<String?>(null) }
+
+            GlassyCard(
+                shape = RoundedCornerShape(16.dp),
+                color = NotelSurface
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Security, null, tint = NotelPrimary, modifier = Modifier.size(28.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Privacy & Deletion", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                        Text("GDPR / CCPA compliance data deletion options", color = NotelTextSecondary, fontSize = 12.sp)
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "You have the right to request deletion of all your sync information, logs, files, and credentials from our cloud servers and database permanently.",
+                    color = NotelTextSecondary,
+                    fontSize = 11.sp
+                )
+                Spacer(Modifier.height(16.dp))
+                GlassyButton(
+                    onClick = { showDeleteAccountConfirmDialog = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.15f)
+                ) {
+                    Text("Permanently Delete Account & Data", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                }
+
+                if (accountDeleteError != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(accountDeleteError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                }
+            }
+
+            if (showDeleteAccountConfirmDialog) {
+                AlertDialog(
+                    onDismissRequest = { if (!isDeletingAccount) showDeleteAccountConfirmDialog = false },
+                    title = { Text("Delete Account and Data?", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
+                    text = {
+                        Text(
+                            "This action is permanent and cannot be undone. All your notes, history, files, health sync logs, and account profiles will be instantly purged from our servers and database.",
+                            color = NotelTextSecondary,
+                            fontSize = 14.sp
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                isDeletingAccount = true
+                                viewModel.deleteAccount(
+                                    onSuccess = {
+                                        isDeletingAccount = false
+                                        showDeleteAccountConfirmDialog = false
+                                        onLogout() // Wipes current local session state and redirects to login screen
+                                    },
+                                    onError = { error ->
+                                        isDeletingAccount = false
+                                        accountDeleteError = error
+                                    }
+                                )
+                            },
+                            enabled = !isDeletingAccount
+                        ) {
+                            if (isDeletingAccount) {
+                                GlassySpinner(size = 18.dp)
+                            } else {
+                                Text("Delete Permanently", color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = { showDeleteAccountConfirmDialog = false },
+                            enabled = !isDeletingAccount
+                        ) {
                             Text("Cancel", color = NotelTextSecondary)
                         }
                     },
@@ -4050,35 +4156,35 @@ fun SavedSessionRow(
                     .clip(RoundedCornerShape(8.dp))
                     .background(NotelPrimary.copy(alpha = 0.15f))
                     .clickable { onViewGraph() }
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .padding(horizontal = 12.dp, vertical = 12.dp) // Increase padding to ensure >= 48dp touch target
             ) {
-                Text("GRAPH", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = NotelPrimary)
+                Text("GRAPH", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = NotelPrimary)
             }
 
-            IconButton(onClick = onShare, modifier = Modifier.size(28.dp)) {
+            IconButton(onClick = onShare, modifier = Modifier.size(48.dp)) {
                 Icon(
                     imageVector = Icons.Default.Share,
-                    contentDescription = "Share",
+                    contentDescription = "Share session CSV file",
                     tint = NotelPrimary,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(20.dp)
                 )
             }
 
-            IconButton(onClick = onDownload, modifier = Modifier.size(28.dp)) {
+            IconButton(onClick = onDownload, modifier = Modifier.size(48.dp)) {
                 Icon(
                     imageVector = Icons.Default.Download,
-                    contentDescription = "Download",
+                    contentDescription = "Download session CSV file",
                     tint = NotelPrimary,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(20.dp)
                 )
             }
 
-            IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
+            IconButton(onClick = onDelete, modifier = Modifier.size(48.dp)) {
                 Icon(
                     imageVector = Icons.Default.Delete,
-                    contentDescription = "Delete",
+                    contentDescription = "Delete session CSV log",
                     tint = Color(0xFFFF4D4D),
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }
