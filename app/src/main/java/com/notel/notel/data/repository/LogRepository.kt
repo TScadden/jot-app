@@ -52,6 +52,7 @@ class LogRepository @Inject constructor(
     private val lifecycleTracker: com.notel.notel.util.AppLifecycleTracker,
     private val jotApi: com.notel.notel.data.remote.JotApi,
     private val knowledgeDocumentDao: com.notel.notel.data.local.dao.KnowledgeDocumentDao,
+    private val db: com.notel.notel.data.local.NotelDatabase,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) {
     private val insightsMutex = Mutex()
@@ -1713,7 +1714,7 @@ class LogRepository @Inject constructor(
             db.clearAllTables()
 
             // 4. Reset sync preferences and session tokens
-            preferences.clearAll() // or equivalent clear preferences helper
+            preferences.clearCredentials()
 
             Result.success(Unit)
         } catch (e: Exception) {
