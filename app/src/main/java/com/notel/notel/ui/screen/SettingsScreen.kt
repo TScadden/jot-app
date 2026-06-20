@@ -613,7 +613,7 @@ fun SettingsScreen(
                             .fillMaxWidth()
                             .clickable {
                                 try {
-                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://jottracker.com/privacy"))
+                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://jottracker.com/privacy.html"))
                                     context.startActivity(intent)
                                 } catch (_: Exception) {}
                             }
