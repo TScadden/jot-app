@@ -520,7 +520,7 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                         ) {
                             val hScroll = rememberScrollState()
                             val totalTableWidth = colWidths.sum()
-                            Box(
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .horizontalScroll(hScroll)
