@@ -520,44 +520,48 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                         ) {
                             val hScroll = rememberScrollState()
                             val totalTableWidth = colWidths.sum()
-                            Column(
+                            Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .horizontalScroll(hScroll)
-                                    .padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    .padding(12.dp)
                             ) {
-                                rows.forEachIndexed { rowIndex, cells ->
-                                    val isHeader = rowIndex == 0
-                                    Row(
-                                        modifier = Modifier
-                                            .width(totalTableWidth.dp)
-                                            .background(
-                                                if (isHeader) NotelPrimary.copy(alpha = 0.15f)
-                                                else if (rowIndex % 2 == 0) NotelSurfaceHigh.copy(alpha = 0.3f)
-                                                else Color.Transparent,
-                                                shape = RoundedCornerShape(6.dp)
-                                            )
-                                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        cells.forEachIndexed { colIndex, cell ->
-                                            val colWidth = colWidths.getOrNull(colIndex) ?: 130
-                                            Box(
-                                                modifier = Modifier
-                                                    .width(colWidth.dp)
-                                                    .padding(end = 12.dp)
-                                            ) {
-                                                val shouldCenter = colIndex > 0
-                                                Text(
-                                                    text = cell,
-                                                    color = if (isHeader) NotelPrimary else NotelTextPrimary,
-                                                    fontSize = 12.sp,
-                                                    fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
-                                                    lineHeight = 16.sp,
-                                                    textAlign = if (shouldCenter) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
-                                                    modifier = Modifier.fillMaxWidth()
+                                Column(
+                                    modifier = Modifier.width(totalTableWidth.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    rows.forEachIndexed { rowIndex, cells ->
+                                        val isHeader = rowIndex == 0
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(
+                                                    if (isHeader) NotelPrimary.copy(alpha = 0.15f)
+                                                    else if (rowIndex % 2 == 0) NotelSurfaceHigh.copy(alpha = 0.3f)
+                                                    else Color.Transparent,
+                                                    shape = RoundedCornerShape(6.dp)
                                                 )
+                                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            cells.forEachIndexed { colIndex, cell ->
+                                                val colWidth = colWidths.getOrNull(colIndex) ?: 130
+                                                Box(
+                                                    modifier = Modifier
+                                                        .width(colWidth.dp)
+                                                        .padding(end = 12.dp)
+                                                ) {
+                                                    val shouldCenter = colIndex > 0
+                                                    Text(
+                                                        text = cell,
+                                                        color = if (isHeader) NotelPrimary else NotelTextPrimary,
+                                                        fontSize = 12.sp,
+                                                        fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
+                                                        lineHeight = 16.sp,
+                                                        textAlign = if (shouldCenter) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    )
+                                                }
                                             }
                                         }
                                     }
