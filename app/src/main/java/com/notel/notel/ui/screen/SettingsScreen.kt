@@ -3093,6 +3093,7 @@ fun JotLiveScreenContent(
     
     val isServiceRunning by viewModel.isHrLoggingServiceRunning.collectAsState()
     val isSwitchingConnection by viewModel.isBleSwitchingConnection.collectAsState()
+    val bleAutoConnectEnabled by viewModel.bleAutoConnectEnabled.collectAsState()
 
     var savedFiles by remember {
         mutableStateOf(context.filesDir.listFiles { _, name -> name.endsWith(".csv") }?.toList() ?: emptyList())
