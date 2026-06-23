@@ -501,59 +501,61 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                 }
                 
                 if (rows.isNotEmpty()) {
-                    val numCols = rows.maxOfOrNull { it.size } ?: 0
-                    val colWidths = IntArray(numCols) { colIndex ->
-                        val maxChars = rows.maxOfOrNull { row ->
-                            row.getOrNull(colIndex)?.length ?: 0
-                        } ?: 0
-                        (maxChars * 11).coerceIn(130, 500)
-                    }
+                    androidx.compose.runtime.key(i) {
+                        val numCols = rows.maxOfOrNull { it.size } ?: 0
+                        val colWidths = IntArray(numCols) { colIndex ->
+                            val maxChars = rows.maxOfOrNull { row ->
+                                row.getOrNull(colIndex)?.length ?: 0
+                            } ?: 0
+                            (maxChars * 11).coerceIn(130, 500)
+                        }
 
-                    Card(
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = NotelSurface.copy(alpha = 0.8f)),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, NotelSurfaceHigh.copy(alpha = 0.5f)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp)
-                    ) {
-                        val hScroll = rememberScrollState()
-                        Column(
+                        Card(
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = NotelSurface.copy(alpha = 0.8f)),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, NotelSurfaceHigh.copy(alpha = 0.5f)),
                             modifier = Modifier
-                                .horizontalScroll(hScroll)
-                                .padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp)
                         ) {
-                            rows.forEachIndexed { rowIndex, cells ->
-                                val isHeader = rowIndex == 0
-                                Row(
-                                    modifier = Modifier
-                                        .background(
-                                            if (isHeader) NotelPrimary.copy(alpha = 0.15f)
-                                            else if (rowIndex % 2 == 0) NotelSurfaceHigh.copy(alpha = 0.3f)
-                                            else Color.Transparent,
-                                            shape = RoundedCornerShape(6.dp)
-                                        )
-                                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    cells.forEachIndexed { colIndex, cell ->
-                                        val colWidth = colWidths.getOrNull(colIndex) ?: 130
-                                        Box(
-                                            modifier = Modifier
-                                                .width(colWidth.dp)
-                                                .padding(end = 12.dp)
-                                        ) {
-                                            val shouldCenter = colIndex > 0
-                                            Text(
-                                                text = cell,
-                                                color = if (isHeader) NotelPrimary else NotelTextPrimary,
-                                                fontSize = 12.sp,
-                                                fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
-                                                lineHeight = 16.sp,
-                                                textAlign = if (shouldCenter) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
-                                                modifier = Modifier.fillMaxWidth()
+                            val hScroll = rememberScrollState()
+                            Column(
+                                modifier = Modifier
+                                    .horizontalScroll(hScroll)
+                                    .padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                rows.forEachIndexed { rowIndex, cells ->
+                                    val isHeader = rowIndex == 0
+                                    Row(
+                                        modifier = Modifier
+                                            .background(
+                                                if (isHeader) NotelPrimary.copy(alpha = 0.15f)
+                                                else if (rowIndex % 2 == 0) NotelSurfaceHigh.copy(alpha = 0.3f)
+                                                else Color.Transparent,
+                                                shape = RoundedCornerShape(6.dp)
                                             )
+                                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        cells.forEachIndexed { colIndex, cell ->
+                                            val colWidth = colWidths.getOrNull(colIndex) ?: 130
+                                            Box(
+                                                modifier = Modifier
+                                                    .width(colWidth.dp)
+                                                    .padding(end = 12.dp)
+                                            ) {
+                                                val shouldCenter = colIndex > 0
+                                                Text(
+                                                    text = cell,
+                                                    color = if (isHeader) NotelPrimary else NotelTextPrimary,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
+                                                    lineHeight = 16.sp,
+                                                    textAlign = if (shouldCenter) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -582,40 +584,42 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                 }
                 
                 if (kvPairs.isNotEmpty()) {
-                    Card(
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = NotelSurface.copy(alpha = 0.8f)),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, NotelSurfaceHigh.copy(alpha = 0.5f)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 6.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                    androidx.compose.runtime.key(i) {
+                        Card(
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = NotelSurface.copy(alpha = 0.8f)),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, NotelSurfaceHigh.copy(alpha = 0.5f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp)
                         ) {
-                            kvPairs.forEach { (key, valStr) ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.Top
-                                ) {
-                                    Text(
-                                        text = key,
-                                        color = NotelTextSecondary,
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        modifier = Modifier.weight(0.4f)
-                                    )
-                                    Spacer(Modifier.width(12.dp))
-                                    Text(
-                                        text = valStr,
-                                        color = NotelPrimary,
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.weight(0.6f),
-                                        textAlign = androidx.compose.ui.text.style.TextAlign.End
-                                    )
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                kvPairs.forEach { (key, valStr) ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.Top
+                                    ) {
+                                        Text(
+                                            text = key,
+                                            color = NotelTextSecondary,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            modifier = Modifier.weight(0.4f)
+                                        )
+                                        Spacer(Modifier.width(12.dp))
+                                        Text(
+                                            text = valStr,
+                                            color = NotelPrimary,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier.weight(0.6f),
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.End
+                                        )
+                                    }
                                 }
                             }
                         }
