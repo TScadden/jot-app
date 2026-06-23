@@ -222,7 +222,7 @@ class ReportGenerator @Inject constructor(
                 dateMap[dateKey] = existing
             }
 
-            val sortedRecords = dateMap.values.sortedBy { it.rawDate }.takeLast(42)
+            val sortedRecords = dateMap.values.sortedBy { it.rawDate }
 
             if (sortedRecords.isNotEmpty()) {
                 // Page 2: Charts (1 to 4)
