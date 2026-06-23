@@ -501,6 +501,14 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                 }
                 
                 if (rows.isNotEmpty()) {
+                    val numCols = rows.maxOfOrNull { it.size } ?: 0
+                    val colWidths = IntArray(numCols) { colIndex ->
+                        val maxChars = rows.maxOfOrNull { row ->
+                            row.getOrNull(colIndex)?.length ?: 0
+                        } ?: 0
+                        (maxChars * 8).coerceIn(80, 240)
+                    }
+
                     Card(
                         shape = RoundedCornerShape(12.dp),
                         colors = CardDefaults.cardColors(containerColor = NotelSurface.copy(alpha = 0.8f)),
@@ -530,9 +538,10 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     cells.forEachIndexed { colIndex, cell ->
+                                        val colWidth = colWidths.getOrNull(colIndex) ?: 110
                                         Box(
                                             modifier = Modifier
-                                                .widthIn(min = 110.dp)
+                                                .width(colWidth.dp)
                                                 .padding(end = 12.dp)
                                         ) {
                                             val shouldAlignRight = colIndex > 0 && !isHeader
