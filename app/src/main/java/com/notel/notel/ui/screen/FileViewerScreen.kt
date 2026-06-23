@@ -529,18 +529,21 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                                         .padding(horizontal = 10.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    cells.forEach { cell ->
+                                    cells.forEachIndexed { colIndex, cell ->
                                         Box(
                                             modifier = Modifier
                                                 .widthIn(min = 110.dp)
                                                 .padding(end = 12.dp)
                                         ) {
+                                            val shouldAlignRight = colIndex > 0 && !isHeader
                                             Text(
                                                 text = cell,
                                                 color = if (isHeader) NotelPrimary else NotelTextPrimary,
                                                 fontSize = 12.sp,
                                                 fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
-                                                lineHeight = 16.sp
+                                                lineHeight = 16.sp,
+                                                textAlign = if (shouldAlignRight) androidx.compose.ui.text.style.TextAlign.End else androidx.compose.ui.text.style.TextAlign.Start,
+                                                modifier = Modifier.fillMaxWidth()
                                             )
                                         }
                                     }
