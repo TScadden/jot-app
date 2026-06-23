@@ -506,7 +506,7 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                         val maxChars = rows.maxOfOrNull { row ->
                             row.getOrNull(colIndex)?.length ?: 0
                         } ?: 0
-                        (maxChars * 8).coerceIn(80, 240)
+                        (maxChars * 9).coerceIn(100, 300)
                     }
 
                     Card(
@@ -538,7 +538,7 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     cells.forEachIndexed { colIndex, cell ->
-                                        val colWidth = colWidths.getOrNull(colIndex) ?: 110
+                                        val colWidth = colWidths.getOrNull(colIndex) ?: 120
                                         Box(
                                             modifier = Modifier
                                                 .width(colWidth.dp)
@@ -552,7 +552,9 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                                                 fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
                                                 lineHeight = 16.sp,
                                                 textAlign = if (shouldCenter) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
-                                                modifier = Modifier.fillMaxWidth()
+                                                modifier = Modifier.fillMaxWidth(),
+                                                maxLines = 2,
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                             )
                                         }
                                     }
@@ -598,21 +600,23 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalAlignment = Alignment.Top
                                 ) {
                                     Text(
                                         text = key,
                                         color = NotelTextSecondary,
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Medium,
-                                        modifier = Modifier.weight(1f)
+                                        modifier = Modifier.weight(0.4f)
                                     )
-                                    Spacer(Modifier.width(16.dp))
+                                    Spacer(Modifier.width(12.dp))
                                     Text(
                                         text = valStr,
                                         color = NotelPrimary,
                                         fontSize = 13.sp,
-                                        fontWeight = FontWeight.SemiBold
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.weight(0.6f),
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.End
                                     )
                                 }
                             }
