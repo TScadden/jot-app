@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -52,7 +53,7 @@ fun FileViewerScreen(
 ) {
     val context = LocalContext.current
     val file = File(filePath)
-    val scrollState = rememberScrollState()
+
 
     Scaffold(
         containerColor = NotelBackground,
@@ -104,92 +105,95 @@ fun FileViewerScreen(
             )
         }
     ) { padding ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .background(NotelBackground)
-                .verticalScroll(scrollState)
         ) {
             // ── File preview ──────────────────────────────────────────────
-            Box(
-                modifier = Modifier.fillMaxWidth(),
-                contentAlignment = Alignment.TopCenter
-            ) {
-                if (!file.exists()) {
-                    Text(
-                        "File not found or has been deleted.",
-                        color = NotelTextSecondary,
-                        modifier = Modifier.padding(16.dp)
-                    )
-                } else {
-                    when {
-                        mimeType.startsWith("image/") -> {
-                            AsyncImage(
-                                model = file,
-                                contentDescription = fileName,
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 200.dp, max = 520.dp),
-                                contentScale = ContentScale.Fit
-                            )
-                        }
-                        mimeType == "application/pdf" -> {
-                            PdfViewer(file)
-                        }
-                        mimeType == "text/plain" -> {
-                            val rawText = remember(filePath) {
-                                try { file.readText() } catch (e: Exception) { "Could not read file." }
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp)
-                                    .background(NotelSurface, RoundedCornerShape(12.dp))
-                                    .padding(16.dp)
-                            ) {
-                                Text(
-                                    text = rawText,
-                                    color = NotelTextSecondary,
-                                    fontSize = 13.sp,
-                                    lineHeight = 20.sp
+            item {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.TopCenter
+                ) {
+                    if (!file.exists()) {
+                        Text(
+                            "File not found or has been deleted.",
+                            color = NotelTextSecondary,
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    } else {
+                        when {
+                            mimeType.startsWith("image/") -> {
+                                AsyncImage(
+                                    model = file,
+                                    contentDescription = fileName,
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = 200.dp, max = 520.dp),
+                                    contentScale = ContentScale.Fit
                                 )
                             }
-                        }
-                        else -> {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.padding(32.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Share,
-                                    null,
-                                    Modifier.size(64.dp),
-                                    tint = NotelTextSecondary
-                                )
-                                Spacer(Modifier.height(16.dp))
-                                Text(
-                                    "Preview not available for this file type.",
-                                    color = NotelTextSecondary
-                                )
-                                Text(
-                                    "Type: $mimeType",
-                                    color = NotelTextSecondary,
-                                    fontSize = 12.sp
-                                )
+                            mimeType == "application/pdf" -> {
+                                PdfViewer(file)
+                            }
+                            mimeType == "text/plain" -> {
+                                val rawText = remember(filePath) {
+                                    try { file.readText() } catch (e: Exception) { "Could not read file." }
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp)
+                                        .background(NotelSurface, RoundedCornerShape(12.dp))
+                                        .padding(16.dp)
+                                ) {
+                                    Text(
+                                        text = rawText,
+                                        color = NotelTextSecondary,
+                                        fontSize = 13.sp,
+                                        lineHeight = 20.sp
+                                    )
+                                }
+                            }
+                            else -> {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.padding(32.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Share,
+                                        null,
+                                        Modifier.size(64.dp),
+                                        tint = NotelTextSecondary
+                                    )
+                                    Spacer(Modifier.height(16.dp))
+                                    Text(
+                                        "Preview not available for this file type.",
+                                        color = NotelTextSecondary
+                                    )
+                                    Text(
+                                        "Type: $mimeType",
+                                        color = NotelTextSecondary,
+                                        fontSize = 12.sp
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
 
-            Spacer(Modifier.height(16.dp))
+            item { Spacer(Modifier.height(16.dp)) }
 
             // ── AI Extracted Content panel ─────────────────────────────────
-            AiExtractionPanel(
-                extractedText = extractedText,
-                onSaveEditedText = onSaveEditedText
-            )
+            item {
+                AiExtractionPanel(
+                    extractedText = extractedText,
+                    onSaveEditedText = onSaveEditedText
+                )
+            }
 
-            Spacer(Modifier.height(32.dp))
+            item { Spacer(Modifier.height(32.dp)) }
         }
     }
 }
