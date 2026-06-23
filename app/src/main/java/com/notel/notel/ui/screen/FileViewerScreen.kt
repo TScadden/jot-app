@@ -519,8 +519,10 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                                 .padding(vertical = 8.dp)
                         ) {
                             val hScroll = rememberScrollState()
+                            val totalTableWidth = colWidths.sum()
                             Column(
                                 modifier = Modifier
+                                    .fillMaxWidth()
                                     .horizontalScroll(hScroll)
                                     .padding(12.dp),
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -529,6 +531,7 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                                     val isHeader = rowIndex == 0
                                     Row(
                                         modifier = Modifier
+                                            .width(totalTableWidth.dp)
                                             .background(
                                                 if (isHeader) NotelPrimary.copy(alpha = 0.15f)
                                                 else if (rowIndex % 2 == 0) NotelSurfaceHigh.copy(alpha = 0.3f)
