@@ -474,34 +474,122 @@ private fun EditExtractedTextDialog(
     }
 }
 
+sealed interface ParsedBlock {
+    val id: String
+}
+data class TableBlock(override val id: String, val rows: List<List<String>>) : ParsedBlock
+data class KeyValueBlock(override val id: String, val pairs: List<Pair<String, String>>) : ParsedBlock
+data class HeaderBlock(override val id: String, val level: Int, val text: String) : ParsedBlock
+data class BulletBlock(override val id: String, val text: String) : ParsedBlock
+data class NumberedBlock(override val id: String, val number: String, val text: String) : ParsedBlock
+data class ParagraphBlock(override val id: String, val text: String) : ParsedBlock
+data class SpaceBlock(override val id: String) : ParsedBlock
+
+private fun parseExtractedText(text: String): List<ParsedBlock> {
+    val blocks = mutableListOf<ParsedBlock>()
+    val lines = text.lines()
+    var i = 0
+    var blockCount = 0
+
+    val isKeyValueLine = { l: String ->
+        val colonIndex = l.indexOf(':')
+        colonIndex > 0 && colonIndex < 35 && l.substring(0, colonIndex).all { it.isLetterOrDigit() || it.isWhitespace() || it == '_' || it == '-' } && l.substring(colonIndex + 1).trim().isNotBlank()
+    }
+
+    while (i < lines.size) {
+        val line = lines[i]
+        val trimmed = line.trim()
+
+        // Check for Markdown table block
+        if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+            val tableLines = mutableListOf<String>()
+            while (i < lines.size && lines[i].trim().startsWith("|")) {
+                tableLines.add(lines[i].trim())
+                i++
+            }
+
+            // Parse rows
+            val rows = tableLines.filter { !it.contains("---") }.map { rowRaw ->
+                rowRaw.split("|").drop(1).dropLast(1).map { it.trim() }
+            }
+
+            if (rows.isNotEmpty()) {
+                blocks.add(TableBlock("table_${blockCount++}", rows))
+            }
+            continue
+        }
+
+        // Check for key-value pair blocks
+        if (isKeyValueLine(trimmed)) {
+            val kvPairs = mutableListOf<Pair<String, String>>()
+            while (i < lines.size && isKeyValueLine(lines[i].trim())) {
+                val currentTrimmed = lines[i].trim()
+                val colonIndex = currentTrimmed.indexOf(':')
+                val key = currentTrimmed.substring(0, colonIndex).trim()
+                val value = currentTrimmed.substring(colonIndex + 1).trim()
+                kvPairs.add(key to value)
+                i++
+            }
+
+            if (kvPairs.isNotEmpty()) {
+                blocks.add(KeyValueBlock("kv_${blockCount++}", kvPairs))
+            }
+            continue
+        }
+
+        when {
+            trimmed.isBlank() -> {
+                blocks.add(SpaceBlock("space_${blockCount++}"))
+            }
+            // Markdown header: #, ##, ###
+            trimmed.startsWith("#") -> {
+                val level = trimmed.takeWhile { it == '#' }.length
+                val headerText = trimmed.removePrefix("#".repeat(level)).trim()
+                blocks.add(HeaderBlock("header_${blockCount++}", level, headerText))
+            }
+            // Section header (compatibility: all-caps short line)
+            trimmed.length < 60 && trimmed == trimmed.uppercase() && trimmed.any { it.isLetter() } -> {
+                blocks.add(HeaderBlock("header_compat_${blockCount++}", 3, trimmed))
+            }
+            // Sub-header: ends with ":"
+            trimmed.endsWith(":") && trimmed.length < 80 -> {
+                blocks.add(HeaderBlock("subheader_${blockCount++}", 4, trimmed))
+            }
+            // Bullet point
+            trimmed.startsWith("-") || trimmed.startsWith("•") || trimmed.startsWith("*") -> {
+                val bulletText = trimmed.removePrefix("-").removePrefix("•").removePrefix("*").trim()
+                blocks.add(BulletBlock("bullet_${blockCount++}", bulletText))
+            }
+            // Numbered list
+            trimmed.length > 2 && trimmed[0].isDigit() &&
+                    (trimmed.getOrNull(1) == '.' || trimmed.getOrNull(2) == '.') -> {
+                val num = trimmed.substringBefore(".") + "."
+                val bodyText = trimmed.substringAfter(".").trim()
+                blocks.add(NumberedBlock("num_${blockCount++}", num, bodyText))
+            }
+            // Normal body text
+            else -> {
+                blocks.add(ParagraphBlock("p_${blockCount++}", trimmed))
+            }
+        }
+        i++
+    }
+    return blocks
+}
+
 /**
  * Renders extracted text in a readable, structured format.
  */
 @Composable
 private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) {
+    val parsedBlocks = remember(text) { parseExtractedText(text) }
+
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        val lines = text.lines()
-        
-        var i = 0
-        while (i < lines.size) {
-            val line = lines[i]
-            val trimmed = line.trim()
-            
-            // Check for Markdown table block
-            if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
-                val tableLines = mutableListOf<String>()
-                while (i < lines.size && lines[i].trim().startsWith("|")) {
-                    tableLines.add(lines[i].trim())
-                    i++
-                }
-                
-                // Parse rows
-                val rows = tableLines.filter { !it.contains("---") }.map { rowRaw ->
-                    rowRaw.split("|").drop(1).dropLast(1).map { it.trim() }
-                }
-                
-                if (rows.isNotEmpty()) {
-                    androidx.compose.runtime.key(i) {
+        parsedBlocks.forEach { block ->
+            androidx.compose.runtime.key(block.id) {
+                when (block) {
+                    is TableBlock -> {
+                        val rows = block.rows
                         val numCols = rows.maxOfOrNull { it.size } ?: 0
                         val colWidths = IntArray(numCols) { colIndex ->
                             val maxChars = rows.maxOfOrNull { row ->
@@ -569,29 +657,7 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                             }
                         }
                     }
-                }
-                continue
-            }
-            
-            // Check for key-value pair blocks (like laboratory results, medical vital signs, patient metrics)
-            val isKeyValueLine = { l: String ->
-                val colonIndex = l.indexOf(':')
-                colonIndex > 0 && colonIndex < 35 && l.substring(0, colonIndex).all { it.isLetterOrDigit() || it.isWhitespace() || it == '_' || it == '-' } && l.substring(colonIndex + 1).trim().isNotBlank()
-            }
-            
-            if (isKeyValueLine(trimmed)) {
-                val kvPairs = mutableListOf<Pair<String, String>>()
-                while (i < lines.size && isKeyValueLine(lines[i].trim())) {
-                    val currentTrimmed = lines[i].trim()
-                    val colonIndex = currentTrimmed.indexOf(':')
-                    val key = currentTrimmed.substring(0, colonIndex).trim()
-                    val value = currentTrimmed.substring(colonIndex + 1).trim()
-                    kvPairs.add(key to value)
-                    i++
-                }
-                
-                if (kvPairs.isNotEmpty()) {
-                    androidx.compose.runtime.key(i) {
+                    is KeyValueBlock -> {
                         Card(
                             shape = RoundedCornerShape(12.dp),
                             colors = CardDefaults.cardColors(containerColor = NotelSurface.copy(alpha = 0.8f)),
@@ -604,7 +670,7 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                                 modifier = Modifier.padding(14.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                kvPairs.forEach { (key, valStr) ->
+                                block.pairs.forEach { (key, valStr) ->
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -631,125 +697,83 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                             }
                         }
                     }
-                }
-                continue
-            }
-            
-            when {
-                trimmed.isBlank() -> {
-                    Spacer(Modifier.height(6.dp))
-                }
-                // Markdown header: #, ##, ###
-                trimmed.startsWith("#") -> {
-                    val level = trimmed.takeWhile { it == '#' }.length
-                    val headerText = trimmed.removePrefix("#".repeat(level)).trim()
-                    Spacer(Modifier.height(14.dp))
-                    Column(modifier = Modifier.fillMaxWidth()) {
+                    is HeaderBlock -> {
+                        val level = block.level
+                        val headerText = block.text
+                        Spacer(Modifier.height(14.dp))
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = headerText,
+                                color = NotelPrimary,
+                                fontSize = when(level) {
+                                    1 -> 18.sp
+                                    2 -> 16.sp
+                                    else -> 14.sp
+                                },
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.5.sp
+                            )
+                            HorizontalDivider(
+                                color = NotelPrimary.copy(alpha = 0.3f),
+                                thickness = 1.dp,
+                                modifier = Modifier.padding(top = 4.dp, bottom = 6.dp)
+                            )
+                        }
+                    }
+                    is BulletBlock -> {
+                        Row(
+                            modifier = Modifier.padding(start = 8.dp),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Text(
+                                "•",
+                                color = NotelPrimary,
+                                fontSize = 13.sp,
+                                modifier = Modifier.padding(top = 1.dp, end = 8.dp)
+                            )
+                            Text(
+                                text = block.text,
+                                color = NotelTextSecondary,
+                                fontSize = 13.sp,
+                                lineHeight = 19.sp
+                            )
+                        }
+                    }
+                    is NumberedBlock -> {
+                        Row(
+                            modifier = Modifier.padding(start = 4.dp),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Text(
+                                block.number,
+                                color = NotelPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier
+                                    .width(24.dp)
+                                    .padding(top = 1.dp)
+                            )
+                            Text(
+                                text = block.text,
+                                color = NotelTextSecondary,
+                                fontSize = 13.sp,
+                                lineHeight = 19.sp
+                            )
+                        }
+                    }
+                    is ParagraphBlock -> {
                         Text(
-                            text = headerText,
-                            color = NotelPrimary,
-                            fontSize = when(level) {
-                                1 -> 18.sp
-                                2 -> 16.sp
-                                else -> 14.sp
-                            },
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.5.sp
-                        )
-                        HorizontalDivider(
-                            color = NotelPrimary.copy(alpha = 0.3f),
-                            thickness = 1.dp,
-                            modifier = Modifier.padding(top = 4.dp, bottom = 6.dp)
+                            text = block.text,
+                            color = NotelTextPrimary,
+                            fontSize = 13.sp,
+                            lineHeight = 20.sp
                         )
                     }
-                }
-                // Section header (compatibility: all-caps short line)
-                trimmed.length < 60 && trimmed == trimmed.uppercase() && trimmed.any { it.isLetter() } -> {
-                    Spacer(Modifier.height(14.dp))
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = trimmed,
-                            color = NotelPrimary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.8.sp
-                        )
-                        HorizontalDivider(
-                            color = NotelPrimary.copy(alpha = 0.2f),
-                            thickness = 0.5.dp,
-                            modifier = Modifier.padding(top = 2.dp, bottom = 4.dp)
-                        )
+                    is SpaceBlock -> {
+                        Spacer(Modifier.height(6.dp))
                     }
-                }
-                // Sub-header: ends with ":"
-                trimmed.endsWith(":") && trimmed.length < 80 -> {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = trimmed,
-                        color = NotelTextPrimary,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-                // Bullet point
-                trimmed.startsWith("-") || trimmed.startsWith("•") || trimmed.startsWith("*") -> {
-                    Row(
-                        modifier = Modifier.padding(start = 8.dp),
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        Text(
-                            "•",
-                            color = NotelPrimary,
-                            fontSize = 13.sp,
-                            modifier = Modifier.padding(top = 1.dp, end = 8.dp)
-                        )
-                        Text(
-                            text = trimmed
-                                .removePrefix("-")
-                                .removePrefix("•")
-                                .removePrefix("*")
-                                .trim(),
-                            color = NotelTextSecondary,
-                            fontSize = 13.sp,
-                            lineHeight = 19.sp
-                        )
-                    }
-                }
-                // Numbered list
-                trimmed.length > 2 && trimmed[0].isDigit() &&
-                        (trimmed.getOrNull(1) == '.' || trimmed.getOrNull(2) == '.') -> {
-                    Row(
-                        modifier = Modifier.padding(start = 4.dp),
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        Text(
-                            trimmed.substringBefore(".") + ".",
-                            color = NotelPrimary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier
-                                .width(24.dp)
-                                .padding(top = 1.dp)
-                        )
-                        Text(
-                            text = trimmed.substringAfter(".").trim(),
-                            color = NotelTextSecondary,
-                            fontSize = 13.sp,
-                            lineHeight = 19.sp
-                        )
-                    }
-                }
-                // Normal body text
-                else -> {
-                    Text(
-                        text = trimmed,
-                        color = NotelTextPrimary,
-                        fontSize = 13.sp,
-                        lineHeight = 20.sp
-                    )
                 }
             }
-            i++
         }
     }
 }
