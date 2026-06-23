@@ -479,7 +479,7 @@ private fun EditExtractedTextDialog(
  */
 @Composable
 private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) {
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         val lines = text.lines()
         
         var i = 0
@@ -495,88 +495,166 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                     i++
                 }
                 
-                // Parse rows and calculate max column widths, ignoring the Markdown separator line (e.g. `|---|---`)
-                val rowsWithIndices = tableLines.mapIndexed { index, rowRaw -> index to rowRaw }
-                val parsedRows = rowsWithIndices.filter { !it.second.contains("---") }.map { pair ->
-                    val cells = pair.second.split("|").drop(1).dropLast(1).map { it.trim() }
-                    pair.first to cells
+                // Parse rows
+                val rows = tableLines.filter { !it.contains("---") }.map { rowRaw ->
+                    rowRaw.split("|").drop(1).dropLast(1).map { it.trim() }
                 }
                 
-                val numCols = parsedRows.maxOfOrNull { it.second.size } ?: 0
-                val colWidths = IntArray(numCols) { colIndex ->
-                    parsedRows.maxOfOrNull { pair ->
-                        pair.second.getOrNull(colIndex)?.length ?: 0
-                    } ?: 0
-                }
-                
-                // Render table in a scrollable spreadsheet box
-                Surface(
-                    color = NotelSurfaceHigh.copy(alpha = 0.5f),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp)
-                ) {
-                    val hScroll = rememberScrollState()
-                    Column(
+                if (rows.isNotEmpty()) {
+                    Card(
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = NotelSurface.copy(alpha = 0.8f)),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, NotelSurfaceHigh.copy(alpha = 0.5f)),
                         modifier = Modifier
-                            .horizontalScroll(hScroll)
-                            .padding(12.dp)
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp)
                     ) {
-                        var isFirstLine = true
-                        tableLines.forEachIndexed { index, rowRaw ->
-                            val isHeaderDivider = rowRaw.contains("---")
-                            if (!isHeaderDivider) {
-                                val cells = rowRaw.split("|").drop(1).dropLast(1).map { it.trim() }
-                                val paddedCells = cells.mapIndexed { colIndex, cell ->
-                                    val targetWidth = colWidths.getOrElse(colIndex) { cell.length }
-                                    cell.padEnd(targetWidth)
-                                }
-                                val formattedRow = "| " + paddedCells.joinToString(" | ") + " |"
-                                
-                                Text(
-                                    text = formattedRow,
-                                    color = if (isFirstLine) NotelPrimary else NotelTextPrimary,
-                                    fontSize = 12.sp,
-                                    fontWeight = if (isFirstLine) FontWeight.Bold else FontWeight.Normal,
-                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                    maxLines = 1,
-                                    style = androidx.compose.ui.text.TextStyle(letterSpacing = 0.sp)
-                                )
-                                
-                                if (isFirstLine) {
-                                    HorizontalDivider(
-                                        color = NotelPrimary.copy(alpha = 0.3f),
-                                        modifier = Modifier.padding(vertical = 4.dp)
-                                    )
-                                    isFirstLine = false
+                        val hScroll = rememberScrollState()
+                        Column(
+                            modifier = Modifier
+                                .horizontalScroll(hScroll)
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            rows.forEachIndexed { rowIndex, cells ->
+                                val isHeader = rowIndex == 0
+                                Row(
+                                    modifier = Modifier
+                                        .background(
+                                            if (isHeader) NotelPrimary.copy(alpha = 0.15f)
+                                            else if (rowIndex % 2 == 0) NotelSurfaceHigh.copy(alpha = 0.3f)
+                                            else Color.Transparent,
+                                            shape = RoundedCornerShape(6.dp)
+                                        )
+                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    cells.forEach { cell ->
+                                        Box(
+                                            modifier = Modifier
+                                                .widthIn(min = 110.dp)
+                                                .padding(end = 12.dp)
+                                        ) {
+                                            Text(
+                                                text = cell,
+                                                color = if (isHeader) NotelPrimary else NotelTextPrimary,
+                                                fontSize = 12.sp,
+                                                fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
+                                                lineHeight = 16.sp
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
-                continue // Already incremented i inside the loop
+                continue
+            }
+            
+            // Check for key-value pair blocks (like laboratory results, medical vital signs, patient metrics)
+            val isKeyValueLine = { l: String ->
+                val colonIndex = l.indexOf(':')
+                colonIndex > 0 && colonIndex < 35 && l.substring(0, colonIndex).all { it.isLetterOrDigit() || it.isWhitespace() || it == '_' || it == '-' } && l.substring(colonIndex + 1).trim().isNotBlank()
+            }
+            
+            if (isKeyValueLine(trimmed)) {
+                val kvPairs = mutableListOf<Pair<String, String>>()
+                while (i < lines.size && isKeyValueLine(lines[i].trim())) {
+                    val currentTrimmed = lines[i].trim()
+                    val colonIndex = currentTrimmed.indexOf(':')
+                    val key = currentTrimmed.substring(0, colonIndex).trim()
+                    val value = currentTrimmed.substring(colonIndex + 1).trim()
+                    kvPairs.add(key to value)
+                    i++
+                }
+                
+                if (kvPairs.isNotEmpty()) {
+                    Card(
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = NotelSurface.copy(alpha = 0.8f)),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, NotelSurfaceHigh.copy(alpha = 0.5f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            kvPairs.forEach { (key, valStr) ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = key,
+                                        color = NotelTextSecondary,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Spacer(Modifier.width(16.dp))
+                                    Text(
+                                        text = valStr,
+                                        color = NotelPrimary,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                continue
             }
             
             when {
                 trimmed.isBlank() -> {
                     Spacer(Modifier.height(6.dp))
                 }
-                // Section header: all-caps short line
+                // Markdown header: #, ##, ###
+                trimmed.startsWith("#") -> {
+                    val level = trimmed.takeWhile { it == '#' }.length
+                    val headerText = trimmed.removePrefix("#".repeat(level)).trim()
+                    Spacer(Modifier.height(14.dp))
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = headerText,
+                            color = NotelPrimary,
+                            fontSize = when(level) {
+                                1 -> 18.sp
+                                2 -> 16.sp
+                                else -> 14.sp
+                            },
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp
+                        )
+                        HorizontalDivider(
+                            color = NotelPrimary.copy(alpha = 0.3f),
+                            thickness = 1.dp,
+                            modifier = Modifier.padding(top = 4.dp, bottom = 6.dp)
+                        )
+                    }
+                }
+                // Section header (compatibility: all-caps short line)
                 trimmed.length < 60 && trimmed == trimmed.uppercase() && trimmed.any { it.isLetter() } -> {
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        text = trimmed,
-                        color = NotelPrimary,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.8.sp
-                    )
-                    HorizontalDivider(
-                        color = NotelPrimary.copy(alpha = 0.2f),
-                        thickness = 0.5.dp,
-                        modifier = Modifier.padding(top = 2.dp, bottom = 4.dp)
-                    )
+                    Spacer(Modifier.height(14.dp))
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = trimmed,
+                            color = NotelPrimary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.8.sp
+                        )
+                        HorizontalDivider(
+                            color = NotelPrimary.copy(alpha = 0.2f),
+                            thickness = 0.5.dp,
+                            modifier = Modifier.padding(top = 2.dp, bottom = 4.dp)
+                        )
+                    }
                 }
                 // Sub-header: ends with ":"
                 trimmed.endsWith(":") && trimmed.length < 80 -> {

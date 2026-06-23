@@ -3242,36 +3242,6 @@ fun JotLiveScreenContent(
             modifier = Modifier.padding(vertical = 8.dp)
         )
 
-        // Auto Connect Toggle row
-        GlassyCard(
-            shape = RoundedCornerShape(12.dp),
-            color = NotelSurface,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Auto Connect", color = NotelTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                    Text("Automatically scan and log when Visible Band is near", color = NotelTextSecondary, fontSize = 10.sp)
-                }
-                Switch(
-                    checked = bleAutoConnectEnabled,
-                    onCheckedChange = { viewModel.setBleAutoConnectEnabled(it) },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = NotelPrimary,
-                        checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
-                        uncheckedThumbColor = NotelTextSecondary,
-                        uncheckedTrackColor = NotelSurfaceHigh
-                    )
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
         // Pulse heart animation card
         HeartMonitorCard(
             connectionState = if (isServiceRunning) com.notel.notel.data.ConnectionState.Connected("Background Log", "ACTIVE") else connectionState,
@@ -3401,6 +3371,34 @@ fun JotLiveScreenContent(
                             }
                         }
                     }
+                }
+
+                // Add compact Auto Connect row inside the Band Monitoring box
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(NotelSurfaceHigh.copy(alpha = 0.3f))
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Auto Connect", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 12.sp)
+                        Text("Re-connect automatically when band is near", color = NotelTextSecondary, fontSize = 9.sp)
+                    }
+                    Switch(
+                        checked = bleAutoConnectEnabled,
+                        onCheckedChange = { viewModel.setBleAutoConnectEnabled(it) },
+                        modifier = Modifier.scale(0.8f),
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = NotelPrimary,
+                            checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
+                            uncheckedThumbColor = NotelTextSecondary,
+                            uncheckedTrackColor = NotelSurfaceHigh
+                        )
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
