@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -53,7 +54,11 @@ fun FileViewerScreen(
 ) {
     val context = LocalContext.current
     val file = File(filePath)
-
+    var isPanelExpanded by remember { mutableStateOf(true) }
+    var showEditDialog by remember { mutableStateOf(false) }
+    val parsedBlocks = remember(extractedText) {
+        if (!extractedText.isNullOrBlank()) parseExtractedText(extractedText) else emptyList()
+    }
 
     Scaffold(
         containerColor = NotelBackground,
@@ -185,15 +190,118 @@ fun FileViewerScreen(
 
             item { Spacer(Modifier.height(16.dp)) }
 
-            // ── AI Extracted Content panel ─────────────────────────────────
+            // ── AI Extracted Content panel header ──────────────────────────
             item {
-                AiExtractionPanel(
+                AiExtractionPanelHeader(
                     extractedText = extractedText,
-                    onSaveEditedText = onSaveEditedText
+                    isExpanded = isPanelExpanded,
+                    onToggle = { isPanelExpanded = !isPanelExpanded },
+                    onEditClick = { showEditDialog = true }
                 )
             }
 
+            // ── Collapsible content blocks (each as its own item for proper scroll handling) ──
+            if (isPanelExpanded) {
+                when {
+                    extractedText == null -> item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(20.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), color = NotelPrimary, strokeWidth = 2.dp)
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                Text("Gemini is reading this file…", color = NotelTextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                Text("This happens once. Pull down to refresh after a moment.", color = NotelTextSecondary, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                    extractedText.isBlank() -> item {
+                        Text("No readable content was found in this file.", color = NotelTextSecondary, fontSize = 13.sp, modifier = Modifier.padding(20.dp))
+                    }
+                    else -> {
+                        items(parsedBlocks, key = { it.id }) { block ->
+                            ParsedBlockItem(block = block, modifier = Modifier.padding(horizontal = 16.dp))
+                        }
+                    }
+                }
+            }
+
             item { Spacer(Modifier.height(32.dp)) }
+        }
+    }
+
+    if (showEditDialog && extractedText != null) {
+        EditExtractedTextDialog(
+            initialText = extractedText,
+            onDismiss = { showEditDialog = false },
+            onSave = { edited ->
+                onSaveEditedText(edited)
+                showEditDialog = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun AiExtractionPanelHeader(
+    extractedText: String?,
+    isExpanded: Boolean,
+    onToggle: () -> Unit,
+    onEditClick: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(
+            topStart = 20.dp, topEnd = 20.dp,
+            bottomStart = if (isExpanded) 0.dp else 16.dp,
+            bottomEnd = if (isExpanded) 0.dp else 16.dp
+        ),
+        color = NotelSurface,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+    ) {
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onToggle() }
+                    .padding(start = 16.dp, end = 8.dp, top = 14.dp, bottom = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = NotelPrimary, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Column {
+                        Text("AI Extracted Content", color = NotelTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text(
+                            when {
+                                extractedText == null -> "Processing… check back shortly"
+                                extractedText.isBlank() -> "No content could be extracted"
+                                else -> "${extractedText.length} characters extracted"
+                            },
+                            color = if (extractedText != null && extractedText.isNotBlank()) Color(0xFF4CAF50) else NotelTextSecondary,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (!extractedText.isNullOrBlank()) {
+                        IconButton(onClick = onEditClick, modifier = Modifier.size(36.dp)) {
+                            Icon(Icons.Default.Edit, contentDescription = "Edit extracted text", tint = NotelPrimary, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                    IconButton(onClick = onToggle, modifier = Modifier.size(36.dp)) {
+                        Icon(
+                            if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = "Toggle",
+                            tint = NotelTextSecondary
+                        )
+                    }
+                }
+            }
+            if (isExpanded) {
+                HorizontalDivider(color = NotelSurfaceHigh, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 16.dp))
+            }
         }
     }
 }
@@ -582,7 +690,138 @@ private fun parseExtractedText(text: String): List<ParsedBlock> {
 }
 
 /**
- * Renders extracted text in a readable, structured format.
+ * Renders a single parsed block. Used as a direct LazyColumn item for proper nested scroll handling.
+ */
+@Composable
+private fun ParsedBlockItem(block: ParsedBlock, modifier: Modifier = Modifier) {
+    Box(modifier = modifier) {
+        when (block) {
+            is TableBlock -> TableBlockView(block)
+            is KeyValueBlock -> KeyValueBlockView(block)
+            is HeaderBlock -> HeaderBlockView(block)
+            is BulletBlock -> BulletBlockView(block)
+            is NumberedBlock -> NumberedBlockView(block)
+            is ParagraphBlock -> Text(text = block.text, color = NotelTextPrimary, fontSize = 13.sp, lineHeight = 20.sp)
+            is SpaceBlock -> Spacer(Modifier.height(6.dp))
+        }
+    }
+}
+
+@Composable
+private fun TableBlockView(block: TableBlock) {
+    val rows = block.rows
+    val numCols = rows.maxOfOrNull { it.size } ?: 0
+    val colWidths = IntArray(numCols) { colIndex ->
+        val maxChars = rows.maxOfOrNull { row -> row.getOrNull(colIndex)?.length ?: 0 } ?: 0
+        (maxChars * 11).coerceIn(130, 500)
+    }
+    val totalTableWidth = colWidths.sum()
+    val hScroll = rememberScrollState()
+
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = NotelSurface.copy(alpha = 0.8f)),
+        border = androidx.compose.foundation.BorderStroke(1.dp, NotelSurfaceHigh.copy(alpha = 0.5f)),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(hScroll)
+                .padding(12.dp)
+        ) {
+            Column(
+                modifier = Modifier.width(totalTableWidth.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                rows.forEachIndexed { rowIndex, cells ->
+                    val isHeader = rowIndex == 0
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                if (isHeader) NotelPrimary.copy(alpha = 0.15f)
+                                else if (rowIndex % 2 == 0) NotelSurfaceHigh.copy(alpha = 0.3f)
+                                else Color.Transparent,
+                                shape = RoundedCornerShape(6.dp)
+                            )
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        cells.forEachIndexed { colIndex, cell ->
+                            val colWidth = colWidths.getOrNull(colIndex) ?: 130
+                            Box(modifier = Modifier.width(colWidth.dp).padding(end = 12.dp)) {
+                                Text(
+                                    text = cell,
+                                    color = if (isHeader) NotelPrimary else NotelTextPrimary,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
+                                    lineHeight = 16.sp,
+                                    textAlign = if (colIndex > 0) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun KeyValueBlockView(block: KeyValueBlock) {
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = NotelSurface.copy(alpha = 0.8f)),
+        border = androidx.compose.foundation.BorderStroke(1.dp, NotelSurfaceHigh.copy(alpha = 0.5f)),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            block.pairs.forEach { (key, valStr) ->
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+                    Text(text = key, color = NotelTextSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(0.4f))
+                    Spacer(Modifier.width(12.dp))
+                    Text(text = valStr, color = NotelPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(0.6f), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeaderBlockView(block: HeaderBlock) {
+    Spacer(Modifier.height(14.dp))
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = block.text,
+            color = NotelPrimary,
+            fontSize = when (block.level) { 1 -> 18.sp; 2 -> 16.sp; else -> 14.sp },
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.5.sp
+        )
+        HorizontalDivider(color = NotelPrimary.copy(alpha = 0.3f), thickness = 1.dp, modifier = Modifier.padding(top = 4.dp, bottom = 6.dp))
+    }
+}
+
+@Composable
+private fun BulletBlockView(block: BulletBlock) {
+    Row(modifier = Modifier.padding(start = 8.dp), verticalAlignment = Alignment.Top) {
+        Text("•", color = NotelPrimary, fontSize = 13.sp, modifier = Modifier.padding(top = 1.dp, end = 8.dp))
+        Text(text = block.text, color = NotelTextSecondary, fontSize = 13.sp, lineHeight = 19.sp)
+    }
+}
+
+@Composable
+private fun NumberedBlockView(block: NumberedBlock) {
+    Row(modifier = Modifier.padding(start = 4.dp), verticalAlignment = Alignment.Top) {
+        Text(block.number, color = NotelPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.width(24.dp).padding(top = 1.dp))
+        Text(text = block.text, color = NotelTextSecondary, fontSize = 13.sp, lineHeight = 19.sp)
+    }
+}
+
+/**
+ * Renders extracted text in a readable, structured format (legacy, kept for edit dialog preview).
  */
 @Composable
 private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) {
