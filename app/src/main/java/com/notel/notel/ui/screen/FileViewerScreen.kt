@@ -506,7 +506,7 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                         val maxChars = rows.maxOfOrNull { row ->
                             row.getOrNull(colIndex)?.length ?: 0
                         } ?: 0
-                        (maxChars * 9).coerceIn(100, 300)
+                        (maxChars * 11).coerceIn(120, 380)
                     }
 
                     Card(
@@ -538,7 +538,7 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     cells.forEachIndexed { colIndex, cell ->
-                                        val colWidth = colWidths.getOrNull(colIndex) ?: 120
+                                        val colWidth = colWidths.getOrNull(colIndex) ?: 130
                                         Box(
                                             modifier = Modifier
                                                 .width(colWidth.dp)
