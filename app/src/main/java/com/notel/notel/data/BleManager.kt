@@ -355,6 +355,9 @@ class BleManager private constructor(private val context: Context) {
         if (!hasScan) return
 
         CoroutineScope(Dispatchers.IO).launch {
+            val autoConnect = preferences.bleAutoConnectEnabled.first()
+            if (!autoConnect) return@launch
+
             val lastAddress = preferences.lastConnectedDeviceAddress.first()
             val lastName = preferences.lastConnectedDeviceName.first()
 

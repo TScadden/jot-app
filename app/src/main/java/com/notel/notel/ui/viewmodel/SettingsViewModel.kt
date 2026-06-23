@@ -99,6 +99,15 @@ class SettingsViewModel @Inject constructor(
     val googleCalendarEmail = preferences.googleCalendarEmail
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
+    val bleAutoConnectEnabled = preferences.bleAutoConnectEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    fun setBleAutoConnectEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferences.setBleAutoConnectEnabled(enabled)
+        }
+    }
+
     fun connectGoogleCalendar(email: String) {
         viewModelScope.launch {
             preferences.setGoogleCalendarConnected(true)

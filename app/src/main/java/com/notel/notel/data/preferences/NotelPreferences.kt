@@ -115,9 +115,15 @@ class NotelPreferences @Inject constructor(
         val HAS_VISIBLE_BAND_ASKED = booleanPreferencesKey("has_visible_band_asked")
         val LAST_CONNECTED_DEVICE_ADDRESS = stringPreferencesKey("last_connected_device_address")
         val LAST_CONNECTED_DEVICE_NAME = stringPreferencesKey("last_connected_device_name")
+        val BLE_AUTO_CONNECT_ENABLED = booleanPreferencesKey("ble_auto_connect_enabled")
         val HEART_RATE_HISTORY = stringPreferencesKey("heart_rate_history")
         val GOOGLE_CALENDAR_CONNECTED = booleanPreferencesKey("google_calendar_connected")
         val GOOGLE_CALENDAR_EMAIL = stringPreferencesKey("google_calendar_email")
+    }
+
+    val bleAutoConnectEnabled: Flow<Boolean> = context.dataStore.data.map { it[BLE_AUTO_CONNECT_ENABLED] ?: true }
+    suspend fun setBleAutoConnectEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[BLE_AUTO_CONNECT_ENABLED] = enabled }
     }
 
     val googleCalendarConnected: Flow<Boolean> = context.dataStore.data.map { it[GOOGLE_CALENDAR_CONNECTED] ?: false }

@@ -104,6 +104,7 @@ fun SettingsScreen(
     val userWeight by viewModel.userWeight.collectAsState()
     val userGender by viewModel.userGender.collectAsState()
     val autoAiSuggestions by viewModel.autoAiSuggestions.collectAsState()
+    val bleAutoConnectEnabled by viewModel.bleAutoConnectEnabled.collectAsState()
     val bodyLoadRemindersEnabled by viewModel.bodyLoadRemindersEnabled.collectAsState()
     val dailyCupUpdatesEnabled by viewModel.dailyCupUpdatesEnabled.collectAsState()
     val hrSpikeAlertsEnabled by viewModel.hrSpikeAlertsEnabled.collectAsState()
@@ -3240,7 +3241,35 @@ fun JotLiveScreenContent(
             modifier = Modifier.padding(vertical = 8.dp)
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
+        // Auto Connect Toggle row
+        GlassyCard(
+            shape = RoundedCornerShape(12.dp),
+            color = NotelSurface,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Auto Connect", color = NotelTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Text("Automatically scan and log when Visible Band is near", color = NotelTextSecondary, fontSize = 10.sp)
+                }
+                Switch(
+                    checked = bleAutoConnectEnabled,
+                    onCheckedChange = { viewModel.setBleAutoConnectEnabled(it) },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = NotelPrimary,
+                        checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
+                        uncheckedThumbColor = NotelTextSecondary,
+                        uncheckedTrackColor = NotelSurfaceHigh
+                    )
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
 
         // Pulse heart animation card
         HeartMonitorCard(
