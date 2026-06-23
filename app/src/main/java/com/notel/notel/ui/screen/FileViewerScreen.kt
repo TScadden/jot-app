@@ -506,7 +506,7 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                         val maxChars = rows.maxOfOrNull { row ->
                             row.getOrNull(colIndex)?.length ?: 0
                         } ?: 0
-                        (maxChars * 11).coerceIn(120, 380)
+                        (maxChars * 11).coerceIn(130, 500)
                     }
 
                     Card(
@@ -552,9 +552,7 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
                                                 fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
                                                 lineHeight = 16.sp,
                                                 textAlign = if (shouldCenter) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
-                                                modifier = Modifier.fillMaxWidth(),
-                                                maxLines = 2,
-                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                modifier = Modifier.fillMaxWidth()
                                             )
                                         }
                                     }
