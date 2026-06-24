@@ -664,7 +664,7 @@ class SyncManager @Inject constructor(
                         }
                     }
 
-                    val json = Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(com.notel.notel.data.local.entity.AiInsight.serializer()), insightsList.take(100))
+                    val json = Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(com.notel.notel.data.local.entity.AiInsight.serializer()), insightsList.take(1000))
                     preferences.setAiInsights(json)
                 }
 
