@@ -1406,25 +1406,48 @@ fun SettingsScreen(
                     shape = RoundedCornerShape(16.dp),
                     color = NotelSurface
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Auto AI Pings", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
-                            Text(
-                                "Automatically load smart tiles when opening the app.",
-                                color = NotelTextSecondary,
-                                fontSize = 11.sp
+                    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Auto AI Pings", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                                Text(
+                                    "Automatically load smart tiles when opening the app.",
+                                    color = NotelTextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
+                            Switch(
+                                checked = autoAiSuggestions,
+                                onCheckedChange = { viewModel.setAutoAiSuggestions(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = NotelPrimary,
+                                    checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
+                                    uncheckedThumbColor = NotelTextSecondary,
+                                    uncheckedTrackColor = NotelSurfaceHigh
+                                )
                             )
                         }
-                        Switch(
-                            checked = autoAiSuggestions,
-                            onCheckedChange = { viewModel.setAutoAiSuggestions(it) },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = NotelPrimary,
-                                checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
-                                uncheckedThumbColor = NotelTextSecondary,
-                                uncheckedTrackColor = NotelSurfaceHigh
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Daily Cup Score", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                                Text(
+                                    "A daily notification summarizing your Body Cup score calculation.",
+                                    color = NotelTextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
+                            Switch(
+                                checked = dailyCupUpdatesEnabled,
+                                onCheckedChange = { checkAndToggle(it) { enabled -> viewModel.setDailyCupUpdatesEnabled(enabled) } },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = NotelPrimary,
+                                    checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
+                                    uncheckedThumbColor = NotelTextSecondary,
+                                    uncheckedTrackColor = NotelSurfaceHigh
+                                )
                             )
-                        )
+                        }
                     }
                 }
 
