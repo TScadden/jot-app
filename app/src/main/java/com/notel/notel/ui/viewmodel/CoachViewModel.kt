@@ -108,10 +108,7 @@ data class CoachMessage(
     val proposedCalendarDeleteTitle: String? = null,
     val proposedCalendarDeleteDate: String? = null,
     val calendarDeleteStatus: CalendarEventStatus = CalendarEventStatus.NONE,
-    val proposedMedicationName: String? = null,
-    val proposedMedicationStartDate: String? = null,
-    val proposedMedicationEndDate: String? = null,
-    val proposedMedicationIsPresent: Boolean = false,
+    val proposedMedications: List<Medication> = emptyList(),
     val medicationStatus: MedicationStatus = MedicationStatus.NONE
 )
 
@@ -135,10 +132,7 @@ data class CoachMessageParsed(
     val proposedCalendarDeleteTitle: String?,
     val proposedCalendarDeleteDate: String?,
     val calendarDeleteStatus: CalendarEventStatus,
-    val proposedMedicationName: String?,
-    val proposedMedicationStartDate: String?,
-    val proposedMedicationEndDate: String?,
-    val proposedMedicationIsPresent: Boolean,
+    val proposedMedications: List<Medication>,
     val medicationStatus: MedicationStatus
 )
 
@@ -193,10 +187,7 @@ fun parseCoachMessageContent(rawContent: String): CoachMessageParsed {
     var proposedCalendarDeleteDate: String? = null
     var calendarDeleteStatus = CalendarEventStatus.NONE
 
-    var proposedMedicationName: String? = null
-    var proposedMedicationStartDate: String? = null
-    var proposedMedicationEndDate: String? = null
-    var proposedMedicationIsPresent: Boolean = false
+    var proposedMedications: List<Medication> = emptyList()
     var medicationStatus = MedicationStatus.NONE
 
     if (proposeRegex.containsMatchIn(cleanContent)) {
@@ -330,11 +321,27 @@ fun parseCoachMessageContent(rawContent: String): CoachMessageParsed {
     }
 
     fun parseMedicationString(raw: String) {
-        val parts = raw.split("|")
-        proposedMedicationName = parts.getOrNull(0)?.trim()
-        proposedMedicationStartDate = parts.getOrNull(1)?.trim()
-        proposedMedicationEndDate = parts.getOrNull(2)?.trim()
-        proposedMedicationIsPresent = parts.getOrNull(3)?.trim()?.lowercase() == "true"
+        val medsList = mutableListOf<Medication>()
+        val items = raw.split(";")
+        for (item in items) {
+            val parts = item.split("|")
+            val name = parts.getOrNull(0)?.trim()
+            if (!name.isNullOrBlank()) {
+                val startDate = parts.getOrNull(1)?.trim() ?: ""
+                val endDate = parts.getOrNull(2)?.trim() ?: ""
+                val isPresent = parts.getOrNull(3)?.trim()?.lowercase() == "true"
+                medsList.add(
+                    Medication(
+                        id = java.util.UUID.randomUUID().toString(),
+                        name = name,
+                        startDate = startDate,
+                        endDate = if (isPresent) "Present" else endDate,
+                        isPresent = isPresent
+                    )
+                )
+            }
+        }
+        proposedMedications = medsList
     }
 
     if (proposeMedicationRegex.containsMatchIn(cleanContent)) {
@@ -374,10 +381,7 @@ fun parseCoachMessageContent(rawContent: String): CoachMessageParsed {
         proposedCalendarDeleteTitle = proposedCalendarDeleteTitle,
         proposedCalendarDeleteDate = proposedCalendarDeleteDate,
         calendarDeleteStatus = calendarDeleteStatus,
-        proposedMedicationName = proposedMedicationName,
-        proposedMedicationStartDate = proposedMedicationStartDate,
-        proposedMedicationEndDate = proposedMedicationEndDate,
-        proposedMedicationIsPresent = proposedMedicationIsPresent,
+        proposedMedications = proposedMedications,
         medicationStatus = medicationStatus
     )
 }
@@ -438,10 +442,7 @@ class CoachViewModel @Inject constructor(
                         proposedCalendarDeleteTitle = parsed.proposedCalendarDeleteTitle,
                         proposedCalendarDeleteDate = parsed.proposedCalendarDeleteDate,
                         calendarDeleteStatus = parsed.calendarDeleteStatus,
-                        proposedMedicationName = parsed.proposedMedicationName,
-                        proposedMedicationStartDate = parsed.proposedMedicationStartDate,
-                        proposedMedicationEndDate = parsed.proposedMedicationEndDate,
-                        proposedMedicationIsPresent = parsed.proposedMedicationIsPresent,
+                        proposedMedications = parsed.proposedMedications,
                         medicationStatus = parsed.medicationStatus
                     )
                 }
@@ -456,7 +457,7 @@ class CoachViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.Lazily, listOf(welcomeMessage))
 
 
-    fun approveProposedMedication(messageId: String, name: String, startDate: String, endDate: String, isPresent: Boolean) {
+    fun approveProposedMedication(messageId: String, proposedMeds: List<Medication>) {
         val sessionId = _currentSessionId.value ?: return
         viewModelScope.launch {
             try {
@@ -464,23 +465,18 @@ class CoachViewModel @Inject constructor(
                 val json = preferences.medications.first()
                 val currentList = if (json.isNotBlank()) {
                     try {
-                        Json.decodeFromString<List<Medication>>(json).toMutableList()
+                        Json.decodeFromString(kotlinx.serialization.builtins.ListSerializer(Medication.serializer()), json).toMutableList()
                     } catch (e: Exception) {
+                        e.printStackTrace()
                         mutableListOf()
                     }
                 } else {
                     mutableListOf()
                 }
                 
-                val newMed = Medication(
-                    id = java.util.UUID.randomUUID().toString(),
-                    name = name,
-                    startDate = startDate,
-                    endDate = if (isPresent) "Present" else endDate,
-                    isPresent = isPresent
-                )
-                currentList.add(newMed)
-                preferences.setMedications(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(Medication.serializer()), currentList))
+                // Add new meds and deduplicate by name
+                val updatedList = (currentList + proposedMeds).distinctBy { it.name.lowercase().trim() }
+                preferences.setMedications(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(Medication.serializer()), updatedList))
                 syncManager.pushProfileData()
 
                 // Mark the message as approved in SQLite
@@ -492,11 +488,14 @@ class CoachViewModel @Inject constructor(
                 }
 
                 // Add confirmation coach response message
+                val medNamesStr = proposedMeds.joinToString(", ") { med ->
+                    "${med.name} (Started: ${med.startDate}${if (med.isPresent) ", Present" else ", Ended: ${med.endDate}"})"
+                }
                 coachMessageDao.insertMessage(
                     CoachMessageEntity(
                         sessionId = sessionId,
                         role = "coach",
-                        content = "Added medication: $name (Started: $startDate${if (isPresent) ", Present" else ", Ended: $endDate"}).",
+                        content = "Added medications: $medNamesStr.",
                         isSynced = false
                     )
                 )
@@ -1222,6 +1221,18 @@ class CoachViewModel @Inject constructor(
                     return
                 } else if (lowerText == "no" || lowerText == "cancel" || lowerText == "don't" || lowerText == "don't set") {
                     denyProposedReminder(lastMsg.id)
+                    return
+                }
+            } else if (lastMsg.medicationStatus == MedicationStatus.PENDING && lastMsg.proposedMedications.isNotEmpty()) {
+                val lowerText = userText.lowercase()
+                if (lowerText == "yes" || lowerText == "add" || lowerText == "add it" || lowerText == "approve" || lowerText == "save" || lowerText == "sure" || lowerText == "ok") {
+                    approveProposedMedication(
+                        lastMsg.id,
+                        lastMsg.proposedMedications
+                    )
+                    return
+                } else if (lowerText == "no" || lowerText == "cancel" || lowerText == "don't" || lowerText == "don't add") {
+                    denyProposedMedication(lastMsg.id)
                     return
                 }
             }

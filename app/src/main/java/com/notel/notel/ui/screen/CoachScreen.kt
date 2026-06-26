@@ -54,6 +54,7 @@ import com.notel.notel.ui.viewmodel.PendingUploadFile
 import com.notel.notel.ui.viewmodel.ReminderStatus
 import com.notel.notel.ui.viewmodel.CalendarEventStatus
 import com.notel.notel.ui.viewmodel.MedicationStatus
+import com.notel.notel.ui.viewmodel.Medication
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -223,8 +224,8 @@ fun CoachScreen(
                             }
                         },
                         onDenyCalendarDelete = { viewModel.denyProposedCalendarDeleteEvent(message.id) },
-                        onApproveMedication = { name, start, end, present ->
-                            viewModel.approveProposedMedication(message.id, name, start, end, present)
+                        onApproveMedication = { meds ->
+                            viewModel.approveProposedMedication(message.id, meds)
                         },
                         onDenyMedication = { viewModel.denyProposedMedication(message.id) }
                     )
@@ -382,7 +383,7 @@ private fun ChatBubble(
     onDenyCalendar: () -> Unit,
     onApproveCalendarDelete: () -> Unit,
     onDenyCalendarDelete: () -> Unit,
-    onApproveMedication: (name: String, startDate: String, endDate: String, isPresent: Boolean) -> Unit,
+    onApproveMedication: (List<Medication>) -> Unit,
     onDenyMedication: () -> Unit
 ) {
     val clipboardManager = LocalClipboardManager.current
@@ -1188,8 +1189,9 @@ private fun ChatBubble(
         }
 
         // Medication Proposal Card
-        if (!isUser && message.proposedMedicationName != null) {
+        if (!isUser && message.proposedMedications.isNotEmpty()) {
             Spacer(modifier = Modifier.height(8.dp))
+            var isProcessed by remember { mutableStateOf(false) }
             when (message.medicationStatus) {
                 MedicationStatus.PENDING -> {
                     Surface(
@@ -1207,60 +1209,76 @@ private fun ChatBubble(
                             ) {
                                 Text("💊", fontSize = 16.sp)
                                 Text(
-                                    text = "Proposed Medication",
+                                    text = if (message.proposedMedications.size > 1) "Proposed Medications" else "Proposed Medication",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = NotelPrimary
                                 )
                             }
                             Spacer(modifier = Modifier.height(10.dp))
-                            Text(
-                                text = message.proposedMedicationName,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = NotelTextPrimary
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            val dateRange = if (message.proposedMedicationIsPresent) {
-                                "Started: ${message.proposedMedicationStartDate ?: "N/A"} • Present"
-                            } else {
-                                "Started: ${message.proposedMedicationStartDate ?: "N/A"} • Ended: ${message.proposedMedicationEndDate ?: "N/A"}"
+                            
+                            // Loop over medications
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                message.proposedMedications.forEach { med ->
+                                    Column {
+                                        Text(
+                                            text = med.name,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = NotelTextPrimary
+                                        )
+                                        val dateRange = if (med.isPresent) {
+                                            "Started: ${med.startDate} • Present"
+                                        } else {
+                                            "Started: ${med.startDate} • Ended: ${med.endDate}"
+                                        }
+                                        Text(
+                                            text = dateRange,
+                                            fontSize = 12.sp,
+                                            color = NotelTextSecondary
+                                        )
+                                    }
+                                }
                             }
-                            Text(
-                                text = dateRange,
-                                fontSize = 13.sp,
-                                color = NotelTextSecondary
-                            )
+                            
                             Spacer(modifier = Modifier.height(12.dp))
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 OutlinedButton(
-                                    onClick = onDenyMedication,
+                                    onClick = {
+                                        if (!isProcessed) {
+                                            isProcessed = true
+                                            onDenyMedication()
+                                        }
+                                    },
+                                    enabled = !isProcessed,
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.outlinedButtonColors(
-                                        contentColor = Color(0xFFFF5252)
+                                        contentColor = Color(0xFFFF5252),
+                                        disabledContentColor = Color(0xFFFF5252).copy(alpha = 0.5f)
                                     ),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF5252).copy(alpha = 0.4f))
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF5252).copy(alpha = if (isProcessed) 0.2f else 0.4f))
                                 ) {
                                     Text("Dismiss", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                 }
                                 Button(
                                     onClick = {
-                                        onApproveMedication(
-                                            message.proposedMedicationName,
-                                            message.proposedMedicationStartDate ?: "",
-                                            message.proposedMedicationEndDate ?: "",
-                                            message.proposedMedicationIsPresent
-                                        )
+                                        if (!isProcessed) {
+                                            isProcessed = true
+                                            onApproveMedication(message.proposedMedications)
+                                        }
                                     },
+                                    enabled = !isProcessed,
                                     modifier = Modifier.weight(1.5f),
                                     shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = NotelPrimary,
-                                        contentColor = Color.White
+                                        contentColor = Color.White,
+                                        disabledContainerColor = NotelPrimary.copy(alpha = 0.5f),
+                                        disabledContentColor = Color.White.copy(alpha = 0.5f)
                                     )
                                 ) {
                                     Text("Approve & Add", fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -1275,7 +1293,7 @@ private fun ChatBubble(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "✓ Medication Added to Profile",
+                            text = if (message.proposedMedications.size > 1) "✓ Medications Added to Profile" else "✓ Medication Added to Profile",
                             color = Color(0xFF00E676),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
