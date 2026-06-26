@@ -42,18 +42,22 @@ class BodyLoadReminderWorker @AssistedInject constructor(
         val categories = categoryRepository.getAllCategories().first()
         val helper = NotificationHelper(applicationContext)
 
-        logRepository.getBodyLoad(categories).fold(
-            onSuccess = { res ->
-                if (preferences.dailyCupUpdatesEnabled.first()) {
+        if (preferences.dailyCupUpdatesEnabled.first()) {
+            logRepository.getBodyLoad(categories).fold(
+                onSuccess = { res ->
                     helper.showBodyLoadUpdate(res.score)
+                },
+                onFailure = {
+                    if (preferences.bodyLoadRemindersEnabled.first()) {
+                        helper.showBodyLoadReminder()
+                    }
                 }
-            },
-            onFailure = {
-                if (preferences.bodyLoadRemindersEnabled.first()) {
-                    helper.showBodyLoadReminder()
-                }
+            )
+        } else {
+            if (preferences.bodyLoadRemindersEnabled.first()) {
+                helper.showBodyLoadReminder()
             }
-        )
+        }
 
         return Result.success()
     }

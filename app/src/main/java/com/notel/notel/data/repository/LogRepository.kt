@@ -1420,6 +1420,18 @@ class LogRepository @Inject constructor(
                 }
             }
         }
+
+        // If daily cup updates are disabled and we don't have a cached score, return an empty/disabled response to avoid AI call
+        if (!preferences.dailyCupUpdatesEnabled.first()) {
+            return Result.success(
+                BodyLoadResponse(
+                    score = -1,
+                    factors = emptyList(),
+                    advice = "Daily Cup Updates are disabled in settings.",
+                    subjectiveImpact = 0.0
+                )
+            )
+        }
         
         val todayAwake = preferences.todayAwakeAvgHr.first()
         val rawHrVal = if (dataDateStr == today && todayAwake > 0) {
