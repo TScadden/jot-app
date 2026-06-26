@@ -33,6 +33,15 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
+
+enum class MedicationStatus {
+    NONE,
+    PENDING,
+    APPROVED,
+    DENIED
+}
 
 enum class NoteStatus {
     NONE,
@@ -98,7 +107,12 @@ data class CoachMessage(
     val calendarStatus: CalendarEventStatus = CalendarEventStatus.NONE,
     val proposedCalendarDeleteTitle: String? = null,
     val proposedCalendarDeleteDate: String? = null,
-    val calendarDeleteStatus: CalendarEventStatus = CalendarEventStatus.NONE
+    val calendarDeleteStatus: CalendarEventStatus = CalendarEventStatus.NONE,
+    val proposedMedicationName: String? = null,
+    val proposedMedicationStartDate: String? = null,
+    val proposedMedicationEndDate: String? = null,
+    val proposedMedicationIsPresent: Boolean = false,
+    val medicationStatus: MedicationStatus = MedicationStatus.NONE
 )
 
 data class CoachMessageParsed(
@@ -120,7 +134,12 @@ data class CoachMessageParsed(
     val calendarStatus: CalendarEventStatus,
     val proposedCalendarDeleteTitle: String?,
     val proposedCalendarDeleteDate: String?,
-    val calendarDeleteStatus: CalendarEventStatus
+    val calendarDeleteStatus: CalendarEventStatus,
+    val proposedMedicationName: String?,
+    val proposedMedicationStartDate: String?,
+    val proposedMedicationEndDate: String?,
+    val proposedMedicationIsPresent: Boolean,
+    val medicationStatus: MedicationStatus
 )
 
 fun parseCoachMessageContent(rawContent: String): CoachMessageParsed {
@@ -148,6 +167,10 @@ fun parseCoachMessageContent(rawContent: String): CoachMessageParsed {
     val approveDeleteCalendarRegex = Regex("\\[APPROVED_DELETE_CALENDAR_EVENT:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
     val denyDeleteCalendarRegex = Regex("\\[DENIED_DELETE_CALENDAR_EVENT:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
 
+    val proposeMedicationRegex = Regex("\\[PROPOSE_MEDICATION:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
+    val approveMedicationRegex = Regex("\\[APPROVED_MEDICATION:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
+    val denyMedicationRegex = Regex("\\[DENIED_MEDICATION:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
+
     var cleanContent = rawContent
     var proposedNoteText: String? = null
     var noteStatus = NoteStatus.NONE
@@ -169,6 +192,12 @@ fun parseCoachMessageContent(rawContent: String): CoachMessageParsed {
     var proposedCalendarDeleteTitle: String? = null
     var proposedCalendarDeleteDate: String? = null
     var calendarDeleteStatus = CalendarEventStatus.NONE
+
+    var proposedMedicationName: String? = null
+    var proposedMedicationStartDate: String? = null
+    var proposedMedicationEndDate: String? = null
+    var proposedMedicationIsPresent: Boolean = false
+    var medicationStatus = MedicationStatus.NONE
 
     if (proposeRegex.containsMatchIn(cleanContent)) {
         val matchResult = proposeRegex.find(cleanContent)!!
@@ -300,6 +329,31 @@ fun parseCoachMessageContent(rawContent: String): CoachMessageParsed {
         calendarDeleteStatus = CalendarEventStatus.DENIED
     }
 
+    fun parseMedicationString(raw: String) {
+        val parts = raw.split("|")
+        proposedMedicationName = parts.getOrNull(0)?.trim()
+        proposedMedicationStartDate = parts.getOrNull(1)?.trim()
+        proposedMedicationEndDate = parts.getOrNull(2)?.trim()
+        proposedMedicationIsPresent = parts.getOrNull(3)?.trim()?.lowercase() == "true"
+    }
+
+    if (proposeMedicationRegex.containsMatchIn(cleanContent)) {
+        val matchResult = proposeMedicationRegex.find(cleanContent)!!
+        parseMedicationString(matchResult.groupValues[1])
+        cleanContent = cleanContent.replace(matchResult.value, "").trim()
+        medicationStatus = MedicationStatus.PENDING
+    } else if (approveMedicationRegex.containsMatchIn(cleanContent)) {
+        val matchResult = approveMedicationRegex.find(cleanContent)!!
+        parseMedicationString(matchResult.groupValues[1])
+        cleanContent = cleanContent.replace(matchResult.value, "").trim()
+        medicationStatus = MedicationStatus.APPROVED
+    } else if (denyMedicationRegex.containsMatchIn(cleanContent)) {
+        val matchResult = denyMedicationRegex.find(cleanContent)!!
+        parseMedicationString(matchResult.groupValues[1])
+        cleanContent = cleanContent.replace(matchResult.value, "").trim()
+        medicationStatus = MedicationStatus.DENIED
+    }
+
     return CoachMessageParsed(
         cleanContent = cleanContent,
         proposedNoteText = proposedNoteText,
@@ -319,7 +373,12 @@ fun parseCoachMessageContent(rawContent: String): CoachMessageParsed {
         calendarStatus = calendarStatus,
         proposedCalendarDeleteTitle = proposedCalendarDeleteTitle,
         proposedCalendarDeleteDate = proposedCalendarDeleteDate,
-        calendarDeleteStatus = calendarDeleteStatus
+        calendarDeleteStatus = calendarDeleteStatus,
+        proposedMedicationName = proposedMedicationName,
+        proposedMedicationStartDate = proposedMedicationStartDate,
+        proposedMedicationEndDate = proposedMedicationEndDate,
+        proposedMedicationIsPresent = proposedMedicationIsPresent,
+        medicationStatus = medicationStatus
     )
 }
 
@@ -378,7 +437,12 @@ class CoachViewModel @Inject constructor(
                         calendarStatus = parsed.calendarStatus,
                         proposedCalendarDeleteTitle = parsed.proposedCalendarDeleteTitle,
                         proposedCalendarDeleteDate = parsed.proposedCalendarDeleteDate,
-                        calendarDeleteStatus = parsed.calendarDeleteStatus
+                        calendarDeleteStatus = parsed.calendarDeleteStatus,
+                        proposedMedicationName = parsed.proposedMedicationName,
+                        proposedMedicationStartDate = parsed.proposedMedicationStartDate,
+                        proposedMedicationEndDate = parsed.proposedMedicationEndDate,
+                        proposedMedicationIsPresent = parsed.proposedMedicationIsPresent,
+                        medicationStatus = parsed.medicationStatus
                     )
                 }
             }
@@ -391,6 +455,72 @@ class CoachViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.Lazily, listOf(welcomeMessage))
 
+
+    fun approveProposedMedication(messageId: String, name: String, startDate: String, endDate: String, isPresent: Boolean) {
+        val sessionId = _currentSessionId.value ?: return
+        viewModelScope.launch {
+            try {
+                // Add to preferences
+                val json = preferences.medications.first()
+                val currentList = if (json.isNotBlank()) {
+                    try {
+                        Json.decodeFromString<List<Medication>>(json).toMutableList()
+                    } catch (e: Exception) {
+                        mutableListOf()
+                    }
+                } else {
+                    mutableListOf()
+                }
+                
+                val newMed = Medication(
+                    id = java.util.UUID.randomUUID().toString(),
+                    name = name,
+                    startDate = startDate,
+                    endDate = if (isPresent) "Present" else endDate,
+                    isPresent = isPresent
+                )
+                currentList.add(newMed)
+                preferences.setMedications(Json.encodeToString(currentList))
+                syncManager.pushProfileData()
+
+                // Mark the message as approved in SQLite
+                val dbEntities = coachMessageDao.getMessagesForSession(sessionId).first()
+                val targetEntity = dbEntities.find { it.id == messageId }
+                if (targetEntity != null) {
+                    val updatedContent = targetEntity.content.replace("[PROPOSE_MEDICATION:", "[APPROVED_MEDICATION:")
+                    coachMessageDao.insertMessage(targetEntity.copy(content = updatedContent, isSynced = false))
+                }
+
+                // Add confirmation coach response message
+                coachMessageDao.insertMessage(
+                    CoachMessageEntity(
+                        sessionId = sessionId,
+                        role = "coach",
+                        content = "Added medication: $name (Started: $startDate${if (isPresent) ", Present" else ", Ended: $endDate"}).",
+                        isSynced = false
+                    )
+                )
+            } catch (e: Exception) {
+                // Log or ignore
+            }
+        }
+    }
+
+    fun denyProposedMedication(messageId: String) {
+        val sessionId = _currentSessionId.value ?: return
+        viewModelScope.launch {
+            try {
+                val dbEntities = coachMessageDao.getMessagesForSession(sessionId).first()
+                val targetEntity = dbEntities.find { it.id == messageId }
+                if (targetEntity != null) {
+                    val updatedContent = targetEntity.content.replace("[PROPOSE_MEDICATION:", "[DENIED_MEDICATION:")
+                    coachMessageDao.insertMessage(targetEntity.copy(content = updatedContent, isSynced = false))
+                }
+            } catch (e: Exception) {
+                // Log or ignore
+            }
+        }
+    }
 
     fun approveProposedNote(messageId: String, noteText: String) {
         viewModelScope.launch {
@@ -1208,6 +1338,11 @@ class CoachViewModel @Inject constructor(
                     REMINDERS: If the user mentions wanting to be reminded of something, wanting to remember something at a certain time, or asks you to set a reminder, propose a reminder. Format: [PROPOSE_REMINDER:Reminder Title|HH:MM]
                     Use 24-hour format for the time. Example: [PROPOSE_REMINDER:Take medication|08:00]
                     If no specific time is mentioned, suggest a reasonable time based on context.
+
+                    MEDICATIONS: If the user mentions starting, taking, stopping, or updating a medication, or asks you to add a medication, propose a medication. Format: [PROPOSE_MEDICATION:Name|StartDate|EndDate|isPresent]
+                    Use 'isPresent' as 'true' if the user is still taking the medication, or 'false' if they have stopped. If they are still taking it, the EndDate should be empty.
+                    Dates should look like "Jun 2026", "2025-12-05", "Dec 2025" or similar based on context.
+                    Example: [PROPOSE_MEDICATION:Pyridostigmine|Jun 2026||true]
 
                     $calendarInstructions
 

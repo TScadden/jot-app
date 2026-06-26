@@ -2064,7 +2064,7 @@ fun SettingsScreen(
                             Spacer(Modifier.height(16.dp))
                             if (medicationsList.isEmpty()) {
                                 Text(
-                                    "No medications added yet. Tap the + button to add one manually or using AI.",
+                                    "No medications added yet. Tap the + button to add one manually.",
                                     color = NotelTextSecondary,
                                     fontSize = 13.sp,
                                     modifier = Modifier.padding(bottom = 8.dp)
@@ -2123,191 +2123,75 @@ fun SettingsScreen(
 
             if (showAddMedicationDialog) {
                 AlertDialog(
-                    onDismissRequest = { if (!isAiExtracting) showAddMedicationDialog = false },
+                    onDismissRequest = { showAddMedicationDialog = false },
                     title = { Text("Add Medication", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
                     text = {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            // Tab Selector
+                            OutlinedTextField(
+                                value = newMedName,
+                                onValueChange = { newMedName = it },
+                                label = { Text("Medication Name", color = NotelTextSecondary) },
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, cursorColor = NotelPrimary, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
+                            )
+                            OutlinedTextField(
+                                value = newMedStartDate,
+                                onValueChange = { newMedStartDate = it },
+                                label = { Text("Started Date (e.g. Jun 2026)", color = NotelTextSecondary) },
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, cursorColor = NotelPrimary, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
+                            )
                             Row(
+                                verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .background(NotelSurfaceHigh.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                                    .padding(4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    .clickable { newMedIsPresent = !newMedIsPresent }
                             ) {
-                                Button(
-                                    onClick = { addTabMode = 0 },
-                                    modifier = Modifier.weight(1f),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (addTabMode == 0) NotelPrimary else Color.Transparent,
-                                        contentColor = if (addTabMode == 0) Color.White else NotelTextPrimary
-                                    ),
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(vertical = 4.dp)
-                                ) {
-                                    Text("Manual", fontSize = 13.sp)
-                                }
-                                Button(
-                                    onClick = { addTabMode = 1 },
-                                    modifier = Modifier.weight(1f),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (addTabMode == 1) NotelPrimary else Color.Transparent,
-                                        contentColor = if (addTabMode == 1) Color.White else NotelTextPrimary
-                                    ),
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(vertical = 4.dp)
-                                ) {
-                                    Text("AI Import", fontSize = 13.sp)
-                                }
+                                Checkbox(
+                                    checked = newMedIsPresent,
+                                    onCheckedChange = { newMedIsPresent = it },
+                                    colors = CheckboxDefaults.colors(checkedColor = NotelPrimary)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text("Still taking (Present)", color = NotelTextPrimary, fontSize = 14.sp)
                             }
-
-                            if (addTabMode == 0) {
-                                // Manual Form
+                            if (!newMedIsPresent) {
                                 OutlinedTextField(
-                                    value = newMedName,
-                                    onValueChange = { newMedName = it },
-                                    label = { Text("Medication Name", color = NotelTextSecondary) },
+                                    value = newMedEndDate,
+                                    onValueChange = { newMedEndDate = it },
+                                    label = { Text("Ended Date (e.g. Jul 2026)", color = NotelTextSecondary) },
                                     singleLine = true,
                                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, cursorColor = NotelPrimary, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
                                 )
-                                OutlinedTextField(
-                                    value = newMedStartDate,
-                                    onValueChange = { newMedStartDate = it },
-                                    label = { Text("Started Date (e.g. Jun 2026)", color = NotelTextSecondary) },
-                                    singleLine = true,
-                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, cursorColor = NotelPrimary, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
-                                )
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { newMedIsPresent = !newMedIsPresent }
-                                ) {
-                                    Checkbox(
-                                        checked = newMedIsPresent,
-                                        onCheckedChange = { newMedIsPresent = it },
-                                        colors = CheckboxDefaults.colors(checkedColor = NotelPrimary)
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Still taking (Present)", color = NotelTextPrimary, fontSize = 14.sp)
-                                }
-                                if (!newMedIsPresent) {
-                                    OutlinedTextField(
-                                        value = newMedEndDate,
-                                        onValueChange = { newMedEndDate = it },
-                                        label = { Text("Ended Date (e.g. Jul 2026)", color = NotelTextSecondary) },
-                                        singleLine = true,
-                                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, cursorColor = NotelPrimary, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
-                                    )
-                                }
-                            } else {
-                                // AI Import Form
-                                Text("Ask Gemini to extract medications from your text or uploaded documents.", color = NotelTextSecondary, fontSize = 12.sp)
-                                OutlinedTextField(
-                                    value = aiText,
-                                    onValueChange = { aiText = it },
-                                    placeholder = { Text("Describe/Paste medication text here...", color = NotelTextSecondary) },
-                                    minLines = 3,
-                                    maxLines = 5,
-                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, cursorColor = NotelPrimary, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
-                                )
-
-                                if (knowledgeDocuments.isNotEmpty()) {
-                                    Spacer(Modifier.height(4.dp))
-                                    Text("Or select from uploaded documents:", color = NotelTextSecondary, fontSize = 12.sp)
-                                    
-                                    Box {
-                                        Button(
-                                            onClick = { isDocDropdownExpanded = true },
-                                            colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh),
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Text(selectedDocName, color = NotelTextPrimary, fontSize = 12.sp)
-                                        }
-                                        DropdownMenu(
-                                            expanded = isDocDropdownExpanded,
-                                            onDismissRequest = { isDocDropdownExpanded = false },
-                                            modifier = Modifier.background(NotelSurface)
-                                        ) {
-                                            DropdownMenuItem(
-                                                text = { Text("None", color = NotelTextPrimary) },
-                                                onClick = {
-                                                    selectedDocName = "None"
-                                                    selectedDocText = ""
-                                                    isDocDropdownExpanded = false
-                                                }
-                                            )
-                                            knowledgeDocuments.forEach { doc ->
-                                                DropdownMenuItem(
-                                                    text = { Text(doc.name, color = NotelTextPrimary) },
-                                                    onClick = {
-                                                        selectedDocName = doc.name
-                                                        selectedDocText = doc.extractedText ?: ""
-                                                        isDocDropdownExpanded = false
-                                                    }
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                                
-                                if (aiError != null) {
-                                    Text(aiError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                                }
                             }
                         }
                     },
                     confirmButton = {
                         TextButton(
                             onClick = {
-                                if (addTabMode == 0) {
-                                    if (newMedName.isNotBlank()) {
-                                        viewModel.addMedication(
-                                            name = newMedName,
-                                            startDate = newMedStartDate,
-                                            endDate = newMedEndDate,
-                                            isPresent = newMedIsPresent
-                                        )
-                                        // Reset fields
-                                        newMedName = ""
-                                        newMedStartDate = ""
-                                        newMedEndDate = ""
-                                        newMedIsPresent = true
-                                        showAddMedicationDialog = false
-                                    }
-                                } else {
-                                    isAiExtracting = true
-                                    aiError = null
-                                    viewModel.extractMedicationsFromText(
-                                        text = aiText,
-                                        docText = selectedDocText,
-                                        onResult = {
-                                            isAiExtracting = false
-                                            aiText = ""
-                                            selectedDocText = ""
-                                            selectedDocName = "No document selected"
-                                            showAddMedicationDialog = false
-                                        },
-                                        onError = { error ->
-                                            isAiExtracting = false
-                                            aiError = error
-                                        }
+                                if (newMedName.isNotBlank()) {
+                                    viewModel.addMedication(
+                                        name = newMedName,
+                                        startDate = newMedStartDate,
+                                        endDate = newMedEndDate,
+                                        isPresent = newMedIsPresent
                                     )
+                                    // Reset fields
+                                    newMedName = ""
+                                    newMedStartDate = ""
+                                    newMedEndDate = ""
+                                    newMedIsPresent = true
+                                    showAddMedicationDialog = false
                                 }
                             },
-                            enabled = !isAiExtracting && (addTabMode == 1 || newMedName.isNotBlank())
+                            enabled = newMedName.isNotBlank()
                         ) {
-                            if (isAiExtracting) {
-                                CircularProgressIndicator(color = NotelPrimary, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                            } else {
-                                Text("Add", color = NotelPrimary)
-                            }
+                            Text("Add", color = NotelPrimary)
                         }
                     },
                     dismissButton = {
                         TextButton(
-                            onClick = { showAddMedicationDialog = false },
-                            enabled = !isAiExtracting
+                            onClick = { showAddMedicationDialog = false }
                         ) {
                             Text("Cancel", color = NotelTextSecondary)
                         }
