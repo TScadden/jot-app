@@ -2017,37 +2017,51 @@ fun SettingsScreen(
             var showDeleteAccountConfirmDialog by remember { mutableStateOf(false) }
             var isDeletingAccount by remember { mutableStateOf(false) }
             var accountDeleteError by remember { mutableStateOf<String?>(null) }
+            var isPrivacyExpanded by remember { mutableStateOf(false) }
 
             GlassyCard(
                 shape = RoundedCornerShape(16.dp),
                 color = NotelSurface
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { isPrivacyExpanded = !isPrivacyExpanded }
+                ) {
                     Icon(Icons.Default.Security, null, tint = NotelPrimary, modifier = Modifier.size(28.dp))
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Privacy & Deletion", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
                         Text("GDPR / CCPA compliance data deletion options", color = NotelTextSecondary, fontSize = 12.sp)
                     }
-                }
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    "You have the right to request deletion of all your sync information, logs, files, and credentials from our cloud servers and database permanently.",
-                    color = NotelTextSecondary,
-                    fontSize = 11.sp
-                )
-                Spacer(Modifier.height(16.dp))
-                GlassyButton(
-                    onClick = { showDeleteAccountConfirmDialog = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.15f)
-                ) {
-                    Text("Permanently Delete Account & Data", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                    Icon(
+                        imageVector = if (isPrivacyExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = if (isPrivacyExpanded) "Collapse" else "Expand",
+                        tint = NotelTextSecondary
+                    )
                 }
 
-                if (accountDeleteError != null) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(accountDeleteError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                if (isPrivacyExpanded) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "You have the right to request deletion of all your sync information, logs, files, and credentials from our cloud servers and database permanently.",
+                        color = NotelTextSecondary,
+                        fontSize = 11.sp
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    GlassyButton(
+                        onClick = { showDeleteAccountConfirmDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.15f)
+                    ) {
+                        Text("Permanently Delete Account & Data", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                    }
+
+                    if (accountDeleteError != null) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(accountDeleteError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    }
                 }
             }
 
