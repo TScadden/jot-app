@@ -193,7 +193,7 @@ class NotelPreferences @Inject constructor(
     val counterHistory: Flow<String> = context.dataStore.data.map { it[COUNTER_HISTORY] ?: "[]" }
     val settingsTutorialSeen: Flow<Boolean> = context.dataStore.data.map { it[SETTINGS_TUTORIAL_SEEN] ?: false }
     val bodyLoadRemindersEnabled: Flow<Boolean> = context.dataStore.data.map { it[BODY_LOAD_REMINDERS_ENABLED] ?: true }
-    val dailyCupUpdatesEnabled: Flow<Boolean> = context.dataStore.data.map { it[DAILY_CUP_UPDATES_ENABLED] ?: true }
+    val dailyCupUpdatesEnabled: Flow<Boolean> = context.dataStore.data.map { it[DAILY_CUP_UPDATES_ENABLED] ?: false }
     val hrSpikeAlertsEnabled: Flow<Boolean> = context.dataStore.data.map { it[HR_SPIKE_ALERTS_ENABLED] ?: false }
     val spikeThreshold: Flow<Int> = context.dataStore.data.map { it[SPIKE_THRESHOLD] ?: 120 }
     val hrDeltaEnabled: Flow<Boolean> = context.dataStore.data.map { it[HR_DELTA_ENABLED] ?: false }

@@ -312,7 +312,7 @@ class SettingsViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
     val dailyCupUpdatesEnabled = preferences.dailyCupUpdatesEnabled
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     val userNickname = preferences.userNickname
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
