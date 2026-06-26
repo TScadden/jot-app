@@ -1142,6 +1142,14 @@ class LogRepository @Inject constructor(
         knowledgeDocumentDao.updateExtractedText(docId, newText)
     }
 
+    suspend fun getAiExtraction(prompt: String): Result<String> {
+        return geminiService.getAdvice(
+            recentEntries = emptyList(),
+            categories = emptyMap(),
+            userContext = prompt
+        )
+    }
+
     suspend fun clearKnowledgeBase() {
         preferences.setKnowledgeBase("")
         preferences.setProcessedFiles("")

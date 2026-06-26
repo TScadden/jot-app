@@ -326,6 +326,12 @@ class SettingsViewModel @Inject constructor(
     val hrSpikeAlertsEnabled = preferences.hrSpikeAlertsEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
+    val medications = preferences.medications.map { json ->
+        try {
+            if (json.isNotBlank()) Json.decodeFromString<List<Medication>>(json) else emptyList()
+        } catch (e: Exception) { emptyList() }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val reportReadyEvent = logRepository.reportReadyEvent
     val aiInsightReadyEvent = logRepository.aiInsightReadyEvent
 
@@ -721,6 +727,95 @@ class SettingsViewModel @Inject constructor(
     fun clearHabitData() {
         viewModelScope.launch {
             habitRepository.clearHabitData()
+        }
+    }
+
+    fun addMedication(name: String, startDate: String, endDate: String, isPresent: Boolean) {
+        viewModelScope.launch {
+            val current = medications.value.toMutableList()
+            val newMed = Medication(
+                id = java.util.UUID.randomUUID().toString(),
+                name = name,
+                startDate = startDate,
+                endDate = if (isPresent) "Present" else endDate,
+                isPresent = isPresent
+            )
+            current.add(newMed)
+            preferences.setMedications(Json.encodeToString(current))
+            syncManager.pushProfileData()
+        }
+    }
+
+    fun deleteMedication(id: String) {
+        viewModelScope.launch {
+            val current = medications.value.filter { it.id != id }
+            preferences.setMedications(Json.encodeToString(current))
+            syncManager.pushProfileData()
+        }
+    }
+
+    fun extractMedicationsFromText(
+        text: String,
+        docText: String,
+        onResult: (List<Medication>) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val prompt = """
+            You are a precise clinical data extraction AI. Extract all medications mentioned in the following user text and document content.
+            For each medication, return:
+            1. Medication Name (correct spelling and grammar)
+            2. Start Date (e.g. "Jun 2026", "2026-06-25", or empty string if not mentioned)
+            3. End Date (e.g. "Jul 2026", or "Present" if the user is still taking it or there is no indication of stopping)
+            4. isPresent (boolean: true if the end date is "Present", false otherwise)
+
+            Return ONLY a raw JSON array matching this exact schema:
+            [
+              {
+                "id": "generate-a-unique-uuid",
+                "name": "Medication Name",
+                "startDate": "Start Date",
+                "endDate": "End Date or Present",
+                "isPresent": true
+              }
+            ]
+            Do not output any markdown code blocks, explanation, or other text. Simply output the JSON array.
+            
+            User text:
+            $text
+            
+            Document context:
+            $docText
+            """.trimIndent()
+            
+            try {
+                val result = logRepository.getAiExtraction(prompt)
+                result.fold(
+                    onSuccess = { responseText ->
+                        try {
+                            val cleanJson = responseText.trim()
+                                .removePrefix("```json")
+                                .removePrefix("```")
+                                .removeSuffix("```")
+                                .trim()
+                            val parsed = Json.decodeFromString<List<Medication>>(cleanJson)
+                            
+                            val updated = (medications.value + parsed).distinctBy { it.name.lowercase().trim() }
+                            preferences.setMedications(Json.encodeToString(updated))
+                            syncManager.pushProfileData()
+                            
+                            onResult(parsed)
+                        } catch (e: Exception) {
+                            onError("Failed to parse medication details from AI response: ${e.message}")
+                        }
+                    },
+                    onFailure = { err ->
+                        onError(err.message ?: "AI Extraction failed")
+                    }
+                )
+            } catch (e: Exception) {
+                onError(e.message ?: "An error occurred during AI extraction")
+            }
         }
     }
 
@@ -1209,5 +1304,14 @@ data class CounterHistoryItem(
 data class SystemLog(
     val body: String,
     val timestamp: Long
+)
+
+@kotlinx.serialization.Serializable
+data class Medication(
+    val id: String,
+    val name: String,
+    val startDate: String,
+    val endDate: String,
+    val isPresent: Boolean = false
 )
 

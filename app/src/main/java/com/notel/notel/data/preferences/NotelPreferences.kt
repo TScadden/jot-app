@@ -119,6 +119,12 @@ class NotelPreferences @Inject constructor(
         val HEART_RATE_HISTORY = stringPreferencesKey("heart_rate_history")
         val GOOGLE_CALENDAR_CONNECTED = booleanPreferencesKey("google_calendar_connected")
         val GOOGLE_CALENDAR_EMAIL = stringPreferencesKey("google_calendar_email")
+        val MEDICATIONS = stringPreferencesKey("medications")
+    }
+
+    val medications: Flow<String> = context.dataStore.data.map { it[MEDICATIONS] ?: "[]" }
+    suspend fun setMedications(jsonArray: String) {
+        context.dataStore.edit { it[MEDICATIONS] = jsonArray }
     }
 
     val bleAutoConnectEnabled: Flow<Boolean> = context.dataStore.data.map { it[BLE_AUTO_CONNECT_ENABLED] ?: true }

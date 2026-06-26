@@ -2013,6 +2013,311 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(16.dp))
 
+            // Medications section
+            var isMedicationsExpanded by remember { mutableStateOf(false) }
+            val medicationsList by viewModel.medications.collectAsState()
+            var showAddMedicationDialog by remember { mutableStateOf(false) }
+
+            // AI Import states
+            var aiText by remember { mutableStateOf("") }
+            var selectedDocText by remember { mutableStateOf("") }
+            var selectedDocName by remember { mutableStateOf("No document selected") }
+            var isDocDropdownExpanded by remember { mutableStateOf(false) }
+            var isAiExtracting by remember { mutableStateOf(false) }
+            var aiError by remember { mutableStateOf<String?>(null) }
+
+            // Manual Add states
+            var newMedName by remember { mutableStateOf("") }
+            var newMedStartDate by remember { mutableStateOf("") }
+            var newMedEndDate by remember { mutableStateOf("") }
+            var newMedIsPresent by remember { mutableStateOf(true) }
+
+            // Dialog tab state
+            var addTabMode by remember { mutableStateOf(0) } // 0 = Manual, 1 = AI Import
+
+            GlassyCard(
+                shape = RoundedCornerShape(16.dp),
+                color = NotelSurface
+            ) {
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { isMedicationsExpanded = !isMedicationsExpanded }
+                        ) {
+                            Icon(Icons.Default.Medication, null, tint = NotelPrimary, modifier = Modifier.size(28.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Medications", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                                Text("Track your current and historical medications", color = NotelTextSecondary, fontSize = 12.sp)
+                            }
+                            Icon(
+                                imageVector = if (isMedicationsExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                contentDescription = if (isMedicationsExpanded) "Collapse" else "Expand",
+                                tint = NotelTextSecondary
+                            )
+                        }
+
+                        if (isMedicationsExpanded) {
+                            Spacer(Modifier.height(16.dp))
+                            if (medicationsList.isEmpty()) {
+                                Text(
+                                    "No medications added yet. Tap the + button to add one manually or using AI.",
+                                    color = NotelTextSecondary,
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+                            } else {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    medicationsList.forEach { med ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(NotelSurfaceHigh.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                                                .padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(med.name, color = NotelTextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                                val dateRange = if (med.isPresent) {
+                                                    "Started: ${med.startDate} • Present"
+                                                } else {
+                                                    "Started: ${med.startDate} • Ended: ${med.endDate}"
+                                                }
+                                                Text(dateRange, color = NotelTextSecondary, fontSize = 12.sp)
+                                            }
+                                            IconButton(
+                                                onClick = { viewModel.deleteMedication(med.id) },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(48.dp)) // padding so the floating + button doesn't overlap content
+                        }
+                    }
+
+                    // Floating + Button inside the bottom right of the card when expanded
+                    if (isMedicationsExpanded) {
+                        FloatingActionButton(
+                            onClick = { showAddMedicationDialog = true },
+                            containerColor = NotelPrimary,
+                            contentColor = Color.White,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .size(40.dp)
+                                .padding(0.dp),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.Add, "Add Medication", modifier = Modifier.size(20.dp))
+                        }
+                    }
+                }
+            }
+
+            if (showAddMedicationDialog) {
+                AlertDialog(
+                    onDismissRequest = { if (!isAiExtracting) showAddMedicationDialog = false },
+                    title = { Text("Add Medication", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            // Tab Selector
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(NotelSurfaceHigh.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                    .padding(4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Button(
+                                    onClick = { addTabMode = 0 },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (addTabMode == 0) NotelPrimary else Color.Transparent,
+                                        contentColor = if (addTabMode == 0) Color.White else NotelTextPrimary
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(vertical = 4.dp)
+                                ) {
+                                    Text("Manual", fontSize = 13.sp)
+                                }
+                                Button(
+                                    onClick = { addTabMode = 1 },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (addTabMode == 1) NotelPrimary else Color.Transparent,
+                                        contentColor = if (addTabMode == 1) Color.White else NotelTextPrimary
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(vertical = 4.dp)
+                                ) {
+                                    Text("AI Import", fontSize = 13.sp)
+                                }
+                            }
+
+                            if (addTabMode == 0) {
+                                // Manual Form
+                                OutlinedTextField(
+                                    value = newMedName,
+                                    onValueChange = { newMedName = it },
+                                    label = { Text("Medication Name", color = NotelTextSecondary) },
+                                    singleLine = true,
+                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, cursorColor = NotelPrimary, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
+                                )
+                                OutlinedTextField(
+                                    value = newMedStartDate,
+                                    onValueChange = { newMedStartDate = it },
+                                    label = { Text("Started Date (e.g. Jun 2026)", color = NotelTextSecondary) },
+                                    singleLine = true,
+                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, cursorColor = NotelPrimary, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
+                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { newMedIsPresent = !newMedIsPresent }
+                                ) {
+                                    Checkbox(
+                                        checked = newMedIsPresent,
+                                        onCheckedChange = { newMedIsPresent = it },
+                                        colors = CheckboxDefaults.colors(checkedColor = NotelPrimary)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Still taking (Present)", color = NotelTextPrimary, fontSize = 14.sp)
+                                }
+                                if (!newMedIsPresent) {
+                                    OutlinedTextField(
+                                        value = newMedEndDate,
+                                        onValueChange = { newMedEndDate = it },
+                                        label = { Text("Ended Date (e.g. Jul 2026)", color = NotelTextSecondary) },
+                                        singleLine = true,
+                                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, cursorColor = NotelPrimary, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
+                                    )
+                                }
+                            } else {
+                                // AI Import Form
+                                Text("Ask Gemini to extract medications from your text or uploaded documents.", color = NotelTextSecondary, fontSize = 12.sp)
+                                OutlinedTextField(
+                                    value = aiText,
+                                    onValueChange = { aiText = it },
+                                    placeholder = { Text("Describe/Paste medication text here...", color = NotelTextSecondary) },
+                                    minLines = 3,
+                                    maxLines = 5,
+                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, cursorColor = NotelPrimary, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
+                                )
+
+                                if (knowledgeDocuments.isNotEmpty()) {
+                                    Spacer(Modifier.height(4.dp))
+                                    Text("Or select from uploaded documents:", color = NotelTextSecondary, fontSize = 12.sp)
+                                    
+                                    Box {
+                                        Button(
+                                            onClick = { isDocDropdownExpanded = true },
+                                            colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(selectedDocName, color = NotelTextPrimary, fontSize = 12.sp)
+                                        }
+                                        DropdownMenu(
+                                            expanded = isDocDropdownExpanded,
+                                            onDismissRequest = { isDocDropdownExpanded = false },
+                                            modifier = Modifier.background(NotelSurface)
+                                        ) {
+                                            DropdownMenuItem(
+                                                text = { Text("None", color = NotelTextPrimary) },
+                                                onClick = {
+                                                    selectedDocName = "None"
+                                                    selectedDocText = ""
+                                                    isDocDropdownExpanded = false
+                                                }
+                                            )
+                                            knowledgeDocuments.forEach { doc ->
+                                                DropdownMenuItem(
+                                                    text = { Text(doc.name, color = NotelTextPrimary) },
+                                                    onClick = {
+                                                        selectedDocName = doc.name
+                                                        selectedDocText = doc.extractedText ?: ""
+                                                        isDocDropdownExpanded = false
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                if (aiError != null) {
+                                    Text(aiError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                if (addTabMode == 0) {
+                                    if (newMedName.isNotBlank()) {
+                                        viewModel.addMedication(
+                                            name = newMedName,
+                                            startDate = newMedStartDate,
+                                            endDate = newMedEndDate,
+                                            isPresent = newMedIsPresent
+                                        )
+                                        // Reset fields
+                                        newMedName = ""
+                                        newMedStartDate = ""
+                                        newMedEndDate = ""
+                                        newMedIsPresent = true
+                                        showAddMedicationDialog = false
+                                    }
+                                } else {
+                                    isAiExtracting = true
+                                    aiError = null
+                                    viewModel.extractMedicationsFromText(
+                                        text = aiText,
+                                        docText = selectedDocText,
+                                        onResult = {
+                                            isAiExtracting = false
+                                            aiText = ""
+                                            selectedDocText = ""
+                                            selectedDocName = "No document selected"
+                                            showAddMedicationDialog = false
+                                        },
+                                        onError = { error ->
+                                            isAiExtracting = false
+                                            aiError = error
+                                        }
+                                    )
+                                }
+                            },
+                            enabled = !isAiExtracting && (addTabMode == 1 || newMedName.isNotBlank())
+                        ) {
+                            if (isAiExtracting) {
+                                CircularProgressIndicator(color = NotelPrimary, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            } else {
+                                Text("Add", color = NotelPrimary)
+                            }
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = { showAddMedicationDialog = false },
+                            enabled = !isAiExtracting
+                        ) {
+                            Text("Cancel", color = NotelTextSecondary)
+                        }
+                    },
+                    containerColor = NotelSurface
+                )
+            }
+
+            Spacer(Modifier.height(16.dp))
+
             // Privacy & Deletion section (GDPR & CCPA Compliant)
             var showDeleteAccountConfirmDialog by remember { mutableStateOf(false) }
             var isDeletingAccount by remember { mutableStateOf(false) }
