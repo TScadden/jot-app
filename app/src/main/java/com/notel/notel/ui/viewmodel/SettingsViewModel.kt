@@ -741,7 +741,7 @@ class SettingsViewModel @Inject constructor(
                 isPresent = isPresent
             )
             current.add(newMed)
-            preferences.setMedications(Json.encodeToString(current))
+            preferences.setMedications(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(Medication.serializer()), current))
             syncManager.pushProfileData()
         }
     }
@@ -749,7 +749,7 @@ class SettingsViewModel @Inject constructor(
     fun deleteMedication(id: String) {
         viewModelScope.launch {
             val current = medications.value.filter { it.id != id }
-            preferences.setMedications(Json.encodeToString(current))
+            preferences.setMedications(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(Medication.serializer()), current))
             syncManager.pushProfileData()
         }
     }
@@ -801,7 +801,7 @@ class SettingsViewModel @Inject constructor(
                             val parsed = Json.decodeFromString<List<Medication>>(cleanJson)
                             
                             val updated = (medications.value + parsed).distinctBy { it.name.lowercase().trim() }
-                            preferences.setMedications(Json.encodeToString(updated))
+                            preferences.setMedications(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(Medication.serializer()), updated))
                             syncManager.pushProfileData()
                             
                             onResult(parsed)

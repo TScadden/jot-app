@@ -480,7 +480,7 @@ class CoachViewModel @Inject constructor(
                     isPresent = isPresent
                 )
                 currentList.add(newMed)
-                preferences.setMedications(Json.encodeToString(currentList))
+                preferences.setMedications(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(Medication.serializer()), currentList))
                 syncManager.pushProfileData()
 
                 // Mark the message as approved in SQLite
@@ -1339,8 +1339,9 @@ class CoachViewModel @Inject constructor(
                     Use 24-hour format for the time. Example: [PROPOSE_REMINDER:Take medication|08:00]
                     If no specific time is mentioned, suggest a reasonable time based on context.
 
-                    MEDICATIONS: If the user mentions starting, taking, stopping, or updating a medication, or asks you to add a medication, propose a medication. Format: [PROPOSE_MEDICATION:Name|StartDate|EndDate|isPresent]
-                    Use 'isPresent' as 'true' if the user is still taking the medication, or 'false' if they have stopped. If they are still taking it, the EndDate should be empty.
+                    MEDICATIONS: You MUST actively inspect the user's message and the contents of any uploaded files/documents (indicated by "📄 Uploaded file: [filename]\n\n[contents]") for medications. If the user mentions starting, taking, stopping, or updating a medication, or if the uploaded document says the user is taking or was taking any medications, you MUST propose adding them.
+                    Format: [PROPOSE_MEDICATION:Name|StartDate|EndDate|isPresent]
+                    Use 'isPresent' as 'true' if the user is currently taking the medication, or 'false' if they have stopped. If they are currently taking it, the EndDate should be empty.
                     Dates should look like "Jun 2026", "2025-12-05", "Dec 2025" or similar based on context.
                     Example: [PROPOSE_MEDICATION:Pyridostigmine|Jun 2026||true]
 
