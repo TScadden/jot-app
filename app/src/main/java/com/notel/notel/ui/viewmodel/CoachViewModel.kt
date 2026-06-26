@@ -137,33 +137,33 @@ data class CoachMessageParsed(
 )
 
 fun parseCoachMessageContent(rawContent: String): CoachMessageParsed {
-    val proposeRegex = Regex("\\[PROPOSE_NOTE:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
-    val approveRegex = Regex("\\[APPROVED_NOTE:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
-    val denyRegex = Regex("\\[DENIED_NOTE:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
+    val proposeRegex = Regex("\\[PROPOSE_NOTE:\\s*([^\\]]+)\\]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+    val approveRegex = Regex("\\[APPROVED_NOTE:\\s*([^\\]]+)\\]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+    val denyRegex = Regex("\\[DENIED_NOTE:\\s*([^\\]]+)\\]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
 
-    val proposeFileRegex = Regex("\\[PROPOSE_FILE:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
-    val approveFileRegex = Regex("\\[APPROVED_FILE:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
-    val denyFileRegex = Regex("\\[DENIED_FILE:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
+    val proposeFileRegex = Regex("\\[PROPOSE_FILE:\\s*([^\\]]+)\\]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+    val approveFileRegex = Regex("\\[APPROVED_FILE:\\s*([^\\]]+)\\]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+    val denyFileRegex = Regex("\\[DENIED_FILE:\\s*([^\\]]+)\\]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
 
-    val proposeListRegex = Regex("\\[PROPOSE_LIST:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
-    val approveListRegex = Regex("\\[APPROVED_LIST:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
-    val denyListRegex = Regex("\\[DENIED_LIST:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
+    val proposeListRegex = Regex("\\[PROPOSE_LIST:\\s*([^\\]]+)\\]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+    val approveListRegex = Regex("\\[APPROVED_LIST:\\s*([^\\]]+)\\]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+    val denyListRegex = Regex("\\[DENIED_LIST:\\s*([^\\]]+)\\]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
 
-    val proposeReminderRegex = Regex("\\[PROPOSE_REMINDER:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
-    val approveReminderRegex = Regex("\\[APPROVED_REMINDER:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
-    val denyReminderRegex = Regex("\\[DENIED_REMINDER:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
+    val proposeReminderRegex = Regex("\\[PROPOSE_REMINDER:\\s*([^\\]]+)\\]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+    val approveReminderRegex = Regex("\\[APPROVED_REMINDER:\\s*([^\\]]+)\\]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+    val denyReminderRegex = Regex("\\[DENIED_REMINDER:\\s*([^\\]]+)\\]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
 
-    val proposeCalendarRegex = Regex("\\[PROPOSE_CALENDAR_EVENT:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
-    val approveCalendarRegex = Regex("\\[APPROVED_CALENDAR_EVENT:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
-    val denyCalendarRegex = Regex("\\[DENIED_CALENDAR_EVENT:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
+    val proposeCalendarRegex = Regex("\\[PROPOSE_CALENDAR_EVENT:\\s*([^\\]]+)\\]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+    val approveCalendarRegex = Regex("\\[APPROVED_CALENDAR_EVENT:\\s*([^\\]]+)\\]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+    val denyCalendarRegex = Regex("\\[DENIED_CALENDAR_EVENT:\\s*([^\\]]+)\\]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
 
-    val proposeDeleteCalendarRegex = Regex("\\[PROPOSE_DELETE_CALENDAR_EVENT:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
-    val approveDeleteCalendarRegex = Regex("\\[APPROVED_DELETE_CALENDAR_EVENT:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
-    val denyDeleteCalendarRegex = Regex("\\[DENIED_DELETE_CALENDAR_EVENT:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
+    val proposeDeleteCalendarRegex = Regex("\\[PROPOSE_DELETE_CALENDAR_EVENT:\\s*([^\\]]+)\\]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+    val approveDeleteCalendarRegex = Regex("\\[APPROVED_DELETE_CALENDAR_EVENT:\\s*([^\\]]+)\\]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+    val denyDeleteCalendarRegex = Regex("\\[DENIED_DELETE_CALENDAR_EVENT:\\s*([^\\]]+)\\]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
 
-    val proposeMedicationRegex = Regex("\\[PROPOSE_MEDICATION:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
-    val approveMedicationRegex = Regex("\\[APPROVED_MEDICATION:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
-    val denyMedicationRegex = Regex("\\[DENIED_MEDICATION:\\s*([^\\]]+)\\]", RegexOption.DOT_MATCHES_ALL)
+    val proposeMedicationRegex = Regex("\\[PROPOSE_MEDICATION:\\s*([^\\]]+)\\]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+    val approveMedicationRegex = Regex("\\[APPROVED_MEDICATION:\\s*([^\\]]+)\\]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+    val denyMedicationRegex = Regex("\\[DENIED_MEDICATION:\\s*([^\\]]+)\\]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
 
     var cleanContent = rawContent
     var proposedNoteText: String? = null
@@ -320,7 +320,7 @@ fun parseCoachMessageContent(rawContent: String): CoachMessageParsed {
         calendarDeleteStatus = CalendarEventStatus.DENIED
     }
 
-    fun parseMedicationString(raw: String) {
+    fun parseMedicationString(raw: String): List<Medication> {
         val medsList = mutableListOf<Medication>()
         val items = raw.split(";")
         for (item in items) {
@@ -341,24 +341,43 @@ fun parseCoachMessageContent(rawContent: String): CoachMessageParsed {
                 )
             }
         }
-        proposedMedications = medsList
+        return medsList
     }
 
-    if (proposeMedicationRegex.containsMatchIn(cleanContent)) {
-        val matchResult = proposeMedicationRegex.find(cleanContent)!!
-        parseMedicationString(matchResult.groupValues[1])
-        cleanContent = cleanContent.replace(matchResult.value, "").trim()
+    val proposeMatches = proposeMedicationRegex.findAll(cleanContent).toList()
+    if (proposeMatches.isNotEmpty()) {
+        val parsedMeds = mutableListOf<Medication>()
+        for (match in proposeMatches) {
+            parsedMeds.addAll(parseMedicationString(match.groupValues[1]))
+            cleanContent = cleanContent.replace(match.value, "")
+        }
+        cleanContent = cleanContent.trim()
+        proposedMedications = parsedMeds
         medicationStatus = MedicationStatus.PENDING
-    } else if (approveMedicationRegex.containsMatchIn(cleanContent)) {
-        val matchResult = approveMedicationRegex.find(cleanContent)!!
-        parseMedicationString(matchResult.groupValues[1])
-        cleanContent = cleanContent.replace(matchResult.value, "").trim()
-        medicationStatus = MedicationStatus.APPROVED
-    } else if (denyMedicationRegex.containsMatchIn(cleanContent)) {
-        val matchResult = denyMedicationRegex.find(cleanContent)!!
-        parseMedicationString(matchResult.groupValues[1])
-        cleanContent = cleanContent.replace(matchResult.value, "").trim()
-        medicationStatus = MedicationStatus.DENIED
+    } else {
+        val approveMatches = approveMedicationRegex.findAll(cleanContent).toList()
+        if (approveMatches.isNotEmpty()) {
+            val parsedMeds = mutableListOf<Medication>()
+            for (match in approveMatches) {
+                parsedMeds.addAll(parseMedicationString(match.groupValues[1]))
+                cleanContent = cleanContent.replace(match.value, "")
+            }
+            cleanContent = cleanContent.trim()
+            proposedMedications = parsedMeds
+            medicationStatus = MedicationStatus.APPROVED
+        } else {
+            val denyMatches = denyMedicationRegex.findAll(cleanContent).toList()
+            if (denyMatches.isNotEmpty()) {
+                val parsedMeds = mutableListOf<Medication>()
+                for (match in denyMatches) {
+                    parsedMeds.addAll(parseMedicationString(match.groupValues[1]))
+                    cleanContent = cleanContent.replace(match.value, "")
+                }
+                cleanContent = cleanContent.trim()
+                proposedMedications = parsedMeds
+                medicationStatus = MedicationStatus.DENIED
+            }
+        }
     }
 
     return CoachMessageParsed(
@@ -477,7 +496,6 @@ class CoachViewModel @Inject constructor(
                 // Add new meds and deduplicate by name
                 val updatedList = (currentList + proposedMeds).distinctBy { it.name.lowercase().trim() }
                 preferences.setMedications(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(Medication.serializer()), updatedList))
-                syncManager.pushProfileData()
 
                 // Mark the message as approved in SQLite
                 val dbEntities = coachMessageDao.getMessagesForSession(sessionId).first()
@@ -499,6 +517,15 @@ class CoachViewModel @Inject constructor(
                         isSynced = false
                     )
                 )
+
+                // Push to sync manager in background
+                viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    try {
+                        syncManager.pushProfileData()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
             } catch (e: Exception) {
                 // Log or ignore
             }
@@ -512,7 +539,7 @@ class CoachViewModel @Inject constructor(
                 val dbEntities = coachMessageDao.getMessagesForSession(sessionId).first()
                 val targetEntity = dbEntities.find { it.id == messageId }
                 if (targetEntity != null) {
-                    val updatedContent = targetEntity.content.replace("[PROPOSE_MEDICATION:", "[DENIED_MEDICATION:")
+                    val updatedContent = targetEntity.content.replace(Regex("(?i)\\[PROPOSE_MEDICATION:"), "[DENIED_MEDICATION:")
                     coachMessageDao.insertMessage(targetEntity.copy(content = updatedContent, isSynced = false))
                 }
             } catch (e: Exception) {
@@ -533,7 +560,7 @@ class CoachViewModel @Inject constructor(
                 val dbEntities = coachMessageDao.getMessagesForSession(sessionId).first()
                 val targetEntity = dbEntities.find { it.id == messageId }
                 if (targetEntity != null) {
-                    val updatedContent = targetEntity.content.replace("[PROPOSE_NOTE:", "[APPROVED_NOTE:")
+                    val updatedContent = targetEntity.content.replace(Regex("(?i)\\[PROPOSE_NOTE:"), "[APPROVED_NOTE:")
                     coachMessageDao.insertMessage(targetEntity.copy(content = updatedContent, isSynced = false))
                 }
                 
@@ -560,7 +587,7 @@ class CoachViewModel @Inject constructor(
                 val dbEntities = coachMessageDao.getMessagesForSession(sessionId).first()
                 val targetEntity = dbEntities.find { it.id == messageId }
                 if (targetEntity != null) {
-                    val updatedContent = targetEntity.content.replace("[PROPOSE_NOTE:", "[DENIED_NOTE:")
+                    val updatedContent = targetEntity.content.replace(Regex("(?i)\\[PROPOSE_NOTE:"), "[DENIED_NOTE:")
                     coachMessageDao.insertMessage(targetEntity.copy(content = updatedContent, isSynced = false))
                 }
                 
@@ -588,15 +615,12 @@ class CoachViewModel @Inject constructor(
                 items.forEach { itemText ->
                     userListRepository.addItem(createdList.id, itemText)
                 }
-                
-                // Force data sync
-                syncManager.pushProfileData()
 
                 // 2. Update status in SQLite to APPROVED_LIST
                 val dbEntities = coachMessageDao.getMessagesForSession(sessionId).first()
                 val targetEntity = dbEntities.find { it.id == messageId }
                 if (targetEntity != null) {
-                    val updatedContent = targetEntity.content.replace("[PROPOSE_LIST:", "[APPROVED_LIST:")
+                    val updatedContent = targetEntity.content.replace(Regex("(?i)\\[PROPOSE_LIST:"), "[APPROVED_LIST:")
                     coachMessageDao.insertMessage(targetEntity.copy(content = updatedContent, isSynced = false))
                 }
 
@@ -608,6 +632,15 @@ class CoachViewModel @Inject constructor(
                         content = "Awesome! I've created the list \"$listName\" with ${items.size} items."
                     )
                 )
+
+                // Push to sync manager in background
+                viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    try {
+                        syncManager.pushProfileData()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -623,7 +656,7 @@ class CoachViewModel @Inject constructor(
                 val dbEntities = coachMessageDao.getMessagesForSession(sessionId).first()
                 val targetEntity = dbEntities.find { it.id == messageId }
                 if (targetEntity != null) {
-                    val updatedContent = targetEntity.content.replace("[PROPOSE_LIST:", "[DENIED_LIST:")
+                    val updatedContent = targetEntity.content.replace(Regex("(?i)\\[PROPOSE_LIST:"), "[DENIED_LIST:")
                     coachMessageDao.insertMessage(targetEntity.copy(content = updatedContent, isSynced = false))
                 }
 
@@ -665,7 +698,7 @@ class CoachViewModel @Inject constructor(
                 val dbEntities = coachMessageDao.getMessagesForSession(sessionId).first()
                 val targetEntity = dbEntities.find { it.id == messageId }
                 if (targetEntity != null) {
-                    val updatedContent = targetEntity.content.replace("[PROPOSE_REMINDER:", "[APPROVED_REMINDER:")
+                    val updatedContent = targetEntity.content.replace(Regex("(?i)\\[PROPOSE_REMINDER:"), "[APPROVED_REMINDER:")
                     coachMessageDao.insertMessage(targetEntity.copy(content = updatedContent, isSynced = false))
                 }
 
@@ -706,7 +739,7 @@ class CoachViewModel @Inject constructor(
                 val dbEntities = coachMessageDao.getMessagesForSession(sessionId).first()
                 val targetEntity = dbEntities.find { it.id == messageId }
                 if (targetEntity != null) {
-                    val updatedContent = targetEntity.content.replace("[PROPOSE_REMINDER:", "[DENIED_REMINDER:")
+                    val updatedContent = targetEntity.content.replace(Regex("(?i)\\[PROPOSE_REMINDER:"), "[DENIED_REMINDER:")
                     coachMessageDao.insertMessage(targetEntity.copy(content = updatedContent, isSynced = false))
                 }
 
@@ -824,7 +857,7 @@ class CoachViewModel @Inject constructor(
                     val dbEntities = coachMessageDao.getMessagesForSession(sessionId).first()
                     val targetEntity = dbEntities.find { it.id == messageId }
                     if (targetEntity != null) {
-                        val updatedContent = targetEntity.content.replace("[PROPOSE_CALENDAR_EVENT:", "[APPROVED_CALENDAR_EVENT:")
+                        val updatedContent = targetEntity.content.replace(Regex("(?i)\\[PROPOSE_CALENDAR_EVENT:"), "[APPROVED_CALENDAR_EVENT:")
                         coachMessageDao.insertMessage(targetEntity.copy(content = updatedContent, isSynced = false))
                     }
 
@@ -869,7 +902,7 @@ class CoachViewModel @Inject constructor(
                 val dbEntities = coachMessageDao.getMessagesForSession(sessionId).first()
                 val targetEntity = dbEntities.find { it.id == messageId }
                 if (targetEntity != null) {
-                    val updatedContent = targetEntity.content.replace("[PROPOSE_CALENDAR_EVENT:", "[DENIED_CALENDAR_EVENT:")
+                    val updatedContent = targetEntity.content.replace(Regex("(?i)\\[PROPOSE_CALENDAR_EVENT:"), "[DENIED_CALENDAR_EVENT:")
                     coachMessageDao.insertMessage(targetEntity.copy(content = updatedContent, isSynced = false))
                 }
 
@@ -925,7 +958,7 @@ class CoachViewModel @Inject constructor(
                     val dbEntities = coachMessageDao.getMessagesForSession(sessionId).first()
                     val targetEntity = dbEntities.find { it.id == messageId }
                     if (targetEntity != null) {
-                        val updatedContent = targetEntity.content.replace("[PROPOSE_DELETE_CALENDAR_EVENT:", "[APPROVED_DELETE_CALENDAR_EVENT:")
+                        val updatedContent = targetEntity.content.replace(Regex("(?i)\\[PROPOSE_DELETE_CALENDAR_EVENT:"), "[APPROVED_DELETE_CALENDAR_EVENT:")
                         coachMessageDao.insertMessage(targetEntity.copy(content = updatedContent, isSynced = false))
                     }
 
@@ -969,7 +1002,7 @@ class CoachViewModel @Inject constructor(
                 val dbEntities = coachMessageDao.getMessagesForSession(sessionId).first()
                 val targetEntity = dbEntities.find { it.id == messageId }
                 if (targetEntity != null) {
-                    val updatedContent = targetEntity.content.replace("[PROPOSE_DELETE_CALENDAR_EVENT:", "[DENIED_DELETE_CALENDAR_EVENT:")
+                    val updatedContent = targetEntity.content.replace(Regex("(?i)\\[PROPOSE_DELETE_CALENDAR_EVENT:"), "[DENIED_DELETE_CALENDAR_EVENT:")
                     coachMessageDao.insertMessage(targetEntity.copy(content = updatedContent, isSynced = false))
                 }
 
@@ -1117,7 +1150,7 @@ class CoachViewModel @Inject constructor(
                 val dbEntities = coachMessageDao.getMessagesForSession(sessionId).first()
                 val targetEntity = dbEntities.find { it.id == messageId }
                 if (targetEntity != null) {
-                    val updatedContent = targetEntity.content.replace("[PROPOSE_FILE:", "[APPROVED_FILE:")
+                    val updatedContent = targetEntity.content.replace(Regex("(?i)\\[PROPOSE_FILE:"), "[APPROVED_FILE:")
                     coachMessageDao.insertMessage(targetEntity.copy(content = updatedContent, isSynced = false))
                 }
 
@@ -1144,7 +1177,7 @@ class CoachViewModel @Inject constructor(
                 val dbEntities = coachMessageDao.getMessagesForSession(sessionId).first()
                 val targetEntity = dbEntities.find { it.id == messageId }
                 if (targetEntity != null) {
-                    val updatedContent = targetEntity.content.replace("[PROPOSE_FILE:", "[DENIED_FILE:")
+                    val updatedContent = targetEntity.content.replace(Regex("(?i)\\[PROPOSE_FILE:"), "[DENIED_FILE:")
                     coachMessageDao.insertMessage(targetEntity.copy(content = updatedContent, isSynced = false))
                 }
                 
@@ -1350,15 +1383,16 @@ class CoachViewModel @Inject constructor(
                     Use 24-hour format for the time. Example: [PROPOSE_REMINDER:Take medication|08:00]
                     If no specific time is mentioned, suggest a reasonable time based on context.
 
-                    MEDICATIONS: You MUST actively inspect the user's message and the contents of any uploaded files/documents (indicated by "📄 Uploaded file: [filename]\n\n[contents]") for medications. If the user mentions starting, taking, stopping, or updating a medication, or if the uploaded document says the user is taking or was taking any medications, you MUST propose adding them.
-                    Format: [PROPOSE_MEDICATION:Name|StartDate|EndDate|isPresent]
+                    MEDICATIONS: You MUST actively inspect the user's message and the contents of any uploaded files/documents (indicated by "📄 Uploaded file: [filename]\n\n[contents]") for medications. If the user mentions starting, taking, stopping, or updating medications, or if the uploaded document says the user is taking or was taking any medications, you MUST propose adding them.
+                    Format: Propose ALL found medications in a single tag by separating them with a semicolon.
+                    Each medication format: Name|StartDate|EndDate|isPresent
                     Use 'isPresent' as 'true' if the user is currently taking the medication, or 'false' if they have stopped. If they are currently taking it, the EndDate should be empty.
                     Dates should look like "Jun 2026", "2025-12-05", "Dec 2025" or similar based on context.
-                    Example: [PROPOSE_MEDICATION:Pyridostigmine|Jun 2026||true]
+                    Example for multiple medications: [PROPOSE_MEDICATION:Pyridostigmine|Jun 2026||true;Metoprolol|Jan 2025|May 2026|false]
 
                     $calendarInstructions
 
-                    Only include ONE action tag per response. Do not include markdown formatting inside the brackets.
+                    Only include ONE action tag per response. (Note: For multiple medications, combine them into a single [PROPOSE_MEDICATION:...] tag separated by semicolons as shown above). Do not include markdown formatting inside the brackets.
                 """.trimIndent()
                 val enrichedUserCtx = if (baseUserCtx.isBlank()) actionInstructions else "$baseUserCtx\n\n$actionInstructions"
 
