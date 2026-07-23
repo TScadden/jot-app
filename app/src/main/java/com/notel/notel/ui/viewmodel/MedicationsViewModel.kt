@@ -6,9 +6,9 @@ import com.notel.notel.data.local.dao.MedicationDao
 import com.notel.notel.data.local.entity.LogEntry
 import com.notel.notel.data.local.entity.Medication
 import com.notel.notel.data.local.entity.MedicationSideEffectCache
+import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.remote.GeminiService
 import com.notel.notel.data.repository.LogRepository
-import com.notel.notel.data.repository.UserPreferencesRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -18,7 +18,7 @@ import javax.inject.Inject
 class MedicationsViewModel @Inject constructor(
     private val medicationDao: MedicationDao,
     private val logRepository: LogRepository,
-    private val userPreferencesRepository: UserPreferencesRepository,
+    private val preferences: NotelPreferences,
     private val geminiService: GeminiService
 ) : ViewModel() {
 
@@ -62,7 +62,7 @@ class MedicationsViewModel @Inject constructor(
     fun loadMedicationsFromProfile() {
         viewModelScope.launch {
             _isExtractingFromProfile.value = true
-            val profileContext = userPreferencesRepository.userContext.first()
+            val profileContext = preferences.userContext.first()
             if (profileContext.isBlank()) {
                 _statusMessage.value = "No user profile background found to extract meds from."
                 _isExtractingFromProfile.value = false
