@@ -156,6 +156,36 @@ class GeminiService @Inject constructor(
         }
     }
 
+    suspend fun evaluateBodyImpacts(
+        entries: List<LogEntry>,
+        userContext: String = ""
+    ): Result<List<AiBodyImpactItem>> {
+        return try {
+            val response = jotApi.evaluateBodyImpacts(
+                AiBodyImpactRequest(
+                    entries = entries.toDto(),
+                    userContext = userContext
+                )
+            )
+            val result = response.body()?.result?.impacts
+            if (response.isSuccessful && result != null) {
+                Result.success(result)
+            } else {
+                val errorBody = response.errorBody()?.string()
+                var errorMessage = "AI Body Impact evaluation failed"
+                if (errorBody != null) {
+                    try {
+                        val json = org.json.JSONObject(errorBody)
+                        errorMessage = json.optString("error", "AI Body Impact evaluation failed")
+                    } catch (e: Exception) {}
+                }
+                Result.failure(IOException(errorMessage))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun getAdvice(
         recentEntries: List<LogEntry>,
         categories: Map<Int, String>,

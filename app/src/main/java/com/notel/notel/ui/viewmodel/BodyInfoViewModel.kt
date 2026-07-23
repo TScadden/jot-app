@@ -1,29 +1,86 @@
 package com.notel.notel.ui.viewmodel
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.notel.notel.data.remote.GeminiService
 import com.notel.notel.data.repository.LogRepository
 import com.notel.notel.util.BodyImpactEngine
+import com.notel.notel.util.BodyRegionId
 import com.notel.notel.util.EvaluatedBodyImpact
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class BodyInfoViewModel @Inject constructor(
-    private val logRepository: LogRepository
+    private val logRepository: LogRepository,
+    private val geminiService: GeminiService
 ) : ViewModel() {
 
-    val activeImpacts: StateFlow<List<EvaluatedBodyImpact>> = logRepository.getAllEntries()
-        .map { entries ->
-            BodyImpactEngine.evaluateLogs(entries)
+    private val _activeImpacts = MutableStateFlow<List<EvaluatedBodyImpact>>(emptyList())
+    val activeImpacts: StateFlow<List<EvaluatedBodyImpact>> = _activeImpacts.asStateFlow()
+
+    init {
+        observeLogs()
+    }
+
+    private fun observeLogs() {
+        viewModelScope.launch {
+            logRepository.getAllEntries().collect { entries ->
+                // First apply local engine immediately for zero-lag UI feedback
+                val localImpacts = BodyImpactEngine.evaluateLogs(entries)
+                _activeImpacts.value = localImpacts
+
+                // Then evaluate via Gemini AI for research-based custom duration overrides
+                if (entries.isNotEmpty()) {
+                    val result = geminiService.evaluateBodyImpacts(entries)
+                    result.getOrNull()?.let { aiItems ->
+                        if (aiItems.isNotEmpty()) {
+                            val aiImpacts = aiItems.mapNotNull { item ->
+                                val regionEnum = try {
+                                    BodyRegionId.valueOf(item.region.uppercase())
+                                } catch (e: Exception) {
+                                    BodyRegionId.BACK
+                                }
+                                val matchingLog = entries.find { it.id == item.logId }
+                                val timestamp = matchingLog?.timestamp ?: System.currentTimeMillis()
+                                val displayText = matchingLog?.let { "${it.body} ${it.manualText}" } ?: item.status
+
+                                EvaluatedBodyImpact(
+                                    id = "ai_${item.logId}_${item.region}",
+                                    regionId = regionEnum,
+                                    regionName = item.regionName,
+                                    status = item.status,
+                                    details = item.details,
+                                    color = when (regionEnum) {
+                                        BodyRegionId.HEAD -> Color(0xFFFF7043)
+                                        BodyRegionId.EYES -> Color(0xFFFFB300)
+                                        BodyRegionId.LEFT_ARM, BodyRegionId.RIGHT_ARM -> Color(0xFFFF5252)
+                                        BodyRegionId.ABDOMEN -> Color(0xFF26A69A)
+                                        BodyRegionId.LEFT_SIDE, BodyRegionId.RIGHT_SIDE -> Color(0xFFAB47BC)
+                                        BodyRegionId.BACK -> Color(0xFFEF5350)
+                                        else -> Color(0xFF42A5F5)
+                                    },
+                                    icon = Icons.Default.Warning,
+                                    timestamp = timestamp,
+                                    durationMinutes = item.durationMinutes,
+                                    originalLogText = displayText,
+                                    relatedLogId = item.logId
+                                )
+                            }
+                            if (aiImpacts.isNotEmpty()) {
+                                _activeImpacts.value = aiImpacts
+                            }
+                        }
+                    }
+                }
+            }
         }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList()
-        )
+    }
 }

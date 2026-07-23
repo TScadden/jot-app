@@ -30,11 +30,12 @@ data class EvaluatedBodyImpact(
     val icon: ImageVector,
     val timestamp: Long,
     val durationHours: Int = 24,
+    val durationMinutes: Int = durationHours * 60,
     val originalLogText: String = "",
     val relatedLogId: Long? = null
 ) {
     val expiresAt: Long
-        get() = timestamp + TimeUnit.HOURS.toMillis(durationHours.toLong())
+        get() = timestamp + TimeUnit.MINUTES.toMillis(durationMinutes.toLong())
 
     fun getTimeRemainingText(now: Long = System.currentTimeMillis()): String {
         val remainingMillis = expiresAt - now
