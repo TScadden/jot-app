@@ -67,18 +67,18 @@ object BodyImpactEngine {
                 }
             }
 
-            // Dynamic AI Duration & Impact Parser Heuristics
+            // Dynamic AI Duration & Impact Parser Heuristics (Short, Realistic Recovery Windows)
             val textLower = text
             val isSevere = containsAny(textLower, "sharp", "severe", "extreme", "terrible", "intense", "heavy")
             val isMild = containsAny(textLower, "mild", "slight", "minor", "dull", "light")
 
-            // 1. Headaches & Neurological
+            // 1. Headaches & Neurological (Short 1-3 hour active window)
             if (containsAny(textLower, "headache", "migraine", "dizzy", "dizziness", "brain fog", "head pressure")) {
                 val duration = when {
-                    textLower.contains("migraine") -> if (isSevere) 12 else 8
-                    isSevere -> 6
-                    isMild -> 2
-                    else -> 4
+                    textLower.contains("migraine") -> if (isSevere) 6 else 4
+                    isSevere -> 3
+                    isMild -> 1
+                    else -> 2 // 2 hours default for standard headache
                 }
                 val expiresAt = entry.timestamp + TimeUnit.HOURS.toMillis(duration.toLong())
 
@@ -102,9 +102,9 @@ object BodyImpactEngine {
                 }
             }
 
-            // 2. Labs / Blood Draws (Arm & Veins)
+            // 2. Labs / Blood Draws (Arm & Veins) (12 hour active window)
             if (containsAny(textLower, "lab", "blood draw", "bloodwork", "cbc", "venipuncture", "phlebotomy", "blood test")) {
-                val duration = if (isSevere || textLower.contains("multiple")) 36 else 24
+                val duration = if (isSevere || textLower.contains("multiple")) 18 else 12
                 val expiresAt = entry.timestamp + TimeUnit.HOURS.toMillis(duration.toLong())
 
                 if (now < expiresAt) {
@@ -138,9 +138,9 @@ object BodyImpactEngine {
                 }
             }
 
-            // 3. Peptide Shots & SubQ Injections
+            // 3. Peptide Shots & SubQ Injections (24 hour site rotation window)
             if (containsAny(textLower, "peptide", "shot", "injection", "subq", "semaglutide", "tirzepatide", "b12", "needle", "pin")) {
-                val duration = 48
+                val duration = 24
                 val expiresAt = entry.timestamp + TimeUnit.HOURS.toMillis(duration.toLong())
 
                 if (now < expiresAt) {
@@ -181,9 +181,9 @@ object BodyImpactEngine {
                 }
             }
 
-            // 4. Medication Side Effects - Ocular / Eyes
+            // 4. Medication Side Effects - Ocular / Eyes (12 hour active window)
             if (containsAny(textLower, "dry eyes", "blurred vision", "eye strain", "eye pressure", "vision", "eyes")) {
-                val duration = if (isSevere) 36 else 24
+                val duration = if (isSevere) 18 else 12
                 val expiresAt = entry.timestamp + TimeUnit.HOURS.toMillis(duration.toLong())
 
                 if (now < expiresAt) {
@@ -206,9 +206,9 @@ object BodyImpactEngine {
                 }
             }
 
-            // 5. GI / Stomach
+            // 5. GI / Stomach (4-6 hour active window)
             if (containsAny(textLower, "nausea", "stomach ache", "upset stomach", "reflux", "gi distress", "cramps")) {
-                val duration = if (isSevere) 24 else 12
+                val duration = if (isSevere) 8 else 4
                 val expiresAt = entry.timestamp + TimeUnit.HOURS.toMillis(duration.toLong())
 
                 if (now < expiresAt) {
@@ -231,12 +231,12 @@ object BodyImpactEngine {
                 }
             }
 
-            // 6. Back / Spine / Lumbar Pain
+            // 6. Back / Spine / Lumbar Pain (2-4 hour active window for sharp back pain)
             if (containsAny(textLower, "back pain", "back ache", "sharp back pain", "lower back", "upper back", "spine", "lumbar", "back")) {
                 val duration = when {
-                    isSevere || textLower.contains("sharp") -> 24 // 24h for sharp or severe back pain
-                    isMild -> 6
-                    else -> 12
+                    isSevere || textLower.contains("sharp") -> 4 // 4h for sharp back pain
+                    isMild -> 1
+                    else -> 3 // 3h for standard back pain
                 }
                 val expiresAt = entry.timestamp + TimeUnit.HOURS.toMillis(duration.toLong())
 

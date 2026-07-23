@@ -380,6 +380,27 @@ data class ClassifyAndCleanRequest(
 )
 
 @Serializable
+data class AiBodyImpactItem(
+    val region: String, // e.g. "HEAD", "BACK", "EYES", "LEFT_ARM", "RIGHT_ARM", "ABDOMEN", "LEFT_SIDE", "RIGHT_SIDE", "THIGHS"
+    val regionName: String,
+    val status: String,
+    val details: String,
+    val durationMinutes: Int, // AI decided duration in minutes based on medical knowledge/research
+    val logId: Long
+)
+
+@Serializable
+data class AiBodyImpactRequest(
+    val entries: List<LogEntryDtoModel>,
+    val userContext: String? = null
+)
+
+@Serializable
+data class AiBodyImpactResponse(
+    val impacts: List<AiBodyImpactItem> = emptyList()
+)
+
+@Serializable
 data class ClassifyAndCleanResponse(
     val cleanedText: String,
     val categoryId: Int
@@ -552,6 +573,9 @@ interface JotApi {
 
     @POST("api/ai/classify-and-clean")
     suspend fun classifyAndClean(@Body request: ClassifyAndCleanRequest): Response<AiResponse<ClassifyAndCleanResponse>>
+
+    @POST("api/ai/body-impacts")
+    suspend fun evaluateBodyImpacts(@Body request: AiBodyImpactRequest): Response<AiResponse<AiBodyImpactResponse>>
 
     @POST("api/ai/classify-coach-note")
     suspend fun classifyCoachNote(@Body request: ClassifyAndCleanRequest): Response<AiResponse<ClassifyCoachNoteResponse>>
