@@ -112,32 +112,45 @@ class MedicationsViewModel @Inject constructor(
     }
 
     private fun extractMedicationsFromText(text: String): List<Medication> {
-        val stopWords = setOf("and", "one", "two", "the", "for", "with", "take", "taking", "every", "some", "time", "day", "daily", "week", "weekly", "mg", "mcg", "000")
+        val stopWords = setOf(
+            "and", "one", "two", "the", "for", "with", "take", "taking", "every", "some",
+            "time", "day", "daily", "week", "weekly", "mg", "mcg", "000", "profile", "info",
+            "gender", "age", "height", "weight", "lbs", "user", "background", "goals", "training"
+        )
         val results = mutableListOf<Medication>()
 
-        // Match patterns like "Semaglutide 0.5mg once weekly", "Cymbalta 60mg daily", "Metformin 500mg twice a day"
-        val regex = Regex("(?i)\\b([a-zA-Z]{3,20})\\s+(\\d+(?:\\.\\d+)?\\s*(?:mg|mcg|iu|ml|g|tablets?|pills?))\\s*([^,.\\n\\r]*)")
-        val matches = regex.findAll(text)
+        // Split text by line breaks, semicolons, or commas
+        val items = text.split("\n", ";", ",")
 
-        for (match in matches) {
-            val rawName = match.groupValues[1].lowercase().trim()
-            val dose = match.groupValues[2].replace(" ", "").trim()
-            var freq = match.groupValues[3].trim().ifEmpty { "Daily" }
+        for (item in items) {
+            val cleanItem = item.trim()
+            if (cleanItem.length < 3) continue
 
-            if (freq.length > 25) {
-                freq = freq.take(25)
-            }
+            // 1. Check for standard "Name Dose Frequency" pattern (e.g., "Semaglutide 0.5mg weekly")
+            val regex = Regex("(?i)\\b([a-zA-Z]{3,25})\\b(?:\\s+(\\d+(?:\\.\\d+)?\\s*(?:mg|mcg|iu|ml|g|tablets?|pills?|units?)))?(?:\\s+([^,.\\n\\r]*))?")
+            val match = regex.find(cleanItem)
 
-            if (!stopWords.contains(rawName) && rawName.length >= 3 && !rawName.all { it.isDigit() }) {
-                val formattedName = rawName.replaceFirstChar { it.uppercase() }
-                if (results.none { it.name.equals(formattedName, ignoreCase = true) }) {
-                    results.add(
-                        Medication(
-                            name = formattedName,
-                            dose = dose,
-                            frequency = freq.ifEmpty { "Daily" }
+            if (match != null) {
+                val rawName = match.groupValues[1].lowercase().trim()
+                val rawDose = match.groupValues[2].ifEmpty { 
+                    // Fallback to find any dosage number in the line
+                    Regex("(?i)\\b(\\d+(?:\\.\\d+)?\\s*(?:mg|mcg|iu|ml|g|tablets?|pills?|units?))\\b").find(cleanItem)?.value ?: "As prescribed"
+                }.replace(" ", "")
+
+                var rawFreq = match.groupValues[3].trim().ifEmpty { "Daily" }
+                if (rawFreq.length > 25) rawFreq = rawFreq.take(25)
+
+                if (!stopWords.contains(rawName) && rawName.length >= 3 && !rawName.all { it.isDigit() }) {
+                    val formattedName = rawName.replaceFirstChar { it.uppercase() }
+                    if (results.none { it.name.equals(formattedName, ignoreCase = true) }) {
+                        results.add(
+                            Medication(
+                                name = formattedName,
+                                dose = rawDose,
+                                frequency = rawFreq
+                            )
                         )
-                    )
+                    }
                 }
             }
         }
