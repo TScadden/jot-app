@@ -22,7 +22,18 @@ class MedicationsViewModel @Inject constructor(
     private val geminiService: GeminiService
 ) : ViewModel() {
 
-    val medications: StateFlow<List<Medication>> = medicationDao.getAllMedications()
+    private val allMedsFlow = medicationDao.getAllMedications()
+
+    val activeMedications: StateFlow<List<Medication>> = allMedsFlow
+        .map { list -> list.filter { !it.isArchived } }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    val archivedMedications: StateFlow<List<Medication>> = allMedsFlow
+        .map { list -> list.filter { it.isArchived } }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
@@ -52,10 +63,27 @@ class MedicationsViewModel @Inject constructor(
         }
     }
 
+    fun archiveMedication(medication: Medication) {
+        viewModelScope.launch {
+            val todayStr = java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.getDefault()).format(java.util.Date())
+            val updated = medication.copy(isArchived = true, endedDate = todayStr)
+            medicationDao.insertMedication(updated)
+            _statusMessage.value = "Archived ${medication.name} (Ended $todayStr)"
+        }
+    }
+
+    fun unarchiveMedication(medication: Medication) {
+        viewModelScope.launch {
+            val updated = medication.copy(isArchived = false, endedDate = null)
+            medicationDao.insertMedication(updated)
+            _statusMessage.value = "Re-activated ${medication.name}"
+        }
+    }
+
     fun deleteMedication(medication: Medication) {
         viewModelScope.launch {
             medicationDao.deleteMedication(medication)
-            _statusMessage.value = "Removed ${medication.name}"
+            _statusMessage.value = "Permanently deleted ${medication.name}"
         }
     }
 
@@ -126,9 +154,9 @@ class MedicationsViewModel @Inject constructor(
 
     fun takeAllMedications() {
         viewModelScope.launch {
-            val list = medications.value
+            val list = activeMedications.value
             if (list.isEmpty()) {
-                _statusMessage.value = "No medications available to take."
+                _statusMessage.value = "No active medications available to take."
                 return@launch
             }
 

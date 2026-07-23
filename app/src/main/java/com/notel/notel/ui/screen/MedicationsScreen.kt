@@ -31,12 +31,14 @@ fun MedicationsScreen(
     viewModel: MedicationsViewModel = hiltViewModel(),
     onBack: () -> Unit = {}
 ) {
-    val medications by viewModel.medications.collectAsState()
+    val activeMedications by viewModel.activeMedications.collectAsState()
+    val archivedMedications by viewModel.archivedMedications.collectAsState()
     val isExtracting by viewModel.isExtractingFromProfile.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
 
     var showAddDialog by remember { mutableStateOf(false) }
     var showInfoDialog by remember { mutableStateOf(false) }
+    var showArchivedSection by remember { mutableStateOf(true) }
 
     var medName by remember { mutableStateOf("") }
     var medDose by remember { mutableStateOf("") }
@@ -130,7 +132,7 @@ fun MedicationsScreen(
                                     color = NotelTextPrimary
                                 )
                                 Text(
-                                    text = "${medications.size} Active Medication(s)",
+                                    text = "${activeMedications.size} Active Medication(s)",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = NotelTextSecondary
                                 )
@@ -140,7 +142,7 @@ fun MedicationsScreen(
                                 onClick = { viewModel.takeAllMedications() },
                                 colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
                                 shape = RoundedCornerShape(14.dp),
-                                enabled = medications.isNotEmpty()
+                                enabled = activeMedications.isNotEmpty()
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Check,
@@ -190,19 +192,19 @@ fun MedicationsScreen(
 
             item {
                 Text(
-                    text = "Your Prescriptions",
+                    text = "Active Prescriptions",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = NotelTextPrimary
                 )
             }
 
-            if (medications.isEmpty()) {
+            if (activeMedications.isEmpty()) {
                 item {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 32.dp),
+                            .padding(vertical = 24.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -210,18 +212,18 @@ fun MedicationsScreen(
                                 imageVector = Icons.Default.Medication,
                                 contentDescription = null,
                                 tint = NotelPrimary.copy(alpha = 0.6f),
-                                modifier = Modifier.size(48.dp)
+                                modifier = Modifier.size(44.dp)
                             )
-                            Spacer(Modifier.height(12.dp))
+                            Spacer(Modifier.height(8.dp))
                             Text(
-                                text = "No Medications Added Yet",
+                                text = "No Active Medications",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = NotelTextPrimary
                             )
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                text = "Tap 'Load from Profile' or 'Add Custom' to get started.",
+                                text = "Tap 'Load from Profile' or 'Add Custom' to add your current meds.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = NotelTextSecondary
                             )
@@ -229,12 +231,61 @@ fun MedicationsScreen(
                     }
                 }
             } else {
-                items(medications) { med ->
+                items(activeMedications) { med ->
                     MedicationCard(
                         medication = med,
+                        isArchived = false,
                         onTookMed = { viewModel.takeSingleMedication(med) },
+                        onArchive = { viewModel.archiveMedication(med) },
                         onDelete = { viewModel.deleteMedication(med) }
                     )
+                }
+            }
+
+            // Archived Medications Section
+            if (archivedMedications.isNotEmpty()) {
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showArchivedSection = !showArchivedSection }
+                            .padding(top = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Archive,
+                                contentDescription = null,
+                                tint = NotelTextSecondary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = "Archived Medications (${archivedMedications.size})",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = NotelTextSecondary
+                            )
+                        }
+
+                        Icon(
+                            imageVector = if (showArchivedSection) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = null,
+                            tint = NotelTextSecondary
+                        )
+                    }
+                }
+
+                if (showArchivedSection) {
+                    items(archivedMedications) { med ->
+                        MedicationCard(
+                            medication = med,
+                            isArchived = true,
+                            onUnarchive = { viewModel.unarchiveMedication(med) },
+                            onDelete = { viewModel.deleteMedication(med) }
+                        )
+                    }
                 }
             }
         }
@@ -309,6 +360,11 @@ fun MedicationsScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
+                        text = "• Active & Archived: Archive medications you no longer take to keep your list clean while preserving history with their ended date.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NotelTextPrimary
+                    )
+                    Text(
                         text = "• Required Fields: Every medication must have a Name, Dose, and Frequency filled out.",
                         style = MaterialTheme.typography.bodySmall,
                         color = NotelTextPrimary
@@ -343,8 +399,11 @@ fun MedicationsScreen(
 @Composable
 fun MedicationCard(
     medication: Medication,
-    onTookMed: () -> Unit,
-    onDelete: () -> Unit
+    isArchived: Boolean = false,
+    onTookMed: () -> Unit = {},
+    onArchive: () -> Unit = {},
+    onUnarchive: () -> Unit = {},
+    onDelete: () -> Unit = {}
 ) {
     Box(
         modifier = Modifier
@@ -353,7 +412,7 @@ fun MedicationCard(
             .liquidGlass(
                 shape = RoundedCornerShape(20.dp),
                 color = NotelSurface,
-                alpha = 0.8f,
+                alpha = if (isArchived) 0.45f else 0.8f,
                 showBorder = true
             )
             .padding(16.dp)
@@ -371,14 +430,17 @@ fun MedicationCard(
                 Box(
                     modifier = Modifier
                         .size(44.dp)
-                        .background(NotelPrimary.copy(alpha = 0.15f), CircleShape)
-                        .border(1.5.dp, NotelPrimary, CircleShape),
+                        .background(
+                            if (isArchived) NotelTextSecondary.copy(alpha = 0.15f) else NotelPrimary.copy(alpha = 0.15f),
+                            CircleShape
+                        )
+                        .border(1.5.dp, if (isArchived) NotelTextSecondary else NotelPrimary, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Medication,
+                        imageVector = if (isArchived) Icons.Default.Archive else Icons.Default.Medication,
                         contentDescription = null,
-                        tint = NotelPrimary,
+                        tint = if (isArchived) NotelTextSecondary else NotelPrimary,
                         modifier = Modifier.size(22.dp)
                     )
                 }
@@ -388,33 +450,65 @@ fun MedicationCard(
                         text = medication.name,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = NotelTextPrimary
+                        color = if (isArchived) NotelTextSecondary else NotelTextPrimary
                     )
                     Spacer(Modifier.height(2.dp))
-                    Text(
-                        text = "${medication.dose}  •  ${medication.frequency}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NotelTextSecondary
-                    )
+                    if (isArchived && !medication.endedDate.isNullOrBlank()) {
+                        Surface(
+                            color = NotelTextSecondary.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                text = "Ended ${medication.endedDate}",
+                                color = NotelTextSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = "${medication.dose}  •  ${medication.frequency}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NotelTextSecondary
+                        )
+                    }
                 }
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Button(
-                    onClick = onTookMed,
-                    colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                ) {
-                    Text("Took Med", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
+                if (!isArchived) {
+                    Button(
+                        onClick = onTookMed,
+                        colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text("Took Med", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
 
-                IconButton(onClick = onDelete) {
-                    Icon(
-                        imageVector = Icons.Default.DeleteOutline,
-                        contentDescription = "Delete",
-                        tint = NotelTextSecondary
-                    )
+                    IconButton(onClick = onArchive) {
+                        Icon(
+                            imageVector = Icons.Default.Archive,
+                            contentDescription = "Archive",
+                            tint = NotelTextSecondary
+                        )
+                    }
+                } else {
+                    IconButton(onClick = onUnarchive) {
+                        Icon(
+                            imageVector = Icons.Default.Unarchive,
+                            contentDescription = "Re-activate",
+                            tint = NotelPrimary
+                        )
+                    }
+                    IconButton(onClick = onDelete) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteOutline,
+                            contentDescription = "Delete permanently",
+                            tint = NotelTextSecondary
+                        )
+                    }
                 }
             }
         }
