@@ -69,36 +69,52 @@ class MedicationsViewModel @Inject constructor(
                 return@launch
             }
 
-            // Quick extraction of medications from profile context string
-            val lines = profileContext.split("\n", ",", ".")
-            val extracted = mutableListOf<Medication>()
-            
-            val keywords = listOf("med", "medication", "taking", "prescribed", "dose", "mg", "mcg", "unit", "daily")
-            for (line in lines) {
-                val lower = line.lowercase()
-                if (keywords.any { lower.contains(it) } && line.length > 5) {
-                    val parts = line.trim().split(" ")
-                    if (parts.isNotEmpty()) {
-                        val name = parts[0].replace(Regex("[^a-zA-Z0-9]"), "")
-                        if (name.length > 2 && extracted.none { it.name.equals(name, ignoreCase = true) }) {
-                            val dose = parts.find { it.contains("mg") || it.contains("mcg") || it.contains("iu") || it.contains("ml") } ?: "As prescribed"
-                            extracted.add(Medication(name = name.capitalize(), dose = dose, frequency = "Daily"))
-                        }
-                    }
-                }
-            }
+            val extracted = extractMedicationsFromText(profileContext)
 
             if (extracted.isEmpty()) {
-                // Fallback default sample if user has med mention in profile
-                extracted.add(Medication(name = "Semaglutide", dose = "0.5mg", frequency = "Once weekly"))
+                _statusMessage.value = "No clear medication names found in profile background."
+            } else {
+                for (med in extracted) {
+                    medicationDao.insertMedication(med)
+                }
+                _statusMessage.value = "Successfully imported ${extracted.size} medication(s) from profile!"
             }
-
-            for (med in extracted) {
-                medicationDao.insertMedication(med)
-            }
-            _statusMessage.value = "Loaded ${extracted.size} medication(s) from profile!"
             _isExtractingFromProfile.value = false
         }
+    }
+
+    private fun extractMedicationsFromText(text: String): List<Medication> {
+        val stopWords = setOf("and", "one", "two", "the", "for", "with", "take", "taking", "every", "some", "time", "day", "daily", "week", "weekly", "mg", "mcg", "000")
+        val results = mutableListOf<Medication>()
+
+        // Match patterns like "Semaglutide 0.5mg once weekly", "Cymbalta 60mg daily", "Metformin 500mg twice a day"
+        val regex = Regex("(?i)\\b([a-zA-Z]{3,20})\\s+(\\d+(?:\\.\\d+)?\\s*(?:mg|mcg|iu|ml|g|tablets?|pills?))\\s*([^,.\\n\\r]*)")
+        val matches = regex.findAll(text)
+
+        for (match in matches) {
+            val rawName = match.groupValues[1].lowercase().trim()
+            val dose = match.groupValues[2].replace(" ", "").trim()
+            var freq = match.groupValues[3].trim().ifEmpty { "Daily" }
+
+            if (freq.length > 25) {
+                freq = freq.take(25)
+            }
+
+            if (!stopWords.contains(rawName) && rawName.length >= 3 && !rawName.all { it.isDigit() }) {
+                val formattedName = rawName.replaceFirstChar { it.uppercase() }
+                if (results.none { it.name.equals(formattedName, ignoreCase = true) }) {
+                    results.add(
+                        Medication(
+                            name = formattedName,
+                            dose = dose,
+                            frequency = freq.ifEmpty { "Daily" }
+                        )
+                    )
+                }
+            }
+        }
+
+        return results
     }
 
     fun takeSingleMedication(med: Medication) {
