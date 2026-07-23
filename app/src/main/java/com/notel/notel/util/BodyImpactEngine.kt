@@ -16,6 +16,7 @@ enum class BodyRegionId {
     ABDOMEN,
     LEFT_SIDE,
     RIGHT_SIDE,
+    BACK,
     THIGHS
 }
 
@@ -211,6 +212,31 @@ object BodyImpactEngine {
                             details = "Digestive strain logged. Consider lighter meals and stay hydrated.",
                             color = Color(0xFF26A69A), // Teal
                             icon = Icons.Default.Restaurant,
+                            timestamp = entry.timestamp,
+                            durationHours = duration,
+                            originalLogText = displayText,
+                            relatedLogId = entry.id
+                        )
+                    )
+                }
+            }
+
+            // 6. Back / Spine / Lumbar Pain - 12-hour duration
+            if (containsAny(text, "back pain", "back ache", "sharp back pain", "lower back", "upper back", "spine", "lumbar")) {
+                val duration = 12 // 12 Hours active window for back pain
+                val expiresAt = entry.timestamp + TimeUnit.HOURS.toMillis(duration.toLong())
+
+                if (now < expiresAt) {
+                    val ageHours = TimeUnit.MILLISECONDS.toHours(now - entry.timestamp)
+                    results.add(
+                        EvaluatedBodyImpact(
+                            id = "back_${entry.id}",
+                            regionId = BodyRegionId.BACK,
+                            regionName = "Back & Spine",
+                            status = "Musculoskeletal / Pain (${ageHours}h ago)",
+                            details = "Back pain logged. Consider gentle stretching, posture adjustments, or heat therapy.",
+                            color = Color(0xFFEF5350), // Crimson Red
+                            icon = Icons.Default.FitnessCenter,
                             timestamp = entry.timestamp,
                             durationHours = duration,
                             originalLogText = displayText,
