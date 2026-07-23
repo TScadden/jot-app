@@ -37,15 +37,15 @@ data class EvaluatedBodyImpact(
 
     fun getTimeRemainingText(now: Long = System.currentTimeMillis()): String {
         val remainingMillis = expiresAt - now
-        if (remainingMillis <= 0) return "Fading now"
+        if (remainingMillis <= 0) return "0m"
 
         val hours = TimeUnit.MILLISECONDS.toHours(remainingMillis)
         val minutes = TimeUnit.MILLISECONDS.toMinutes(remainingMillis) % 60
 
         return when {
-            hours > 0 -> "${hours}h ${minutes}m remaining"
-            minutes > 0 -> "${minutes}m remaining"
-            else -> "< 1m remaining"
+            hours > 0 -> "${hours}h ${minutes}m"
+            minutes > 0 -> "${minutes}m"
+            else -> "<1m"
         }
     }
 }
