@@ -238,6 +238,7 @@ class MainActivity : ComponentActivity() {
                                 onBack = { navController.popBackStack() },
                                 onSleepClick = { navController.navigate("sleep") },
                                 onBodyInfoClick = { navController.navigate("body_info") },
+                                onMedicationsClick = { navController.navigate("medications") },
                                 onKeyMetricsClick = { navController.navigate("key_metrics") },
                                 onCoachClick = { 
                                     if (isUnlimited) navController.navigate("coach_history")
@@ -255,6 +256,9 @@ class MainActivity : ComponentActivity() {
                         }
                         composable("body_info") {
                             BodyInfoScreen(onBack = { navController.popBackStack() })
+                        }
+                        composable("medications") {
+                            MedicationsScreen(onBack = { navController.popBackStack() })
                         }
                         composable("community") {
                             com.notel.notel.ui.screen.CommunityScreen(onBack = { navController.popBackStack() })

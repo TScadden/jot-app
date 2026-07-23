@@ -65,6 +65,11 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideMedicationDao(db: NotelDatabase): com.notel.notel.data.local.dao.MedicationDao =
+        db.medicationDao()
+
+    @Provides
+    @Singleton
     fun provideOkHttpClient(authInterceptor: AuthInterceptor): OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(120, TimeUnit.SECONDS)

@@ -28,9 +28,11 @@ import kotlinx.coroutines.launch
         com.notel.notel.data.local.entity.CoachSession::class,
         com.notel.notel.data.local.entity.CoachMessageEntity::class,
         UserList::class,
-        UserListItem::class
+        UserListItem::class,
+        com.notel.notel.data.local.entity.Medication::class,
+        com.notel.notel.data.local.entity.MedicationSideEffectCache::class
     ],
-    version = 19,
+    version = 20,
     exportSchema = false
 )
 abstract class NotelDatabase : RoomDatabase() {
@@ -41,6 +43,7 @@ abstract class NotelDatabase : RoomDatabase() {
     abstract fun coachSessionDao(): com.notel.notel.data.local.dao.CoachSessionDao
     abstract fun coachMessageDao(): com.notel.notel.data.local.dao.CoachMessageDao
     abstract fun userListDao(): UserListDao
+    abstract fun medicationDao(): com.notel.notel.data.local.dao.MedicationDao
 
     companion object {
         @Volatile private var INSTANCE: NotelDatabase? = null

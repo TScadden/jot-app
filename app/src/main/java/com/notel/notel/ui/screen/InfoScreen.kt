@@ -34,6 +34,7 @@ fun InfoScreen(
     onBack: () -> Unit = {},
     onSleepClick: () -> Unit = {},
     onBodyInfoClick: () -> Unit = {},
+    onMedicationsClick: () -> Unit = {},
     onKeyMetricsClick: () -> Unit = {},
     onCoachClick: () -> Unit = {},
     onTipsAndTricksClick: () -> Unit = {},
@@ -45,6 +46,7 @@ fun InfoScreen(
     val tiles = listOf(
         InfoTile("Sleep", Icons.Default.Bedtime, "Analysis & Debt"),
         InfoTile("Body Info", Icons.Default.AccessibilityNew, "Impact & Side Effects"),
+        InfoTile("Medications", Icons.Default.Medication, "Prescriptions & Doses"),
         InfoTile("Tips and Tricks", Icons.Default.Lightbulb, "Master your data"),
         InfoTile("Health Coach", Icons.Default.QuestionMark, "Personalized Advice"),
         InfoTile("Key Metrics", Icons.Default.BarChart, "Your Body Data"),
@@ -95,6 +97,7 @@ fun InfoScreen(
                         onNavigateToMembership = onNavigateToMembership,
                         onSleepClick = onSleepClick,
                         onBodyInfoClick = onBodyInfoClick,
+                        onMedicationsClick = onMedicationsClick,
                         onKeyMetricsClick = onKeyMetricsClick,
                         onCoachClick = onCoachClick,
                         onTipsAndTricksClick = onTipsAndTricksClick,
@@ -114,6 +117,7 @@ fun InfoTileCard(
     onNavigateToMembership: () -> Unit,
     onSleepClick: () -> Unit,
     onBodyInfoClick: () -> Unit,
+    onMedicationsClick: () -> Unit,
     onKeyMetricsClick: () -> Unit,
     onCoachClick: () -> Unit,
     onTipsAndTricksClick: () -> Unit,
@@ -146,6 +150,7 @@ fun InfoTileCard(
                     when (tile.title) {
                         "Sleep" -> onSleepClick()
                         "Body Info" -> onBodyInfoClick()
+                        "Medications" -> onMedicationsClick()
                         "Key Metrics" -> onKeyMetricsClick()
                         "Health Coach" -> onCoachClick()
                         "Tips and Tricks" -> onTipsAndTricksClick()
