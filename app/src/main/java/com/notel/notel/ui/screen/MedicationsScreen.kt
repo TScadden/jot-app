@@ -37,6 +37,7 @@ fun MedicationsScreen(
     val statusMessage by viewModel.statusMessage.collectAsState()
 
     var showAddDialog by remember { mutableStateOf(false) }
+    var editingMedication by remember { mutableStateOf<Medication?>(null) }
     var showInfoDialog by remember { mutableStateOf(false) }
     var showArchivedSection by remember { mutableStateOf(true) }
 
@@ -50,6 +51,13 @@ fun MedicationsScreen(
         statusMessage?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.clearStatusMessage()
+        }
+    }
+
+    // Check if all active medications have valid filled-out doses
+    val allActiveDosesValid = remember(activeMedications) {
+        activeMedications.isNotEmpty() && activeMedications.none { 
+            it.dose.isBlank() || it.dose.equals("As prescribed", ignoreCase = true) 
         }
     }
 
@@ -140,18 +148,36 @@ fun MedicationsScreen(
 
                             Button(
                                 onClick = { viewModel.takeAllMedications() },
-                                colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = NotelPrimary,
+                                    disabledContainerColor = NotelSurfaceHigh.copy(alpha = 0.4f)
+                                ),
                                 shape = RoundedCornerShape(14.dp),
-                                enabled = activeMedications.isNotEmpty()
+                                enabled = allActiveDosesValid
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Check,
                                     contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(16.dp),
+                                    tint = if (allActiveDosesValid) Color.White else NotelTextSecondary
                                 )
                                 Spacer(Modifier.width(6.dp))
-                                Text("Took All Meds", fontWeight = FontWeight.Bold)
+                                Text(
+                                    "Took All Meds", 
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (allActiveDosesValid) Color.White else NotelTextSecondary
+                                )
                             }
+                        }
+
+                        if (activeMedications.isNotEmpty() && !allActiveDosesValid) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = "⚠️ Fill out missing doses below to unlock 'Took Med' logging.",
+                                color = NotelPrimary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
                         }
 
                         Spacer(Modifier.height(16.dp))
@@ -176,7 +202,13 @@ fun MedicationsScreen(
                             }
 
                             Button(
-                                onClick = { showAddDialog = true },
+                                onClick = { 
+                                    editingMedication = null
+                                    medName = ""
+                                    medDose = ""
+                                    medFrequency = "Once daily"
+                                    showAddDialog = true 
+                                },
                                 modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh),
                                 shape = RoundedCornerShape(12.dp)
@@ -235,6 +267,13 @@ fun MedicationsScreen(
                     MedicationCard(
                         medication = med,
                         isArchived = false,
+                        onClick = {
+                            editingMedication = med
+                            medName = med.name
+                            medDose = if (med.dose == "As prescribed") "" else med.dose
+                            medFrequency = med.frequency
+                            showAddDialog = true
+                        },
                         onTookMed = { viewModel.takeSingleMedication(med) },
                         onArchive = { viewModel.archiveMedication(med) },
                         onDelete = { viewModel.deleteMedication(med) }
@@ -282,6 +321,13 @@ fun MedicationsScreen(
                         MedicationCard(
                             medication = med,
                             isArchived = true,
+                            onClick = {
+                                editingMedication = med
+                                medName = med.name
+                                medDose = if (med.dose == "As prescribed") "" else med.dose
+                                medFrequency = med.frequency
+                                showAddDialog = true
+                            },
                             onUnarchive = { viewModel.unarchiveMedication(med) },
                             onDelete = { viewModel.deleteMedication(med) }
                         )
@@ -291,11 +337,17 @@ fun MedicationsScreen(
         }
     }
 
-    // Add Custom Med Dialog
+    // Add / Edit Custom Med Dialog
     if (showAddDialog) {
         AlertDialog(
             onDismissRequest = { showAddDialog = false },
-            title = { Text("Add New Medication", fontWeight = FontWeight.Bold, color = NotelTextPrimary) },
+            title = {
+                Text(
+                    text = if (editingMedication != null) "Edit Medication" else "Add New Medication",
+                    fontWeight = FontWeight.Bold,
+                    color = NotelTextPrimary
+                )
+            },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedTextField(
@@ -308,7 +360,7 @@ fun MedicationsScreen(
                     OutlinedTextField(
                         value = medDose,
                         onValueChange = { medDose = it },
-                        label = { Text("Dose * (e.g. 50mg, 0.5ml)") },
+                        label = { Text("Dose * (e.g. 50mg, 60mg, 0.5ml)") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -325,10 +377,16 @@ fun MedicationsScreen(
                 Button(
                     onClick = {
                         if (medName.isNotBlank() && medDose.isNotBlank()) {
-                            viewModel.addMedication(medName, medDose, medFrequency)
+                            val currentMed = editingMedication
+                            if (currentMed != null) {
+                                viewModel.updateMedication(currentMed, medName, medDose, medFrequency)
+                            } else {
+                                viewModel.addMedication(medName, medDose, medFrequency)
+                            }
                             medName = ""
                             medDose = ""
                             medFrequency = "Once daily"
+                            editingMedication = null
                             showAddDialog = false
                         }
                     },
@@ -338,7 +396,12 @@ fun MedicationsScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showAddDialog = false }) {
+                TextButton(
+                    onClick = { 
+                        editingMedication = null
+                        showAddDialog = false 
+                    }
+                ) {
                     Text("Cancel")
                 }
             },
@@ -360,12 +423,17 @@ fun MedicationsScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "• Active & Archived: Archive medications you no longer take to keep your list clean while preserving history with their ended date.",
+                        text = "• Click to Edit: Tap any medication card to edit its name, dose, or frequency.",
                         style = MaterialTheme.typography.bodySmall,
                         color = NotelTextPrimary
                     )
                     Text(
-                        text = "• Required Fields: Every medication must have a Name, Dose, and Frequency filled out.",
+                        text = "• Required Dose Locking: 'Took Med' and 'Took All Meds' require a valid dose to be filled out.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NotelTextPrimary
+                    )
+                    Text(
+                        text = "• Active & Archived: Archive medications you no longer take to keep your list clean while preserving history with their ended date.",
                         style = MaterialTheme.typography.bodySmall,
                         color = NotelTextPrimary
                     )
@@ -376,11 +444,6 @@ fun MedicationsScreen(
                     )
                     Text(
                         text = "• 'Took All Meds': Logs 1 dose for each active medication. If a medication is taken multiple times per day (e.g. 3x daily), taking it logs a single dose, not the full day's total.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NotelTextPrimary
-                    )
-                    Text(
-                        text = "• Smart AI Caching: Once Gemini AI looks up side-effects and duration for a medication, it is cached locally so it never wastes your credits again!",
                         style = MaterialTheme.typography.bodySmall,
                         color = NotelTextPrimary
                     )
@@ -400,15 +463,19 @@ fun MedicationsScreen(
 fun MedicationCard(
     medication: Medication,
     isArchived: Boolean = false,
+    onClick: () -> Unit = {},
     onTookMed: () -> Unit = {},
     onArchive: () -> Unit = {},
     onUnarchive: () -> Unit = {},
     onDelete: () -> Unit = {}
 ) {
+    val isDoseValid = medication.dose.isNotBlank() && !medication.dose.equals("As prescribed", ignoreCase = true)
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
+            .clickable { onClick() }
             .liquidGlass(
                 shape = RoundedCornerShape(20.dp),
                 color = NotelSurface,
@@ -446,12 +513,22 @@ fun MedicationCard(
                 }
 
                 Column {
-                    Text(
-                        text = medication.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isArchived) NotelTextSecondary else NotelTextPrimary
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = medication.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isArchived) NotelTextSecondary else NotelTextPrimary
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Tap to edit",
+                            tint = NotelTextSecondary.copy(alpha = 0.5f),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+
                     Spacer(Modifier.height(2.dp))
                     if (isArchived && !medication.endedDate.isNullOrBlank()) {
                         Surface(
@@ -468,9 +545,9 @@ fun MedicationCard(
                         }
                     } else {
                         Text(
-                            text = "${medication.dose}  •  ${medication.frequency}",
+                            text = if (isDoseValid) "${medication.dose}  •  ${medication.frequency}" else "Tap to set dose  •  ${medication.frequency}",
                             style = MaterialTheme.typography.bodySmall,
-                            color = NotelTextSecondary
+                            color = if (isDoseValid) NotelTextSecondary else NotelPrimary
                         )
                     }
                 }
@@ -480,11 +557,20 @@ fun MedicationCard(
                 if (!isArchived) {
                     Button(
                         onClick = onTookMed,
-                        colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
+                        enabled = isDoseValid,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = NotelPrimary,
+                            disabledContainerColor = NotelSurfaceHigh.copy(alpha = 0.4f)
+                        ),
                         shape = RoundedCornerShape(12.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                     ) {
-                        Text("Took Med", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            "Took Med",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDoseValid) Color.White else NotelTextSecondary
+                        )
                     }
 
                     IconButton(onClick = onArchive) {

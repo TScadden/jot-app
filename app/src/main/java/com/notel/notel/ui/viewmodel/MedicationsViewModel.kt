@@ -63,6 +63,19 @@ class MedicationsViewModel @Inject constructor(
         }
     }
 
+    fun updateMedication(medication: Medication, name: String, dose: String, frequency: String) {
+        if (name.isBlank() || dose.isBlank()) return
+        viewModelScope.launch {
+            val updated = medication.copy(
+                name = name.trim(),
+                dose = dose.trim(),
+                frequency = frequency.trim().ifEmpty { "Once daily" }
+            )
+            medicationDao.insertMedication(updated)
+            _statusMessage.value = "Updated ${updated.name} (${updated.dose})"
+        }
+    }
+
     fun archiveMedication(medication: Medication) {
         viewModelScope.launch {
             val todayStr = java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.getDefault()).format(java.util.Date())
