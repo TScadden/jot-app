@@ -222,7 +222,7 @@ object BodyImpactEngine {
             }
 
             // 6. Back / Spine / Lumbar Pain - 12-hour duration
-            if (containsAny(text, "back pain", "back ache", "sharp back pain", "lower back", "upper back", "spine", "lumbar")) {
+            if (containsAny(text, "back pain", "back ache", "sharp back pain", "lower back", "upper back", "spine", "lumbar", "back")) {
                 val duration = 12 // 12 Hours active window for back pain
                 val expiresAt = entry.timestamp + TimeUnit.HOURS.toMillis(duration.toLong())
 
@@ -243,6 +243,45 @@ object BodyImpactEngine {
                             relatedLogId = entry.id
                         )
                     )
+                }
+            }
+
+            // 7. General Pain & Muscle Soreness Catch-All (Chest, Legs, Shoulders, Joints)
+            if (containsAny(text, "pain", "sore", "ache", "cramp", "tender", "stiff")) {
+                val isChest = containsAny(text, "chest", "rib", "heart")
+                val isLeg = containsAny(text, "leg", "thigh", "knee", "calf", "hamstring")
+                val isArm = containsAny(text, "bicep", "tricep", "shoulder", "elbow", "wrist")
+
+                val duration = 12
+                val expiresAt = entry.timestamp + TimeUnit.HOURS.toMillis(duration.toLong())
+
+                if (now < expiresAt) {
+                    val ageHours = TimeUnit.MILLISECONDS.toHours(now - entry.timestamp)
+                    val (region, regionLabel) = when {
+                        isChest -> Pair(BodyRegionId.CHEST, "Chest & Ribs")
+                        isLeg -> Pair(BodyRegionId.THIGHS, "Legs & Thighs")
+                        isArm -> Pair(BodyRegionId.LEFT_ARM, "Arm & Shoulder")
+                        else -> Pair(BodyRegionId.BACK, "Musculoskeletal / Back")
+                    }
+
+                    // Only add if region isn't already evaluated for a higher-priority match
+                    if (results.none { it.regionId == region }) {
+                        results.add(
+                            EvaluatedBodyImpact(
+                                id = "symptom_${entry.id}",
+                                regionId = region,
+                                regionName = regionLabel,
+                                status = "Symptom / Pain (${ageHours}h ago)",
+                                details = "Pain or soreness logged. Monitor for changes and rest affected area.",
+                                color = Color(0xFFFF7043),
+                                icon = Icons.Default.Warning,
+                                timestamp = entry.timestamp,
+                                durationHours = duration,
+                                originalLogText = displayText,
+                                relatedLogId = entry.id
+                            )
+                        )
+                    }
                 }
             }
         }
