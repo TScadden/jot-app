@@ -90,22 +90,57 @@ class MedicationsViewModel @Inject constructor(
     fun loadMedicationsFromProfile() {
         viewModelScope.launch {
             _isExtractingFromProfile.value = true
-            val profileContext = preferences.userContext.first()
-            if (profileContext.isBlank()) {
-                _statusMessage.value = "No user profile background found to extract meds from."
+            val profileMedsJson = preferences.medications.first()
+            
+            if (profileMedsJson.isBlank() || profileMedsJson == "[]") {
+                // Fallback to checking userContext background string if no profile medications exist
+                val profileContext = preferences.userContext.first()
+                if (profileContext.isBlank()) {
+                    _statusMessage.value = "No medications found in User Profile settings."
+                    _isExtractingFromProfile.value = false
+                    return@launch
+                }
+
+                val extracted = extractMedicationsFromText(profileContext)
+                if (extracted.isEmpty()) {
+                    _statusMessage.value = "No medications found in User Profile."
+                } else {
+                    for (med in extracted) {
+                        medicationDao.insertMedication(med)
+                    }
+                    _statusMessage.value = "Imported ${extracted.size} medication(s) from profile!"
+                }
                 _isExtractingFromProfile.value = false
                 return@launch
             }
 
-            val extracted = extractMedicationsFromText(profileContext)
-
-            if (extracted.isEmpty()) {
-                _statusMessage.value = "No clear medication names found in profile background."
-            } else {
-                for (med in extracted) {
-                    medicationDao.insertMedication(med)
+            try {
+                val jsonArray = org.json.JSONArray(profileMedsJson)
+                var count = 0
+                for (i in 0 until jsonArray.length()) {
+                    val obj = jsonArray.getJSONObject(i)
+                    val name = obj.optString("name", "")
+                    val isPresent = obj.optBoolean("isPresent", true)
+                    
+                    if (name.isNotBlank()) {
+                        val med = Medication(
+                            name = name.replaceFirstChar { it.uppercase() },
+                            dose = "As prescribed",
+                            frequency = "Daily",
+                            isArchived = !isPresent,
+                            endedDate = if (!isPresent) obj.optString("endDate", null) else null
+                        )
+                        medicationDao.insertMedication(med)
+                        count++
+                    }
                 }
-                _statusMessage.value = "Successfully imported ${extracted.size} medication(s) from profile!"
+                if (count > 0) {
+                    _statusMessage.value = "Loaded $count medication(s) from User Profile!"
+                } else {
+                    _statusMessage.value = "No valid medications found in User Profile."
+                }
+            } catch (e: Exception) {
+                _statusMessage.value = "Failed to parse medications from User Profile."
             }
             _isExtractingFromProfile.value = false
         }
