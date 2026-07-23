@@ -169,19 +169,18 @@ abstract class NotelDatabase : RoomDatabase() {
 
         private val MIGRATION_20_21 = object : Migration(20, 21) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                // Ensure medications and medication_side_effect_cache exist for version 21
-                db.execSQL("""
-                    CREATE TABLE IF NOT EXISTS medications (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                        name TEXT NOT NULL,
-                        dose TEXT NOT NULL,
-                        frequency TEXT NOT NULL,
-                        timesPerDay INTEGER NOT NULL DEFAULT 1,
-                        notes TEXT NOT NULL DEFAULT '',
-                        isArchived INTEGER NOT NULL DEFAULT 0,
-                        endedDate TEXT
-                    )
-                """.trimIndent())
+                // Ensure columns isArchived and endedDate exist if medications table was created under v20
+                try {
+                    db.execSQL("ALTER TABLE medications ADD COLUMN isArchived INTEGER NOT NULL DEFAULT 0")
+                } catch (e: Exception) {
+                    // Column already exists
+                }
+
+                try {
+                    db.execSQL("ALTER TABLE medications ADD COLUMN endedDate TEXT")
+                } catch (e: Exception) {
+                    // Column already exists
+                }
 
                 db.execSQL("""
                     CREATE TABLE IF NOT EXISTS medication_side_effect_cache (
