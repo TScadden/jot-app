@@ -237,6 +237,7 @@ class MainActivity : ComponentActivity() {
                             InfoScreen(
                                 onBack = { navController.popBackStack() },
                                 onSleepClick = { navController.navigate("sleep") },
+                                onBodyInfoClick = { navController.navigate("body_info") },
                                 onKeyMetricsClick = { navController.navigate("key_metrics") },
                                 onCoachClick = { 
                                     if (isUnlimited) navController.navigate("coach_history")
@@ -251,6 +252,9 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToMembership = { navController.navigate("settings?menu=MEMBERSHIP") },
                                 isUnlimited = isUnlimited
                             )
+                        }
+                        composable("body_info") {
+                            BodyInfoScreen(onBack = { navController.popBackStack() })
                         }
                         composable("community") {
                             com.notel.notel.ui.screen.CommunityScreen(onBack = { navController.popBackStack() })

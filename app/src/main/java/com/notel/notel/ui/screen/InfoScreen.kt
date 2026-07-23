@@ -33,6 +33,7 @@ data class InfoTile(
 fun InfoScreen(
     onBack: () -> Unit = {},
     onSleepClick: () -> Unit = {},
+    onBodyInfoClick: () -> Unit = {},
     onKeyMetricsClick: () -> Unit = {},
     onCoachClick: () -> Unit = {},
     onTipsAndTricksClick: () -> Unit = {},
@@ -43,6 +44,7 @@ fun InfoScreen(
 ) {
     val tiles = listOf(
         InfoTile("Sleep", Icons.Default.Bedtime, "Analysis & Debt"),
+        InfoTile("Body Info", Icons.Default.AccessibilityNew, "Impact & Side Effects"),
         InfoTile("Tips and Tricks", Icons.Default.Lightbulb, "Master your data"),
         InfoTile("Health Coach", Icons.Default.QuestionMark, "Personalized Advice"),
         InfoTile("Key Metrics", Icons.Default.BarChart, "Your Body Data"),
@@ -92,6 +94,7 @@ fun InfoScreen(
                         isUnlimited = isUnlimited,
                         onNavigateToMembership = onNavigateToMembership,
                         onSleepClick = onSleepClick,
+                        onBodyInfoClick = onBodyInfoClick,
                         onKeyMetricsClick = onKeyMetricsClick,
                         onCoachClick = onCoachClick,
                         onTipsAndTricksClick = onTipsAndTricksClick,
@@ -110,6 +113,7 @@ fun InfoTileCard(
     isUnlimited: Boolean,
     onNavigateToMembership: () -> Unit,
     onSleepClick: () -> Unit,
+    onBodyInfoClick: () -> Unit,
     onKeyMetricsClick: () -> Unit,
     onCoachClick: () -> Unit,
     onTipsAndTricksClick: () -> Unit,
@@ -141,6 +145,7 @@ fun InfoTileCard(
                 } else {
                     when (tile.title) {
                         "Sleep" -> onSleepClick()
+                        "Body Info" -> onBodyInfoClick()
                         "Key Metrics" -> onKeyMetricsClick()
                         "Health Coach" -> onCoachClick()
                         "Tips and Tricks" -> onTipsAndTricksClick()
