@@ -352,6 +352,7 @@ fun MedicationsScreen(
                 onDismiss = { bannerVisible = false }
             )
         }
+    }
 
     // Add / Edit Custom Med Dialog
     if (showAddDialog) {
@@ -705,6 +706,4 @@ private fun TopSlideNotificationBanner(
             }
         }
     }
-}
-}
 }
