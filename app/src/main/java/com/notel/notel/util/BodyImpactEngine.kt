@@ -142,7 +142,7 @@ object BodyImpactEngine {
             }
 
             // 3. Peptide Shots & SubQ Injections (24 hour site rotation window - STRICTLY from Medications Tab)
-            val isStrictlyFromMedTab = entry.source == "Medications Tab" || containsAny(textLower, "logged from medications tab", "took medication:")
+            val isStrictlyFromMedTab = entry.source == "Medications Tab" || textLower.contains("logged from medications tab")
             
             if (isStrictlyFromMedTab) {
                 val isExplicitShot = containsAny(textLower, "peptide", "shot", "injection", "subq", "needle", "pin", "semaglutide", "tirzepatide")
