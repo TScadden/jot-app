@@ -142,29 +142,34 @@ object BodyImpactEngine {
             }
 
             // 3. Peptide Shots & SubQ Injections (24 hour site rotation window)
-            val isExplicitShot = containsAny(textLower, "peptide", "shot", "injection", "subq", "needle", "pin")
-            if (isExplicitShot || (containsAny(textLower, "semaglutide", "tirzepatide") && !containsAny(textLower, "tablet", "pill", "capsule"))) {
-                val duration = 24
-                val expiresAt = entry.timestamp + TimeUnit.HOURS.toMillis(duration.toLong())
+            val isFromMedTab = entry.categoryId == 8 || entry.source == "Medications Tab" || containsAny(textLower, "took medication", "medication:", "took med", "logged from medications tab", "medication & supplements")
+            val isExplicitShotAction = (containsAny(textLower, "took peptide", "peptide shot", "injected peptide", "subq shot", "injection of", "injected") || containsAny(entry.chips.lowercase(), "medication", "supplements", "injection"))
+            
+            if (isFromMedTab || isExplicitShotAction) {
+                val isExplicitShot = containsAny(textLower, "peptide", "shot", "injection", "subq", "needle", "pin", "semaglutide", "tirzepatide")
+                if (isExplicitShot) {
+                    val duration = 24
+                    val expiresAt = entry.timestamp + TimeUnit.HOURS.toMillis(duration.toLong())
 
-                if (now < expiresAt) {
-                    val ageHours = TimeUnit.MILLISECONDS.toHours(now - entry.timestamp)
+                    if (now < expiresAt) {
+                        val ageHours = TimeUnit.MILLISECONDS.toHours(now - entry.timestamp)
 
-                    results.add(
-                        EvaluatedBodyImpact(
-                            id = "injection_${entry.id}",
-                            regionId = BodyRegionId.PEPTIDE,
-                            regionName = "Peptide Shot",
-                            status = "Peptide Shot (${ageHours}h ago)",
-                            details = "Peptide shot logged. Remember to rotate to the opposite side or thigh for your next dose.",
-                            color = Color(0xFFAB47BC),
-                            icon = Icons.Default.Vaccines,
-                            timestamp = entry.timestamp,
-                            durationMinutes = duration * 60,
-                            originalLogText = displayText,
-                            relatedLogId = entry.id
+                        results.add(
+                            EvaluatedBodyImpact(
+                                id = "injection_${entry.id}",
+                                regionId = BodyRegionId.PEPTIDE,
+                                regionName = "Peptide Shot",
+                                status = "Peptide Shot (${ageHours}h ago)",
+                                details = "Peptide shot logged. Remember to rotate to the opposite side or thigh for your next dose.",
+                                color = Color(0xFFAB47BC),
+                                icon = Icons.Default.Vaccines,
+                                timestamp = entry.timestamp,
+                                durationMinutes = duration * 60,
+                                originalLogText = displayText,
+                                relatedLogId = entry.id
+                            )
                         )
-                    )
+                    }
                 }
             }
 
@@ -287,8 +292,9 @@ object BodyImpactEngine {
             }
 
             // 8. Medication Dose Logging & Side Effect Watch (Excluding Peptide Shots)
+            val isExplicitMedSource = entry.categoryId == 8 || entry.source == "Medications Tab" || containsAny(textLower, "took medication", "medication:", "took med", "logged from medications tab")
             val isPeptideOrInjection = containsAny(textLower, "peptide", "shot", "injection", "subq", "needle", "pin")
-            if (!isPeptideOrInjection && (entry.categoryId == 8 || containsAny(textLower, "took medication", "medication:", "took med"))) {
+            if (isExplicitMedSource && !isPeptideOrInjection) {
                 // Calculate realistic single-dose duration based on frequency
                 val duration = when {
                     containsAny(textLower, "twice daily", "twice a day", "2x daily", "2x a day", "bid", "12h") -> 12
