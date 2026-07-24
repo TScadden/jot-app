@@ -29,8 +29,8 @@ data class EvaluatedBodyImpact(
     val color: Color,
     val icon: ImageVector,
     val timestamp: Long,
-    val durationHours: Int = 24,
-    val durationMinutes: Int = durationHours * 60,
+    val durationMinutes: Int,
+    val durationHours: Int = durationMinutes / 60,
     val originalLogText: String = "",
     val relatedLogId: Long? = null
 ) {
@@ -95,7 +95,7 @@ object BodyImpactEngine {
                             color = Color(0xFFFF7043),
                             icon = Icons.Default.Psychology,
                             timestamp = entry.timestamp,
-                            durationHours = duration,
+                            durationMinutes = duration * 60,
                             originalLogText = displayText,
                             relatedLogId = entry.id
                         )
@@ -131,7 +131,7 @@ object BodyImpactEngine {
                             color = Color(0xFFFF5252),
                             icon = Icons.Default.WaterDrop,
                             timestamp = entry.timestamp,
-                            durationHours = duration,
+                            durationMinutes = duration * 60,
                             originalLogText = displayText,
                             relatedLogId = entry.id
                         )
@@ -174,7 +174,7 @@ object BodyImpactEngine {
                             color = Color(0xFFAB47BC),
                             icon = Icons.Default.Vaccines,
                             timestamp = entry.timestamp,
-                            durationHours = duration,
+                            durationMinutes = duration * 60,
                             originalLogText = displayText,
                             relatedLogId = entry.id
                         )
@@ -199,7 +199,7 @@ object BodyImpactEngine {
                             color = Color(0xFFFFB300),
                             icon = Icons.Default.Visibility,
                             timestamp = entry.timestamp,
-                            durationHours = duration,
+                            durationMinutes = duration * 60,
                             originalLogText = displayText,
                             relatedLogId = entry.id
                         )
@@ -224,7 +224,7 @@ object BodyImpactEngine {
                             color = Color(0xFF26A69A),
                             icon = Icons.Default.Restaurant,
                             timestamp = entry.timestamp,
-                            durationHours = duration,
+                            durationMinutes = duration * 60,
                             originalLogText = displayText,
                             relatedLogId = entry.id
                         )
@@ -253,7 +253,7 @@ object BodyImpactEngine {
                             color = Color(0xFFEF5350),
                             icon = Icons.Default.FitnessCenter,
                             timestamp = entry.timestamp,
-                            durationHours = duration,
+                            durationMinutes = duration * 60,
                             originalLogText = displayText,
                             relatedLogId = entry.id
                         )
@@ -291,7 +291,7 @@ object BodyImpactEngine {
                                 color = Color(0xFFFF7043),
                                 icon = Icons.Default.Warning,
                                 timestamp = entry.timestamp,
-                                durationHours = duration,
+                                durationMinutes = duration * 60,
                                 originalLogText = displayText,
                                 relatedLogId = entry.id
                             )
@@ -326,7 +326,7 @@ object BodyImpactEngine {
                             color = Color(0xFF4ECDC4),
                             icon = Icons.Default.Medication,
                             timestamp = entry.timestamp,
-                            durationHours = duration,
+                            durationMinutes = duration * 60,
                             originalLogText = displayText,
                             relatedLogId = entry.id
                         )
