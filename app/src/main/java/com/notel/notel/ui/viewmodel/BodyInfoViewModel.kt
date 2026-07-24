@@ -17,10 +17,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+import com.notel.notel.data.preferences.NotelPreferences
+import kotlinx.coroutines.flow.first
+
 @HiltViewModel
 class BodyInfoViewModel @Inject constructor(
     private val logRepository: LogRepository,
-    private val geminiService: GeminiService
+    private val geminiService: GeminiService,
+    private val preferences: NotelPreferences
 ) : ViewModel() {
 
     private val _activeImpacts = MutableStateFlow<List<EvaluatedBodyImpact>>(emptyList())
@@ -49,7 +53,11 @@ class BodyInfoViewModel @Inject constructor(
                 // 2. Set loading spinner while Gemini AI evaluates custom side-effects & duration
                 _isLoading.value = true
                 try {
-                    val result = geminiService.evaluateBodyImpacts(entries)
+                    val userContextStr = preferences.userContext.first()
+                    val profileMedsStr = preferences.medications.first()
+                    val combinedContext = "User Profile Context: $userContextStr\nProfile Medications: $profileMedsStr"
+
+                    val result = geminiService.evaluateBodyImpacts(entries, userContext = combinedContext)
                     result.getOrNull()?.let { aiItems ->
                         if (aiItems.isNotEmpty()) {
                             val aiImpacts = aiItems.mapNotNull { item ->
