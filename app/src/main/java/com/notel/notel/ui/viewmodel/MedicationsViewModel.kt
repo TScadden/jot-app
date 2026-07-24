@@ -243,7 +243,8 @@ class MedicationsViewModel @Inject constructor(
             categoryId = 8,
             body = logText,
             manualText = "Logged from Medications tab",
-            source = "Medications Tab"
+            source = "Medications Tab",
+            chips = "[\"Medication Tab\"]"
         )
         val entryId = logRepository.insertEntry(newEntry)
 

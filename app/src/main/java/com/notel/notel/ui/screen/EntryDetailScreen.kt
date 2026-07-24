@@ -63,9 +63,12 @@ class EntryDetailViewModel @Inject constructor(
 
     fun updateCategory(categoryId: Int) {
         val current = _entry.value ?: return
+        // Prevent modifying category for entries logged from the Medications tab
+        if (current.source == "Medications Tab" || current.chips.contains("Medication Tab")) {
+            return
+        }
         viewModelScope.launch {
             val catName = categories.value.find { it.id == categoryId }?.name ?: ""
-            // Single tag rule: replace chips with only the newly selected category
             val updatedChips = if (catName.isNotBlank()) listOf(catName) else emptyList()
             val updatedChipsJson = org.json.JSONArray(updatedChips).toString()
 
@@ -139,34 +142,58 @@ fun EntryDetailScreen(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(20.dp) // More spacious
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("CHANGE CATEGORY", style = MaterialTheme.typography.labelSmall, color = NotelPrimary, letterSpacing = 0.8.sp)
-                    androidx.compose.foundation.lazy.LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.fillMaxWidth()
+                val isMedTabEntry = e.source == "Medications Tab" || e.chips.contains("Medication Tab")
+                if (isMedTabEntry) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(TileAccentPurple.copy(alpha = 0.12f))
+                            .border(1.dp, TileAccentPurple.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
                     ) {
-                        items(categories.size) { index ->
-                            val cat = categories[index]
-                            val isSelected = cat.id == e.categoryId
-                            val color = try { Color(android.graphics.Color.parseColor(cat.colorHex)) }
-                                        catch (_: Exception) { NotelPrimary }
-                            Box(
-                                modifier = Modifier
-                                    .height(40.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(if (isSelected) color else NotelSurface)
-                                    .border(1.dp, if (isSelected) color else color.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
-                                    .clickable { viewModel.updateCategory(cat.id) }
-                                    .padding(horizontal = 14.dp)
-                            ) {
-                                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxHeight()) {
-                                    Text(
-                                        cat.name.uppercase(),
-                                        color = if (isSelected) Color.White else NotelTextSecondary,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        letterSpacing = 0.6.sp
-                                    )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Medication, null, tint = TileAccentPurple, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "LOGGED VIA MEDICATIONS TAB",
+                                color = TileAccentPurple,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.8.sp
+                            )
+                        }
+                    }
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("CHANGE CATEGORY", style = MaterialTheme.typography.labelSmall, color = NotelPrimary, letterSpacing = 0.8.sp)
+                        androidx.compose.foundation.lazy.LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(categories.size) { index ->
+                                val cat = categories[index]
+                                val isSelected = cat.id == e.categoryId
+                                val color = try { Color(android.graphics.Color.parseColor(cat.colorHex)) }
+                                            catch (_: Exception) { NotelPrimary }
+                                Box(
+                                    modifier = Modifier
+                                        .height(40.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isSelected) color else NotelSurface)
+                                        .border(1.dp, if (isSelected) color else color.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                                        .clickable { viewModel.updateCategory(cat.id) }
+                                        .padding(horizontal = 14.dp)
+                                ) {
+                                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxHeight()) {
+                                        Text(
+                                            cat.name.uppercase(),
+                                            color = if (isSelected) Color.White else NotelTextSecondary,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 0.6.sp
+                                        )
+                                    }
                                 }
                             }
                         }
