@@ -61,12 +61,22 @@ class BodyInfoViewModel @Inject constructor(
                     result.getOrNull()?.let { aiItems ->
                         if (aiItems.isNotEmpty()) {
                             val aiImpacts = aiItems.mapNotNull { item ->
+                                val matchingLog = entries.find { it.id == item.logId }
+                                val logSource = matchingLog?.source ?: ""
+                                val logText = (matchingLog?.body ?: "").lowercase()
+                                val isFromMedTab = logSource == "Medications Tab" || logText.contains("logged from medications tab")
+                                val isMedOrPeptideItem = item.region.equals("PEPTIDE", ignoreCase = true) || item.region.equals("SYSTEMIC", ignoreCase = true)
+
+                                // Ignore AI items for medications/peptides if the log entry was not created from the Medications Tab
+                                if (isMedOrPeptideItem && !isFromMedTab) {
+                                    return@mapNotNull null
+                                }
+
                                 val regionEnum = try {
                                     BodyRegionId.valueOf(item.region.uppercase())
                                 } catch (e: Exception) {
                                     BodyRegionId.BACK
                                 }
-                                val matchingLog = entries.find { it.id == item.logId }
                                 val timestamp = matchingLog?.timestamp ?: System.currentTimeMillis()
                                 val displayText = matchingLog?.let { "${it.body} ${it.manualText}" } ?: item.status
 
