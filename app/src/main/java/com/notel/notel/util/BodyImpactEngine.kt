@@ -320,10 +320,8 @@ object BodyImpactEngine {
             }
         }
 
-        // Deduplicate by region, retaining the most recent active impact per body region
-        return results
-            .sortedByDescending { it.timestamp }
-            .distinctBy { it.regionId }
+        // Return all active impacts sorted by most recent timestamp
+        return results.sortedByDescending { it.timestamp }
     }
 
     private fun containsAny(text: String, vararg keywords: String): Boolean {
