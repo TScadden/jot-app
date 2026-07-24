@@ -29,7 +29,7 @@ data class EvaluatedBodyImpact(
     val color: Color,
     val icon: ImageVector,
     val timestamp: Long,
-    val durationMinutes: Int,
+    val durationMinutes: Int = 24 * 60,
     val durationHours: Int = durationMinutes / 60,
     val originalLogText: String = "",
     val relatedLogId: Long? = null
