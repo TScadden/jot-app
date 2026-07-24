@@ -64,7 +64,22 @@ class EntryDetailViewModel @Inject constructor(
     fun updateCategory(categoryId: Int) {
         val current = _entry.value ?: return
         viewModelScope.launch {
-            val updated = current.copy(categoryId = categoryId)
+            val catName = categories.value.find { it.id == categoryId }?.name ?: ""
+            val existingChips = try {
+                @Suppress("DEPRECATION")
+                Json.decodeFromString<List<String>>(current.chips).toMutableList()
+            } catch (_: Exception) { mutableListOf() }
+
+            if (catName.isNotBlank() && !existingChips.contains(catName)) {
+                existingChips.add(catName)
+            }
+
+            val updatedChipsJson = Json.encodeToString(
+                kotlinx.serialization.builtins.serializer<List<String>>(),
+                existingChips
+            )
+
+            val updated = current.copy(categoryId = categoryId, chips = updatedChipsJson)
             _entry.value = updated // OPTIMISTIC
             logRepository.updateEntry(updated)
         }
