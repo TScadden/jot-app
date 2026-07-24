@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.activity.compose.BackHandler
 import com.notel.notel.data.local.entity.Medication
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.MedicationsViewModel
@@ -31,6 +32,8 @@ fun MedicationsScreen(
     viewModel: MedicationsViewModel = hiltViewModel(),
     onBack: () -> Unit = {}
 ) {
+    BackHandler(onBack = onBack)
+
     val activeMedications by viewModel.activeMedications.collectAsState()
     val archivedMedications by viewModel.archivedMedications.collectAsState()
     val isExtracting by viewModel.isExtractingFromProfile.collectAsState()
