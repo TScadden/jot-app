@@ -142,7 +142,8 @@ object BodyImpactEngine {
             }
 
             // 3. Peptide Shots & SubQ Injections (24 hour site rotation window)
-            if (containsAny(textLower, "peptide", "shot", "injection", "subq", "semaglutide", "tirzepatide", "b12", "needle", "pin")) {
+            val isExplicitShot = containsAny(textLower, "peptide", "shot", "injection", "subq", "needle", "pin")
+            if (isExplicitShot || (containsAny(textLower, "semaglutide", "tirzepatide") && !containsAny(textLower, "tablet", "pill", "capsule"))) {
                 val duration = 24
                 val expiresAt = entry.timestamp + TimeUnit.HOURS.toMillis(duration.toLong())
 
@@ -286,7 +287,7 @@ object BodyImpactEngine {
             }
 
             // 8. Medication Dose Logging & Side Effect Watch (Excluding Peptide Shots)
-            val isPeptideOrInjection = containsAny(textLower, "peptide", "shot", "injection", "subq", "semaglutide", "tirzepatide", "b12", "needle", "pin")
+            val isPeptideOrInjection = containsAny(textLower, "peptide", "shot", "injection", "subq", "needle", "pin")
             if (!isPeptideOrInjection && (entry.categoryId == 8 || containsAny(textLower, "took medication", "medication:", "took med"))) {
                 // Calculate realistic single-dose duration based on frequency
                 val duration = when {
