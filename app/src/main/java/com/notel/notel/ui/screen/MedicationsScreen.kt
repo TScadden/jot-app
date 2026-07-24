@@ -706,3 +706,4 @@ private fun TopSlideNotificationBanner(
         }
     }
 }
+}
