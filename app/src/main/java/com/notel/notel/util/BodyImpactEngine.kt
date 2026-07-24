@@ -287,6 +287,11 @@ object BodyImpactEngine {
                                 regionId = region,
                                 regionName = regionLabel,
                                 status = "Symptom / Pain (${ageHours}h ago)",
+                                details = "Pain or soreness logged. Monitor for changes and rest affected area.",
+                                color = Color(0xFFFF7043),
+                                icon = Icons.Default.Warning,
+                                timestamp = entry.timestamp,
+                                durationHours = duration,
                                 originalLogText = displayText,
                                 relatedLogId = entry.id
                             )
