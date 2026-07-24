@@ -708,5 +708,3 @@ private fun TopSlideNotificationBanner(
 }
 }
 }
-}
-}
