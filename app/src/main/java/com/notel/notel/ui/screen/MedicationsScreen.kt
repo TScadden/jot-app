@@ -346,6 +346,7 @@ fun MedicationsScreen(
                         )
                     }
                 }
+            }
             TopSlideNotificationBanner(
                 visible = bannerVisible,
                 message = bannerMessage ?: "",
