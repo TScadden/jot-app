@@ -292,11 +292,30 @@ object BodyImpactEngine {
                                 icon = Icons.Default.Warning,
                                 timestamp = entry.timestamp,
                                 durationHours = duration,
-                                originalLogText = displayText,
-                                relatedLogId = entry.id
-                            )
+            // 8. Medication Dose Logging & Side Effect Watch
+            if (entry.categoryId == 8 || containsAny(textLower, "took medication", "medication:", "dose", "took med")) {
+                val duration = 24 // 24 hours active window for medication side effects & goal monitoring
+                val expiresAt = entry.timestamp + TimeUnit.HOURS.toMillis(duration.toLong())
+
+                if (now < expiresAt) {
+                    val ageHours = TimeUnit.MILLISECONDS.toHours(now - entry.timestamp)
+                    val medName = displayText.substringAfter("Took Medication:").substringAfter("Medication:").trim().take(30)
+                    
+                    results.add(
+                        EvaluatedBodyImpact(
+                            id = "med_${entry.id}",
+                            regionId = BodyRegionId.ABDOMEN,
+                            regionName = "Systemic / Medication Active",
+                            status = "Medication Active (${ageHours}h ago)",
+                            details = if (medName.isNotBlank()) "Logged: $medName. Gemini AI is monitoring systemic response, side effects, and primary goals." else "Medication dose logged. Gemini AI is tracking systemic side-effects and recovery duration.",
+                            color = Color(0xFF4ECDC4),
+                            icon = Icons.Default.Medication,
+                            timestamp = entry.timestamp,
+                            durationHours = duration,
+                            originalLogText = displayText,
+                            relatedLogId = entry.id
                         )
-                    }
+                    )
                 }
             }
         }
