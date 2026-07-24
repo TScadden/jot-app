@@ -160,13 +160,34 @@ class MainActivity : ComponentActivity() {
                     // Main Content
                     NavHost(
                         navController = navController,
-                        startDestination = "login",
+                        startDestination = "splash",
                         modifier = Modifier.fillMaxSize(),
                         enterTransition = { EnterTransition.None },
                         exitTransition = { ExitTransition.None },
                         popEnterTransition = { EnterTransition.None },
                         popExitTransition = { ExitTransition.None }
                     ) {
+                        composable("splash") {
+                            com.notel.notel.ui.screen.SplashScreen(
+                                onNavigateNext = { isLoggedIn, isOnboarded ->
+                                    if (isLoggedIn) {
+                                        if (isOnboarded) {
+                                            navController.navigate("body_load") {
+                                                popUpTo("splash") { inclusive = true }
+                                            }
+                                        } else {
+                                            navController.navigate("profile_setup") {
+                                                popUpTo("splash") { inclusive = true }
+                                            }
+                                        }
+                                    } else {
+                                        navController.navigate("login") {
+                                            popUpTo("splash") { inclusive = true }
+                                        }
+                                    }
+                                }
+                            )
+                        }
                         composable("login") {
                             val loginViewModel: com.notel.notel.ui.screen.LoginViewModel = hiltViewModel()
                             LoginScreen(
