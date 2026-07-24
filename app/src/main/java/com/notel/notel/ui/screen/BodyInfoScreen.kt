@@ -284,30 +284,32 @@ fun ExpandableBodyZoneCard(
                             text = zone.regionName,
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
-                            color = NotelTextPrimary
+                            color = NotelTextPrimary,
+                            modifier = Modifier.weight(1f, fill = false)
                         )
 
                         // Timer Badge showing time remaining until it fades
                         Surface(
                             color = zone.color.copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(6.dp)
+                            shape = RoundedCornerShape(8.dp)
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Schedule,
                                     contentDescription = null,
                                     tint = zone.color,
-                                    modifier = Modifier.size(10.dp)
+                                    modifier = Modifier.size(12.dp)
                                 )
                                 Text(
                                     text = zone.getTimeRemainingText(),
                                     color = zone.color,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    singleLine = true
                                 )
                             }
                         }

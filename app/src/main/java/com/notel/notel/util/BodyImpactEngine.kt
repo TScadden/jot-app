@@ -118,7 +118,7 @@ object BodyImpactEngine {
                         else -> BodyRegionId.LEFT_ARM
                     }
 
-                    val name = if (region == BodyRegionId.LEFT_ARM) "Left Arm (Vein Zone)" else "Right Arm (Vein Zone)"
+                    val name = "Arm (Vein Zone)"
                     val ageHours = TimeUnit.MILLISECONDS.toHours(now - entry.timestamp)
 
                     results.add(
