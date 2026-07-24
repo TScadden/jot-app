@@ -145,7 +145,7 @@ class MedicationsViewModel @Inject constructor(
                             dose = "As prescribed",
                             frequency = "Daily",
                             isArchived = !isPresent,
-                            endedDate = if (!isPresent) obj.optString("endDate", null) else null
+                            endedDate = if (!isPresent && obj.has("endDate")) obj.optString("endDate", "") else null
                         )
                         medicationDao.insertMedication(med)
                         count++
