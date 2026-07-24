@@ -17,7 +17,9 @@ enum class BodyRegionId {
     LEFT_SIDE,
     RIGHT_SIDE,
     BACK,
-    THIGHS
+    THIGHS,
+    PEPTIDE,
+    SYSTEMIC
 }
 
 data class EvaluatedBodyImpact(
@@ -150,7 +152,7 @@ object BodyImpactEngine {
                     results.add(
                         EvaluatedBodyImpact(
                             id = "injection_${entry.id}",
-                            regionId = BodyRegionId.ABDOMEN,
+                            regionId = BodyRegionId.PEPTIDE,
                             regionName = "Peptide Shot",
                             status = "Peptide Shot (${ageHours}h ago)",
                             details = "Peptide shot logged. Remember to rotate to the opposite side or thigh for your next dose.",
@@ -302,7 +304,7 @@ object BodyImpactEngine {
                     results.add(
                         EvaluatedBodyImpact(
                             id = "med_${entry.id}",
-                            regionId = BodyRegionId.ABDOMEN,
+                            regionId = BodyRegionId.SYSTEMIC,
                             regionName = "Systemic / Medication Active",
                             status = "Medication Active (${ageHours}h ago)",
                             details = if (medName.isNotBlank()) "Logged: $medName. Gemini AI is monitoring systemic response, side effects (nausea, dizziness, blood pressure), and primary therapeutic goals." else "Medication dose logged. Gemini AI is tracking systemic side-effects and recovery duration.",
