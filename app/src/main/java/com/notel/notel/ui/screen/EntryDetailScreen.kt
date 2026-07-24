@@ -65,16 +65,9 @@ class EntryDetailViewModel @Inject constructor(
         val current = _entry.value ?: return
         viewModelScope.launch {
             val catName = categories.value.find { it.id == categoryId }?.name ?: ""
-            val existingChips = try {
-                @Suppress("DEPRECATION")
-                Json.decodeFromString<List<String>>(current.chips).toMutableList()
-            } catch (_: Exception) { mutableListOf() }
-
-            if (catName.isNotBlank() && !existingChips.contains(catName)) {
-                existingChips.add(catName)
-            }
-
-            val updatedChipsJson = org.json.JSONArray(existingChips).toString()
+            // Single tag rule: replace chips with only the newly selected category
+            val updatedChips = if (catName.isNotBlank()) listOf(catName) else emptyList()
+            val updatedChipsJson = org.json.JSONArray(updatedChips).toString()
 
             val updated = current.copy(categoryId = categoryId, chips = updatedChipsJson)
             _entry.value = updated // OPTIMISTIC
