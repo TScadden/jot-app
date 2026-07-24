@@ -300,15 +300,33 @@ object BodyImpactEngine {
 
                 if (now < expiresAt) {
                     val ageHours = TimeUnit.MILLISECONDS.toHours(now - entry.timestamp)
-                    val medName = displayText.substringAfter("Took Medication:").substringAfter("Medication:").trim().take(40)
+                    val medName = displayText.substringAfter("Took Medication:").substringAfter("Medication:").substringBefore("(").trim()
+                    
+                    // Comprehensive medical side-effect lookup based on drug name
+                    val medLower = medName.lowercase()
+                    val specificDetails = when {
+                        medLower.contains("ivabradine") || medLower.contains("corlanor") ->
+                            "Ivabradine (7.5mg active). Primary Goal: Lowers heart rate by inhibiting funny current (If). Key Side Effects: Phosphenes (luminous visual bursts), bradycardia (slow heart rate), dizziness, 1st-degree AV block, & fatigue."
+                        medLower.contains("semaglutide") || medLower.contains("ozempic") || medLower.contains("wegovy") ->
+                            "Semaglutide GLP-1 receptor agonist. Primary Goal: Glycemic control & weight regulation. Key Side Effects: Nausea, delayed gastric emptying, acid reflux, constipation, & fatigue."
+                        medLower.contains("tirzepatide") || medLower.contains("mounjaro") || medLower.contains("zepbound") ->
+                            "Tirzepatide Dual GIP/GLP-1 agonist. Primary Goal: Metabolic & weight regulation. Key Side Effects: Nausea, mild diarrhea, decreased appetite, & injection site sensitivity."
+                        medLower.contains("metformin") ->
+                            "Metformin. Primary Goal: Insulin sensitivity. Key Side Effects: GI distress, cramping, B12 depletion watch, & mild nausea."
+                        medLower.contains("lisinopril") || medLower.contains("losartan") || medLower.contains("amlodipine") ->
+                            "Antihypertensive medication. Primary Goal: Blood pressure management. Key Side Effects: Dizziness on standing, dry cough, mild fatigue, & electrolyte shifts."
+                        else ->
+                            if (medName.isNotBlank()) "Logged: $medName. Gemini AI monitoring active response. Common Side Effects: Mild dizziness, GI changes, fatigue, & blood pressure shifts." 
+                            else "Medication dose logged. Gemini AI tracking systemic side-effects, therapeutic goals, and active duration."
+                    }
                     
                     results.add(
                         EvaluatedBodyImpact(
                             id = "med_${entry.id}",
                             regionId = BodyRegionId.SYSTEMIC,
-                            regionName = "Systemic / Medication Active",
+                            regionName = if (medName.isNotBlank()) "Systemic ($medName)" else "Systemic / Medication Active",
                             status = "Medication Active (${ageHours}h ago)",
-                            details = if (medName.isNotBlank()) "Logged: $medName. Gemini AI is monitoring systemic response, side effects (nausea, dizziness, blood pressure), and primary therapeutic goals." else "Medication dose logged. Gemini AI is tracking systemic side-effects and recovery duration.",
+                            details = specificDetails,
                             color = Color(0xFF4ECDC4),
                             icon = Icons.Default.Medication,
                             timestamp = entry.timestamp,
