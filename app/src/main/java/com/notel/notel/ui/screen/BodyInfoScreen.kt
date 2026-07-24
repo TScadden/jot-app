@@ -334,10 +334,9 @@ fun ExpandableBodyZoneCard(
                         fontWeight = FontWeight.Medium
                     )
                     Spacer(Modifier.height(8.dp))
-                    Row(
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         Text(
                             text = "Logged: $formattedTime",
@@ -348,9 +347,9 @@ fun ExpandableBodyZoneCard(
                         Text(
                             text = "Active Window: ${zone.durationHours}h",
                             style = MaterialTheme.typography.bodySmall,
-                            color = NotelTextSecondary,
+                            color = zone.color,
                             fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }

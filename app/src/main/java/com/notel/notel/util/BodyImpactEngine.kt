@@ -103,9 +103,9 @@ object BodyImpactEngine {
                 }
             }
 
-            // 2. Labs / Blood Draws (Arm & Veins) (12 hour active window)
+            // 2. Labs / Blood Draws (Arm & Veins) (4 hour active window)
             if (containsAny(textLower, "lab", "blood draw", "bloodwork", "cbc", "venipuncture", "phlebotomy", "blood test")) {
-                val duration = if (isSevere || textLower.contains("multiple")) 18 else 12
+                val duration = if (isSevere || textLower.contains("multiple")) 6 else 4
                 val expiresAt = entry.timestamp + TimeUnit.HOURS.toMillis(duration.toLong())
 
                 if (now < expiresAt) {
