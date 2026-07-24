@@ -291,7 +291,6 @@ fun MedicationsScreen(
                         onDelete = { viewModel.deleteMedication(med) }
                     )
                 }
-            }
 
             // Archived Medications Section
             if (archivedMedications.isNotEmpty()) {
