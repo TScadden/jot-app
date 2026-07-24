@@ -141,11 +141,10 @@ object BodyImpactEngine {
                 }
             }
 
-            // 3. Peptide Shots & SubQ Injections (24 hour site rotation window)
-            val isFromMedTab = entry.categoryId == 8 || entry.source == "Medications Tab" || containsAny(textLower, "took medication", "medication:", "took med", "logged from medications tab", "medication & supplements")
-            val isExplicitShotAction = (containsAny(textLower, "took peptide", "peptide shot", "injected peptide", "subq shot", "injection of", "injected") || containsAny(entry.chips.lowercase(), "medication", "supplements", "injection"))
+            // 3. Peptide Shots & SubQ Injections (24 hour site rotation window - STRICTLY from Medications Tab)
+            val isStrictlyFromMedTab = entry.source == "Medications Tab" || containsAny(textLower, "logged from medications tab", "took medication:")
             
-            if (isFromMedTab || isExplicitShotAction) {
+            if (isStrictlyFromMedTab) {
                 val isExplicitShot = containsAny(textLower, "peptide", "shot", "injection", "subq", "needle", "pin", "semaglutide", "tirzepatide")
                 if (isExplicitShot) {
                     val duration = 24
@@ -291,10 +290,9 @@ object BodyImpactEngine {
                 }
             }
 
-            // 8. Medication Dose Logging & Side Effect Watch (Excluding Peptide Shots)
-            val isExplicitMedSource = entry.categoryId == 8 || entry.source == "Medications Tab" || containsAny(textLower, "took medication", "medication:", "took med", "logged from medications tab")
+            // 8. Medication Dose Logging & Side Effect Watch (STRICTLY from Medications Tab)
             val isPeptideOrInjection = containsAny(textLower, "peptide", "shot", "injection", "subq", "needle", "pin")
-            if (isExplicitMedSource && !isPeptideOrInjection) {
+            if (isStrictlyFromMedTab && !isPeptideOrInjection) {
                 // Calculate realistic single-dose duration based on frequency
                 val duration = when {
                     containsAny(textLower, "twice daily", "twice a day", "2x daily", "2x a day", "bid", "12h") -> 12

@@ -69,11 +69,19 @@ fun BodyInfoScreen(
             contentPadding = PaddingValues(bottom = 100.dp)
         ) {
             item {
-                Text(
-                    text = "Track how medications, labs, peptide shots, and symptoms affect your body zones in real time.",
-                    color = NotelTextSecondary,
-                    fontSize = 14.sp
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "Track how medications, labs, peptide shots, and symptoms affect your body zones in real time.",
+                        color = NotelTextSecondary,
+                        fontSize = 14.sp
+                    )
+                    Text(
+                        text = "Note: Medication & peptide dose cards are active exclusively for entries logged directly from the Medications tab.",
+                        color = NotelPrimary.copy(alpha = 0.8f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
 
             // Prominent, Large Human Body Icon Display
