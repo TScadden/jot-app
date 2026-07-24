@@ -105,6 +105,8 @@ class MedicationsViewModel @Inject constructor(
         viewModelScope.launch {
             _isExtractingFromProfile.value = true
             val profileMedsJson = preferences.medications.first()
+            val existingMeds = medicationDao.getAllMedications().first()
+            val existingNames = existingMeds.map { it.name.trim().lowercase() }.toSet()
             
             if (profileMedsJson.isBlank() || profileMedsJson == "[]") {
                 // Fallback to checking userContext background string if no profile medications exist
@@ -116,13 +118,14 @@ class MedicationsViewModel @Inject constructor(
                 }
 
                 val extracted = extractMedicationsFromText(profileContext)
-                if (extracted.isEmpty()) {
-                    _statusMessage.value = "No medications found in User Profile."
+                val newItems = extracted.filter { !existingNames.contains(it.name.trim().lowercase()) }
+                if (newItems.isEmpty()) {
+                    _statusMessage.value = "All profile medications are already added."
                 } else {
-                    for (med in extracted) {
+                    for (med in newItems) {
                         medicationDao.insertMedication(med)
                     }
-                    _statusMessage.value = "Imported ${extracted.size} medication(s) from profile!"
+                    _statusMessage.value = "Imported ${newItems.size} new medication(s) from profile!"
                 }
                 _isExtractingFromProfile.value = false
                 return@launch
@@ -133,10 +136,10 @@ class MedicationsViewModel @Inject constructor(
                 var count = 0
                 for (i in 0 until jsonArray.length()) {
                     val obj = jsonArray.getJSONObject(i)
-                    val name = obj.optString("name", "")
+                    val name = obj.optString("name", "").trim()
                     val isPresent = obj.optBoolean("isPresent", true)
                     
-                    if (name.isNotBlank()) {
+                    if (name.isNotBlank() && !existingNames.contains(name.lowercase())) {
                         val med = Medication(
                             name = name.replaceFirstChar { it.uppercase() },
                             dose = "As prescribed",
@@ -149,9 +152,9 @@ class MedicationsViewModel @Inject constructor(
                     }
                 }
                 if (count > 0) {
-                    _statusMessage.value = "Loaded $count medication(s) from User Profile!"
+                    _statusMessage.value = "Loaded $count new medication(s) from User Profile!"
                 } else {
-                    _statusMessage.value = "No valid medications found in User Profile."
+                    _statusMessage.value = "All profile medications are already added!"
                 }
             } catch (e: Exception) {
                 _statusMessage.value = "Failed to parse medications from User Profile."
