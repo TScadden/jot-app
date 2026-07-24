@@ -353,6 +353,7 @@ fun MedicationsScreen(
             )
         }
     }
+}
 
     // Add / Edit Custom Med Dialog
     if (showAddDialog) {
