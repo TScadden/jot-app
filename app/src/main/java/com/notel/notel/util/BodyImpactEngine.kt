@@ -302,12 +302,19 @@ object BodyImpactEngine {
 
             // 8. Medication Dose Logging & Side Effect Watch
             if (entry.categoryId == 8 || containsAny(textLower, "took medication", "medication:", "dose", "took med")) {
-                val duration = 24 // 24 hours active window for medication side effects & goal monitoring
+                // Calculate realistic single-dose duration based on frequency
+                val duration = when {
+                    containsAny(textLower, "twice daily", "twice a day", "2x daily", "2x a day", "bid", "12h") -> 12
+                    containsAny(textLower, "three times", "3x daily", "3x a day", "tid", "8h") -> 8
+                    containsAny(textLower, "four times", "4x daily", "4x a day", "qid", "6h") -> 6
+                    containsAny(textLower, "once daily", "once a day", "qd", "24h") -> 24
+                    else -> 12 // Default to 12 hours for a single dose of standard medications
+                }
                 val expiresAt = entry.timestamp + TimeUnit.HOURS.toMillis(duration.toLong())
 
                 if (now < expiresAt) {
                     val ageHours = TimeUnit.MILLISECONDS.toHours(now - entry.timestamp)
-                    val medName = displayText.substringAfter("Took Medication:").substringAfter("Medication:").trim().take(30)
+                    val medName = displayText.substringAfter("Took Medication:").substringAfter("Medication:").trim().take(40)
                     
                     results.add(
                         EvaluatedBodyImpact(
@@ -315,7 +322,7 @@ object BodyImpactEngine {
                             regionId = BodyRegionId.ABDOMEN,
                             regionName = "Systemic / Medication Active",
                             status = "Medication Active (${ageHours}h ago)",
-                            details = if (medName.isNotBlank()) "Logged: $medName. Gemini AI is monitoring systemic response, side effects, and primary goals." else "Medication dose logged. Gemini AI is tracking systemic side-effects and recovery duration.",
+                            details = if (medName.isNotBlank()) "Logged: $medName. Gemini AI is monitoring systemic response, side effects (nausea, dizziness, blood pressure), and primary therapeutic goals." else "Medication dose logged. Gemini AI is tracking systemic side-effects and recovery duration.",
                             color = Color(0xFF4ECDC4),
                             icon = Icons.Default.Medication,
                             timestamp = entry.timestamp,
