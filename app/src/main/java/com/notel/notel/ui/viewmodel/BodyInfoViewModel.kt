@@ -50,14 +50,23 @@ class BodyInfoViewModel @Inject constructor(
                 val localImpacts = BodyImpactEngine.evaluateLogs(entries)
                 _activeImpacts.value = localImpacts
 
-                // 2. Set loading spinner while Gemini AI evaluates custom side-effects & duration
+                // 2. Filter entries: Only send relevant entries that match local candidate impacts to Gemini AI
+                // This prevents wasting API credits/calls on non-impact journal notes
+                val candidateLogIds = localImpacts.mapNotNull { it.relatedLogId }.toSet()
+                val entriesToEvaluate = entries.filter { candidateLogIds.contains(it.id) }
+
+                if (entriesToEvaluate.isEmpty()) {
+                    _isLoading.value = false
+                    return@collect
+                }
+
                 _isLoading.value = true
                 try {
                     val userContextStr = preferences.userContext.first()
                     val profileMedsStr = preferences.medications.first()
                     val combinedContext = "User Profile Context: $userContextStr\nProfile Medications: $profileMedsStr"
 
-                    val result = geminiService.evaluateBodyImpacts(entries, userContext = combinedContext)
+                    val result = geminiService.evaluateBodyImpacts(entriesToEvaluate, userContext = combinedContext)
                     result.getOrNull()?.let { aiItems ->
                         if (aiItems.isNotEmpty()) {
                             val aiImpacts = aiItems.mapNotNull { item ->
