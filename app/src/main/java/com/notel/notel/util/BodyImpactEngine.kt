@@ -145,32 +145,15 @@ object BodyImpactEngine {
                 val expiresAt = entry.timestamp + TimeUnit.HOURS.toMillis(duration.toLong())
 
                 if (now < expiresAt) {
-                    val isLeftSide = containsAny(textLower, "left side", "left flank", "left waist", "l side")
-                    val isRightSide = containsAny(textLower, "right side", "right flank", "right waist", "r side")
-                    val isAbdomen = containsAny(textLower, "stomach", "belly", "abdomen", "navel")
-
-                    val region = when {
-                        isLeftSide -> BodyRegionId.LEFT_SIDE
-                        isRightSide -> BodyRegionId.RIGHT_SIDE
-                        isAbdomen -> BodyRegionId.ABDOMEN
-                        else -> BodyRegionId.LEFT_SIDE
-                    }
-
-                    val regionLabel = when (region) {
-                        BodyRegionId.LEFT_SIDE -> "Left Side / Flank"
-                        BodyRegionId.RIGHT_SIDE -> "Right Side / Flank"
-                        BodyRegionId.ABDOMEN -> "Abdomen Injection Zone"
-                        else -> "Injection Zone"
-                    }
                     val ageHours = TimeUnit.MILLISECONDS.toHours(now - entry.timestamp)
 
                     results.add(
                         EvaluatedBodyImpact(
                             id = "injection_${entry.id}",
-                            regionId = region,
-                            regionName = regionLabel,
-                            status = "Peptide / SubQ Shot (${ageHours}h ago)",
-                            details = "Injection logged on $regionLabel. Remember to rotate to the opposite side or thigh for your next dose.",
+                            regionId = BodyRegionId.ABDOMEN,
+                            regionName = "Peptide Shot",
+                            status = "Peptide Shot (${ageHours}h ago)",
+                            details = "Peptide shot logged. Remember to rotate to the opposite side or thigh for your next dose.",
                             color = Color(0xFFAB47BC),
                             icon = Icons.Default.Vaccines,
                             timestamp = entry.timestamp,
