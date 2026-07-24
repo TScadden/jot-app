@@ -285,8 +285,9 @@ object BodyImpactEngine {
                 }
             }
 
-            // 8. Medication Dose Logging & Side Effect Watch
-            if (entry.categoryId == 8 || containsAny(textLower, "took medication", "medication:", "dose", "took med")) {
+            // 8. Medication Dose Logging & Side Effect Watch (Excluding Peptide Shots)
+            val isPeptideOrInjection = containsAny(textLower, "peptide", "shot", "injection", "subq", "semaglutide", "tirzepatide", "b12", "needle", "pin")
+            if (!isPeptideOrInjection && (entry.categoryId == 8 || containsAny(textLower, "took medication", "medication:", "took med"))) {
                 // Calculate realistic single-dose duration based on frequency
                 val duration = when {
                     containsAny(textLower, "twice daily", "twice a day", "2x daily", "2x a day", "bid", "12h") -> 12
