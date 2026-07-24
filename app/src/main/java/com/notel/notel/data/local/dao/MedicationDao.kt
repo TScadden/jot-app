@@ -21,4 +21,7 @@ interface MedicationDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSideEffectCache(cache: MedicationSideEffectCache)
+
+    @Query("DELETE FROM medication_side_effect_cache")
+    suspend fun clearAllSideEffectCache()
 }

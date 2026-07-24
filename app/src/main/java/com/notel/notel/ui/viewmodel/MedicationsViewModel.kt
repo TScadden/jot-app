@@ -73,6 +73,8 @@ class MedicationsViewModel @Inject constructor(
                 endedDate = endedDate?.trim()?.ifEmpty { null }
             )
             medicationDao.insertMedication(updated)
+            // Clear side effect cache for this med so AI generates fresh evaluation
+            medicationDao.clearAllSideEffectCache()
             _statusMessage.value = "Updated ${updated.name}"
         }
     }
@@ -250,9 +252,13 @@ class MedicationsViewModel @Inject constructor(
         val cached = medicationDao.getSideEffectCache(cacheKey)
         
         if (cached == null) {
-            // Trigger AI side effect lookup and cache it locally
+            // Trigger AI side effect lookup with full profile context and cache it locally
+            val userContextStr = preferences.userContext.first()
+            val profileMedsStr = preferences.medications.first()
+            val combinedContext = "User Profile Context: $userContextStr\nProfile Medications: $profileMedsStr"
+
             val dummyEntry = LogEntry(id = entryId, categoryId = 8, body = logText)
-            val aiResult = geminiService.evaluateBodyImpacts(listOf(dummyEntry))
+            val aiResult = geminiService.evaluateBodyImpacts(listOf(dummyEntry), userContext = combinedContext)
             aiResult.getOrNull()?.let { items ->
                 val json = kotlinx.serialization.json.Json.encodeToString(
                     com.notel.notel.data.remote.AiBodyImpactResponse.serializer(),
