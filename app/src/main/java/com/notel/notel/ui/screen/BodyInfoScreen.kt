@@ -344,8 +344,16 @@ fun ExpandableBodyZoneCard(
                             color = NotelTextSecondary,
                             fontSize = 11.sp
                         )
+                        val totalMins = zone.durationMinutes
+                        val hrs = totalMins / 60
+                        val mins = totalMins % 60
+                        val durationStr = when {
+                            hrs > 0 && mins > 0 -> "${hrs}h ${mins}m"
+                            hrs > 0 -> "${hrs}h"
+                            else -> "${mins}m"
+                        }
                         Text(
-                            text = "Active Window: ${zone.durationHours}h",
+                            text = "Active Window: $durationStr",
                             style = MaterialTheme.typography.bodySmall,
                             color = zone.color,
                             fontSize = 11.sp,
