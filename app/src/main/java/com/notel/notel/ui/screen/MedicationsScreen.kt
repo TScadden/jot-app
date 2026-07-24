@@ -49,12 +49,17 @@ fun MedicationsScreen(
     var medFrequency by remember { mutableStateOf("Once daily") }
     var medEndedDate by remember { mutableStateOf("") }
 
-    val snackbarHostState = remember { SnackbarHostState() }
+    // Animated Top Banner State
+    var bannerMessage by remember { mutableStateOf<String?>(null) }
+    var bannerVisible by remember { mutableStateOf(false) }
 
     LaunchedEffect(statusMessage) {
-        statusMessage?.let {
-            snackbarHostState.showSnackbar(it)
+        statusMessage?.let { msg ->
+            bannerMessage = msg
+            bannerVisible = true
             viewModel.clearStatusMessage()
+            kotlinx.coroutines.delay(3000)
+            bannerVisible = false
         }
     }
 
@@ -67,7 +72,6 @@ fun MedicationsScreen(
 
     Scaffold(
         containerColor = NotelBackground,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -100,21 +104,25 @@ fun MedicationsScreen(
             )
         }
     ) { padding ->
-        LazyColumn(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(bottom = 100.dp)
         ) {
-            item {
-                Text(
-                    text = "Manage your active prescriptions and log doses to track body side-effects in real time.",
-                    color = NotelTextSecondary,
-                    fontSize = 14.sp
-                )
-            }
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(bottom = 100.dp)
+            ) {
+                item {
+                    Text(
+                        text = "Manage your active prescriptions and log doses to track body side-effects in real time.",
+                        color = NotelTextSecondary,
+                        fontSize = 14.sp
+                    )
+                }
 
             // Hero Action Card (Took All Meds & Profile Loader)
             item {
@@ -338,7 +346,11 @@ fun MedicationsScreen(
                         )
                     }
                 }
-            }
+            TopSlideNotificationBanner(
+                visible = bannerVisible,
+                message = bannerMessage ?: "",
+                onDismiss = { bannerVisible = false }
+            )
         }
     }
 
@@ -616,6 +628,80 @@ fun MedicationCard(
                             tint = NotelTextSecondary
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TopSlideNotificationBanner(
+    visible: Boolean,
+    message: String,
+    onDismiss: () -> Unit
+) {
+    androidx.compose.animation.AnimatedVisibility(
+        visible = visible,
+        enter = androidx.compose.animation.slideInVertically(initialOffsetY = { -it }) + androidx.compose.animation.fadeIn(),
+        exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { -it }) + androidx.compose.animation.fadeOut(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .clickable { onDismiss() },
+            color = Color(0xFF1E293B),
+            tonalElevation = 8.dp,
+            shadowElevation = 8.dp,
+            border = androidx.compose.foundation.BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.5f))
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(NotelPrimary.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = NotelPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        text = message,
+                        color = NotelTextPrimary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = "Dismiss",
+                        tint = NotelTextSecondary,
+                        modifier = Modifier.size(16.dp)
+                    )
                 }
             }
         }
