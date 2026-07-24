@@ -44,6 +44,7 @@ fun MedicationsScreen(
     var medName by remember { mutableStateOf("") }
     var medDose by remember { mutableStateOf("") }
     var medFrequency by remember { mutableStateOf("Once daily") }
+    var medEndedDate by remember { mutableStateOf("") }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -326,6 +327,7 @@ fun MedicationsScreen(
                                 medName = med.name
                                 medDose = if (med.dose == "As prescribed") "" else med.dose
                                 medFrequency = med.frequency
+                                medEndedDate = med.endedDate ?: ""
                                 showAddDialog = true
                             },
                             onUnarchive = { viewModel.unarchiveMedication(med) },
@@ -371,6 +373,15 @@ fun MedicationsScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    if (editingMedication?.isArchived == true) {
+                        OutlinedTextField(
+                            value = medEndedDate,
+                            onValueChange = { medEndedDate = it },
+                            label = { Text("Ended Date (e.g. Jul 24, 2026)") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 }
             },
             confirmButton = {
@@ -379,13 +390,20 @@ fun MedicationsScreen(
                         if (medName.isNotBlank() && medDose.isNotBlank()) {
                             val currentMed = editingMedication
                             if (currentMed != null) {
-                                viewModel.updateMedication(currentMed, medName, medDose, medFrequency)
+                                viewModel.updateMedication(
+                                    medication = currentMed,
+                                    name = medName,
+                                    dose = medDose,
+                                    frequency = medFrequency,
+                                    endedDate = if (currentMed.isArchived) medEndedDate else currentMed.endedDate
+                                )
                             } else {
                                 viewModel.addMedication(medName, medDose, medFrequency)
                             }
                             medName = ""
                             medDose = ""
                             medFrequency = "Once daily"
+                            medEndedDate = ""
                             editingMedication = null
                             showAddDialog = false
                         }
