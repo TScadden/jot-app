@@ -148,16 +148,16 @@ fun EntryDetailScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .background(TileAccentPurple.copy(alpha = 0.12f))
-                            .border(1.dp, TileAccentPurple.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                            .background(NotelPrimary.copy(alpha = 0.12f))
+                            .border(1.dp, NotelPrimary.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
                             .padding(horizontal = 16.dp, vertical = 12.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Medication, null, tint = TileAccentPurple, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.Medication, null, tint = NotelPrimary, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
                             Text(
                                 "LOGGED VIA MEDICATIONS TAB",
-                                color = TileAccentPurple,
+                                color = NotelPrimary,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 0.8.sp
