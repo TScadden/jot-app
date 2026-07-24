@@ -74,10 +74,7 @@ class EntryDetailViewModel @Inject constructor(
                 existingChips.add(catName)
             }
 
-            val updatedChipsJson = Json.encodeToString(
-                kotlinx.serialization.builtins.serializer<List<String>>(),
-                existingChips
-            )
+            val updatedChipsJson = Json.encodeToString(existingChips)
 
             val updated = current.copy(categoryId = categoryId, chips = updatedChipsJson)
             _entry.value = updated // OPTIMISTIC
