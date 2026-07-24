@@ -32,6 +32,7 @@ fun BodyInfoScreen(
     onBack: () -> Unit = {}
 ) {
     val activeImpacts by viewModel.activeImpacts.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
     var expandedImpactId by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
@@ -131,17 +132,47 @@ fun BodyInfoScreen(
                         color = NotelTextPrimary
                     )
 
-                    Surface(
-                        color = NotelPrimary.copy(alpha = 0.15f),
-                        shape = RoundedCornerShape(12.dp)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "${activeImpacts.size} Active",
-                            color = NotelPrimary,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                        )
+                        if (isLoading) {
+                            Surface(
+                                color = NotelPrimary.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(12.dp),
+                                        color = NotelPrimary,
+                                        strokeWidth = 1.5.dp
+                                    )
+                                    Text(
+                                        text = "AI Analyzing...",
+                                        color = NotelPrimary,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+
+                        Surface(
+                            color = NotelPrimary.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(
+                                text = "${activeImpacts.size} Active",
+                                color = NotelPrimary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
                     }
                 }
             }
