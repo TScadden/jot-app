@@ -309,7 +309,7 @@ fun ExpandableBodyZoneCard(
                                     color = zone.color,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    singleLine = true
+                                    maxLines = 1
                                 )
                             }
                         }
