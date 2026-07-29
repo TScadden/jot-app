@@ -3,7 +3,7 @@
     <shortcut
         android:shortcutId="voice_log"
         android:enabled="true"
-        android:icon="@drawable/ic_jot_launcher"
+        android:icon="@drawable/ic_tabs_launcher"
         android:shortcutShortLabel="@string/voice_log_short_label"
         android:shortcutLongLabel="@string/voice_log_long_label">
         <intent
