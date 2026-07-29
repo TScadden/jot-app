@@ -368,10 +368,10 @@ fun QuickLogScreen(
         if (state.showOnboardingDialog) {
             AlertDialog(
                 onDismissRequest = { viewModel.dismissOnboarding() },
-                title = { Text("Welcome to Jot!", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
+                title = { Text("Welcome to Tabs!", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
                 text = { 
                     Text(
-                        "Jot makes tracking your health simple. Pick a category, build an entry with AI suggestions, or write your own note. Tap Trends to see patterns over time!", 
+                        "Tabs makes tracking your health simple. Pick a category, build an entry with AI suggestions, or write your own note. Tap Trends to see patterns over time!", 
                         color = NotelTextSecondary
                     ) 
                 },

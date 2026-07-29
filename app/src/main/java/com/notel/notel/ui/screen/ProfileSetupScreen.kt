@@ -108,10 +108,10 @@ fun ProfileSetupScreen(
         ) {
             Spacer(modifier = Modifier.height(16.dp))
             
-            Text("Welcome to Jot", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = NotelPrimary)
+            Text("Welcome to Tabs", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = NotelPrimary)
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                "Let's build your Jot experience. Tell us why you're using this app. Are you training for a race? Managing a health condition? Detail your goals below so Jot can customize its AI models to your lifestyle.",
+                "Let's build your Tabs experience. Tell us why you're using this app. Are you training for a race? Managing a health condition? Detail your goals below so Tabs can customize its AI models to your lifestyle.",
                 color = NotelTextSecondary,
                 fontSize = 14.sp
             )

@@ -714,11 +714,11 @@ fun BodyLoadScreen(
                            "• MODERATE (41-65): Managing Load. You have used a fair amount of your daily capacity.\n" +
                            "• HIGH (66-90+): High Strain. Your cup is nearly full. Even small drops (stressors) could cause an 'overflow' (a flare or crash).\n\n" +
                            "To give you an accurate forecast, **each day's score is computed statically from yesterday's total metrics**, letting you see exactly how yesterday's exertion and sleep impact your body today.\n\n" +
-                           "Your score is weighted dynamically using key biomarker markers (scaled when Jots are logged):\n" +
-                           "• Subjective Jots: 40% (if present; 0% otherwise)\n" +
-                           "• Sleep: 30% (if Jots present; 40% otherwise)\n" +
-                           "• Heart Rate: 20% (if Jots present; 40% otherwise)\n" +
-                           "• Active Calories: 10% (if Jots present; 20% otherwise)",
+                           "Your score is weighted dynamically using key biomarker markers (scaled when Tabs are logged):\n" +
+                           "• Subjective Tabs: 40% (if present; 0% otherwise)\n" +
+                           "• Sleep: 30% (if Tabs present; 40% otherwise)\n" +
+                           "• Heart Rate: 20% (if Tabs present; 40% otherwise)\n" +
+                           "• Active Calories: 10% (if Tabs present; 20% otherwise)",
                     color = NotelTextPrimary,
                     fontSize = 15.sp,
                     lineHeight = 22.sp

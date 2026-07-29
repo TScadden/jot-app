@@ -9,4 +9,5 @@
     <color name="white">#FFFFFFFF</color>
     <color name="notel_background">#0A0A0E</color>
     <color name="notel_primary">#7C6EFF</color>
+    <color name="tabs_icon_background">#1A1240</color>
 </resources>

@@ -390,7 +390,7 @@ class HealthConnectManager(private val context: Context) {
      *  spike statistics per day — critical for POTS/MCAS users whose daily
      *  averages appear normal while they experience large orthostatic spikes.
      */
-    suspend fun readHistoricalHeartRateWithSpikes(days: Int = 30): List<DailyHeartRateSummary> = withContext(Dispatchers.IO) {
+    suspend fun readHistoricalHeartRateWithSpikes(days: Int = 14): List<DailyHeartRateSummary> = withContext(Dispatchers.IO) {
         try {
             val zoneId = ZoneId.systemDefault()
             val end = java.time.ZonedDateTime.now(zoneId).plusDays(1).truncatedTo(java.time.temporal.ChronoUnit.DAYS).toInstant()
@@ -425,18 +425,9 @@ class HealthConnectManager(private val context: Context) {
                     filteredRecords.forEach { record ->
                         record.samples.forEach { sample ->
                             val timestamp = sample.time.toEpochMilli()
-                            val dateStr = if (timestamp in lastDayStart until lastDayEnd) {
-                                lastDateStr
-                            } else {
-                                val zdt = java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(timestamp), zoneId)
-                                val startOfDay = zdt.truncatedTo(ChronoUnit.DAYS)
-                                lastDayStart = startOfDay.toInstant().toEpochMilli()
-                                lastDayEnd = startOfDay.plusDays(1).toInstant().toEpochMilli()
-                                lastDateStr = zdt.toLocalDate().toString()
-                                lastDateStr
-                            }
-                            val millisSinceStartOfDay = timestamp - lastDayStart
-                            val hour = (millisSinceStartOfDay / 3600000L).toInt()
+                            val zdt = java.time.ZonedDateTime.ofInstant(sample.time, zoneId)
+                            val dateStr = zdt.toLocalDate().toString()
+                            val hour = zdt.hour
                             chunkByDay.getOrPut(dateStr) { mutableListOf() }.add(HeartSample(timestamp, sample.beatsPerMinute.toInt(), hour))
                         }
                     }
@@ -527,15 +518,21 @@ class HealthConnectManager(private val context: Context) {
                 timeZone = java.util.TimeZone.getTimeZone(java.time.ZoneId.systemDefault().id)
             }
 
-            // 1. Try to read RestingHeartRateRecord first
-            val response = healthConnectClient.readRecords(
-                ReadRecordsRequest(
-                    recordType = RestingHeartRateRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start, end)
+            val rawRecords = mutableListOf<RestingHeartRateRecord>()
+            var pageToken: String? = null
+            do {
+                val pageResponse = healthConnectClient.readRecords(
+                    ReadRecordsRequest(
+                        recordType = RestingHeartRateRecord::class,
+                        timeRangeFilter = TimeRangeFilter.between(start, end),
+                        pageToken = pageToken
+                    )
                 )
-            )
+                rawRecords.addAll(pageResponse.records)
+                pageToken = pageResponse.pageToken
+            } while (pageToken != null)
             
-            val filteredRecords = filterRecordsByPackagePriority(response.records) { record ->
+            val filteredRecords = filterRecordsByPackagePriority(rawRecords) { record ->
                 formatter.format(java.util.Date(record.time.toEpochMilli()))
             }
             val rhrList = filteredRecords.map { record ->
@@ -722,10 +719,10 @@ class HealthConnectManager(private val context: Context) {
         } catch(e: Exception) { return null }
     }
 
-    suspend fun readHeartRateVariability(days: Int = 30): List<Pair<String, Double>> = withContext(Dispatchers.IO) {
+    suspend fun readHeartRateVariability(days: Int = 1, targetDateStr: String? = null): List<Pair<String, Double>> = withContext(Dispatchers.IO) {
         try {
-            val end = ZonedDateTime.now(ZoneId.systemDefault()).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
-            val start = end.minus(days.toLong(), ChronoUnit.DAYS)
+            val end = if (targetDateStr != null) endOfDate(targetDateStr) else ZonedDateTime.now(ZoneId.systemDefault()).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
+            val start = if (targetDateStr != null) startOfDate(targetDateStr) else end.minus(days.toLong(), ChronoUnit.DAYS)
             
             val records = mutableListOf<HeartRateVariabilityRmssdRecord>()
             var pageToken: String? = null

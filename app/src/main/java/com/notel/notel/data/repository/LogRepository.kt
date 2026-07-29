@@ -50,7 +50,7 @@ class LogRepository @Inject constructor(
     private val categoryRepository: CategoryRepository,
     private val habitRepository: HabitRepository,
     private val lifecycleTracker: com.notel.notel.util.AppLifecycleTracker,
-    private val jotApi: com.notel.notel.data.remote.JotApi,
+    private val tabsApi: com.notel.notel.data.remote.TabsApi,
     private val knowledgeDocumentDao: com.notel.notel.data.local.dao.KnowledgeDocumentDao,
     private val db: com.notel.notel.data.local.NotelDatabase,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
@@ -216,7 +216,7 @@ class LogRepository @Inject constructor(
             logEntryDao.deleteEntry(entry)
             
             // 2. Cloud Delete (so it doesn't come back on the next sync)
-            jotApi.deleteEntry(entry.id)
+            tabsApi.deleteEntry(entry.id)
             
             // 3. Trigger refresh
             clearTodayBodyLoadCache()
@@ -246,7 +246,7 @@ class LogRepository @Inject constructor(
         // 2. Cloud Delete
         try {
             if (preferences.loggedIn.first()) {
-                jotApi.deleteDocument(doc.id)
+                tabsApi.deleteDocument(doc.id)
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -909,7 +909,7 @@ class LogRepository @Inject constructor(
                 bodyLoadHistory = bodyLoadHistory
             )
             
-            val response = jotApi.getCoachReply(request)
+            val response = tabsApi.getCoachReply(request)
             if (response.isSuccessful) {
                 response.body()?.result?.let {
                     Result.success(it)
@@ -927,7 +927,7 @@ class LogRepository @Inject constructor(
             if (!preferences.loggedIn.first()) return Result.failure(Exception("Not logged in"))
             
             val request = com.notel.notel.data.remote.TitleRequest(firstMessage)
-            val response = jotApi.getCoachTitle(request)
+            val response = tabsApi.getCoachTitle(request)
             
             if (response.isSuccessful) {
                 response.body()?.title?.let {
@@ -1332,7 +1332,7 @@ class LogRepository @Inject constructor(
 
     /**
      * Calculates the scientific "Body Load Index" based on the Cup Load Blueprint.
-     * Weights: 35% HRV, 30% Sleep, 20% Activity, 10% RHR, 5% Subjective (Jots).
+     * Weights: 35% HRV, 30% Sleep, 20% Activity, 10% RHR, 5% Subjective (Tabs).
      */
     suspend fun getBodyLoad(allCategories: List<Category>, dateStr: String? = null): Result<BodyLoadResponse> {
         val today = java.time.LocalDate.now().toString()
@@ -1494,8 +1494,8 @@ class LogRepository @Inject constructor(
         if (jotsContext.isNotEmpty()) {
             try {
                 val prompt = """
-                    You are a health analysis helper. Read the user's last 5 journal entries (Jots) leading up to the target day (which ends at timestamp $dataEndOfDay) and evaluate their subjective strain (stress, pain, headaches, insomnia, symptoms, mental fatigue) up to this date.
-                    Consider the timing and recency of the Jots.
+                    You are a health analysis helper. Read the user's last 5 journal entries (Tabs) leading up to the target day (which ends at timestamp $dataEndOfDay) and evaluate their subjective strain (stress, pain, headaches, insomnia, symptoms, mental fatigue) up to this date.
+                    Consider the timing and recency of the Tabs.
                     Determine the subjective allostatic load percentage on a scale from 0% (perfect, relaxed, symptom-free) to 100% (extreme panic, severe pain, severe symptom flare-up, or extreme exhaustion).
                     
                     Example: "had a headache and had a hard time falling asleep" should be rated around 70-80%.
@@ -1544,13 +1544,13 @@ class LogRepository @Inject constructor(
         var totalWeight = 0.0
         var weightedLoadSum = 0.0
         
-        val hasJots = jotsContext.isNotEmpty()
+        val hasTabs = jotsContext.isNotEmpty()
         
         // Define weights dynamically: if jots exist, AI subjective load is highly weighted at 40%
-        val sleepWeight = if (hasJots) 0.30 else 0.40
-        val calWeight = if (hasJots) 0.10 else 0.20
-        val hrWeight = if (hasJots) 0.20 else 0.40
-        val subjectiveWeight = if (hasJots) 0.40 else 0.0
+        val sleepWeight = if (hasTabs) 0.30 else 0.40
+        val calWeight = if (hasTabs) 0.10 else 0.20
+        val hrWeight = if (hasTabs) 0.20 else 0.40
+        val subjectiveWeight = if (hasTabs) 0.40 else 0.0
         
         if (sleepMins > 0) {
             weightedLoadSum += sleepLoad * sleepWeight
@@ -1564,7 +1564,7 @@ class LogRepository @Inject constructor(
             weightedLoadSum += heartRateLoad * hrWeight
             totalWeight += hrWeight
         }
-        if (hasJots) {
+        if (hasTabs) {
             weightedLoadSum += subjectiveLoad * subjectiveWeight
             totalWeight += subjectiveWeight
         }
@@ -1582,7 +1582,7 @@ class LogRepository @Inject constructor(
         if (sleepMins > 0) factors.add("Sleep (${sleepLoad.toInt()}%)")
         if (calVal > 0) factors.add("Active Calories (${calorieLoad.toInt()}%)")
         if (hrVal > 0) factors.add("Heart Rate (${heartRateLoad.toInt()}%)")
-        if (hasJots) factors.add("Subjective (${subjectiveLoad.toInt()}%)")
+        if (hasTabs) factors.add("Subjective (${subjectiveLoad.toInt()}%)")
 
         val adviceList = mutableListOf<String>()
         if (sleepMins in 1..449) {
@@ -1693,7 +1693,7 @@ class LogRepository @Inject constructor(
                         categoryId = categoryId,
                         body = noteText,
                         manualText = "",
-                        source = "Jot Coach"
+                        source = "Tabs Coach"
                     )
                 )
                 Result.success("Note saved to ${catMap[categoryId] ?: "General"}")
@@ -1705,7 +1705,7 @@ class LogRepository @Inject constructor(
                         categoryId = 7, 
                         body = noteText,
                         manualText = "",
-                        source = "Jot Coach"
+                        source = "Tabs Coach"
                     )
                 )
                 Result.success("Note saved to General")
@@ -1722,7 +1722,7 @@ class LogRepository @Inject constructor(
     suspend fun deleteAccountData(): Result<Unit> {
         return try {
             // 1. Delete account from cloud server
-            val response = jotApi.deleteAccount()
+            val response = tabsApi.deleteAccount()
             if (!response.isSuccessful) {
                 return Result.failure(Exception(response.errorBody()?.string() ?: "Cloud delete failed"))
             }

@@ -9,7 +9,7 @@ import com.notel.notel.data.local.entity.CoachMessageEntity
 import com.notel.notel.data.local.entity.CoachSession
 import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.remote.CoachMessageDto
-import com.notel.notel.data.remote.JotApi
+import com.notel.notel.data.remote.TabsApi
 import com.notel.notel.data.repository.LogRepository
 import com.notel.notel.data.repository.ReminderRepository
 import com.notel.notel.data.repository.UserListRepository
@@ -416,7 +416,7 @@ class CoachViewModel @Inject constructor(
     private val preferences: NotelPreferences,
     private val coachSessionDao: CoachSessionDao,
     private val coachMessageDao: CoachMessageDao,
-    private val jotApi: JotApi,
+    private val tabsApi: TabsApi,
     private val geminiService: com.notel.notel.data.remote.GeminiService,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
@@ -428,7 +428,7 @@ class CoachViewModel @Inject constructor(
     // Default greeting for new sessions
     private val welcomeMessage = CoachMessage(
         role = "coach",
-        content = "Hi! I'm Jot Coach. I have context on your recent logs, body load history, and knowledge base. How can I help you today?"
+        content = "Hi! I'm Tabs Coach. I have context on your recent logs, body load history, and knowledge base. How can I help you today?"
     )
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -800,7 +800,7 @@ class CoachViewModel @Inject constructor(
 
                 if (best == null) {
                     coachMessageDao.insertMessage(CoachMessageEntity(sessionId = sessionId, role = "coach",
-                        content = "Could not find a writable calendar. Please ensure Calendar permissions are granted in Settings → Apps → Jot → Permissions."))
+                        content = "Could not find a writable calendar. Please ensure Calendar permissions are granted in Settings → Apps → Tabs → Permissions."))
                     return@launch
                 }
 
@@ -876,7 +876,7 @@ class CoachViewModel @Inject constructor(
                         CoachMessageEntity(
                             sessionId = sessionId,
                             role = "coach",
-                            content = "The calendar insert returned no URI — this usually means WRITE_CALENDAR permission was denied. Please go to Settings → Apps → Jot → Permissions and enable Calendar access, then try again."
+                            content = "The calendar insert returned no URI — this usually means WRITE_CALENDAR permission was denied. Please go to Settings → Apps → Tabs → Permissions and enable Calendar access, then try again."
                         )
                     )
                 }
@@ -1032,7 +1032,7 @@ class CoachViewModel @Inject constructor(
                 
                 // 3. Delete from backend server
                 if (preferences.loggedIn.first()) {
-                    jotApi.deleteCoachSession(sessionId)
+                    tabsApi.deleteCoachSession(sessionId)
                 }
                 
                 // 4. Return to previous screen
@@ -1159,7 +1159,7 @@ class CoachViewModel @Inject constructor(
                     CoachMessageEntity(
                         sessionId = sessionId,
                         role = "coach",
-                        content = "Great! I've saved \"$fileName\" to your Jot database. You can view it anytime in the Knowledge Extraction settings."
+                        content = "Great! I've saved to your Tabs database. You can view it anytime in the Knowledge Extraction settings."
                     )
                 )
             } catch (e: Exception) {

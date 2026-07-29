@@ -90,7 +90,7 @@ fun RemindersScreen(
             },
             text = {
                 Text(
-                    "Jot needs notification permission to send your reminders. Tap Allow to continue.",
+                    "Tabs needs notification permission to send your reminders. Tap Allow to continue.",
                     color = NotelTextSecondary,
                     fontSize = 14.sp
                 )
@@ -126,7 +126,7 @@ fun RemindersScreen(
             },
             text = {
                 Text(
-                    "To send reminders at exactly the right time, Jot needs the Alarms & Reminders permission. Tap Open Settings, then enable it.",
+                    "To send reminders at exactly the right time, Tabs needs the Alarms & Reminders permission. Tap Open Settings, then enable it.",
                     color = NotelTextSecondary,
                     fontSize = 14.sp
                 )

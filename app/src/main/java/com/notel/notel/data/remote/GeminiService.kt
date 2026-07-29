@@ -8,7 +8,7 @@ import javax.inject.Singleton
 
 @Singleton
 class GeminiService @Inject constructor(
-    private val jotApi: JotApi
+    private val tabsApi: TabsApi
 ) {
     // Map our local models to the network DTOs
     private fun List<LogEntry>.toDto(): List<LogEntryDtoModel> = this.map { 
@@ -26,7 +26,7 @@ class GeminiService @Inject constructor(
         weatherContext: String? = null
     ): Result<List<String>> {
         return try {
-            val response = jotApi.getSuggestions(
+            val response = tabsApi.getSuggestions(
                 SuggestionsRequest(
                     category = category.toDto(),
                     recentEntries = recentEntries.toDto(),
@@ -66,7 +66,7 @@ class GeminiService @Inject constructor(
         userContext: String
     ): Result<List<String>> {
         return try {
-            val response = jotApi.generateCategories(GenerateCategoriesRequest(userContext))
+            val response = tabsApi.generateCategories(GenerateCategoriesRequest(userContext))
             val result = response.body()?.result
             if (response.isSuccessful && result != null) {
                 Result.success(result)
@@ -100,7 +100,7 @@ class GeminiService @Inject constructor(
         userContext: String? = null
     ): Result<List<SmartCategorySuggestion>> {
         return try {
-            val response = jotApi.getSmartCategorySuggestion(
+            val response = tabsApi.getSmartCategorySuggestion(
                 SmartCategorySuggestionRequest(
                     recentEntries = recentEntries.toDto(),
                     existingCategories = existingCategories,
@@ -136,7 +136,7 @@ class GeminiService @Inject constructor(
 
     suspend fun validateCategoryName(name: String): Result<String> {
         return try {
-            val response = jotApi.validateCategory(CategoryValidationRequest(name))
+            val response = tabsApi.validateCategory(CategoryValidationRequest(name))
             val result = response.body()?.result
             if (response.isSuccessful && result != null) {
                 Result.success(result.cleaned)
@@ -161,7 +161,7 @@ class GeminiService @Inject constructor(
         userContext: String = ""
     ): Result<List<AiBodyImpactItem>> {
         return try {
-            val response = jotApi.evaluateBodyImpacts(
+            val response = tabsApi.evaluateBodyImpacts(
                 AiBodyImpactRequest(
                     entries = entries.toDto(),
                     userContext = userContext
@@ -198,7 +198,7 @@ class GeminiService @Inject constructor(
         documents: List<ProcessDocumentRequest> = emptyList()
     ): Result<String> {
         return try {
-            val response = jotApi.getAdvice(
+            val response = tabsApi.getAdvice(
                 AiRequest(
                     entries = recentEntries.toDto(),
                     categories = categories,
@@ -251,7 +251,7 @@ class GeminiService @Inject constructor(
         documents: List<ProcessDocumentRequest> = emptyList()
     ): Result<String> {
         return try {
-            val response = jotApi.getReport(
+            val response = tabsApi.getReport(
                 AiRequest(
                     entries = recentEntries.toDto(),
                     categories = categories,
@@ -303,7 +303,7 @@ class GeminiService @Inject constructor(
         documents: List<ProcessDocumentRequest> = emptyList()
     ): Result<String> {
         return try {
-            val response = jotApi.getWeeklyRecap(
+            val response = tabsApi.getWeeklyRecap(
                 AiRequest(
                     entries = recentEntries.toDto(),
                     categories = categories,
@@ -354,7 +354,7 @@ class GeminiService @Inject constructor(
         documents: List<ProcessDocumentRequest> = emptyList()
     ): Result<String> {
         return try {
-            val response = jotApi.getDeepResearch(
+            val response = tabsApi.getDeepResearch(
                 AiRequest(
                     entries = recentEntries.toDto(),
                     categories = categories,
@@ -406,7 +406,7 @@ class GeminiService @Inject constructor(
         documents: List<ProcessDocumentRequest> = emptyList()
     ): Result<String> {
         return try {
-            val response = jotApi.getDocumentComparison(
+            val response = tabsApi.getDocumentComparison(
                 AiRequest(
                     entries = recentEntries.toDto(),
                     categories = categories,
@@ -451,7 +451,7 @@ class GeminiService @Inject constructor(
         base64Data: String
     ): Result<String> {
         return try {
-            val response = jotApi.processDocument(ProcessDocumentRequest(mimeType, base64Data))
+            val response = tabsApi.processDocument(ProcessDocumentRequest(mimeType, base64Data))
             val result = response.body()?.result
             if (response.isSuccessful && result != null) {
                 Result.success(result)
@@ -490,7 +490,7 @@ class GeminiService @Inject constructor(
         documents: List<ProcessDocumentRequest> = emptyList()
     ): Result<BodyLoadResponse> {
         return try {
-            val response = jotApi.getBodyLoad(
+            val response = tabsApi.getBodyLoad(
                 AiRequest(
                     entries = recentEntries.toDto(),
                     categories = categories,
@@ -542,7 +542,7 @@ class GeminiService @Inject constructor(
         weatherContext: String? = null
     ): Result<BodyLoadResponse> {
         return try {
-            val response = jotApi.getBodyLoadEnriched(
+            val response = tabsApi.getBodyLoadEnriched(
                 BodyLoadEnrichedRequest(
                     targetDate = targetDate,
                     entries = recentEntries.toDto(),
@@ -587,7 +587,7 @@ class GeminiService @Inject constructor(
         categories: Map<Int, String>
     ): Result<ClassifyAndCleanResponse> {
         return try {
-            val response = jotApi.classifyAndClean(ClassifyAndCleanRequest(noteText, categories))
+            val response = tabsApi.classifyAndClean(ClassifyAndCleanRequest(noteText, categories))
             val result = response.body()?.result
             if (response.isSuccessful && result != null) {
                 Result.success(result)
@@ -620,7 +620,7 @@ class GeminiService @Inject constructor(
         categories: Map<Int, String>
     ): Result<Int> {
         return try {
-            val response = jotApi.classifyCoachNote(ClassifyAndCleanRequest(noteText, categories))
+            val response = tabsApi.classifyCoachNote(ClassifyAndCleanRequest(noteText, categories))
             val result = response.body()?.result
             if (response.isSuccessful && result != null) {
                 Result.success(result.categoryId)

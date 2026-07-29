@@ -57,7 +57,7 @@ fun ConnectionsScreen(
             Spacer(modifier = Modifier.height(16.dp))
             
             Text(
-                "Linking Health Connect allows Jot to securely pull in your intraday heart rate and nightly sleep phases. This biometric data is invaluable for the AI to understand your physical state when building trends and insights.",
+                "Linking Health Connect allows Tabs to securely pull in your intraday heart rate and nightly sleep phases. This biometric data is invaluable for the AI to understand your physical state when building trends and insights.",
                 color = NotelTextSecondary,
                 fontSize = 16.sp,
                 textAlign = TextAlign.Center

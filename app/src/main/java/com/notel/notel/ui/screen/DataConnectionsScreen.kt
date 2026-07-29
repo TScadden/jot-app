@@ -198,7 +198,7 @@ fun DataConnectionsScreen(
                 )
                 
                 Text(
-                    "Most trackers (Fitbit, Garmin, Samsung) sync their data to a central hub like Health Connect. \n\nWe recommend using Android Health (Health Connect) as it acts as a universal bridge for Google Fit, Samsung Health, Oura, and more. This ensures Jot always has your latest heart rate, sleep phases, and activity patterns.",
+                    "Most trackers (Fitbit, Garmin, Samsung) sync their data to a central hub like Health Connect. \n\nWe recommend using Android Health (Health Connect) as it acts as a universal bridge for Google Fit, Samsung Health, Oura, and more. This ensures Tabs always has your latest heart rate, sleep phases, and activity patterns.",
                     color = NotelTextSecondary,
                     fontSize = 14.sp,
                     lineHeight = 20.sp
@@ -271,7 +271,7 @@ fun DataConnectionsScreen(
                                 fontSize = 16.sp
                             )
                             Text(
-                                "Jot now supports Blood Oxygen, Resting HR, and Breathing Rate, but they require additional permissions.",
+                                "Tabs now supports Blood Oxygen, Resting HR, and Breathing Rate, but they require additional permissions.",
                                 color = NotelTextSecondary,
                                 fontSize = 13.sp,
                                 textAlign = TextAlign.Center
@@ -302,7 +302,7 @@ fun DataConnectionsScreen(
                     shape = RoundedCornerShape(12.dp),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.3f))
                 ) {
-                    Text("Deactivate in Jot", color = Color(0xFFEF5350), fontWeight = FontWeight.Bold)
+                    Text("Deactivate in Tabs", color = Color(0xFFEF5350), fontWeight = FontWeight.Bold)
                 }
                 
                 Spacer(Modifier.height(12.dp))
@@ -327,7 +327,7 @@ fun DataConnectionsScreen(
                 Spacer(Modifier.height(32.dp))
                 
                 Text(
-                    "Deactivating stops Jot from pulling new data. To completely revoke access, use the 'Manage system permissions' button above.",
+                    "Deactivating stops Tabs from pulling new data. To completely revoke access, use the 'Manage system permissions' button above.",
                     color = NotelTextSecondary.copy(alpha = 0.7f),
                     fontSize = 12.sp,
                     textAlign = TextAlign.Center

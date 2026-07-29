@@ -6,7 +6,7 @@ import android.util.Log
 import com.android.billingclient.api.*
 import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.remote.BillingVerificationRequest
-import com.notel.notel.data.remote.JotApi
+import com.notel.notel.data.remote.TabsApi
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,7 +22,7 @@ import javax.inject.Singleton
 class BillingManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val preferences: NotelPreferences,
-    private val jotApi: JotApi
+    private val tabsApi: TabsApi
 ) : PurchasesUpdatedListener {
 
     private val tag = "BillingManager"
@@ -155,7 +155,7 @@ class BillingManager @Inject constructor(
                 // Since a purchase can contain multiple products, but for INAPP it's usually one
                 val productId = purchase.products.firstOrNull() ?: return@launch
                 
-                val response = jotApi.verifyPurchase(
+                val response = tabsApi.verifyPurchase(
                     BillingVerificationRequest(
                         productId = productId,
                         purchaseToken = purchase.purchaseToken,

@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.Notel" parent="android:Theme.Material.NoActionBar">
+    <style name="Theme.Tabs" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">#030303</item>
         <item name="android:statusBarColor">#030303</item>
         <item name="android:navigationBarColor">#030303</item>
         <item name="android:windowIsTranslucent">true</item>
     </style>
     
-    <style name="Theme.Notel.Floating" parent="@android:style/Theme.Translucent.NoTitleBar">
+    <style name="Theme.Tabs.Floating" parent="@android:style/Theme.Translucent.NoTitleBar">
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowAnimationStyle">@null</item>

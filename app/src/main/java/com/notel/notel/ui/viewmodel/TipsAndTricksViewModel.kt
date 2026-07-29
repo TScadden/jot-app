@@ -82,9 +82,9 @@ class TipsAndTricksViewModel @Inject constructor(
                     listOf(LogEntry(
                         id = 99999, 
                         categoryId = 7, 
-                        body = "Welcome to Jot! Try journaling about your symptoms, habits, or day to get custom tips.", 
+                        body = "Welcome to Tabs! Try journaling about your symptoms, habits, or day to get custom tips.", 
                         chips = "", 
-                        manualText = "Welcome to Jot!", 
+                        manualText = "Welcome to Tabs!", 
                         timestamp = System.currentTimeMillis()
                     ))
                 } else {
@@ -118,7 +118,7 @@ class TipsAndTricksViewModel @Inject constructor(
                     DOCUMENTS UPLOADED:
                     $docsContext
                     
-                    Based ONLY on their records, propose exactly 4 to 6 specific, open-ended questions they might want to ask to get tips, tricks, and insights (e.g., "How can I improve my sleep pattern based on my sleep logs?", "What tips can help me manage my medication list?", "How should I structure my symptom tracking?"). Make them very personal and tailored to the actual contents of their Jots, lists, and docs.
+                    Based ONLY on their records, propose exactly 4 to 6 specific, open-ended questions they might want to ask to get tips, tricks, and insights (e.g., "How can I improve my sleep pattern based on my sleep logs?", "What tips can help me manage my medication list?", "How should I structure my symptom tracking?"). Make them very personal and tailored to the actual contents of their Tabs, lists, and docs.
                     
                     You MUST return a JSON array of strings ONLY. No markdown, no wrapping code blocks, no explanation, just raw JSON.
                     Example format:
@@ -169,9 +169,9 @@ class TipsAndTricksViewModel @Inject constructor(
                     listOf(LogEntry(
                         id = 99999, 
                         categoryId = 7, 
-                        body = "Welcome to Jot!", 
+                        body = "Welcome to Tabs!", 
                         chips = "", 
-                        manualText = "Welcome to Jot!", 
+                        manualText = "Welcome to Tabs!", 
                         timestamp = System.currentTimeMillis()
                     ))
                 } else {

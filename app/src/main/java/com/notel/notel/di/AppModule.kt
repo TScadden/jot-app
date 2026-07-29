@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 import com.notel.notel.data.healthconnect.HealthConnectManager
 import com.notel.notel.data.remote.AuthInterceptor
-import com.notel.notel.data.remote.JotApi
+import com.notel.notel.data.remote.TabsApi
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -105,14 +105,14 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideJotApi(okHttpClient: OkHttpClient): JotApi {
+    fun provideTabsApi(okHttpClient: OkHttpClient): TabsApi {
         val json = Json { ignoreUnknownKeys = true }
         return Retrofit.Builder()
             .baseUrl("https://api.jottracker.com/")
             .client(okHttpClient)
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()
-            .create(JotApi::class.java)
+            .create(TabsApi::class.java)
     }
 
     @Provides

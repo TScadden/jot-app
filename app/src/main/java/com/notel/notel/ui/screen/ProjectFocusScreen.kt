@@ -349,7 +349,7 @@ fun ProjectFocusScreen(
                                                 Pair("hrv", "HRV ⚡"),
                                                 Pair("calories", "Calories 🍏"),
                                                 Pair("spikes", "HR Spikes 📈"),
-                                                Pair("jots", "Number of Jots 📝"),
+                                                Pair("jots", "Number of Tabs 📝"),
                                                 Pair("", "None / Subjective 🧠")
                                             )
 

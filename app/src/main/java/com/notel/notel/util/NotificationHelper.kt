@@ -45,7 +45,7 @@ class NotificationHelper(private val context: Context) {
         )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_noti_j) 
+            .setSmallIcon(R.drawable.ic_noti_note) 
             .setContentTitle("Cup Reminder 🧪")
             .setContentText("Log in and check your score for the day so you can plan better.")
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
@@ -77,7 +77,7 @@ class NotificationHelper(private val context: Context) {
 
         val content = "Your score has updated. Check it now to plan the rest of your day better."
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_noti_j) 
+            .setSmallIcon(R.drawable.ic_noti_note) 
             .setContentTitle("Score Refreshed 🧪")
             .setContentText(content)
             .setStyle(NotificationCompat.BigTextStyle().bigText(content))
@@ -106,7 +106,7 @@ class NotificationHelper(private val context: Context) {
 
         val content = "Your Score for today was $score/100. Plan for tomorrow with your level in mind."
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_noti_j)
+            .setSmallIcon(R.drawable.ic_noti_note)
             .setContentTitle("Daily Score Finalized: $score/100")
             .setContentText(content)
             .setStyle(NotificationCompat.BigTextStyle().bigText(content))
@@ -140,7 +140,7 @@ class NotificationHelper(private val context: Context) {
         }
 
         val notification = NotificationCompat.Builder(context, SPIKE_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_noti_j)
+            .setSmallIcon(R.drawable.ic_noti_note)
             .setContentTitle("Heart Rate Spike ⚠️")
             .setContentText(contentText)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -167,7 +167,7 @@ class NotificationHelper(private val context: Context) {
         val pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE)
 
         val notification = NotificationCompat.Builder(context, HABIT_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_noti_j)
+            .setSmallIcon(R.drawable.ic_noti_note)
             .setContentTitle("Finish your habits! ✅")
             .setContentText("You still have some daily habits to check off. Keep your streak alive!")
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
@@ -197,7 +197,7 @@ class NotificationHelper(private val context: Context) {
         val pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE)
 
         val notification = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(R.drawable.ic_noti_j)
+            .setSmallIcon(R.drawable.ic_noti_note)
             .setContentTitle("Reminder 🔔")
             .setContentText(title)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -246,7 +246,7 @@ class NotificationHelper(private val context: Context) {
         )
 
         val notification = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(R.drawable.ic_noti_j)
+            .setSmallIcon(R.drawable.ic_noti_note)
             .setContentTitle("Clinical Report Ready 📄")
             .setContentText("Your report has been saved to Downloads. Tap to share or review.")
             .setStyle(NotificationCompat.BigTextStyle().bigText("Your professional medical report has been saved to your Downloads folder. Tap this notification to share it or review the file."))
@@ -292,7 +292,7 @@ class NotificationHelper(private val context: Context) {
         )
 
         val notification = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(R.drawable.ic_noti_j)
+            .setSmallIcon(R.drawable.ic_noti_note)
             .setContentTitle("Biometrics CSV Ready 📊")
             .setContentText("Your biometrics CSV has been saved to Downloads. Tap to share.")
             .setStyle(NotificationCompat.BigTextStyle().bigText("Your biometrics CSV data has been saved to your Downloads folder. Tap this notification to share it or review the file."))
@@ -326,7 +326,7 @@ class NotificationHelper(private val context: Context) {
         val pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE)
 
         val notification = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(R.drawable.ic_noti_j)
+            .setSmallIcon(R.drawable.ic_noti_note)
             .setContentTitle("Project Focus Nudge ⏳")
             .setContentText("Don't forget to complete your project task for the day.")
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)

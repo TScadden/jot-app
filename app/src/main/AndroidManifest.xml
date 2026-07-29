@@ -50,7 +50,7 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Notel"
+        android:theme="@style/Theme.Tabs"
         android:usesCleartextTraffic="true">
 
         <provider
@@ -68,7 +68,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:theme="@style/Theme.Notel">
+            android:theme="@style/Theme.Tabs">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -160,7 +160,7 @@
         <activity
             android:name=".VoiceLogActivity"
             android:exported="true"
-            android:theme="@style/Theme.Notel.Floating"
+            android:theme="@style/Theme.Tabs.Floating"
             android:label="Voice Log" />
 
         <meta-data

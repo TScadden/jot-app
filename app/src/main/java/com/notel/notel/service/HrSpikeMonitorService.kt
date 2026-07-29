@@ -163,8 +163,8 @@ class HrSpikeMonitorService : Service() {
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Spike Monitor Active")
-            .setContentText("Jot is monitoring your heart rate for spikes.")
-            .setSmallIcon(R.drawable.ic_noti_j)
+            .setContentText("Tabs is monitoring your heart rate for spikes.")
+            .setSmallIcon(R.drawable.ic_noti_note)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setContentIntent(pendingIntent)
             .setOngoing(true)

@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Sticky note outline/fill with bottom-right corner cut for the fold -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 4,3 L 20,3 L 20,15 L 15,20 L 4,20 Z" />
+    <!-- Fold flap outline/accent -->
+    <path
+        android:fillColor="#CCCCCC"
+        android:pathData="M 15,15 L 20,15 L 15,20 Z" />
+</vector>

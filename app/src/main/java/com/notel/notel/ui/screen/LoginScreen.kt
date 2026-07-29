@@ -21,7 +21,7 @@ import androidx.lifecycle.viewModelScope
 import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.remote.AuthRequest
 import com.notel.notel.data.remote.ForgotPasswordRequest
-import com.notel.notel.data.remote.JotApi
+import com.notel.notel.data.remote.TabsApi
 import com.notel.notel.data.sync.SyncManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.first
@@ -35,7 +35,7 @@ import kotlinx.serialization.decodeFromString
 @HiltViewModel
 class LoginViewModel @Inject constructor(
     private val preferences: NotelPreferences,
-    private val jotApi: JotApi,
+    private val tabsApi: TabsApi,
     private val syncManager: SyncManager
 ) : ViewModel() {
     var isLoggedIn by mutableStateOf<Boolean?>(null)
@@ -98,7 +98,7 @@ class LoginViewModel @Inject constructor(
             successMsg = null
             
             try {
-                val response = jotApi.forgotPassword(ForgotPasswordRequest(email))
+                val response = tabsApi.forgotPassword(ForgotPasswordRequest(email))
                 val body = response.body()
                 
                 if (response.isSuccessful && body?.success == true) {
@@ -125,7 +125,7 @@ class LoginViewModel @Inject constructor(
             errorMsg = null
             
             try {
-                val response = jotApi.login(AuthRequest(email, pass))
+                val response = tabsApi.login(AuthRequest(email, pass))
                 val body = response.body()
                 
                 if (response.isSuccessful && body != null && body.token?.isNotBlank() == true) {
@@ -178,7 +178,7 @@ class LoginViewModel @Inject constructor(
             errorMsg = null
             
             try {
-                val response = jotApi.register(AuthRequest(email, pass))
+                val response = tabsApi.register(AuthRequest(email, pass))
                 val body = response.body()
                 
                 if (response.isSuccessful && body != null && body.token?.isNotBlank() == true) {
@@ -243,7 +243,7 @@ fun LoginScreen(
         containerColor = NotelBackground,
         topBar = {
             TopAppBar(
-                title = { Text("Welcome to Jot", fontWeight = FontWeight.Black, color = NotelTextPrimary) },
+                title = { Text("Welcome to Tabs", fontWeight = FontWeight.Black, color = NotelTextPrimary) },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = NotelBackground)
             )
         }

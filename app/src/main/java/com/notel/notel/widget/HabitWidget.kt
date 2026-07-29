@@ -54,7 +54,7 @@ class HabitWidget : GlanceAppWidget() {
                 Spacer(GlanceModifier.height(6.dp))
                 if (habits.isEmpty()) {
                     Text(
-                        text = "Open Jot to add habits!",
+                        text = "Open Tabs to add habits!",
                         style = TextStyle(
                             color = ColorProvider(Color(0xFF888888))
                         )

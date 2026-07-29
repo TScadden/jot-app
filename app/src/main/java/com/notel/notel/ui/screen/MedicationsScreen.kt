@@ -291,6 +291,7 @@ fun MedicationsScreen(
                         onDelete = { viewModel.deleteMedication(med) }
                     )
                 }
+            }
 
             // Archived Medications Section
             if (archivedMedications.isNotEmpty()) {
@@ -346,13 +347,14 @@ fun MedicationsScreen(
                     }
                 }
             }
-            TopSlideNotificationBanner(
-                visible = bannerVisible,
-                message = bannerMessage ?: "",
-                onDismiss = { bannerVisible = false }
-            )
-        }
-    }
+        } // end LazyColumn
+        TopSlideNotificationBanner(
+            visible = bannerVisible,
+            message = bannerMessage ?: "",
+            onDismiss = { bannerVisible = false }
+        )
+    } // end Box
+} // end Scaffold
 
     // Add / Edit Custom Med Dialog
     if (showAddDialog) {
@@ -635,7 +637,7 @@ fun MedicationCard(
 }
 
 @Composable
-private fun TopSlideNotificationBanner(
+fun TopSlideNotificationBanner(
     visible: Boolean,
     message: String,
     onDismiss: () -> Unit
@@ -706,6 +708,4 @@ private fun TopSlideNotificationBanner(
             }
         }
     }
-}
-}
 }

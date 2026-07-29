@@ -497,7 +497,7 @@ data class FriendNotificationsResponse(
 )
 
 
-interface JotApi {
+interface TabsApi {
 
     @POST("api/auth/register")
     suspend fun register(@Body request: AuthRequest): Response<AuthResponse>

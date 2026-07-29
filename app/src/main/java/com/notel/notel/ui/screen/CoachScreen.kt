@@ -139,7 +139,7 @@ fun CoachScreen(
                         }
                         Spacer(Modifier.width(12.dp))
                         Text(
-                            "Jot Coach",
+                            "Tabs Coach",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = NotelTextPrimary
@@ -408,7 +408,7 @@ private fun ChatBubble(
     ) {
         if (!isUser) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 4.dp, start = 4.dp)) {
-                Text("✨ Jot Coach", fontSize = 12.sp, color = NotelPrimary, fontWeight = FontWeight.SemiBold)
+                Text("✨ Tabs Coach", fontSize = 12.sp, color = NotelPrimary, fontWeight = FontWeight.SemiBold)
             }
         }
 
@@ -655,7 +655,7 @@ private fun ChatBubble(
                             ) {
                                 Text("📁", fontSize = 16.sp)
                                 Text(
-                                    text = "Save Document to Jot DB?",
+                                    text = "Save Document to Tabs DB?",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = NotelPrimary
@@ -663,7 +663,7 @@ private fun ChatBubble(
                             }
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "Would you like to save \"${message.proposedFileName}\" to your permanent Jot database?",
+                                text = "Would you like to save \"${message.proposedFileName}\" to your permanent Tabs database?",
                                 fontSize = 14.sp,
                                 color = NotelTextPrimary,
                                 lineHeight = 20.sp
@@ -707,7 +707,7 @@ private fun ChatBubble(
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
-                            text = "✓ Document Saved to Jot DB",
+                            text = "✓ Document Saved to Tabs DB",
                             color = Color(0xFF00E676),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold

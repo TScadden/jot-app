@@ -122,7 +122,7 @@ class ReminderReceiver : BroadcastReceiver() {
         )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_noti_j)
+            .setSmallIcon(R.drawable.ic_noti_note)
             .setContentTitle("Reminder 🔔")
             .setContentText(title)
             .setPriority(NotificationCompat.PRIORITY_HIGH)

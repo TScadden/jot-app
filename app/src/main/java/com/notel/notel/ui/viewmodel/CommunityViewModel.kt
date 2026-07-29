@@ -6,7 +6,7 @@ import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.remote.FriendDto
 import com.notel.notel.data.remote.FriendNotificationDto
 import com.notel.notel.data.remote.FriendRequestApiRequest
-import com.notel.notel.data.remote.JotApi
+import com.notel.notel.data.remote.TabsApi
 import com.notel.notel.data.remote.RespondFriendRequestApiRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,7 +19,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class CommunityViewModel @Inject constructor(
-    private val jotApi: JotApi,
+    private val tabsApi: TabsApi,
     private val preferences: NotelPreferences
 ) : ViewModel() {
 
@@ -53,7 +53,7 @@ class CommunityViewModel @Inject constructor(
             _error.value = null
             try {
                 // Fetch friends
-                val friendsRes = jotApi.getFriendsList()
+                val friendsRes = tabsApi.getFriendsList()
                 if (friendsRes.isSuccessful) {
                     _friends.value = friendsRes.body()?.friends ?: emptyList()
                 } else {
@@ -61,7 +61,7 @@ class CommunityViewModel @Inject constructor(
                 }
 
                 // Fetch notifications
-                val notifRes = jotApi.getFriendNotifications()
+                val notifRes = tabsApi.getFriendNotifications()
                 if (notifRes.isSuccessful) {
                     _notifications.value = notifRes.body()?.notifications ?: emptyList()
                 }
@@ -78,7 +78,7 @@ class CommunityViewModel @Inject constructor(
             _isLoading.value = true
             _error.value = null
             try {
-                val res = jotApi.sendFriendRequest(FriendRequestApiRequest(friendIdString))
+                val res = tabsApi.sendFriendRequest(FriendRequestApiRequest(friendIdString))
                 if (res.isSuccessful && res.body()?.success == true) {
                     onResult(true, null)
                     fetchFriendsAndNotifications() // Refresh list & requests
@@ -104,7 +104,7 @@ class CommunityViewModel @Inject constructor(
             _isLoading.value = true
             try {
                 val action = if (accept) "accept" else "reject"
-                val res = jotApi.respondFriendRequest(RespondFriendRequestApiRequest(requestId, action))
+                val res = tabsApi.respondFriendRequest(RespondFriendRequestApiRequest(requestId, action))
                 if (res.isSuccessful && res.body()?.success == true) {
                     onResult(true, null)
                     fetchFriendsAndNotifications() // Refresh
@@ -122,7 +122,7 @@ class CommunityViewModel @Inject constructor(
     fun markNotificationsRead() {
         viewModelScope.launch {
             try {
-                jotApi.markFriendNotificationsRead()
+                tabsApi.markFriendNotificationsRead()
                 // Update local state to reflect all is read
                 _notifications.value = _notifications.value.map { it.copy(isRead = true) }
             } catch (e: Exception) {
@@ -134,7 +134,7 @@ class CommunityViewModel @Inject constructor(
     fun fetchFriendDetail(friendId: String, onResult: (com.notel.notel.data.remote.FriendDetailDto?, String?) -> Unit) {
         viewModelScope.launch {
             try {
-                val res = jotApi.getFriendDetail(friendId)
+                val res = tabsApi.getFriendDetail(friendId)
                 if (res.isSuccessful && res.body()?.success == true) {
                     onResult(res.body()?.data, null)
                 } else {

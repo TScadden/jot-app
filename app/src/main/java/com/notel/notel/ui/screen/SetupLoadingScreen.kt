@@ -98,7 +98,7 @@ fun SetupLoadingScreen(
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             GlassySpinner(size = 80.dp)
             Spacer(modifier = Modifier.height(32.dp))
-            Text("Setting up your Jot database...", color = NotelPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+            Text("Setting up your Tabs database...", color = NotelPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
             Spacer(modifier = Modifier.height(16.dp))
             Text("Building custom models based on your lifestyle profile.", color = NotelTextSecondary, fontSize = 16.sp, textAlign = TextAlign.Center)
         }

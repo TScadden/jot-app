@@ -5,7 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.notel.notel.data.local.dao.CoachSessionDao
 import com.notel.notel.data.local.entity.CoachSession
 import com.notel.notel.data.preferences.NotelPreferences
-import com.notel.notel.data.remote.JotApi
+import com.notel.notel.data.remote.TabsApi
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,7 +19,7 @@ import javax.inject.Inject
 class CoachHistoryViewModel @Inject constructor(
     private val coachSessionDao: CoachSessionDao,
     private val preferences: NotelPreferences,
-    private val jotApi: JotApi
+    private val tabsApi: TabsApi
 ) : ViewModel() {
 
     private val _sessions = MutableStateFlow<List<CoachSession>>(emptyList())
@@ -41,7 +41,7 @@ class CoachHistoryViewModel @Inject constructor(
 
                 // 2. Delete from server
                 if (preferences.loggedIn.first()) {
-                    jotApi.deleteCoachSession(session.id)
+                    tabsApi.deleteCoachSession(session.id)
                 }
             } catch (e: Exception) {
                 e.printStackTrace()

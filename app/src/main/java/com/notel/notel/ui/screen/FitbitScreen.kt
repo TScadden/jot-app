@@ -83,7 +83,7 @@ fun FitbitScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        "Jot tracks your 'Awake Average' to better understand your physiological load throughout the day.",
+                        "Tabs tracks your 'Awake Average' to better understand your physiological load throughout the day.",
                         fontSize = 14.sp,
                         color = NotelTextSecondary
                     )
@@ -137,7 +137,7 @@ fun FitbitScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        "Heart Rate Variability (HRV) measures the variation in time between each heartbeat. In Jot, we use RMSSD, which is the gold standard for measuring autonomic recovery.",
+                        "Heart Rate Variability (HRV) measures the variation in time between each heartbeat. In Tabs, we use RMSSD, which is the gold standard for measuring autonomic recovery.",
                         fontSize = 14.sp,
                         color = NotelTextSecondary
                     )
@@ -187,29 +187,32 @@ fun FitbitScreen(
                 sdf.parse(state.selectedHeartRateDate)?.time
             } catch(e: Exception) { null }
         }
-        val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = initialDateMillis,
-            selectableDates = object : SelectableDates {
+        val todayUtcEnd = remember { java.time.LocalDate.now().plusDays(1).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli() - 1 }
+        val days180AgoUtc = remember { java.time.LocalDate.now().minusDays(180).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli() }
+        val selectableDatesObj = remember(todayUtcEnd, days180AgoUtc) {
+            object : SelectableDates {
                 override fun isSelectableDate(utcTimeMillis: Long): Boolean {
-                    val formatted = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
-                        timeZone = java.util.TimeZone.getTimeZone("UTC")
-                    }.format(java.util.Date(utcTimeMillis))
-                    return state.historicalHeartRate.any { it.first == formatted }
+                    return utcTimeMillis in days180AgoUtc..todayUtcEnd
                 }
             }
+        }
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = initialDateMillis,
+            selectableDates = selectableDatesObj
         )
         DatePickerDialog(
             onDismissRequest = { showCalendar = false },
             confirmButton = {
                 TextButton(onClick = {
-                    datePickerState.selectedDateMillis?.let { millis ->
+                    val selectedMillis = datePickerState.selectedDateMillis
+                    showCalendar = false
+                    selectedMillis?.let { millis ->
                         val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
                             timeZone = java.util.TimeZone.getTimeZone("UTC")
                         }
                         val formatted = sdf.format(java.util.Date(millis))
                         viewModel.fetchHeartRateForDate(formatted)
                     }
-                    showCalendar = false
                 }) {
                     Text("Select", color = NotelPrimary)
                 }
@@ -229,10 +232,9 @@ fun FitbitScreen(
             val datePickerState = rememberDatePickerState(
                 selectableDates = object : SelectableDates {
                     override fun isSelectableDate(utcTimeMillis: Long): Boolean {
-                        val formatted = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
-                            timeZone = java.util.TimeZone.getTimeZone("UTC")
-                        }.format(java.util.Date(utcTimeMillis))
-                        return state.historicalHeartRate.any { it.first == formatted }
+                        val todayUtcEnd = java.time.LocalDate.now().plusDays(1).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli() - 1
+                        val days180AgoUtc = java.time.LocalDate.now().minusDays(180).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+                        return utcTimeMillis in days180AgoUtc..todayUtcEnd
                     }
                 }
             )
@@ -353,7 +355,8 @@ fun FitbitScreen(
                         IconButton(onClick = { viewModel.sync(force = true) }) {
                             Icon(Icons.Default.Sync, "Sync", tint = NotelTextSecondary)
                         }
-                        if (state.selectedHeartRateDate != "today") {
+                        val isTodaySelected = state.selectedHeartRateDate == "today" || state.selectedHeartRateDate == java.time.LocalDate.now().toString()
+                        if (!isTodaySelected) {
                             IconButton(onClick = { viewModel.fetchHeartRateForDate("today") }) {
                                 Icon(Icons.Default.Today, "Today", tint = NotelTextSecondary)
                             }
@@ -552,10 +555,10 @@ fun FitbitScreen(
                 }
                 
                 // ── Orthostatic Spike Card ─────────────────────────────────
-                val todaySpikes = remember(state.heartRateData) {
-                    val readings = state.heartRateData.map { it.second }
-                    if (readings.isEmpty()) listOf(0, 0, 0, 0, 0, 0, 0, 0)
+                val todaySpikes = remember(state.heartRateData, state.selectedHeartRateDate, state.isLoading) {
+                    if (state.isLoading || state.heartRateData.isEmpty()) listOf(0, 0, 0, 0, 0, 0, 0, 0)
                     else {
+                        val readings = state.heartRateData.map { it.second }
                         val sorted = readings.sorted()
                         val max = sorted.last()
                         val p10 = sorted[(sorted.size * 0.10).toInt().coerceAtLeast(0)]
@@ -647,18 +650,44 @@ fun FitbitScreen(
                                 fontSize = 16.sp
                             )
                             Spacer(Modifier.height(12.dp))
-                            Text(
-                                "No High-Resolution heart rate data available for this date.",
-                                color = NotelTextSecondary,
-                                fontSize = 13.sp,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                "Wear your tracker to capture orthostatic jumps.",
-                                color = NotelTextSecondary.copy(alpha = 0.5f),
-                                fontSize = 11.sp
-                            )
+                            if (state.isLoading || state.isSpikesLoading) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        color = NotelPrimary,
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        "Calculating spikes in background...",
+                                        color = NotelPrimary,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    "Analysis will display automatically as soon as ready.",
+                                    color = NotelTextSecondary.copy(alpha = 0.7f),
+                                    fontSize = 11.sp
+                                )
+                            } else {
+                                Text(
+                                    "No High-Resolution heart rate data available for this date.",
+                                    color = NotelTextSecondary,
+                                    fontSize = 13.sp,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "Wear your tracker to capture orthostatic jumps.",
+                                    color = NotelTextSecondary.copy(alpha = 0.5f),
+                                    fontSize = 11.sp
+                                )
+                            }
                         }
                     } else {
                         Column(modifier = Modifier.fillMaxWidth()) {
@@ -813,34 +842,34 @@ fun FitbitScreen(
                                 val formatter = java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault())
                                 val zoneId = java.time.ZoneId.systemDefault()
 
-                                class SpikeEvent(val startTimeMs: Long, var peakBpm: Int, var durationMins: Int)
+                                val allEvents = remember(state.heartRateData) {
+                                    val events = mutableListOf<SpikeEvent>()
+                                    var currentEventStart = 0L
+                                    var currentEventPeak = 0
+                                    var currentEventEndMs = 0L
+                                    var inEvent = false
 
-                                // Build all spike events
-                                val allEvents = mutableListOf<SpikeEvent>()
-                                var currentEventStart = 0L
-                                var currentEventPeak = 0
-                                var currentEventEndMs = 0L
-                                var inEvent = false
-
-                                state.heartRateData.forEach { (timeMs, bpm) ->
-                                    if (bpm >= 100) {
-                                        if (!inEvent || timeMs > currentEventEndMs) {
-                                            if (inEvent) {
-                                                val dur = maxOf(1, ((currentEventEndMs - 300_000L - currentEventStart) / 60000).toInt())
-                                                allEvents.add(SpikeEvent(currentEventStart, currentEventPeak, dur))
+                                    state.heartRateData.forEach { (timeMs, bpm) ->
+                                        if (bpm >= 100) {
+                                            if (!inEvent || timeMs > currentEventEndMs) {
+                                                if (inEvent) {
+                                                    val dur = maxOf(1, ((currentEventEndMs - 300_000L - currentEventStart) / 60000).toInt())
+                                                    events.add(SpikeEvent(currentEventStart, currentEventPeak, dur))
+                                                }
+                                                inEvent = true
+                                                currentEventStart = timeMs
+                                                currentEventPeak = bpm
+                                            } else {
+                                                currentEventPeak = maxOf(currentEventPeak, bpm)
                                             }
-                                            inEvent = true
-                                            currentEventStart = timeMs
-                                            currentEventPeak = bpm
-                                        } else {
-                                            currentEventPeak = maxOf(currentEventPeak, bpm)
+                                            currentEventEndMs = timeMs + (5 * 60 * 1000)
                                         }
-                                        currentEventEndMs = timeMs + (5 * 60 * 1000)
                                     }
-                                }
-                                if (inEvent) {
-                                    val dur = maxOf(1, ((currentEventEndMs - 300_000L - currentEventStart) / 60000).toInt())
-                                    allEvents.add(SpikeEvent(currentEventStart, currentEventPeak, dur))
+                                    if (inEvent) {
+                                        val dur = maxOf(1, ((currentEventEndMs - 300_000L - currentEventStart) / 60000).toInt())
+                                        events.add(SpikeEvent(currentEventStart, currentEventPeak, dur))
+                                    }
+                                    events
                                 }
 
                                 allEvents.forEach { event ->
@@ -1100,3 +1129,5 @@ private fun SpikeMetricSmall(
         }
     }
 }
+
+private class SpikeEvent(val startTimeMs: Long, var peakBpm: Int, var durationMins: Int)

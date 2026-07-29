@@ -48,7 +48,7 @@ fun CoachHistoryScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "Jot Coach History",
+                        "Tabs Coach History",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = NotelTextPrimary

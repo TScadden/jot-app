@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/notel_background" />
-    <foreground android:drawable="@drawable/ic_jot_launcher" />
+    <background android:drawable="@color/tabs_icon_background" />
+    <foreground android:drawable="@drawable/ic_tabs_launcher" />
 </adaptive-icon>

@@ -25,7 +25,7 @@ import kotlinx.coroutines.sync.withLock
 
 @Singleton
 class SyncManager @Inject constructor(
-    private val jotApi: JotApi,
+    private val tabsApi: TabsApi,
     private val logEntryDao: LogEntryDao,
     private val categoryDao: CategoryDao,
     private val knowledgeDocumentDao: com.notel.notel.data.local.dao.KnowledgeDocumentDao,
@@ -75,7 +75,7 @@ class SyncManager @Inject constructor(
                 val categoryDtos = categories.map {
                     CategoryDtoModel(it.id, it.name, it.icon, it.colorHex, it.isDefault, it.sortOrder)
                 }
-                val catRes = jotApi.syncCategories(SyncCategoriesRequest(categoryDtos))
+                val catRes = tabsApi.syncCategories(SyncCategoriesRequest(categoryDtos))
                 if (!catRes.isSuccessful) {
                     Log.e(tag, "Categories sync failed, aborting full sync: ${catRes.errorBody()?.string()}")
                     return@withContext
@@ -87,7 +87,7 @@ class SyncManager @Inject constructor(
                 val entryDtos = entries.map {
                     LogEntryDtoModel(it.id, it.categoryId, it.body, it.chips, it.manualText, it.timestamp)
                 }
-                val entryRes = jotApi.syncEntries(SyncEntriesRequest(entryDtos))
+                val entryRes = tabsApi.syncEntries(SyncEntriesRequest(entryDtos))
                 if (!entryRes.isSuccessful) {
                     Log.e(tag, "Entries sync failed, aborting full sync: ${entryRes.errorBody()?.string()}")
                     return@withContext
@@ -119,7 +119,7 @@ class SyncManager @Inject constructor(
                     val insightDtos = localInsights.map {
                         InsightDtoModel(it.id, it.text, it.type, it.timestamp)
                     }
-                    val insightRes = jotApi.syncInsights(SyncInsightsRequest(insightDtos))
+                    val insightRes = tabsApi.syncInsights(SyncInsightsRequest(insightDtos))
                     if (!insightRes.isSuccessful) {
                         Log.e(tag, "Insights sync failed: ${insightRes.errorBody()?.string()}")
                     }
@@ -164,7 +164,7 @@ class SyncManager @Inject constructor(
 
             // Fetch logs for the week
             val weeklyEntries = logEntryDao.getRecentEntriesInRange(startOfWeek, System.currentTimeMillis())
-            val jotsByDate = weeklyEntries.groupBy {
+            val tabsByDate = weeklyEntries.groupBy {
                 sdf.format(java.util.Date(it.timestamp))
             }
 
@@ -194,9 +194,9 @@ class SyncManager @Inject constructor(
 
             // 2. Iterate each day of the week to sum up points
             dates.forEach { d ->
-                // A. Jots: 100 pts per Jot, max 3 per day (300 max)
-                val dailyJots = jotsByDate[d]?.size ?: 0
-                totalScore += minOf(3, dailyJots) * 100
+                // A. Tabs: 100 pts per Tab, max 3 per day (300 max)
+                val dailyTabs = tabsByDate[d]?.size ?: 0
+                totalScore += minOf(3, dailyTabs) * 100
 
                 // B. Calories: Total Calories / 20, max 200 pts (4000 cap)
                 val dailyCal = calMap[d] ?: 0
@@ -316,7 +316,7 @@ class SyncManager @Inject constructor(
             preferences.setTodaySpikes(todaySpikeCount)
             preferences.setTodaySleepDebt(todaySleepDebtVal)
 
-            val response = jotApi.syncProfile(
+            val response = tabsApi.syncProfile(
                 SyncProfileRequest(
                     userContext = preferences.userContext.first(),
                     knowledgeBase = preferences.knowledgeBase.first(),
@@ -372,7 +372,7 @@ class SyncManager @Inject constructor(
                 val entryDtos = entries.map {
                     LogEntryDtoModel(it.id, it.categoryId, it.body, it.chips, it.manualText, it.timestamp)
                 }
-                val response = jotApi.syncEntries(SyncEntriesRequest(entryDtos))
+                val response = tabsApi.syncEntries(SyncEntriesRequest(entryDtos))
                 response.isSuccessful
             } else {
                 true
@@ -391,7 +391,7 @@ class SyncManager @Inject constructor(
                 val categoryDtos = categories.map {
                     CategoryDtoModel(it.id, it.name, it.icon, it.colorHex, it.isDefault, it.sortOrder)
                 }
-                val response = jotApi.syncCategories(SyncCategoriesRequest(categoryDtos))
+                val response = tabsApi.syncCategories(SyncCategoriesRequest(categoryDtos))
                 response.isSuccessful
             } else {
                 true
@@ -405,7 +405,7 @@ class SyncManager @Inject constructor(
     suspend fun deleteCategoryRemote(categoryId: Int) = withContext(Dispatchers.IO) {
         try {
             if (!preferences.loggedIn.first()) return@withContext
-            jotApi.deleteRemoteCategory(categoryId)
+            tabsApi.deleteRemoteCategory(categoryId)
         } catch (e: Exception) {
             Log.e(tag, "deleteCategoryRemote failed: ${e.message}")
         }
@@ -418,7 +418,7 @@ class SyncManager @Inject constructor(
             Log.d(tag, "Contacting account cloud...")
             
             val response = withTimeoutOrNull(15000L) {
-                jotApi.pullData()
+                tabsApi.pullData()
             }
             
             if (response == null) {
@@ -599,7 +599,7 @@ class SyncManager @Inject constructor(
                         if (local == null) {
                             // Fetch content and save
                             try {
-                                val dataRes = jotApi.getDocumentData(doc.id)
+                                val dataRes = tabsApi.getDocumentData(doc.id)
                                 val base64 = dataRes.body()?.result
                                 if (base64 != null) {
                                     val bytes = android.util.Base64.decode(base64, android.util.Base64.DEFAULT)
@@ -717,7 +717,7 @@ class SyncManager @Inject constructor(
                 }.filter { it.fileData != null }
                 
                 if (dtos.isNotEmpty()) {
-                    jotApi.syncDocuments(SyncDocumentsRequest(dtos))
+                    tabsApi.syncDocuments(SyncDocumentsRequest(dtos))
                 }
             }
         } catch (e: Exception) {
@@ -733,7 +733,7 @@ class SyncManager @Inject constructor(
                 val dtos = unsynced.map {
                     CoachSessionDto(it.id, it.title, it.createdAt, it.updatedAt)
                 }
-                val response = jotApi.syncCoachSessions(SyncCoachSessionsRequest(dtos))
+                val response = tabsApi.syncCoachSessions(SyncCoachSessionsRequest(dtos))
                 if (response.isSuccessful && response.body()?.synced != null) {
                     unsynced.forEach { coachSessionDao.markSynced(it.id) }
                 }
@@ -751,7 +751,7 @@ class SyncManager @Inject constructor(
                 val dtos = unsynced.map {
                     CoachMessageDto(it.id, it.sessionId, it.role, it.content, it.timestamp)
                 }
-                val response = jotApi.syncCoachMessages(SyncCoachMessagesRequest(dtos))
+                val response = tabsApi.syncCoachMessages(SyncCoachMessagesRequest(dtos))
                 if (response.isSuccessful && response.body()?.synced != null) {
                     unsynced.forEach { coachMessageDao.markSynced(it.id) }
                 }
@@ -870,7 +870,7 @@ class SyncManager @Inject constructor(
                     com.notel.notel.data.remote.InsightDtoModel(it.id, it.text, it.type, it.timestamp)
                 }
                 try {
-                    jotApi.syncInsights(com.notel.notel.data.remote.SyncInsightsRequest(insightDtos))
+                    tabsApi.syncInsights(com.notel.notel.data.remote.SyncInsightsRequest(insightDtos))
                 } catch (e: Exception) {
                     Log.e(tag, "Failed to push corrected biometrics to server: ${e.message}")
                 }

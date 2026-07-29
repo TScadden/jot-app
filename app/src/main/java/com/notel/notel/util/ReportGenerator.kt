@@ -100,7 +100,7 @@ class ReportGenerator @Inject constructor(
         val margin = 50f
         val contentWidth = 495f
 
-        canvas.drawText("Jot — Clinical Longitudinal Report", margin, y, titlePaint)
+        canvas.drawText("Tabs — Clinical Longitudinal Report", margin, y, titlePaint)
         y += 12f
         canvas.drawLine(margin, y, margin + contentWidth, y, linePaint)
         y += 28f
@@ -265,9 +265,9 @@ class ReportGenerator @Inject constructor(
                 val spikesData = sortedRecords.filter { it.spikes > 0 }.map { it.dateStr to it.spikes.toFloat() }
                 drawLineChart(chartCanvas2, "HR Spikes", spikesData, "#E040FB", margin, 270f, contentWidth, 140f, "")
 
-                // 7. Number of Jots
+                // 7. Number of Tabs
                 val jotsData = sortedRecords.filter { it.jots > 0 }.map { it.dateStr to it.jots.toFloat() }
-                drawLineChart(chartCanvas2, "Number of Jots", jotsData, "#26A69A", margin, 440f, contentWidth, 140f, "")
+                drawLineChart(chartCanvas2, "Number of Tabs", jotsData, "#26A69A", margin, 440f, contentWidth, 140f, "")
 
                 // Disclaimer on bottom of the charts page
                 chartCanvas2.drawLine(margin, 650f, margin + contentWidth, 650f, linePaint)
@@ -284,7 +284,7 @@ class ReportGenerator @Inject constructor(
             e.printStackTrace()
         }
 
-        val fileName = "Jot_Report_${SimpleDateFormat("MMM_dd_yyyy", Locale.getDefault()).format(Date())}.pdf"
+        val fileName = "Tabs_Report_${SimpleDateFormat("MMM_dd_yyyy", Locale.getDefault()).format(Date())}.pdf"
         val cacheFile = File(context.cacheDir, fileName)
         try {
             pdfDocument.writeTo(FileOutputStream(cacheFile))
@@ -511,20 +511,24 @@ class ReportGenerator @Inject constructor(
      * Permanent storage in Downloads folder via MediaStore
      */
     private fun saveToDownloads(file: File, fileName: String) {
-        val resolver = context.contentResolver
-        val contentValues = android.content.ContentValues().apply {
-            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
-            put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
-        }
+        try {
+            val resolver = context.contentResolver
+            val contentValues = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+            }
 
-        val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
-        uri?.let {
-            resolver.openOutputStream(it)?.use { outputStream ->
-                file.inputStream().use { inputStream ->
-                    inputStream.copyTo(outputStream)
+            val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+            uri?.let {
+                resolver.openOutputStream(it)?.use { outputStream ->
+                    file.inputStream().use { inputStream ->
+                        inputStream.copyTo(outputStream)
+                    }
                 }
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 

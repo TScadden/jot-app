@@ -35,7 +35,7 @@ class SettingsViewModel @Inject constructor(
     private val syncManager: SyncManager,
     private val database: com.notel.notel.data.local.NotelDatabase,
     private val habitRepository: com.notel.notel.data.repository.HabitRepository,
-    private val jotApi: com.notel.notel.data.remote.JotApi,
+    private val tabsApi: com.notel.notel.data.remote.TabsApi,
     @ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
 
@@ -1018,7 +1018,7 @@ class SettingsViewModel @Inject constructor(
             
             try {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    jotApi.deleteInsight(id)
+                    tabsApi.deleteInsight(id)
                 }
             } catch (e: Exception) {
                 // Ignore silent background network failure
@@ -1155,7 +1155,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 // Push update to server directly (no uniqueness check needed for duplicate nicknames)
-                val updateRes = jotApi.updateNickname(com.notel.notel.data.remote.UpdateNicknameRequest(trimmed))
+                val updateRes = tabsApi.updateNickname(com.notel.notel.data.remote.UpdateNicknameRequest(trimmed))
                 val body = updateRes.body()
                 if (updateRes.isSuccessful && body?.success == true) {
                     preferences.setUserNickname(trimmed)
@@ -1245,7 +1245,7 @@ class SettingsViewModel @Inject constructor(
             putExtra(HeartRateLoggingService.EXTRA_DEVICE_NAME, device.name)
         }
         androidx.core.content.ContextCompat.startForegroundService(context, intent)
-        addSystemLog("Jot Live: Background session started for ${device.name}")
+        addSystemLog("Tabs Live: Background session started for ${device.name}")
     }
 
     fun stopHrLoggingService() {
@@ -1253,13 +1253,13 @@ class SettingsViewModel @Inject constructor(
             action = HeartRateLoggingService.ACTION_STOP
         }
         context.startService(intent)
-        addSystemLog("Jot Live: Background session stopped")
+        addSystemLog("Tabs Live: Background session stopped")
     }
 
     fun deleteSessionCsvFile(file: File, onDeleted: () -> Unit) {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             if (file.exists() && file.delete()) {
-                addSystemLog("Jot Live: Log file ${file.name} deleted")
+                addSystemLog("Tabs Live: Log file ${file.name} deleted")
                 launch(kotlinx.coroutines.Dispatchers.Main) {
                     onDeleted()
                 }

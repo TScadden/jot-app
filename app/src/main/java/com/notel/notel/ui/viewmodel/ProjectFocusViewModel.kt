@@ -3,7 +3,7 @@ package com.notel.notel.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.notel.notel.data.preferences.NotelPreferences
-import com.notel.notel.data.remote.JotApi
+import com.notel.notel.data.remote.TabsApi
 import com.notel.notel.data.remote.SyncProfileRequest
 import com.notel.notel.data.remote.FocusSuggestion
 import com.notel.notel.data.remote.FocusSuggestionsRequest
@@ -67,7 +67,7 @@ private val lenientJson = Json {
 @HiltViewModel
 class ProjectFocusViewModel @Inject constructor(
     private val preferences: NotelPreferences,
-    private val api: JotApi
+    private val api: TabsApi
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ProjectFocusUiState())

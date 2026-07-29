@@ -126,7 +126,7 @@ class HeartRateLoggingService : Service() {
 
         try {
             val powerManager = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
-            wakeLock = powerManager.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "Notel:HeartRateLoggingWakeLock").apply {
+            wakeLock = powerManager.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "Tabs:HeartRateLoggingWakeLock").apply {
                 acquire()
             }
         } catch (e: Exception) {
@@ -397,7 +397,7 @@ class HeartRateLoggingService : Service() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Jot Live Active Log")
+            .setContentTitle("Tabs Live Active Log")
             .setContentText(contentText)
             .setSmallIcon(R.drawable.ic_notification_heart_lock)
             .setContentIntent(openAppPendingIntent)

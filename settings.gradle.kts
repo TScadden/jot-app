@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Notel"
+rootProject.name = "Tabs"
 include(":app")

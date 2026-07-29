@@ -83,7 +83,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Log Symptoms in Jot"
+            android:text="Log Symptoms in Tabs"
             android:textColor="#AAAAAA"
             android:textSize="13sp"/>
     </LinearLayout>

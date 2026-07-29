@@ -94,7 +94,7 @@ object PdfExporter {
             var y = 60f
 
             // Report Header
-            canvas.drawText("Jot HR Spikes Report", 50f, y, titlePaint)
+            canvas.drawText("Tabs HR Spikes Report", 50f, y, titlePaint)
             y += 24f
             canvas.drawText("Date: $formattedDate | Exported: ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())}", 50f, y, subTitlePaint)
             y += 35f
@@ -145,7 +145,7 @@ object PdfExporter {
             pdfDocument.finishPage(page)
 
             // 3. Save to MediaStore (Downloads Folder)
-            val fileName = "Jot $formattedDate HR spikes"
+            val fileName = "Tabs $formattedDate HR spikes"
             val resolver = context.contentResolver
             val contentValues = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)

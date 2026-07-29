@@ -55,7 +55,7 @@ class WeatherApi {
     private fun fetchUrl(urlString: String): String {
         val url = URL(urlString)
         val connection = url.openConnection() as HttpURLConnection
-        connection.setRequestProperty("User-Agent", "Notel-App/1.0")
+        connection.setRequestProperty("User-Agent", "Tabs-App/1.0")
         return connection.inputStream.bufferedReader().use { it.readText() }
     }
 

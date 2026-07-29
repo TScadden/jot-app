@@ -350,7 +350,7 @@ fun SettingsScreen(
                         SettingsMenu.MEMBERSHIP -> "Membership"
                         SettingsMenu.NOTIFICATIONS -> "Notifications"
                         SettingsMenu.SYNC_SETTINGS -> "Sync Settings"
-                        SettingsMenu.JOT_LIVE -> "Jot Live Beta"
+                        SettingsMenu.JOT_LIVE -> "Tabs Live Beta"
                         SettingsMenu.DEBUG -> "Developer Terminal"
                     }
                     Text(titleText, fontWeight = FontWeight.Bold, color = NotelTextPrimary) 
@@ -491,7 +491,7 @@ fun SettingsScreen(
                         } else {
                             Spacer(Modifier.height(20.dp))
                             Text(
-                                "Thank you for being a member! Your support keeps Jot improving.",
+                                "Thank you for being a member! Your support keeps Tabs improving.",
                                 color = NotelTextSecondary,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium
@@ -524,7 +524,7 @@ fun SettingsScreen(
                             }
                         }
                         Spacer(Modifier.height(4.dp))
-                        Text("Tell Jot about your goals (e.g. 'training for a marathon').", color = NotelTextSecondary, fontSize = 11.sp)
+                        Text("Tell Tabs about your goals (e.g. 'training for a marathon').", color = NotelTextSecondary, fontSize = 11.sp)
                         Spacer(Modifier.height(8.dp))
                         
                         Box(
@@ -532,45 +532,53 @@ fun SettingsScreen(
                                 .fillMaxWidth()
                                 .then(if (userContextHidden) Modifier.clickable { viewModel.toggleUserContextHidden() } else Modifier)
                         ) {
-                            OutlinedTextField(
-                                value = contextInput, 
-                                onValueChange = { contextInput = it; viewModel.saveUserContext(it.trim()) },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .onFocusChanged { isContextFocused = it.isFocused }
-                                    .blur(if (userContextHidden && userContext.isNotBlank()) 12.dp else 0.dp),
-                                minLines = 2, 
-                                maxLines = 4,
-                                enabled = !userContextHidden || userContext.isBlank(),
-                                placeholder = { Text("Add background info here…", color = NotelTextSecondary, fontSize = 12.sp) },
-                                shape = RoundedCornerShape(12.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = NotelPrimary, 
-                                    unfocusedBorderColor = NotelSurfaceHigh, 
-                                    focusedTextColor = NotelTextPrimary, 
-                                    unfocusedTextColor = NotelTextPrimary,
-                                    disabledTextColor = NotelTextPrimary,
-                                    disabledBorderColor = NotelSurfaceHigh
+                            if (!userContextHidden || userContext.isBlank()) {
+                                OutlinedTextField(
+                                    value = contextInput, 
+                                    onValueChange = { contextInput = it; viewModel.saveUserContext(it) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .onFocusChanged { isContextFocused = it.isFocused },
+                                    minLines = 2, 
+                                    maxLines = 4,
+                                    enabled = true,
+                                    placeholder = { Text("Add background info here…", color = NotelTextSecondary, fontSize = 12.sp) },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = NotelPrimary, 
+                                        unfocusedBorderColor = NotelSurfaceHigh, 
+                                        focusedTextColor = NotelTextPrimary, 
+                                        unfocusedTextColor = NotelTextPrimary,
+                                        disabledTextColor = NotelTextPrimary,
+                                        disabledBorderColor = NotelSurfaceHigh
+                                    )
                                 )
-                            )
-                            
-                            if (userContextHidden && userContext.isNotBlank()) {
-                                Column(
-                                    modifier = Modifier.matchParentSize(),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.Center
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(88.dp)
+                                        .background(NotelSurfaceHigh, RoundedCornerShape(12.dp))
+                                        .padding(12.dp),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Text(
-                                        "Hidden for your privacy", 
-                                        color = NotelTextPrimary, 
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp
-                                    )
-                                    Text(
-                                        "Click here to show the text", 
-                                        color = NotelTextSecondary, 
-                                        fontSize = 10.sp
-                                    )
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
+                                    ) {
+                                        Text(
+                                            "Hidden for your privacy", 
+                                            color = NotelTextPrimary, 
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp
+                                        )
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(
+                                            "Click eye icon or tap here to reveal", 
+                                            color = NotelTextSecondary, 
+                                            fontSize = 11.sp
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -602,7 +610,7 @@ fun SettingsScreen(
                     SettingsMenuCard("Event Counters", Icons.Default.Timer, modifier = Modifier.onGloballyPositioned { coordEventCounters = it }) { currentMenu = SettingsMenu.EVENT_COUNTERS }
                     SettingsMenuCard("Notifications", Icons.Default.Notifications) { currentMenu = SettingsMenu.NOTIFICATIONS }
                     SettingsMenuCard("Sync Settings", Icons.Default.Sync) { currentMenu = SettingsMenu.SYNC_SETTINGS }
-                    SettingsMenuCard("Jot Live Beta", Icons.Default.Bluetooth) { currentMenu = SettingsMenu.JOT_LIVE }
+                    SettingsMenuCard("Tabs Live Beta", Icons.Default.Bluetooth) { currentMenu = SettingsMenu.JOT_LIVE }
 
                     Spacer(Modifier.height(16.dp))
                     Text(
@@ -1460,7 +1468,7 @@ fun SettingsScreen(
                     shape = RoundedCornerShape(16.dp),
                     color = NotelSurface
                 ) {
-                    Text("Clinical Audit (PDF)", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                    Text("Audit (PDF)", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(4.dp))
                     Text(
                         "Generate a data-dense PDF summary of your trends, spikes, and compliance for your physician.",
@@ -1507,7 +1515,7 @@ fun SettingsScreen(
                             )
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                "Export Clinical Audit",
+                                "Export Audit (PDF)",
                                 color = if (hasLogs) NotelTextPrimary else NotelTextSecondary.copy(alpha = 0.4f)
                             )
                         }
@@ -1537,9 +1545,9 @@ fun SettingsScreen(
                         ) {
                             if (isDeepBusy) GlassySpinner(size = 18.dp)
                             else {
-                                Icon(Icons.Default.Science, null, tint = NotelPrimary, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Default.Search, null, tint = NotelPrimary, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text("Deep Audit", color = NotelTextPrimary, fontSize = 13.sp)
+                                Text("Deep Audit", color = NotelTextPrimary, fontSize = 12.sp, maxLines = 1)
                             }
                         }
 
@@ -1554,7 +1562,7 @@ fun SettingsScreen(
                             else {
                                 Icon(Icons.Default.AssignmentTurnedIn, null, tint = NotelPrimary, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text("Weekly Recap", color = NotelTextPrimary, fontSize = 13.sp)
+                                Text("Weekly Recap", color = NotelTextPrimary, fontSize = 11.sp, maxLines = 1, softWrap = false)
                             }
                         }
                     }
@@ -1595,7 +1603,10 @@ fun SettingsScreen(
                         }
                         Spacer(Modifier.height(12.dp))
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            aiInsights.filter { it.type != "BodyLoad" }.forEach { insight ->
+                            val displayInsights = remember(aiInsights) {
+                                aiInsights.filter { it.type != "BodyLoad" && it.type != "Biometrics" }.take(15)
+                            }
+                            displayInsights.forEach { insight ->
                                 InsightTile(insight = insight, onDelete = { viewModel.deleteAiInsight(insight.id) })
                             }
                         }
@@ -2746,7 +2757,7 @@ fun SettingsScreen(
                 }
 
                 // Render the main Jot Live monitor panel content
-                JotLiveScreenContent(viewModel = viewModel)
+                TabsLiveScreenContent(viewModel = viewModel)
             }
 
 
@@ -2781,7 +2792,7 @@ fun SettingsScreen(
                     colors = CardDefaults.cardColors(containerColor = NotelSurface)
                 ) {
                     ListItem(
-                        headlineContent = { Text("Jot", color = NotelTextPrimary) },
+                        headlineContent = { Text("Tabs", color = NotelTextPrimary) },
                         supportingContent = { Text("Version 1.0", color = NotelTextSecondary) },
                         leadingContent = { Icon(Icons.Default.Info, null, tint = NotelPrimary) },
                         colors = ListItemDefaults.colors(containerColor = NotelSurface)
@@ -3308,7 +3319,7 @@ fun DocumentTile(
 }
 
 @Composable
-fun JotLiveScreenContent(
+fun TabsLiveScreenContent(
     viewModel: SettingsViewModel
 ) {
     val context = LocalContext.current
@@ -3439,7 +3450,7 @@ fun JotLiveScreenContent(
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "Jot Live Beta requires Bluetooth and Notification permissions to connect to your band and record logs in the background.",
+                text = "Tabs Live Beta requires Bluetooth and Notification permissions to connect to your band and record logs in the background.",
                 color = NotelTextSecondary,
                 fontSize = 12.sp,
                 textAlign = TextAlign.Center

@@ -5,7 +5,7 @@ import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import com.notel.notel.data.remote.CreateHabitRequest
 import com.notel.notel.data.remote.HabitDtoModel
-import com.notel.notel.data.remote.JotApi
+import com.notel.notel.data.remote.TabsApi
 import com.notel.notel.data.remote.LogHabitRequest
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,7 +21,7 @@ import javax.inject.Singleton
 @Singleton
 class HabitRepository @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val api: JotApi,
+    private val api: TabsApi,
     private val preferences: com.notel.notel.data.preferences.NotelPreferences
 ) {
     private val _habits = MutableStateFlow<List<HabitDtoModel>>(emptyList())
