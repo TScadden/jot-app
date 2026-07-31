@@ -1108,7 +1108,7 @@
             <div class="glass" style="padding: 2rem; border-radius: 20px;">
                 <h3 style="margin-bottom: 2rem; color: var(--text-primary); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
                     <span style="display: flex; align-items: center; gap: 0.5rem;">📈 Wellness Graph Tracker</span>
-                    <button id="btn-read-graphs" class="btn-tracker" onclick="handleReadGraphsClick()" style="display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; padding: 0.55rem 1.25rem; border-radius: 12px; font-weight: 700; transition: all 0.3s ease;">
+                    <button id="btn-read-graphs" class="btn-tracker" onclick="handleReadGraphsClick(event)" style="display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; padding: 0.55rem 1.25rem; border-radius: 12px; font-weight: 700; transition: all 0.3s ease;">
                         <span id="btn-read-graphs-icon">✨</span> <span id="btn-read-graphs-text">Read Graphs</span>
                     </button>
                 </h3>
@@ -2661,7 +2661,11 @@
         let graphAnalysisState = 'idle'; // 'idle' | 'loading' | 'ready'
         let cachedGraphAnalysis = null;
 
-        async function handleReadGraphsClick() {
+        async function handleReadGraphsClick(e) {
+            if (e) {
+                if (typeof e.preventDefault === 'function') e.preventDefault();
+                if (typeof e.stopPropagation === 'function') e.stopPropagation();
+            }
             if (graphAnalysisState === 'ready' && cachedGraphAnalysis) {
                 openGraphAnalysisModal();
             } else if (graphAnalysisState === 'idle') {
@@ -2745,6 +2749,7 @@
                     btn.classList.add('btn-analysis-ready');
                     btnText.textContent = 'Analysis Ready';
                     if (btnIcon) btnIcon.textContent = '🎉';
+                    openGraphAnalysisModal();
                 } else {
                     throw new Error(data.error || 'Failed to generate graph analysis');
                 }
@@ -2774,14 +2779,20 @@
             if (modal) modal.style.display = 'none';
         }
 
+        function closeGraphAnalysisModalOnBackdrop(e) {
+            if (e && e.target && e.target.id === 'graph-analysis-modal') {
+                closeGraphAnalysisModal();
+            }
+        }
+
         // Run fetch
         initFocusState();
         fetchDashboardData();
     </script>
 
     <!-- Graph Analysis Modal -->
-    <div id="graph-analysis-modal" class="modal-overlay" style="display: none;" onclick="if(event.target === this) closeGraphAnalysisModal()">
-        <div class="modal-card" style="max-width: 650px; width: 92%; max-height: 85vh; overflow-y: auto;">
+    <div id="graph-analysis-modal" class="modal-overlay" style="display: none;" onclick="closeGraphAnalysisModalOnBackdrop(event)">
+        <div class="modal-card" style="max-width: 650px; width: 92%; max-height: 85vh; overflow-y: auto;" onclick="event.stopPropagation()">
             <div class="modal-header">
                 <h3>🤖 AI Graph Analysis</h3>
                 <button class="btn-close" onclick="closeGraphAnalysisModal()">✕</button>
