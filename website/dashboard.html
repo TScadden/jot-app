@@ -2686,7 +2686,7 @@
             if (btnIcon) btnIcon.textContent = '⏳';
 
             try {
-                const response = await fetch(`${API_BASE}/api/ai/read-graphs`, {
+                let response = await fetch(`${API_BASE}/api/ai/read-graphs`, {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${token}`,
@@ -2699,7 +2699,45 @@
                     })
                 });
 
-                const data = await response.json();
+                let data;
+                if (response.status === 404) {
+                    const entriesFallback = globalSortedRecords.map((r, idx) => ({
+                        id: `graph_${idx}`,
+                        timestamp: r.rawDate ? r.rawDate.getTime() : Date.now(),
+                        categoryId: 'wellness_graphs',
+                        body: `Biometric record for ${r.dateStr}: Sleep Duration: ${(r.sleepMins/60).toFixed(1)}h, Deep Sleep: ${(r.deepSleepMins/60).toFixed(1)}h, Average Heart Rate: ${r.avgHr||'N/A'} bpm, HRV: ${r.hrv||'N/A'} ms, Calories: ${r.calories||'N/A'} kcal, HR Spikes: ${r.spikes!==undefined?r.spikes:'N/A'}, Jots logged: ${r.jots||0}`
+                    }));
+
+                    response = await fetch(`${API_BASE}/api/ai/advice`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            entries: entriesFallback,
+                            categories: { wellness_graphs: 'Biometric Graphs' },
+                            userContext: `The user is analyzing their Wellness Graphs. Identify key patterns, correlations between metrics (e.g., deep sleep vs HRV and heart rate), and actionable takeaways.`
+                        })
+                    });
+
+                    data = await response.json();
+                    if (response.ok && data.result) {
+                        let htmlContent = '<h4>📊 Graph Analysis & Pattern Insights</h4><ul>';
+                        if (Array.isArray(data.result)) {
+                            data.result.forEach(item => {
+                                htmlContent += `<li style="margin-bottom: 0.75rem;">${item}</li>`;
+                            });
+                        } else {
+                            htmlContent += `<li style="margin-bottom: 0.75rem;">${data.result}</li>`;
+                        }
+                        htmlContent += '</ul>';
+                        data.result = htmlContent;
+                    }
+                } else {
+                    data = await response.json();
+                }
+
                 if (response.ok && data.result) {
                     cachedGraphAnalysis = data.result;
                     graphAnalysisState = 'ready';
