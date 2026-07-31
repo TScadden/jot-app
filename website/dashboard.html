@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="./style.css?v=1.9">
     <link rel="icon" type="image/png" href="/tabs_logo.png">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <style>
         /* Prevent text selection globally except in input fields/textareas */
         * {
@@ -2877,39 +2878,59 @@
 
         async function downloadGraphAnalysisReport() {
             if (!cachedGraphAnalysis) return;
+            const btn = document.getElementById('btn-download-report');
+            if (btn) btn.disabled = true;
+
             try {
-                // Convert HTML tags to clean plain text
-                const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = cachedGraphAnalysis;
-                const plainText = tempDiv.innerText || tempDiv.textContent || '';
-                const reportHeader = `Tabs App — AI Biometrics & Graph Analysis Report\nGenerated: ${new Date().toLocaleString()}\n${'='.repeat(60)}\n\n`;
-                const fullText = reportHeader + plainText;
+                // Build a high-quality, professional PDF document container
+                const container = document.createElement('div');
+                container.style.padding = '28px';
+                container.style.fontFamily = "'Outfit', 'Segoe UI', Helvetica, Arial, sans-serif";
+                container.style.color = '#1e293b';
+                container.style.backgroundColor = '#ffffff';
+                container.style.borderRadius = '12px';
 
-                // Check Web Share API (mobile/modern browsers)
-                if (navigator.share) {
-                    try {
-                        await navigator.share({
-                            title: 'Tabs AI Graph Analysis Report',
-                            text: fullText
-                        });
-                        return;
-                    } catch (e) {
-                        // User cancelled or share failed, fallback to download
-                    }
+                const todayStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+                
+                container.innerHTML = `
+                    <div style="border-bottom: 2px solid #6366f1; padding-bottom: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <h2 style="margin: 0; color: #4f46e5; font-size: 22px; font-weight: 800;">🧪 Tabs Health AI Report</h2>
+                            <p style="margin: 4px 0 0 0; color: #64748b; font-size: 13px;">Biometric Trend Analysis & Condition Correlation</p>
+                        </div>
+                        <div style="text-align: right;">
+                            <span style="background: #e0e7ff; color: #3730a3; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;">${todayStr}</span>
+                        </div>
+                    </div>
+                    <div style="line-height: 1.7; font-size: 14px; color: #334155;">
+                        ${cachedGraphAnalysis}
+                    </div>
+                    <div style="margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 12px; text-align: center; color: #94a3b8; font-size: 11px;">
+                        Generated automatically by Tabs Health Intelligence • Keep for personal and medical records
+                    </div>
+                `;
+
+                const opt = {
+                    margin:       [0.4, 0.4, 0.4, 0.4],
+                    filename:     `Tabs_AI_Graph_Analysis_${new Date().toISOString().split('T')[0]}.pdf`,
+                    image:        { type: 'jpeg', quality: 0.98 },
+                    html2canvas:  { scale: 2, useCORS: true, logging: false },
+                    jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+                };
+
+                if (window.html2pdf) {
+                    await window.html2pdf().set(opt).from(container).save();
+                } else {
+                    const printWin = window.open('', '_blank');
+                    printWin.document.write(`<html><head><title>Tabs AI Report</title></head><body style="padding:20px;">${container.innerHTML}</body></html>`);
+                    printWin.document.close();
+                    printWin.print();
                 }
-
-                // File download fallback
-                const blob = new Blob([fullText], { type: 'text/plain;charset=utf-8' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `Tabs_AI_Graph_Analysis_${new Date().toISOString().split('T')[0]}.txt`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
             } catch (err) {
-                console.error('Failed to download report:', err);
+                console.error('Failed to generate PDF report:', err);
+                alert('Failed to generate PDF file. Please try again.');
+            } finally {
+                if (btn) btn.disabled = false;
             }
         }
 
@@ -2939,7 +2960,7 @@
                     </button>
                     <button id="btn-download-report" class="btn-secondary" onclick="downloadGraphAnalysisReport()" style="display: flex; align-items: center; gap: 0.5rem; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: white; border-radius: 10px; padding: 0.6rem 1rem; font-weight: 500; cursor: pointer; transition: all 0.2s ease;">
                         <span>📥</span>
-                        <span>Download / Share</span>
+                        <span>Download PDF Report</span>
                     </button>
                 </div>
                 <button class="btn-secondary" onclick="closeGraphAnalysisModal()">Close</button>
