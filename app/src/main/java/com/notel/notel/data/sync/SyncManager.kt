@@ -654,6 +654,17 @@ class SyncManager @Inject constructor(
                         com.notel.notel.data.local.entity.AiInsight(it.id, it.text, it.timestamp, it.type)
                     }.toMutableList()
 
+                    // Check if there is a new Graph Analysis Report from server that local app didn't have yet
+                    val localIds = localInsights.map { it.id }.toSet()
+                    val hasNewGraphReport = insightsList.any { (it.type == "Graph Analysis Report" || it.id.startsWith("graph_report_")) && it.id !in localIds }
+                    if (hasNewGraphReport) {
+                        try {
+                            com.notel.notel.util.NotificationHelper(context).showGraphReportNotification()
+                        } catch (e: Exception) {
+                            Log.e(tag, "Failed to trigger report notification: ${e.message}")
+                        }
+                    }
+
                     // Keep any local today's BodyLoad insight that is not in the server's response
                     localInsights.forEach { localOn ->
                         if (localOn.type == "BodyLoad") {

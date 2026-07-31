@@ -15,9 +15,48 @@ class NotificationHelper(private val context: Context) {
         const val CHANNEL_ID = "body_load_reminders"
         const val SPIKE_CHANNEL_ID = "hr_spike_alerts"
         const val HABIT_CHANNEL_ID = "habit_reminders"
+        const val REPORT_CHANNEL_ID = "ai_graph_reports"
         const val NOTIFICATION_ID = 1001
         const val SPIKE_NOTIFICATION_ID = 1002
         const val HABIT_NOTIFICATION_ID = 1003
+        const val REPORT_NOTIFICATION_ID = 1009
+    }
+
+    fun showGraphReportNotification() {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                REPORT_CHANNEL_ID,
+                "AI Graph Reports",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notifications when a new AI Biometric Graph Report is ready"
+            }
+            manager.createNotificationChannel(channel)
+        }
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            putExtra("open_route", "settings_reports")
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            0,
+            intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val notification = NotificationCompat.Builder(context, REPORT_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_noti_note)
+            .setContentTitle("📊 AI Graph Analysis Ready!")
+            .setContentText("Your web biometric graph report is ready. Tap to view & download.")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build()
+
+        manager.notify(REPORT_NOTIFICATION_ID, notification)
     }
 
     fun showBodyLoadReminder() {
