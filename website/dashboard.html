@@ -2732,7 +2732,7 @@
                         body: JSON.stringify({
                             entries: entriesFallback,
                             categories: { wellness_graphs: 'Biometric Graphs' },
-                            userContext: `The user is analyzing their Wellness Graphs. Identify key patterns, correlations between metrics (e.g., deep sleep vs HRV and heart rate), and actionable takeaways.`
+                            userContext: `The user is analyzing their Wellness Graphs. Identify key high-level trends, patterns, correlations between metrics (e.g., deep sleep vs HRV and heart rate), and actionable takeaways. DO NOT list out long strings of raw daily numbers or recite daily values (e.g. NEVER write lists like 0.0h, 1.2h, 1.9h...). Synthesize the data into high-level averages, overall trajectories, and meaningful takeaways.`
                         })
                     });
 
