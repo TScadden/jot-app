@@ -90,6 +90,7 @@ class MainActivity : ComponentActivity() {
                 notelPreferences.updateStreak()
                 com.notel.notel.worker.BodyLoadWorker.schedule(context)
                 com.notel.notel.data.BleManager.getInstance(context).scanAndAutoStart(context, notelPreferences)
+                com.notel.notel.util.NotificationHelper(context)
             }
             
             DisposableEffect(activity) {

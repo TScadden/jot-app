@@ -32,6 +32,7 @@ class NotificationHelper(private val context: Context) {
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "Notifications when a new AI Biometric Graph Report is ready"
+                enableVibration(true)
             }
             manager.createNotificationChannel(channel)
         }
