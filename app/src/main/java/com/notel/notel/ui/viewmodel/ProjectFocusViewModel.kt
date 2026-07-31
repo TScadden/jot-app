@@ -78,20 +78,30 @@ class ProjectFocusViewModel @Inject constructor(
         syncFromServer()
     }
 
+    private fun applyParsedState(parsed: FocusStateDto?, isLoading: Boolean = false) {
+        val tests = parsed?.activeTests ?: emptyList()
+        val activeTest = parsed?.activeTest ?: tests.firstOrNull()
+        val selectedId = parsed?.selectedTestId ?: activeTest?.id
+        val initialSubView = if (tests.isNotEmpty() && activeTest != null) "details" else "input"
+
+        _uiState.value = _uiState.value.copy(
+            activeTests = tests,
+            activeTest = activeTest,
+            selectedTestId = selectedId,
+            currentSubView = initialSubView,
+            suggestions = parsed?.suggestions ?: emptyList(),
+            selectedSuggestion = parsed?.selectedSuggestion,
+            setupDuration = parsed?.setupDuration ?: 7,
+            selectedMeasureMetric = parsed?.selectedMeasureMetric ?: "",
+            isLoading = isLoading
+        )
+    }
+
     private fun loadFromPrefs() {
         viewModelScope.launch {
             val json = preferences.focusState.first()
             val parsed = parseFocusState(json)
-            _uiState.value = _uiState.value.copy(
-                activeTests = parsed?.activeTests ?: emptyList(),
-                activeTest = parsed?.activeTest,
-                selectedTestId = parsed?.selectedTestId,
-                currentSubView = "input",
-                suggestions = parsed?.suggestions ?: emptyList(),
-                selectedSuggestion = parsed?.selectedSuggestion,
-                setupDuration = parsed?.setupDuration ?: 7,
-                selectedMeasureMetric = parsed?.selectedMeasureMetric ?: ""
-            )
+            applyParsedState(parsed, isLoading = false)
         }
     }
 
@@ -126,46 +136,16 @@ class ProjectFocusViewModel @Inject constructor(
                         if (shouldOverwrite) {
                             preferences.setFocusState(focusJson)
                             val parsed = parseFocusState(focusJson)
-                            _uiState.value = _uiState.value.copy(
-                                activeTests = parsed?.activeTests ?: emptyList(),
-                                activeTest = parsed?.activeTest,
-                                selectedTestId = parsed?.selectedTestId,
-                                currentSubView = "input",
-                                suggestions = parsed?.suggestions ?: emptyList(),
-                                selectedSuggestion = parsed?.selectedSuggestion,
-                                setupDuration = parsed?.setupDuration ?: 7,
-                                selectedMeasureMetric = parsed?.selectedMeasureMetric ?: "",
-                                isLoading = false
-                            )
+                            applyParsedState(parsed, isLoading = false)
                         } else {
                             val parsed = parseFocusState(localJson)
-                            _uiState.value = _uiState.value.copy(
-                                activeTests = parsed?.activeTests ?: emptyList(),
-                                activeTest = parsed?.activeTest,
-                                selectedTestId = parsed?.selectedTestId,
-                                currentSubView = "input",
-                                suggestions = parsed?.suggestions ?: emptyList(),
-                                selectedSuggestion = parsed?.selectedSuggestion,
-                                setupDuration = parsed?.setupDuration ?: 7,
-                                selectedMeasureMetric = parsed?.selectedMeasureMetric ?: "",
-                                isLoading = false
-                            )
+                            applyParsedState(parsed, isLoading = false)
                         }
                     } else {
                         // Use local cache if server has nothing
                         val localJson = preferences.focusState.first()
                         val parsed = parseFocusState(localJson)
-                        _uiState.value = _uiState.value.copy(
-                            activeTests = parsed?.activeTests ?: emptyList(),
-                            activeTest = parsed?.activeTest,
-                            selectedTestId = parsed?.selectedTestId,
-                            currentSubView = "input",
-                            suggestions = parsed?.suggestions ?: emptyList(),
-                            selectedSuggestion = parsed?.selectedSuggestion,
-                            setupDuration = parsed?.setupDuration ?: 7,
-                            selectedMeasureMetric = parsed?.selectedMeasureMetric ?: "",
-                            isLoading = false
-                        )
+                        applyParsedState(parsed, isLoading = false)
                     }
                 } else {
                     _uiState.value = _uiState.value.copy(isLoading = false)
@@ -290,7 +270,7 @@ class ProjectFocusViewModel @Inject constructor(
             activeTests = updatedTests,
             activeTest = fallbackTest,
             selectedTestId = fallbackTest?.id,
-            currentSubView = "input",
+            currentSubView = if (fallbackTest != null) "details" else "input",
             suggestions = emptyList(),
             selectedSuggestion = null
         )

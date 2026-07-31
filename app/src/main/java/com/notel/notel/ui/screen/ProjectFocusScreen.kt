@@ -198,7 +198,13 @@ fun ProjectFocusScreen(
                         )
                     },
                     navigationIcon = {
-                        IconButton(onClick = onBack) {
+                        IconButton(onClick = {
+                            if (uiState.activeTests.isNotEmpty() && uiState.currentSubView in listOf("input", "suggestions", "measure", "setup")) {
+                                viewModel.setSubView("details")
+                            } else {
+                                onBack()
+                            }
+                        }) {
                             Icon(
                                 Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "Back",
