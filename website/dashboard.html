@@ -2821,6 +2821,60 @@
             document.body.style.overflow = '';
         }
 
+        async function sendGraphAnalysisToApp() {
+            const btn = document.getElementById('btn-send-to-app');
+            const icon = document.getElementById('send-to-app-icon');
+            const text = document.getElementById('send-to-app-text');
+            if (!btn || !cachedGraphAnalysis) return;
+
+            btn.disabled = true;
+            if (text) text.textContent = 'Sending to App...';
+            if (icon) icon.textContent = '⏳';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/sync/insights`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        insights: [{
+                            id: `graph_report_${Date.now()}`,
+                            text: cachedGraphAnalysis,
+                            type: 'Graph Analysis Report',
+                            timestamp: Date.now()
+                        }]
+                    })
+                });
+
+                if (response.ok) {
+                    if (text) text.textContent = 'Sent to Tabs App!';
+                    if (icon) icon.textContent = '✅';
+                    btn.style.background = 'rgba(74, 222, 128, 0.2)';
+                    btn.style.borderColor = 'rgba(74, 222, 128, 0.5)';
+                    setTimeout(() => {
+                        btn.disabled = false;
+                        if (text) text.textContent = 'Send To Tabs App';
+                        if (icon) icon.textContent = '📱';
+                        btn.style.background = 'rgba(124, 110, 255, 0.15)';
+                        btn.style.borderColor = 'rgba(124, 110, 255, 0.35)';
+                    }, 4000);
+                } else {
+                    throw new Error('Server returned an error');
+                }
+            } catch (err) {
+                console.error('Failed to send insight to app:', err);
+                if (text) text.textContent = 'Failed to Send';
+                if (icon) icon.textContent = '❌';
+                setTimeout(() => {
+                    btn.disabled = false;
+                    if (text) text.textContent = 'Send To Tabs App';
+                    if (icon) icon.textContent = '📱';
+                }, 3000);
+            }
+        }
+
         // Run fetch
         initFocusState();
         fetchDashboardData();
@@ -2839,7 +2893,11 @@
                     <p style="color: var(--text-muted);">Analyzing biometric graph data with AI...</p>
                 </div>
             </div>
-            <div style="display: flex; justify-content: flex-end; margin-top: 1.5rem; border-top: 1px solid var(--glass-border); padding-top: 1rem; flex-shrink: 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem; border-top: 1px solid var(--glass-border); padding-top: 1rem; flex-shrink: 0;">
+                <button id="btn-send-to-app" class="btn-secondary" onclick="sendGraphAnalysisToApp()" style="display: flex; align-items: center; gap: 0.5rem; background: rgba(124, 110, 255, 0.15); border: 1px solid rgba(124, 110, 255, 0.35); color: white; border-radius: 10px; padding: 0.6rem 1.1rem; font-weight: 500; cursor: pointer; transition: all 0.2s ease;">
+                    <span id="send-to-app-icon">📱</span>
+                    <span id="send-to-app-text">Send To Tabs App</span>
+                </button>
                 <button class="btn-secondary" onclick="closeGraphAnalysisModal()">Close</button>
             </div>
         </div>
