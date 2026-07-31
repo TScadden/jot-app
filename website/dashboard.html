@@ -2875,6 +2875,44 @@
             }
         }
 
+        async function downloadGraphAnalysisReport() {
+            if (!cachedGraphAnalysis) return;
+            try {
+                // Convert HTML tags to clean plain text
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = cachedGraphAnalysis;
+                const plainText = tempDiv.innerText || tempDiv.textContent || '';
+                const reportHeader = `Tabs App — AI Biometrics & Graph Analysis Report\nGenerated: ${new Date().toLocaleString()}\n${'='.repeat(60)}\n\n`;
+                const fullText = reportHeader + plainText;
+
+                // Check Web Share API (mobile/modern browsers)
+                if (navigator.share) {
+                    try {
+                        await navigator.share({
+                            title: 'Tabs AI Graph Analysis Report',
+                            text: fullText
+                        });
+                        return;
+                    } catch (e) {
+                        // User cancelled or share failed, fallback to download
+                    }
+                }
+
+                // File download fallback
+                const blob = new Blob([fullText], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Tabs_AI_Graph_Analysis_${new Date().toISOString().split('T')[0]}.txt`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                console.error('Failed to download report:', err);
+            }
+        }
+
         // Run fetch
         initFocusState();
         fetchDashboardData();
@@ -2893,11 +2931,17 @@
                     <p style="color: var(--text-muted);">Analyzing biometric graph data with AI...</p>
                 </div>
             </div>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem; border-top: 1px solid var(--glass-border); padding-top: 1rem; flex-shrink: 0;">
-                <button id="btn-send-to-app" class="btn-secondary" onclick="sendGraphAnalysisToApp()" style="display: flex; align-items: center; gap: 0.5rem; background: rgba(124, 110, 255, 0.15); border: 1px solid rgba(124, 110, 255, 0.35); color: white; border-radius: 10px; padding: 0.6rem 1.1rem; font-weight: 500; cursor: pointer; transition: all 0.2s ease;">
-                    <span id="send-to-app-icon">📱</span>
-                    <span id="send-to-app-text">Send To Tabs App</span>
-                </button>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem; border-top: 1px solid var(--glass-border); padding-top: 1rem; flex-shrink: 0; gap: 0.5rem; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                    <button id="btn-send-to-app" class="btn-secondary" onclick="sendGraphAnalysisToApp()" style="display: flex; align-items: center; gap: 0.5rem; background: rgba(124, 110, 255, 0.15); border: 1px solid rgba(124, 110, 255, 0.35); color: white; border-radius: 10px; padding: 0.6rem 1.1rem; font-weight: 500; cursor: pointer; transition: all 0.2s ease;">
+                        <span id="send-to-app-icon">📱</span>
+                        <span id="send-to-app-text">Send To Tabs App</span>
+                    </button>
+                    <button id="btn-download-report" class="btn-secondary" onclick="downloadGraphAnalysisReport()" style="display: flex; align-items: center; gap: 0.5rem; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: white; border-radius: 10px; padding: 0.6rem 1rem; font-weight: 500; cursor: pointer; transition: all 0.2s ease;">
+                        <span>📥</span>
+                        <span>Download / Share</span>
+                    </button>
+                </div>
                 <button class="btn-secondary" onclick="closeGraphAnalysisModal()">Close</button>
             </div>
         </div>
