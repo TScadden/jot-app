@@ -2753,7 +2753,6 @@
                     btn.classList.add('btn-analysis-ready');
                     btnText.textContent = 'Analysis Ready';
                     if (btnIcon) btnIcon.textContent = '🎉';
-                    openGraphAnalysisModal();
                 } else {
                     throw new Error(data.error || 'Failed to generate graph analysis');
                 }
@@ -2783,20 +2782,14 @@
             if (modal) modal.style.display = 'none';
         }
 
-        function closeGraphAnalysisModalOnBackdrop(e) {
-            if (e && e.target && e.target.id === 'graph-analysis-modal') {
-                closeGraphAnalysisModal();
-            }
-        }
-
         // Run fetch
         initFocusState();
         fetchDashboardData();
     </script>
 
     <!-- Graph Analysis Modal -->
-    <div id="graph-analysis-modal" class="modal-overlay" style="display: none;" onclick="closeGraphAnalysisModalOnBackdrop(event)">
-        <div class="modal-card" style="max-width: 650px; width: 92%; max-height: 85vh; overflow-y: auto;" onclick="event.stopPropagation()">
+    <div id="graph-analysis-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-card" style="max-width: 650px; width: 92%; max-height: 85vh; overflow-y: auto;">
             <div class="modal-header">
                 <h3>🤖 AI Graph Analysis</h3>
                 <button class="btn-close" onclick="closeGraphAnalysisModal()">✕</button>
