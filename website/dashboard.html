@@ -2707,6 +2707,15 @@
             if (btnIcon) btnIcon.textContent = '⏳';
 
             try {
+                const userEntriesList = (globalSyncData?.entries || []).map(e => ({
+                    dateStr: new Date(e.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+                    timestamp: e.timestamp,
+                    body: e.body
+                }));
+
+                const uContext = globalSyncData?.profile?.userContext || '';
+                const kBase = globalSyncData?.profile?.knowledgeBase || '';
+
                 let response = await fetch(`${API_BASE}/api/ai/read-graphs`, {
                     method: 'POST',
                     headers: {
@@ -2715,8 +2724,9 @@
                     },
                     body: JSON.stringify({
                         graphRecords: globalSortedRecords,
-                        userContext: globalSyncData?.profile?.userContext || '',
-                        knowledgeBase: globalSyncData?.profile?.knowledgeBase || ''
+                        userEntries: userEntriesList,
+                        userContext: uContext,
+                        knowledgeBase: kBase
                     })
                 });
 
@@ -2729,6 +2739,18 @@
                         body: `Biometric record for ${r.dateStr}: Sleep Duration: ${(r.sleepMins/60).toFixed(1)}h, Deep Sleep: ${(r.deepSleepMins/60).toFixed(1)}h, Average Heart Rate: ${r.avgHr||'N/A'} bpm, HRV: ${r.hrv||'N/A'} ms, Calories: ${r.calories||'N/A'} kcal, HR Spikes: ${r.spikes!==undefined?r.spikes:'N/A'}, Jots logged: ${r.jots||0}`
                     }));
 
+                    // Add user logged notes to fallback
+                    userEntriesList.slice(0, 50).forEach((e, idx) => {
+                        entriesFallback.push({
+                            id: `user_note_${idx}`,
+                            timestamp: e.timestamp || Date.now(),
+                            categoryId: 'user_notes',
+                            body: `User Logged Note on ${e.dateStr}: ${e.body}`
+                        });
+                    });
+
+                    const fullMedicalContext = `User Medical Background & Conditions: ${kBase || 'POTS, MCAS, EDS'}. User Personal Context: ${uContext}. Analyze how their conditions explain HR spikes and correlate medication start dates with graph metric shifts. DO NOT list out long strings of raw numbers.`;
+
                     response = await fetch(`${API_BASE}/api/ai/advice`, {
                         method: 'POST',
                         headers: {
@@ -2737,8 +2759,8 @@
                         },
                         body: JSON.stringify({
                             entries: entriesFallback,
-                            categories: { wellness_graphs: 'Biometric Graphs' },
-                            userContext: `The user is analyzing their Wellness Graphs. Identify key high-level trends, patterns, correlations between metrics (e.g., deep sleep vs HRV and heart rate), and actionable takeaways. DO NOT list out long strings of raw daily numbers or recite daily values (e.g. NEVER write lists like 0.0h, 1.2h, 1.9h...). Synthesize the data into high-level averages, overall trajectories, and meaningful takeaways.`
+                            categories: { wellness_graphs: 'Biometric Graphs', user_notes: 'User Notes & Medications' },
+                            userContext: fullMedicalContext
                         })
                     });
 
