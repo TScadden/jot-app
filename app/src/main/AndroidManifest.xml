@@ -185,6 +185,12 @@
             android:enabled="true"
             android:exported="false" />
 
+        <!-- Event Alarm Receiver -->
+        <receiver
+            android:name=".notifications.EventReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
     </application>
 
 </manifest>

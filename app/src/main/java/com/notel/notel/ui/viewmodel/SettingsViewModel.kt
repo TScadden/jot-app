@@ -924,6 +924,11 @@ class SettingsViewModel @Inject constructor(
             }
             preferences.setEventCounters(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(EventCounterDto.serializer()), current))
             syncManager.pushProfileData()
+
+            val finalItem = current.firstOrNull { it.id == id } ?: current.lastOrNull()
+            if (finalItem != null) {
+                com.notel.notel.notifications.EventScheduler.scheduleEventNotification(context, finalItem.id, finalItem.name, finalItem.targetDate)
+            }
         }
     }
 
