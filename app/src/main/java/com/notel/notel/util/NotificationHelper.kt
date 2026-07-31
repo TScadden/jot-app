@@ -15,7 +15,7 @@ class NotificationHelper(private val context: Context) {
         const val CHANNEL_ID = "body_load_reminders"
         const val SPIKE_CHANNEL_ID = "hr_spike_alerts"
         const val HABIT_CHANNEL_ID = "habit_reminders"
-        const val REPORT_CHANNEL_ID = "ai_graph_reports"
+        const val REPORT_CHANNEL_ID = "report_notifications"
         const val NOTIFICATION_ID = 1001
         const val SPIKE_NOTIFICATION_ID = 1002
         const val HABIT_NOTIFICATION_ID = 1003
@@ -28,7 +28,7 @@ class NotificationHelper(private val context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 REPORT_CHANNEL_ID,
-                "AI Graph Reports",
+                "Medical Reports",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "Notifications when a new AI Biometric Graph Report is ready"
