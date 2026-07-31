@@ -2822,6 +2822,19 @@
             document.body.style.overflow = '';
         }
 
+        function formatAnalysisForApp(html) {
+            if (!html) return '';
+            let text = html;
+            text = text.replace(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi, '\n\n■ $1\n');
+            text = text.replace(/<li[^>]*>(.*?)<\/li>/gi, '• $1\n');
+            text = text.replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n');
+            text = text.replace(/<br\s*\/?>/gi, '\n');
+            text = text.replace(/<[^>]+>/g, '');
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(text, 'text/html');
+            return (doc.body.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+        }
+
         async function sendGraphAnalysisToApp() {
             const btn = document.getElementById('btn-send-to-app');
             const icon = document.getElementById('send-to-app-icon');
@@ -2833,6 +2846,7 @@
             if (icon) icon.textContent = '⏳';
 
             try {
+                const cleanText = formatAnalysisForApp(cachedGraphAnalysis);
                 const response = await fetch(`${API_BASE}/api/sync/insights`, {
                     method: 'POST',
                     headers: {
@@ -2842,7 +2856,7 @@
                     body: JSON.stringify({
                         insights: [{
                             id: `graph_report_${Date.now()}`,
-                            text: cachedGraphAnalysis,
+                            text: cleanText,
                             type: 'Graph Analysis Report',
                             timestamp: Date.now()
                         }]

@@ -3024,15 +3024,20 @@ fun InsightTile(insight: com.notel.notel.data.local.entity.AiInsight, onDelete: 
                     Icon(Icons.Default.Delete, "Delete", tint = NotelTextSecondary, modifier = Modifier.size(16.dp))
                 }
             }
-            Spacer(Modifier.height(6.dp))
+            val formattedInsightText = remember(insight.text) {
+                var txt = insight.text
+                if (txt.contains("<") && txt.contains(">")) {
+                    txt = android.text.Html.fromHtml(txt, android.text.Html.FROM_HTML_MODE_LEGACY).toString()
+                }
+                txt.replace("[SECTION]", "")
+                   .replace("[BULLET]", "•")
+                   .replace("[ITALIC]", "")
+                   .replace("[BOLD]", "")
+                   .replace("*", "")
+                   .trim()
+            }
             Text(
-                text = insight.text
-                    .replace("[SECTION]", "")
-                    .replace("[BULLET]", "•")
-                    .replace("[ITALIC]", "")
-                    .replace("[BOLD]", "")
-                    .replace("*", "")
-                    .trim(),
+                text = formattedInsightText,
                 color = NotelTextPrimary,
                 fontSize = 14.sp,
                 lineHeight = 20.sp,

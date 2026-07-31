@@ -52,6 +52,8 @@ class NotificationHelper(private val context: Context) {
             .setContentTitle("📊 AI Graph Analysis Ready!")
             .setContentText("Your web biometric graph report is ready. Tap to view & download.")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .build()
