@@ -213,19 +213,25 @@
             gap: 1.25rem;
         }
 
-        /* Custom Scrollbar for widget */
-        .logs-timeline::-webkit-scrollbar {
+        /* Custom Scrollbar for widget & modals */
+        ::-webkit-scrollbar {
             width: 6px;
+            height: 6px;
         }
-        .logs-timeline::-webkit-scrollbar-track {
+        ::-webkit-scrollbar-track {
             background: transparent;
         }
-        .logs-timeline::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.1);
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
             border-radius: 10px;
         }
-        .logs-timeline::-webkit-scrollbar-thumb:hover {
+        ::-webkit-scrollbar-thumb:hover {
             background: var(--primary-color);
+        }
+
+        #graph-analysis-content {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
         }
 
         .log-card {
