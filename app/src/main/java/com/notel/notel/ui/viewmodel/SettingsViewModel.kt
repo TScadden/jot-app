@@ -354,6 +354,16 @@ class SettingsViewModel @Inject constructor(
     val projectReminderEnabled = preferences.projectReminderEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
+    val eventReminderEnabled = preferences.eventReminderEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    fun setEventReminderEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferences.setEventReminderEnabled(enabled)
+            syncManager.pushProfileData()
+        }
+    }
+
     fun markSettingsTutorialSeen() {
         viewModelScope.launch { preferences.setSettingsTutorialSeen(true) }
     }

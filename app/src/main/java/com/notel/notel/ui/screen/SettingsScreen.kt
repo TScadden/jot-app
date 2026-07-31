@@ -113,6 +113,7 @@ fun SettingsScreen(
     val spikeDeltaThreshold by viewModel.spikeDeltaThreshold.collectAsState()
     val habitReminderEnabled by viewModel.habitReminderEnabled.collectAsState()
     val projectReminderEnabled by viewModel.projectReminderEnabled.collectAsState()
+    val eventReminderEnabled by viewModel.eventReminderEnabled.collectAsState()
     val userContextHidden by viewModel.userContextHidden.collectAsState()
     val userNickname by viewModel.userNickname.collectAsState()
     val userTag by viewModel.userTag.collectAsState()
@@ -2408,6 +2409,27 @@ fun SettingsScreen(
                             Switch(
                                 checked = projectReminderEnabled,
                                 onCheckedChange = { checkAndToggle(it) { enabled -> viewModel.setProjectReminderEnabled(enabled) } },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = NotelPrimary,
+                                    checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
+                                    uncheckedThumbColor = NotelTextSecondary,
+                                    uncheckedTrackColor = NotelSurfaceHigh
+                                )
+                            )
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Event Reminders", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                                Text(
+                                    "Daily ping at 9:00 AM on the day of scheduled events.",
+                                    color = NotelTextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
+                            Switch(
+                                checked = eventReminderEnabled,
+                                onCheckedChange = { checkAndToggle(it) { enabled -> viewModel.setEventReminderEnabled(enabled) } },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = NotelPrimary,
                                     checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
