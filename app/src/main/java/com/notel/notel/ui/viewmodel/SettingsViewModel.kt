@@ -32,7 +32,7 @@ class SettingsViewModel @Inject constructor(
     private val reportGenerator: com.notel.notel.util.ReportGenerator,
     val healthConnectManager: HealthConnectManager,
     val billingManager: com.notel.notel.data.billing.BillingManager,
-    private val syncManager: SyncManager,
+    val syncManager: SyncManager,
     private val database: com.notel.notel.data.local.NotelDatabase,
     private val habitRepository: com.notel.notel.data.repository.HabitRepository,
     private val tabsApi: com.notel.notel.data.remote.TabsApi,

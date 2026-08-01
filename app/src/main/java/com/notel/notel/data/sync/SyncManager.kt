@@ -36,6 +36,7 @@ class SyncManager @Inject constructor(
     private val habitRepository: com.notel.notel.data.repository.HabitRepository,
     private val preferences: NotelPreferences,
     private val healthConnectManager: com.notel.notel.data.healthconnect.HealthConnectManager,
+    private val logRepositoryProvider: javax.inject.Provider<com.notel.notel.data.repository.LogRepository>,
     @ApplicationContext private val context: Context
 ) {
     private val tag = "SyncManager"
@@ -656,10 +657,12 @@ class SyncManager @Inject constructor(
 
                     // Check if there is a new Graph Analysis Report from server that local app didn't have yet
                     val localIds = localInsights.map { it.id }.toSet()
-                    val hasNewGraphReport = insightsList.any { (it.type == "Graph Analysis Report" || it.id.startsWith("graph_report_")) && it.id !in localIds }
-                    if (hasNewGraphReport) {
+                    val newGraphReports = insightsList.filter { (it.type == "Graph Analysis Report" || it.id.startsWith("graph_report_")) && it.id !in localIds }
+                    if (newGraphReports.isNotEmpty()) {
+                        val newestReport = newGraphReports.first()
                         try {
                             com.notel.notel.util.NotificationHelper(context).showGraphReportNotification()
+                            logRepositoryProvider.get().notifyNewAiInsight(newestReport)
                         } catch (e: Exception) {
                             Log.e(tag, "Failed to trigger report notification: ${e.message}")
                         }

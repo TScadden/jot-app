@@ -84,6 +84,7 @@ class MainActivity : ComponentActivity() {
             val fitbitViewModel: FitbitViewModel = hiltViewModel()
             val bodyLoadViewModel: BodyLoadViewModel = hiltViewModel()
             val quickLogViewModel: com.notel.notel.ui.viewmodel.QuickLogViewModel = hiltViewModel()
+            val settingsViewModel: com.notel.notel.ui.viewmodel.SettingsViewModel = hiltViewModel()
             val notelPreferences = remember { com.notel.notel.data.preferences.NotelPreferences(context) }
             
             LaunchedEffect(Unit) {
@@ -91,6 +92,16 @@ class MainActivity : ComponentActivity() {
                 com.notel.notel.worker.BodyLoadWorker.schedule(context)
                 com.notel.notel.data.BleManager.getInstance(context).scanAndAutoStart(context, notelPreferences)
                 com.notel.notel.util.NotificationHelper(context)
+
+                // Active background polling loop (checks for web graph reports sent to app every 7s)
+                while (true) {
+                    kotlinx.coroutines.delay(7000L)
+                    try {
+                        settingsViewModel.syncManager.pullAllData()
+                    } catch (e: Exception) {
+                        // Ignore periodic polling errors
+                    }
+                }
             }
             
             DisposableEffect(activity) {

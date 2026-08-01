@@ -965,6 +965,10 @@ class LogRepository @Inject constructor(
         triggerSync()
     }
 
+    suspend fun notifyNewAiInsight(insight: AiInsight) {
+        _aiInsightReadyEvent.emit(insight)
+    }
+
     suspend fun saveAiInsightsBulk(newEntries: List<AiInsight>) = insightsMutex.withLock {
         if (newEntries.isEmpty()) return
         val insightsStr = preferences.aiInsights.first()
