@@ -1,16 +1,15 @@
 package com.notel.notel.ui.screen
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -19,16 +18,24 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.notel.notel.ui.theme.*
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlin.math.hypot
+import kotlin.math.roundToInt
 
 data class InfoTile(
     val id: String,
@@ -86,8 +93,13 @@ fun InfoScreen(
     var tileList by remember { mutableStateOf(DEFAULT_INFO_TILES) }
     var isUserCustomOrdered by remember { mutableStateOf(false) }
 
-    // Explicit Edit / Reorder Mode State
+    // Reorder / Edit Mode State
     var isEditMode by remember { mutableStateOf(false) }
+    var draggedIndex by remember { mutableStateOf<Int?>(null) }
+    var dragOffset by remember { mutableStateOf(Offset.Zero) }
+
+    // Store tile center positions on screen for accurate drop calculation
+    val itemBoundsMap = remember { mutableStateMapOf<Int, Offset>() }
 
     LaunchedEffect(savedOrderJson, routineClickJson) {
         if (savedOrderJson.isNotBlank()) {
@@ -115,7 +127,7 @@ fun InfoScreen(
         }
     }
 
-    // Notify parent to disable bottom tab switching while in Edit / Reorder Mode
+    // Lock bottom bar switching while in edit mode
     LaunchedEffect(isEditMode) {
         onReorderStateChange(isEditMode)
     }
@@ -127,24 +139,6 @@ fun InfoScreen(
             val ids = newTiles.map { it.id }
             val jsonStr = Json.encodeToString(ids)
             prefs.setInfoTileOrder(jsonStr)
-        }
-    }
-
-    fun moveTileUp(index: Int) {
-        if (index > 0) {
-            val mutable = tileList.toMutableList()
-            val item = mutable.removeAt(index)
-            mutable.add(index - 1, item)
-            saveTileOrder(mutable)
-        }
-    }
-
-    fun moveTileDown(index: Int) {
-        if (index < tileList.size - 1) {
-            val mutable = tileList.toMutableList()
-            val item = mutable.removeAt(index)
-            mutable.add(index + 1, item)
-            saveTileOrder(mutable)
         }
     }
 
@@ -173,7 +167,7 @@ fun InfoScreen(
                         ) {
                             Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
                             Spacer(Modifier.width(6.dp))
-                            Text("Save", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 13.sp)
+                            Text("Done", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 13.sp)
                         }
                     } else {
                         IconButton(onClick = { isEditMode = true }) {
@@ -203,7 +197,7 @@ fun InfoScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (isEditMode) "Use ↑ ↓ arrows to rearrange tile order." else "Explore your health resources and deep insights.",
+                    text = if (isEditMode) "Hold & drag any tile to reorder. Click 'Done' to save." else "Explore your health resources and deep insights.",
                     color = if (isEditMode) NotelPrimary else NotelTextSecondary,
                     fontSize = 13.sp,
                     fontWeight = if (isEditMode) FontWeight.Bold else FontWeight.Normal
@@ -232,52 +226,121 @@ fun InfoScreen(
                 modifier = Modifier.fillMaxSize()
             ) {
                 itemsIndexed(tileList, key = { _, tile -> tile.id }) { index, tile ->
-                    InfoTileCard(
-                        tile = tile,
-                        isUnlimited = isUnlimited,
-                        isEditMode = isEditMode,
-                        canMoveUp = index > 0,
-                        canMoveDown = index < tileList.size - 1,
-                        onMoveUp = { moveTileUp(index) },
-                        onMoveDown = { moveTileDown(index) },
-                        onLongClickEdit = { isEditMode = true },
-                        onNavigateToMembership = onNavigateToMembership,
-                        onSleepClick = onSleepClick,
-                        onBodyInfoClick = onBodyInfoClick,
-                        onMedicationsClick = onMedicationsClick,
-                        onKeyMetricsClick = onKeyMetricsClick,
-                        onCoachClick = onCoachClick,
-                        onTipsAndTricksClick = onTipsAndTricksClick,
-                        onFoodClick = onFoodClick,
-                        onCommunityClick = onCommunityClick,
-                        onHabitsClick = onHabitsClick,
-                        onRemindersClick = onRemindersClick,
-                        onListsClick = onListsClick,
-                        onNotesClick = onNotesClick,
-                        onProjectFocusClick = onProjectFocusClick,
-                        recordClick = { key ->
-                            coroutineScope.launch {
-                                prefs.recordRoutineClick(key)
-                            }
-                        }
+                    val isBeingDragged = draggedIndex == index
+
+                    val scale by animateFloatAsState(
+                        targetValue = if (isBeingDragged) 1.1f else 1.0f,
+                        label = "dragScale"
                     )
+
+                    Box(
+                        modifier = Modifier
+                            .zIndex(if (isBeingDragged) 100f else 1f)
+                            .onGloballyPositioned { coordinates ->
+                                val bounds = coordinates.boundsInWindow()
+                                itemBoundsMap[index] = Offset(
+                                    x = bounds.left + bounds.width / 2f,
+                                    y = bounds.top + bounds.height / 2f
+                                )
+                            }
+                            .graphicsLayer {
+                                scaleX = scale
+                                scaleY = scale
+                                shadowElevation = if (isBeingDragged) 24f else 0f
+                                if (isBeingDragged) {
+                                    translationX = dragOffset.x
+                                    translationY = dragOffset.y
+                                }
+                            }
+                            .pointerInput(isEditMode, tileList) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = {
+                                        isEditMode = true
+                                        draggedIndex = index
+                                        dragOffset = Offset.Zero
+                                    },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        dragOffset += dragAmount
+                                    },
+                                    onDragEnd = {
+                                        val fromIdx = draggedIndex
+                                        if (fromIdx != null) {
+                                            val startCenter = itemBoundsMap[fromIdx]
+                                            if (startCenter != null) {
+                                                val currentTouchPos = startCenter + dragOffset
+                                                
+                                                // Find closest grid cell center
+                                                var closestIndex = fromIdx
+                                                var minDistance = Float.MAX_VALUE
+
+                                                itemBoundsMap.forEach { (targetIdx, center) ->
+                                                    val dist = hypot(currentTouchPos.x - center.x, currentTouchPos.y - center.y)
+                                                    if (dist < minDistance) {
+                                                        minDistance = dist
+                                                        closestIndex = targetIdx
+                                                    }
+                                                }
+
+                                                val sourceIdx = fromIdx
+                                                val targetIdx = closestIndex
+                                                if (sourceIdx != null && targetIdx != null && targetIdx != sourceIdx && targetIdx in tileList.indices) {
+                                                    val mutable = tileList.toMutableList()
+                                                    val item = mutable.removeAt(sourceIdx)
+                                                    mutable.add(targetIdx, item)
+                                                    tileList = mutable
+                                                    saveTileOrder(mutable)
+                                                }
+                                            }
+                                        }
+                                        draggedIndex = null
+                                        dragOffset = Offset.Zero
+                                    },
+                                    onDragCancel = {
+                                        draggedIndex = null
+                                        dragOffset = Offset.Zero
+                                    }
+                                )
+                            }
+                    ) {
+                        InfoTileCard(
+                            tile = tile,
+                            isUnlimited = isUnlimited,
+                            isEditMode = isEditMode,
+                            isBeingDragged = isBeingDragged,
+                            onNavigateToMembership = onNavigateToMembership,
+                            onSleepClick = onSleepClick,
+                            onBodyInfoClick = onBodyInfoClick,
+                            onMedicationsClick = onMedicationsClick,
+                            onKeyMetricsClick = onKeyMetricsClick,
+                            onCoachClick = onCoachClick,
+                            onTipsAndTricksClick = onTipsAndTricksClick,
+                            onFoodClick = onFoodClick,
+                            onCommunityClick = onCommunityClick,
+                            onHabitsClick = onHabitsClick,
+                            onRemindersClick = onRemindersClick,
+                            onListsClick = onListsClick,
+                            onNotesClick = onNotesClick,
+                            onProjectFocusClick = onProjectFocusClick,
+                            recordClick = { key ->
+                                coroutineScope.launch {
+                                    prefs.recordRoutineClick(key)
+                                }
+                            }
+                        )
+                    }
                 }
             }
         }
     }
 }
 
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun InfoTileCard(
     tile: InfoTile,
     isUnlimited: Boolean,
     isEditMode: Boolean = false,
-    canMoveUp: Boolean = false,
-    canMoveDown: Boolean = false,
-    onMoveUp: () -> Unit = {},
-    onMoveDown: () -> Unit = {},
-    onLongClickEdit: () -> Unit = {},
+    isBeingDragged: Boolean = false,
     onNavigateToMembership: () -> Unit,
     onSleepClick: () -> Unit,
     onBodyInfoClick: () -> Unit,
@@ -297,19 +360,13 @@ fun InfoTileCard(
     val isAiGated = tile.id == "health_coach" || tile.id == "tips_and_tricks"
     val isLocked = isAiGated && !isUnlimited
 
-    val pulseScale by animateFloatAsState(targetValue = if (isEditMode) 1.02f else 1.0f, label = "editModePulse")
-
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .graphicsLayer {
-                scaleX = pulseScale
-                scaleY = pulseScale
-            }
             .border(
-                width = if (isEditMode) 2.dp else 3.dp,
-                color = if (isEditMode) NotelPrimary else NotelPrimary.copy(alpha = 0.12f),
+                width = if (isBeingDragged) 3.dp else if (isEditMode) 2.dp else 3.dp,
+                color = if (isBeingDragged) NotelPrimary else if (isEditMode) NotelPrimary.copy(alpha = 0.6f) else NotelPrimary.copy(alpha = 0.12f),
                 shape = RoundedCornerShape(26.dp)
             )
             .border(
@@ -318,34 +375,27 @@ fun InfoTileCard(
                 shape = RoundedCornerShape(28.dp)
             )
             .clip(RoundedCornerShape(24.dp))
-            .combinedClickable(
-                onClick = {
-                    if (!isEditMode) {
-                        if (isLocked) {
-                            onNavigateToMembership()
-                        } else {
-                            when (tile.id) {
-                                "sleep" -> onSleepClick()
-                                "body_info" -> onBodyInfoClick()
-                                "medications" -> onMedicationsClick()
-                                "key_metrics" -> onKeyMetricsClick()
-                                "health_coach" -> onCoachClick()
-                                "tips_and_tricks" -> onTipsAndTricksClick()
-                                "food" -> onFoodClick()
-                                "community" -> onCommunityClick()
-                                "habits" -> { recordClick("habits"); onHabitsClick() }
-                                "reminders" -> { recordClick("reminders"); onRemindersClick() }
-                                "lists" -> { recordClick("lists"); onListsClick() }
-                                "notes" -> { recordClick("notes"); onNotesClick() }
-                                "project_focus" -> { recordClick("project_focus"); onProjectFocusClick() }
-                            }
-                        }
+            .clickable(enabled = !isEditMode) {
+                if (isLocked) {
+                    onNavigateToMembership()
+                } else {
+                    when (tile.id) {
+                        "sleep" -> onSleepClick()
+                        "body_info" -> onBodyInfoClick()
+                        "medications" -> onMedicationsClick()
+                        "key_metrics" -> onKeyMetricsClick()
+                        "health_coach" -> onCoachClick()
+                        "tips_and_tricks" -> onTipsAndTricksClick()
+                        "food" -> onFoodClick()
+                        "community" -> onCommunityClick()
+                        "habits" -> { recordClick("habits"); onHabitsClick() }
+                        "reminders" -> { recordClick("reminders"); onRemindersClick() }
+                        "lists" -> { recordClick("lists"); onListsClick() }
+                        "notes" -> { recordClick("notes"); onNotesClick() }
+                        "project_focus" -> { recordClick("project_focus"); onProjectFocusClick() }
                     }
-                },
-                onLongClick = {
-                    onLongClickEdit()
                 }
-            )
+            }
             .liquidGlass(
                 shape = RoundedCornerShape(24.dp),
                 color = NotelSurface,
@@ -386,48 +436,7 @@ fun InfoTileCard(
             }
         }
 
-        if (isEditMode) {
-            Row(
-                modifier = Modifier
-                    .align(Alignment.TopEnd),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                if (canMoveUp) {
-                    Box(
-                        modifier = Modifier
-                            .size(30.dp)
-                            .clip(CircleShape)
-                            .background(NotelPrimary)
-                            .clickable { onMoveUp() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.KeyboardArrowLeft,
-                            contentDescription = "Move Left/Up",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-                if (canMoveDown) {
-                    Box(
-                        modifier = Modifier
-                            .size(30.dp)
-                            .clip(CircleShape)
-                            .background(NotelPrimary)
-                            .clickable { onMoveDown() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.KeyboardArrowRight,
-                            contentDescription = "Move Right/Down",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-            }
-        } else if (isLocked) {
+        if (isLocked) {
             Box(
                 modifier = Modifier
                     .fillMaxSize(),
