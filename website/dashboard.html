@@ -2813,71 +2813,90 @@
             document.body.style.overflow = '';
         }
 
-        function formatGraphAnalysisHtml(rawText) {
+        function normalizeAnalysisText(rawText) {
             if (!rawText) return '';
             let text = Array.isArray(rawText) ? rawText.join('\n\n') : String(rawText);
-            let lines = text.split('\n');
-            let formattedLines = [];
-            let inList = false;
+            
+            // Clean up basic HTML tags
+            text = text.replace(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi, '\n\n### $1\n');
+            text = text.replace(/<li[^>]*>(.*?)<\/li>/gi, '\n• $1');
+            text = text.replace(/<p[^>]*>(.*?)<\/p>/gi, '\n\n$1');
+            text = text.replace(/<ul[^>]*>|<ol[^>]*>|<\/ul>|<\/ol>/gi, '\n');
 
-            lines.forEach(line => {
-                let trimmed = line.trim();
-                if (!trimmed) {
-                    if (inList) {
-                        formattedLines.push('</ul>');
-                        inList = false;
-                    }
-                    return;
-                }
+            // Split jammed inline numbered patterns like " 1. ", " 2. ", " 3. ", " 1) ", " 2) " into separate double-spaced blocks!
+            text = text.replace(/(\s|^)(\d+[\.\)])\s+/g, '\n\n$2 ');
 
-                if (trimmed.startsWith('#') || (trimmed.endsWith(':') && trimmed.length < 50 && !trimmed.startsWith('•') && !trimmed.startsWith('-'))) {
-                    if (inList) {
-                        formattedLines.push('</ul>');
-                        inList = false;
-                    }
+            // Split inline bullet points
+            text = text.replace(/([^\n])\s*•\s*/g, '$1\n\n• ');
+
+            return text;
+        }
+
+        function formatGraphAnalysisHtml(rawText) {
+            if (!rawText) return '';
+            let text = normalizeAnalysisText(rawText);
+            let blocks = text.split('\n\n').map(b => b.trim()).filter(Boolean);
+
+            let htmlParts = [];
+
+            blocks.forEach(block => {
+                let trimmed = block.trim();
+                if (trimmed.startsWith('#') || (trimmed.endsWith(':') && trimmed.length < 60 && !/^\d+[\.\)]/.test(trimmed) && !trimmed.startsWith('•'))) {
                     let title = trimmed.replace(/^#+\s*/, '').replace(/:$/, '');
-                    formattedLines.push(`<h4 style="color: #a5b4fc; font-size: 1rem; font-weight: 700; margin: 1.25rem 0 0.5rem 0; display: flex; align-items: center; gap: 0.5rem;">🔹 ${title}</h4>`);
-                } else if (trimmed.startsWith('*') || trimmed.startsWith('-') || trimmed.startsWith('•') || /^\d+\./.test(trimmed)) {
-                    if (!inList) {
-                        formattedLines.push('<ul style="margin: 0.25rem 0 0.75rem 0; padding-left: 0.5rem; list-style-type: none;">');
-                        inList = true;
-                    }
-                    let content = trimmed.replace(/^[\*\-\•\d+\.]\s*/, '');
-                    content = content.replace(/^([^:]+):/, '<strong style="color: #e0e7ff;">$1:</strong>');
-                    content = content.replace(/\*\*(.*?)\*\*/g, '<strong style="color: #e0e7ff;">$1</strong>');
-                    formattedLines.push(`<li style="margin-bottom: 0.65rem; line-height: 1.6; position: relative; padding-left: 1.2rem; color: #cbd5e1;"><span style="position: absolute; left: 0; color: #818cf8; font-size: 1.1rem; line-height: 1.2;">•</span>${content}</li>`);
+                    htmlParts.push(`<h4 style="color: #a5b4fc; font-size: 1.05rem; font-weight: 700; margin: 1.5rem 0 0.75rem 0; display: flex; align-items: center; gap: 0.5rem;">🔹 ${title}</h4>`);
+                } else if (/^\d+[\.\)]/.test(trimmed) || trimmed.startsWith('•') || trimmed.startsWith('-') || trimmed.startsWith('*')) {
+                    let matchNum = trimmed.match(/^(\d+)[\.\)]\s*(.*)/s);
+                    let numberBadge = matchNum ? matchNum[1] : null;
+                    let content = matchNum ? matchNum[2] : trimmed.replace(/^[\*\-\•]\s*/, '');
+
+                    // Highlight labels before colons and bold text
+                    content = content.replace(/^([^:]+):/, '<strong style="color: #818cf8; font-weight: 700;">$1:</strong>');
+                    content = content.replace(/\*\*(.*?)\*\*/g, '<strong style="color: #e0e7ff; font-weight: 600;">$1</strong>');
+
+                    htmlParts.push(`
+                        <div style="background: rgba(30, 41, 59, 0.75); border: 1px solid rgba(99, 102, 241, 0.25); border-left: 4px solid #6366f1; padding: 1.1rem 1.25rem; border-radius: 10px; margin-bottom: 1rem; box-shadow: 0 4px 14px rgba(0,0,0,0.2);">
+                            <div style="display: flex; gap: 0.85rem; align-items: flex-start;">
+                                ${numberBadge ? `<span style="background: linear-gradient(135deg, #6366f1, #4f46e5); color: #ffffff; font-weight: 800; font-size: 0.85rem; width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px;">${numberBadge}</span>` : `<span style="color: #818cf8; font-size: 1.3rem; line-height: 1; flex-shrink: 0; margin-top: 2px;">•</span>`}
+                                <div style="line-height: 1.65; color: #cbd5e1; font-size: 0.95rem;">${content}</div>
+                            </div>
+                        </div>
+                    `);
                 } else {
-                    if (inList) {
-                        formattedLines.push('</ul>');
-                        inList = false;
-                    }
                     let content = trimmed.replace(/\*\*(.*?)\*\*/g, '<strong style="color: #e0e7ff;">$1</strong>');
-                    formattedLines.push(`<p style="margin-bottom: 0.75rem; line-height: 1.6; color: #cbd5e1;">${content}</p>`);
+                    htmlParts.push(`<p style="margin-bottom: 1rem; line-height: 1.65; color: #e2e8f0; font-size: 0.95rem;">${content}</p>`);
                 }
             });
 
-            if (inList) formattedLines.push('</ul>');
-
-            return `<div style="font-family: inherit; font-size: 0.95rem; color: #cbd5e1;">
-                <div style="background: rgba(99, 102, 241, 0.12); border-left: 4px solid #6366f1; padding: 0.85rem 1.1rem; border-radius: 8px; margin-bottom: 1.25rem;">
-                    <strong style="color: #a5b4fc; font-size: 0.95rem;">📊 Clinical Biometric Correlation</strong>
-                    <div style="font-size: 0.85rem; color: #94a3b8; margin-top: 0.25rem;">AI-synthesized graph analysis incorporating personal context & medication timeline.</div>
+            return `<div style="font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;">
+                <div style="background: rgba(99, 102, 241, 0.12); border: 1px solid rgba(99, 102, 241, 0.3); padding: 1rem 1.25rem; border-radius: 10px; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.85rem;">
+                    <div style="font-size: 1.6rem;">📊</div>
+                    <div>
+                        <strong style="color: #a5b4fc; font-size: 1rem; display: block; font-weight: 700;">Clinical Biometric Insights & Action Plan</strong>
+                        <span style="font-size: 0.85rem; color: #94a3b8;">AI-synthesized pattern analysis across your heart rate, sleep, symptoms, and medication log.</span>
+                    </div>
                 </div>
-                ${formattedLines.join('')}
+                ${htmlParts.join('')}
             </div>`;
         }
 
         function formatAnalysisForApp(html) {
             if (!html) return '';
-            let text = html;
-            text = text.replace(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi, '\n\n■ $1\n');
-            text = text.replace(/<li[^>]*>(.*?)<\/li>/gi, '• $1\n');
-            text = text.replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n');
-            text = text.replace(/<br\s*\/?>/gi, '\n');
-            text = text.replace(/<[^>]+>/g, '');
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(text, 'text/html');
-            return (doc.body.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+            let text = normalizeAnalysisText(html);
+            let blocks = text.split('\n\n').map(b => b.trim()).filter(Boolean);
+            let appLines = [];
+
+            blocks.forEach(block => {
+                let matchNum = block.match(/^(\d+)[\.\)]\s*(.*)/s);
+                if (matchNum) {
+                    appLines.push(`■ Tip ${matchNum[1]}:\n${matchNum[2].replace(/\n/g, ' ')}`);
+                } else if (block.startsWith('•') || block.startsWith('-') || block.startsWith('*')) {
+                    appLines.push(`• ${block.replace(/^[\*\-\•]\s*/, '').replace(/\n/g, ' ')}`);
+                } else {
+                    appLines.push(block.replace(/\n/g, ' '));
+                }
+            });
+
+            return appLines.join('\n\n');
         }
 
         async function sendGraphAnalysisToApp() {
