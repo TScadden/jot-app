@@ -121,6 +121,30 @@ class NotelPreferences @Inject constructor(
         val GOOGLE_CALENDAR_CONNECTED = booleanPreferencesKey("google_calendar_connected")
         val GOOGLE_CALENDAR_EMAIL = stringPreferencesKey("google_calendar_email")
         val MEDICATIONS = stringPreferencesKey("medications")
+        val ROUTINE_CLICK_COUNTS = stringPreferencesKey("routine_click_counts")
+    }
+
+    val routineClickCounts: Flow<String> = context.dataStore.data.map { it[ROUTINE_CLICK_COUNTS] ?: "{}" }
+    suspend fun recordRoutineClick(routineKey: String) {
+        context.dataStore.edit { prefs ->
+            val jsonStr = prefs[ROUTINE_CLICK_COUNTS] ?: "{}"
+            val map = try {
+                val jsonObj = org.json.JSONObject(jsonStr)
+                val m = mutableMapOf<String, Int>()
+                val keys = jsonObj.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    m[k] = jsonObj.optInt(k, 0)
+                }
+                m
+            } catch (e: Exception) {
+                mutableMapOf()
+            }
+            map[routineKey] = (map[routineKey] ?: 0) + 1
+            val resultObj = org.json.JSONObject()
+            map.forEach { (k, v) -> resultObj.put(k, v) }
+            prefs[ROUTINE_CLICK_COUNTS] = resultObj.toString()
+        }
     }
 
     val medications: Flow<String> = context.dataStore.data.map { it[MEDICATIONS] ?: "[]" }
