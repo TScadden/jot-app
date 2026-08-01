@@ -169,14 +169,6 @@ fun InfoScreen(
                             Spacer(Modifier.width(6.dp))
                             Text("Done", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 13.sp)
                         }
-                    } else {
-                        IconButton(onClick = { isEditMode = true }) {
-                            Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = "Edit Tile Order",
-                                tint = NotelPrimary
-                            )
-                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = NotelBackground)
@@ -189,34 +181,13 @@ fun InfoScreen(
                 .padding(padding)
                 .padding(horizontal = 16.dp)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = if (isEditMode) "Hold & drag any tile to reorder. Click 'Done' to save." else "Explore your health resources and deep insights.",
-                    color = if (isEditMode) NotelPrimary else NotelTextSecondary,
-                    fontSize = 13.sp,
-                    fontWeight = if (isEditMode) FontWeight.Bold else FontWeight.Normal
-                )
-
-                if (isUserCustomOrdered && !isEditMode) {
-                    TextButton(
-                        onClick = {
-                            isUserCustomOrdered = false
-                            coroutineScope.launch {
-                                prefs.setInfoTileOrder("")
-                            }
-                        },
-                        contentPadding = PaddingValues(0.dp)
-                    ) {
-                        Text("Reset Order", color = NotelTextSecondary, fontSize = 12.sp)
-                    }
-                }
-            }
+            Text(
+                text = if (isEditMode) "Hold & drag any tile to reorder. Click 'Done' to save." else "Explore your health resources and deep insights.",
+                color = if (isEditMode) NotelPrimary else NotelTextSecondary,
+                fontSize = 13.sp,
+                fontWeight = if (isEditMode) FontWeight.Bold else FontWeight.Normal,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
 
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
