@@ -521,7 +521,12 @@ class SyncManager @Inject constructor(
                 
                 // C. Restore AI Context/Doctor's Notes
                 body.profile?.let { profile ->
-                    profile.userContext?.let { if (it.isNotBlank()) preferences.setUserContext(it) }
+                    profile.userContext?.let { serverCtx ->
+                        val localCtx = preferences.userContext.first()
+                        if (serverCtx.isNotBlank() && localCtx.isBlank()) {
+                            preferences.setUserContext(serverCtx)
+                        }
+                    }
                     profile.knowledgeBase?.let { if (it.isNotBlank()) preferences.setKnowledgeBase(it) }
                     profile.professionalUpdates?.let { if (it.isNotBlank()) preferences.setProfessionalUpdates(it) }
                     profile.processedFiles?.let { if (it.isNotBlank()) preferences.setProcessedFiles(it) }

@@ -235,6 +235,7 @@ fun SettingsScreen(
     ) { mutableStateOf(initialMenu) }
     
     BackHandler(enabled = currentMenu != SettingsMenu.MAIN) {
+        viewModel.flushProfilePush()
         currentMenu = SettingsMenu.MAIN
     }
     
