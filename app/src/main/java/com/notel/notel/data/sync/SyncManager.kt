@@ -37,6 +37,7 @@ class SyncManager @Inject constructor(
     private val preferences: NotelPreferences,
     private val healthConnectManager: com.notel.notel.data.healthconnect.HealthConnectManager,
     private val logRepositoryProvider: javax.inject.Provider<com.notel.notel.data.repository.LogRepository>,
+    private val reportGeneratorProvider: javax.inject.Provider<com.notel.notel.util.ReportGenerator>,
     @ApplicationContext private val context: Context
 ) {
     private val tag = "SyncManager"
@@ -661,7 +662,8 @@ class SyncManager @Inject constructor(
                     if (newGraphReports.isNotEmpty()) {
                         val newestReport = newGraphReports.first()
                         try {
-                            com.notel.notel.util.NotificationHelper(context).showGraphReportNotification()
+                            val pdfFile = reportGeneratorProvider.get().generateGraphPdfReport("AI Biometric Graph Analysis", newestReport.text)
+                            com.notel.notel.util.NotificationHelper(context).showGraphReportNotification(pdfFile)
                             logRepositoryProvider.get().notifyNewAiInsight(newestReport)
                         } catch (e: Exception) {
                             Log.e(tag, "Failed to trigger report notification: ${e.message}")

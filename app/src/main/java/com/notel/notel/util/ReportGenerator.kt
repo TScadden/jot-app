@@ -567,4 +567,110 @@ class ReportGenerator @Inject constructor(
         if (currentLine.isNotEmpty()) lines.add(currentLine.toString())
         return lines
     }
+
+    /**
+     * Generates an AI Biometric Graph Analysis Report as a styled PDF document
+     * and saves it to the device's Downloads folder.
+     */
+    suspend fun generateGraphPdfReport(title: String, bodyText: String): File? {
+        val pdfDocument = PdfDocument()
+        val titlePaint = Paint().apply {
+            color = Color.rgb(33, 33, 33)
+            textSize = 20f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val subTitlePaint = Paint().apply {
+            color = Color.rgb(0, 102, 204)
+            textSize = 12f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val bodyPaint = Paint().apply {
+            color = Color.rgb(55, 55, 55)
+            textSize = 11f
+        }
+        val boldPaint = Paint().apply {
+            color = Color.BLACK
+            textSize = 11f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val linePaint = Paint().apply {
+            color = Color.LTGRAY
+            strokeWidth = 1f
+        }
+
+        val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create() // A4 size
+        var page = pdfDocument.startPage(pageInfo)
+        var canvas = page.canvas
+
+        var y = 60f
+        val margin = 50f
+        val contentWidth = 495f
+
+        canvas.drawText("Tabs — $title", margin, y, titlePaint)
+        y += 12f
+        canvas.drawLine(margin, y, margin + contentWidth, y, linePaint)
+        y += 24f
+
+        val todayStr = SimpleDateFormat("MMMM dd, yyyy - hh:mm a", Locale.getDefault()).format(Date())
+        canvas.drawText("Report Generated: $todayStr", margin, y, subTitlePaint)
+        y += 30f
+
+        val cleanBody = bodyText
+            .replace("<h4>", "").replace("</h4>", "\n")
+            .replace("<ul>", "").replace("</ul>", "")
+            .replace("<li>", "• ").replace("</li>", "\n")
+            .replace("<p>", "").replace("</p>", "\n")
+            .replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+
+        val rawLines = cleanBody.split("\n")
+
+        rawLines.forEach { line ->
+            val trimmed = line.trim()
+            if (trimmed.isEmpty()) {
+                y += 8f
+                return@forEach
+            }
+
+            val isHeader = trimmed.startsWith("■") || trimmed.startsWith("🔹")
+            val paintToUse = if (isHeader) boldPaint else bodyPaint
+
+            val wrapped = wrapText(trimmed, contentWidth, paintToUse)
+            wrapped.forEach { wrappedLine ->
+                if (y > 780) {
+                    pdfDocument.finishPage(page)
+                    page = pdfDocument.startPage(pageInfo)
+                    canvas = page.canvas
+                    y = 60f
+                }
+                canvas.drawText(wrappedLine, margin, y, paintToUse)
+                y += 16f
+            }
+            y += 4f
+        }
+
+        y += 20f
+        if (y < 750) {
+            canvas.drawLine(margin, y, margin + contentWidth, y, linePaint)
+            y += 20f
+            canvas.drawText("Generated automatically by Tabs Health Intelligence • Keep for personal & medical records", margin, y, bodyPaint.apply { textSize = 9f; color = Color.GRAY })
+        }
+
+        pdfDocument.finishPage(page)
+
+        val timeStamp = SimpleDateFormat("MMM_dd_yyyy_HHmm", Locale.getDefault()).format(Date())
+        val fileName = "Tabs_AI_Graph_Report_$timeStamp.pdf"
+        val cacheFile = File(context.cacheDir, fileName)
+
+        try {
+            pdfDocument.writeTo(FileOutputStream(cacheFile))
+            saveToDownloads(cacheFile, fileName)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return null
+        } finally {
+            pdfDocument.close()
+        }
+
+        return cacheFile
+    }
 }

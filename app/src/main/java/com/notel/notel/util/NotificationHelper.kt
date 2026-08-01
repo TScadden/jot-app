@@ -22,7 +22,7 @@ class NotificationHelper(private val context: Context) {
         const val REPORT_NOTIFICATION_ID = 1009
     }
 
-    fun showGraphReportNotification() {
+    fun showGraphReportNotification(pdfFile: java.io.File? = null) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -37,21 +37,42 @@ class NotificationHelper(private val context: Context) {
             manager.createNotificationChannel(channel)
         }
 
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            putExtra("open_route", "settings_reports")
+        val pendingIntent = if (pdfFile != null && pdfFile.exists()) {
+            val fileUri = androidx.core.content.FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.provider",
+                pdfFile
+            )
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/pdf"
+                putExtra(Intent.EXTRA_STREAM, fileUri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            val chooser = Intent.createChooser(shareIntent, "Share AI Biometric Graph Report")
+            PendingIntent.getActivity(
+                context,
+                1009,
+                chooser,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        } else {
+            val intent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                putExtra("open_route", "settings_reports")
+            }
+            PendingIntent.getActivity(
+                context,
+                0,
+                intent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
         }
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            0,
-            intent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
 
         val notification = NotificationCompat.Builder(context, REPORT_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_noti_note)
-            .setContentTitle("📊 AI Graph Analysis Ready!")
-            .setContentText("Your web biometric graph report is ready. Tap to view & download.")
+            .setContentTitle("📊 AI Graph Report Ready!")
+            .setContentText("PDF saved to Downloads. Tap to share or send.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("Your AI Biometric Graph Analysis report has been downloaded to your phone's Downloads folder as a PDF. Tap to share it or send to a doctor."))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
