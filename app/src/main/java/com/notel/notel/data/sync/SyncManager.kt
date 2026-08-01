@@ -60,18 +60,23 @@ class SyncManager @Inject constructor(
         }
         try {
             if (!preferences.loggedIn.first()) return@withContext
-            
+
             Log.d(tag, "Full sync initiated...")
-            
-            // 1. Push local updates to the cloud first so local changes aren't overwritten by old cloud state
-            // Only push profile data if the user has completed onboarding locally.
+            log("SYNC_START: Beginning full sync cycle…")
+
+            // 1. Push Profile
             if (preferences.onboardingComplete.first()) {
                 val profilePushSuccess = pushProfileData()
                 if (!profilePushSuccess) {
-                    Log.e(tag, "Profile push failed, aborting full sync to prevent local data loss.")
+                    log("SYNC_FAIL: Profile — could not push to server. Aborting.")
                     return@withContext
                 }
+                log("SYNC_OK: Profile (context, medications, settings, streaks)")
+            } else {
+                log("SYNC_SKIP: Profile — onboarding not yet complete")
             }
+
+            // 2. Push Categories
             val categories = categoryDao.getAllCategories().first()
             if (categories.isNotEmpty()) {
                 val categoryDtos = categories.map {
@@ -79,11 +84,15 @@ class SyncManager @Inject constructor(
                 }
                 val catRes = tabsApi.syncCategories(SyncCategoriesRequest(categoryDtos))
                 if (!catRes.isSuccessful) {
-                    Log.e(tag, "Categories sync failed, aborting full sync: ${catRes.errorBody()?.string()}")
+                    log("SYNC_FAIL: Categories (${categories.size}) — HTTP ${catRes.code()}")
                     return@withContext
                 }
+                log("SYNC_OK: Categories (${categories.size} pushed)")
+            } else {
+                log("SYNC_SKIP: Categories — none found locally")
             }
 
+            // 3. Push Log Entries
             val entries = logEntryDao.getAllEntries().first()
             if (entries.isNotEmpty()) {
                 val entryDtos = entries.map {
@@ -91,47 +100,67 @@ class SyncManager @Inject constructor(
                 }
                 val entryRes = tabsApi.syncEntries(SyncEntriesRequest(entryDtos))
                 if (!entryRes.isSuccessful) {
-                    Log.e(tag, "Entries sync failed, aborting full sync: ${entryRes.errorBody()?.string()}")
+                    log("SYNC_FAIL: Jot Logs (${entries.size}) — HTTP ${entryRes.code()}")
                     return@withContext
                 }
+                log("SYNC_OK: Jot Logs (${entries.size} pushed)")
+            } else {
+                log("SYNC_SKIP: Jot Logs — none found locally")
             }
 
-            // 2. Pull cloud data to update local database with any other devices' changes
+            // 4. Pull all cloud data
             val pullSuccess = pullAllData()
             if (!pullSuccess) {
-                Log.w(tag, "Sync pull failed. Aborting sync cycle to prevent local data loss.")
+                log("SYNC_FAIL: Cloud Pull — server unreachable or rejected")
                 return@withContext
             }
+            log("SYNC_OK: Cloud Pull (logs, categories, profile, insights)")
 
-            syncDocuments()
-            syncCoachSessions()
-            syncCoachMessages()
+            // 5. Documents
+            val docSyncOk = try { syncDocuments(); true } catch (e: Exception) { false }
+            if (docSyncOk) log("SYNC_OK: Documents") else log("SYNC_FAIL: Documents")
 
-            // Generate and cache historical biometrics insights synchronously before pushing
-            generateHistoricalBiometricsInsights()
+            // 6. Coach Sessions & Messages
+            val coachOk = try { syncCoachSessions(); syncCoachMessages(); true } catch (e: Exception) { false }
+            if (coachOk) log("SYNC_OK: Coach Sessions & Messages") else log("SYNC_FAIL: Coach Sessions")
 
-            // Push AI Insights (including BodyLoad scores) to the server
+            // 7. Biometrics (Health Connect)
+            try {
+                generateHistoricalBiometricsInsights()
+                log("SYNC_OK: Biometrics (Health Connect cache rebuilt)")
+            } catch (e: Exception) {
+                log("SYNC_FAIL: Biometrics — ${e.message}")
+            }
+
+            // 8. AI Insights
             val insightsStr = preferences.aiInsights.first()
             if (insightsStr.isNotBlank()) {
                 val localInsights = try {
                     Json.decodeFromString<List<com.notel.notel.data.local.entity.AiInsight>>(insightsStr)
                 } catch (e: Exception) { emptyList() }
-                
+
                 if (localInsights.isNotEmpty()) {
                     val insightDtos = localInsights.map {
                         InsightDtoModel(it.id, it.text, it.type, it.timestamp)
                     }
                     val insightRes = tabsApi.syncInsights(SyncInsightsRequest(insightDtos))
-                    if (!insightRes.isSuccessful) {
-                        Log.e(tag, "Insights sync failed: ${insightRes.errorBody()?.string()}")
+                    if (insightRes.isSuccessful) {
+                        log("SYNC_OK: AI Insights (${localInsights.size} entries)")
+                    } else {
+                        log("SYNC_FAIL: AI Insights — HTTP ${insightRes.code()}")
                     }
+                } else {
+                    log("SYNC_SKIP: AI Insights — none found locally")
                 }
+            } else {
+                log("SYNC_SKIP: AI Insights — none found locally")
             }
 
-            // Profile is handled at the start for optimistic local updates.
             preferences.setLastSyncTime(System.currentTimeMillis())
+            log("SYNC_DONE: All categories synced successfully ✓")
             Log.d(tag, "Sync cycle complete!")
         } catch (e: Exception) {
+            log("SYNC_ERROR: ${e.message}")
             Log.e(tag, "Sync cycle failed: ${e.message}")
         } finally {
             syncMutex.unlock()

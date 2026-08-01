@@ -3206,9 +3206,50 @@ fun DebugScreen(
         }
 
         Spacer(Modifier.height(16.dp))
+
+        // ── Last Sync Report ─────────────────────────────────────────────────
+        val syncLines = logs.filter { it.body.startsWith("SYNC_") }
+        if (syncLines.isNotEmpty()) {
+            // Find the most recent SYNC_START to slice out the latest cycle
+            val lastStartIdx = syncLines.indexOfLast { it.body.startsWith("SYNC_START") }
+            val currentCycle = if (lastStartIdx >= 0) syncLines.drop(lastStartIdx) else syncLines
+
+            Text("Last Sync Report", color = NotelTextSecondary, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            androidx.compose.foundation.layout.Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.4f), shape = RoundedCornerShape(10.dp))
+                    .padding(12.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    currentCycle.forEach { entry ->
+                        val (icon, tint, label) = when {
+                            entry.body.startsWith("SYNC_OK")    -> Triple("✓", Color(0xFF4CAF50), entry.body.removePrefix("SYNC_OK: "))
+                            entry.body.startsWith("SYNC_FAIL")  -> Triple("✗", Color(0xFFE53935), entry.body.removePrefix("SYNC_FAIL: "))
+                            entry.body.startsWith("SYNC_SKIP")  -> Triple("–", Color(0xFFFFA726), entry.body.removePrefix("SYNC_SKIP: "))
+                            entry.body.startsWith("SYNC_DONE")  -> Triple("✓", Color(0xFF4CAF50), entry.body.removePrefix("SYNC_DONE: "))
+                            entry.body.startsWith("SYNC_ERROR") -> Triple("✗", Color(0xFFE53935), entry.body.removePrefix("SYNC_ERROR: "))
+                            entry.body.startsWith("SYNC_START") -> Triple("→", Color(0xFF90CAF9), entry.body.removePrefix("SYNC_START: "))
+                            else -> Triple("·", NotelTextSecondary, entry.body)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(icon, color = tint, fontSize = 13.sp, fontWeight = FontWeight.Black,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                modifier = Modifier.width(16.dp))
+                            Text(label, color = tint, fontSize = 11.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+
+        // ── Raw System Log ────────────────────────────────────────────────────
         Text("System Logs (${logs.size})", color = NotelTextSecondary, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
-        
+
         androidx.compose.foundation.lazy.LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
