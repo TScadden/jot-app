@@ -406,10 +406,10 @@ class SettingsViewModel @Inject constructor(
             preferences.setUserContext(text)
             preferences.setUserContextLastUpdate(System.currentTimeMillis())
             
-            // Debounce pushing profile changes to the server by 800ms
+            // Debounce pushing profile changes to the server by 3 seconds (3000ms)
             pushContextJob?.cancel()
             pushContextJob = viewModelScope.launch {
-                kotlinx.coroutines.delay(800)
+                kotlinx.coroutines.delay(3000)
                 syncManager.pushProfileData()
             }
         }
