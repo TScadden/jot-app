@@ -195,41 +195,21 @@ fun MedicationsScreen(
 
                         Spacer(Modifier.height(16.dp))
 
-                        Row(
+                        Button(
+                            onClick = { 
+                                editingMedication = null
+                                medName = ""
+                                medDose = ""
+                                medFrequency = "Once daily"
+                                showAddDialog = true 
+                            },
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh),
+                            shape = RoundedCornerShape(12.dp)
                         ) {
-                            OutlinedButton(
-                                onClick = { viewModel.loadMedicationsFromProfile() },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp),
-                                enabled = !isExtracting
-                            ) {
-                                if (isExtracting) {
-                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                                } else {
-                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.width(6.dp))
-                                    Text("Load from Profile", fontSize = 12.sp)
-                                }
-                            }
-
-                            Button(
-                                onClick = { 
-                                    editingMedication = null
-                                    medName = ""
-                                    medDose = ""
-                                    medFrequency = "Once daily"
-                                    showAddDialog = true 
-                                },
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp), tint = NotelTextPrimary)
-                                Spacer(Modifier.width(6.dp))
-                                Text("Add Custom", fontSize = 12.sp, color = NotelTextPrimary)
-                            }
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp), tint = NotelTextPrimary)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Add Medication", fontSize = 13.sp, color = NotelTextPrimary, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -268,7 +248,7 @@ fun MedicationsScreen(
                             )
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                text = "Tap 'Load from Profile' or 'Add Custom' to add your current meds.",
+                                text = "Tap 'Add Medication' below to add your current meds.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = NotelTextSecondary
                             )

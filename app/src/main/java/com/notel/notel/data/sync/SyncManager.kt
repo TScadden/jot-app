@@ -541,6 +541,7 @@ class SyncManager @Inject constructor(
                     profile.hasVisibleBandAsked?.let { preferences.setHasVisibleBandAsked(it) }
                     profile.heartRateHistory?.let { preferences.setHeartRateHistory(it) }
                     // Restore medications
+                    Log.d(tag, "RESTORE_MEDS: Server medications raw value = '${profile.medications}'")
                     profile.medications?.let { if (it.isNotBlank()) preferences.setMedications(it) }
                     // Restore notification & alert settings
                     profile.bodyLoadRemindersEnabled?.let { preferences.setBodyLoadRemindersEnabled(it) }
