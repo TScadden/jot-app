@@ -382,7 +382,8 @@ class SyncManager @Inject constructor(
                     spikeDeltaThreshold = preferences.spikeDeltaThreshold.first(),
                     habitReminderEnabled = preferences.habitReminderEnabled.first(),
                     projectReminderEnabled = preferences.projectReminderEnabled.first(),
-                    eventReminderEnabled = preferences.eventReminderEnabled.first()
+                    eventReminderEnabled = preferences.eventReminderEnabled.first(),
+                    infoTileOrder = preferences.infoTileOrder.first().let { if (it.isBlank()) null else it }
                 )
             )
             if (response.isSuccessful) {
@@ -553,6 +554,7 @@ class SyncManager @Inject constructor(
                     profile.habitReminderEnabled?.let { preferences.setHabitReminderEnabled(it) }
                     profile.projectReminderEnabled?.let { preferences.setProjectReminderEnabled(it) }
                     profile.eventReminderEnabled?.let { preferences.setEventReminderEnabled(it) }
+                    profile.infoTileOrder?.let { if (it.isNotBlank()) preferences.setInfoTileOrder(it) }
                     // C. Restore AI Context/Doctor's Notes (with Smarter Merging for counters)
                     profile.eventCounters?.let { serverJson ->
                         if (serverJson.isNotBlank()) {

@@ -122,6 +122,12 @@ class NotelPreferences @Inject constructor(
         val GOOGLE_CALENDAR_EMAIL = stringPreferencesKey("google_calendar_email")
         val MEDICATIONS = stringPreferencesKey("medications")
         val ROUTINE_CLICK_COUNTS = stringPreferencesKey("routine_click_counts")
+        val INFO_TILE_ORDER = stringPreferencesKey("info_tile_order")
+    }
+
+    val infoTileOrder: Flow<String> = context.dataStore.data.map { it[INFO_TILE_ORDER] ?: "" }
+    suspend fun setInfoTileOrder(orderJson: String) {
+        context.dataStore.edit { it[INFO_TILE_ORDER] = orderJson }
     }
 
     val routineClickCounts: Flow<String> = context.dataStore.data.map { it[ROUTINE_CLICK_COUNTS] ?: "{}" }

@@ -153,6 +153,9 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                // Global reordering lock state for Information Center
+                var isReorderingTiles by remember { mutableStateOf(false) }
+
                 // Global banner states
                 var aiInsight by remember { mutableStateOf<com.notel.notel.data.local.entity.AiInsight?>(null) }
                 val reportViewModel: com.notel.notel.ui.viewmodel.SettingsViewModel = hiltViewModel()
@@ -289,7 +292,8 @@ class MainActivity : ComponentActivity() {
                                 onNotesClick = { navController.navigate("notes") },
                                 onProjectFocusClick = { navController.navigate("project_focus") },
                                 onNavigateToMembership = { navController.navigate("settings?menu=MEMBERSHIP") },
-                                isUnlimited = isUnlimited
+                                isUnlimited = isUnlimited,
+                                onReorderStateChange = { isReorderingTiles = it }
                             )
                         }
                         composable("body_info") {
@@ -455,7 +459,7 @@ class MainActivity : ComponentActivity() {
                                         label = "Home",
                                         isSelected = currentRoute == "body_load",
                                         onClick = { 
-                                            if (currentRoute != "body_load") {
+                                            if (!isReorderingTiles && currentRoute != "body_load") {
                                                 navController.navigate("body_load") {
                                                     popUpTo(navController.graph.startDestinationId) { saveState = true }
                                                     launchSingleTop = true
@@ -468,14 +472,14 @@ class MainActivity : ComponentActivity() {
                                         icon = Icons.Default.Assignment,
                                         label = "Info",
                                         isSelected = currentRoute == "info",
-                                        onClick = { navController.navigate("info") }
+                                        onClick = { if (!isReorderingTiles) navController.navigate("info") }
                                     )
                                     // Center Pencil Button — no label, always purple, slightly larger
                                     Column(
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                         modifier = Modifier
                                             .clickable {
-                                                if (currentRoute != "quick_log") {
+                                                if (!isReorderingTiles && currentRoute != "quick_log") {
                                                     navController.navigate("quick_log") {
                                                         popUpTo(navController.graph.startDestinationId) { saveState = true }
                                                         launchSingleTop = true
@@ -502,13 +506,13 @@ class MainActivity : ComponentActivity() {
                                         icon = Icons.Default.Favorite,
                                         label = "Heart",
                                         isSelected = currentRoute == "fitbit",
-                                        onClick = { navController.navigate("fitbit") }
+                                        onClick = { if (!isReorderingTiles) navController.navigate("fitbit") }
                                     )
                                     NavIcon(
                                         icon = Icons.Default.Settings,
                                         label = "Settings",
                                         isSelected = currentRoute == "settings",
-                                        onClick = { navController.navigate("settings") }
+                                        onClick = { if (!isReorderingTiles) navController.navigate("settings") }
                                     )
                                 }
                             }

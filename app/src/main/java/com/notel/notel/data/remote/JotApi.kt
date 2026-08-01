@@ -244,7 +244,8 @@ data class SyncProfileRequest(
     val spikeDeltaThreshold: Int? = null,
     val habitReminderEnabled: Boolean? = null,
     val projectReminderEnabled: Boolean? = null,
-    val eventReminderEnabled: Boolean? = null
+    val eventReminderEnabled: Boolean? = null,
+    val infoTileOrder: String? = null
 )
 
 @Serializable
@@ -320,7 +321,8 @@ data class ProfileDtoModel(
     val spikeDeltaThreshold: Int? = null,
     val habitReminderEnabled: Boolean? = null,
     val projectReminderEnabled: Boolean? = null,
-    val eventReminderEnabled: Boolean? = null
+    val eventReminderEnabled: Boolean? = null,
+    val infoTileOrder: String? = null
 )
 
 @Serializable
