@@ -370,304 +370,342 @@ fun BodyLoadScreen(
 
             // ── Daily Routine Section ─────────────────────────────
             item {
-                Spacer(Modifier.height(24.dp))
-                HorizontalDivider(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                    color = Color.White.copy(alpha = 0.05f)
-                )
-                Spacer(Modifier.height(24.dp))
-            }
+                var isRoutineExpanded by remember { mutableStateOf(false) }
 
-            item {
                 Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
-                    Text(
-                        "Daily Routine",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = NotelTextPrimary
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Manage your habits, reminders, and lists.",
-                        color = NotelTextSecondary,
-                        fontSize = 13.sp
-                    )
-                    Spacer(Modifier.height(16.dp))
-
-                    // ── Habits Tile ───────────────────────────────────
-                    val checkedCount = habits.count { habitViewModel.isCheckedToday(it) }
-                    Box(
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(76.dp)
-                            .border(
-                                width = 3.dp,
-                                color = NotelPrimary.copy(alpha = 0.12f),
-                                shape = RoundedCornerShape(22.dp)
-                            )
-                            .border(
-                                width = 6.dp,
-                                color = NotelPrimary.copy(alpha = 0.04f),
-                                shape = RoundedCornerShape(24.dp)
-                            )
-                            .liquidGlass(
-                                shape = RoundedCornerShape(20.dp),
-                                color = NotelSurface,
-                                alpha = 0.8f,
-                                showBorder = true
-                            )
-                            .clickable { onNavigateToHabits() }
-                            .padding(horizontal = 20.dp, vertical = 12.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { isRoutineExpanded = !isRoutineExpanded }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Start
-                        ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    "Daily Routine",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = NotelTextPrimary
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = NotelPrimary.copy(alpha = 0.15f)
+                                ) {
+                                    val checkedCount = habits.count { habitViewModel.isCheckedToday(it) }
+                                    Text(
+                                        text = "$checkedCount/${habits.size} Habits",
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                        color = NotelPrimary,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                "Manage your habits, reminders, lists, notes & project experiments.",
+                                color = NotelTextSecondary,
+                                fontSize = 12.sp
+                            )
+                        }
+                        IconButton(onClick = { isRoutineExpanded = !isRoutineExpanded }) {
                             Icon(
-                                imageVector = Icons.Default.CheckCircle,
-                                contentDescription = null,
+                                imageVector = if (isRoutineExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                contentDescription = if (isRoutineExpanded) "Collapse Daily Routine" else "Expand Daily Routine",
                                 tint = NotelPrimary,
                                 modifier = Modifier.size(28.dp)
                             )
-                            Spacer(Modifier.width(14.dp))
-                            Column {
-                                Text(
-                                    text = "Habits",
-                                    color = NotelTextPrimary,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = if (habits.isEmpty()) "No habits yet"
-                                           else "$checkedCount/${habits.size} done today",
-                                    color = NotelTextSecondary,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
                         }
                     }
 
-                    Spacer(Modifier.height(12.dp))
-
-                    // ── Reminders Tile (UI only) ──────────────────────
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(76.dp)
-                            .border(
-                                width = 3.dp,
-                                color = NotelPrimary.copy(alpha = 0.12f),
-                                shape = RoundedCornerShape(22.dp)
-                            )
-                            .border(
-                                width = 6.dp,
-                                color = NotelPrimary.copy(alpha = 0.04f),
-                                shape = RoundedCornerShape(24.dp)
-                            )
-                            .liquidGlass(
-                                shape = RoundedCornerShape(20.dp),
-                                color = NotelSurface,
-                                alpha = 0.8f,
-                                showBorder = true
-                            )
-                            .clickable { onNavigateToReminders() }
-                            .padding(horizontal = 20.dp, vertical = 12.dp)
+                    AnimatedVisibility(
+                        visible = isRoutineExpanded,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Start
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Notifications,
-                                contentDescription = null,
-                                tint = NotelPrimary,
-                                modifier = Modifier.size(28.dp)
-                            )
-                            Spacer(Modifier.width(14.dp))
-                            Column {
-                                Text(
-                                    text = "Reminders",
-                                    color = NotelTextPrimary,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = if (reminders.isEmpty()) "No reminders yet" 
-                                           else "${reminders.size} Reminders",
-                                    color = NotelTextSecondary,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
+                        Column {
+                            Spacer(Modifier.height(12.dp))
+
+                            // ── Habits Tile ───────────────────────────────────
+                            val checkedCount = habits.count { habitViewModel.isCheckedToday(it) }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(76.dp)
+                                    .border(
+                                        width = 3.dp,
+                                        color = NotelPrimary.copy(alpha = 0.12f),
+                                        shape = RoundedCornerShape(22.dp)
+                                    )
+                                    .border(
+                                        width = 6.dp,
+                                        color = NotelPrimary.copy(alpha = 0.04f),
+                                        shape = RoundedCornerShape(24.dp)
+                                    )
+                                    .liquidGlass(
+                                        shape = RoundedCornerShape(20.dp),
+                                        color = NotelSurface,
+                                        alpha = 0.8f,
+                                        showBorder = true
+                                    )
+                                    .clickable { onNavigateToHabits() }
+                                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Start
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        tint = NotelPrimary,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                    Spacer(Modifier.width(14.dp))
+                                    Column {
+                                        Text(
+                                            text = "Habits",
+                                            color = NotelTextPrimary,
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = if (habits.isEmpty()) "No habits yet"
+                                                   else "$checkedCount/${habits.size} done today",
+                                            color = NotelTextSecondary,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                }
                             }
-                        }
-                    }
 
-                    Spacer(Modifier.height(12.dp))
+                            Spacer(Modifier.height(12.dp))
 
-                    // ── Lists Tile ───────────────────────────────────────────────
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(76.dp)
-                            .border(
-                                width = 3.dp,
-                                color = NotelPrimary.copy(alpha = 0.12f),
-                                shape = RoundedCornerShape(22.dp)
-                            )
-                            .border(
-                                width = 6.dp,
-                                color = NotelPrimary.copy(alpha = 0.04f),
-                                shape = RoundedCornerShape(24.dp)
-                            )
-                            .liquidGlass(
-                                shape = RoundedCornerShape(20.dp),
-                                color = NotelSurface,
-                                alpha = 0.8f,
-                                showBorder = true
-                            )
-                            .clickable { onNavigateToLists() }
-                            .padding(horizontal = 20.dp, vertical = 12.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Start
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.List,
-                                contentDescription = null,
-                                tint = NotelPrimary,
-                                modifier = Modifier.size(28.dp)
-                            )
-                            Spacer(Modifier.width(14.dp))
-                            Column {
-                                Text(
-                                    text = "Lists",
-                                    color = NotelTextPrimary,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                val userLists = lists.filter { list -> list.name != "__user_notes__" }
-                                Text(
-                                    text = if (userLists.isEmpty()) "No lists yet"
-                                           else "${userLists.size} ${if (userLists.size == 1) "List" else "Lists"}",
-                                    color = NotelTextSecondary,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
+                            // ── Reminders Tile ──────────────────────
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(76.dp)
+                                    .border(
+                                        width = 3.dp,
+                                        color = NotelPrimary.copy(alpha = 0.12f),
+                                        shape = RoundedCornerShape(22.dp)
+                                    )
+                                    .border(
+                                        width = 6.dp,
+                                        color = NotelPrimary.copy(alpha = 0.04f),
+                                        shape = RoundedCornerShape(24.dp)
+                                    )
+                                    .liquidGlass(
+                                        shape = RoundedCornerShape(20.dp),
+                                        color = NotelSurface,
+                                        alpha = 0.8f,
+                                        showBorder = true
+                                    )
+                                    .clickable { onNavigateToReminders() }
+                                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Start
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Notifications,
+                                        contentDescription = null,
+                                        tint = NotelPrimary,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                    Spacer(Modifier.width(14.dp))
+                                    Column {
+                                        Text(
+                                            text = "Reminders",
+                                            color = NotelTextPrimary,
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = if (reminders.isEmpty()) "No reminders yet" 
+                                                   else "${reminders.size} Reminders",
+                                            color = NotelTextSecondary,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                }
                             }
-                        }
-                    }
 
-                    Spacer(Modifier.height(12.dp))
+                            Spacer(Modifier.height(12.dp))
 
-                    // ── Notes Tile ───────────────────────────────────────────────
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(76.dp)
-                            .border(
-                                width = 3.dp,
-                                color = NotelPrimary.copy(alpha = 0.12f),
-                                shape = RoundedCornerShape(22.dp)
-                            )
-                            .border(
-                                width = 6.dp,
-                                color = NotelPrimary.copy(alpha = 0.04f),
-                                shape = RoundedCornerShape(24.dp)
-                            )
-                            .liquidGlass(
-                                shape = RoundedCornerShape(20.dp),
-                                color = NotelSurface,
-                                alpha = 0.8f,
-                                showBorder = true
-                            )
-                            .clickable { onNavigateToNotes() }
-                            .padding(horizontal = 20.dp, vertical = 12.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Start
-                        ) {
-                            Icon(
-                                imageVector = androidx.compose.material.icons.Icons.Default.Edit,
-                                contentDescription = null,
-                                tint = NotelPrimary,
-                                modifier = Modifier.size(28.dp)
-                            )
-                            Spacer(Modifier.width(14.dp))
-                            Column {
-                                Text(
-                                    text = "Notes",
-                                    color = NotelTextPrimary,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = if (notes.isEmpty()) "No notes yet"
-                                           else "${notes.size} ${if (notes.size == 1) "Note" else "Notes"}",
-                                    color = NotelTextSecondary,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
+                            // ── Lists Tile ───────────────────────────────────────────────
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(76.dp)
+                                    .border(
+                                        width = 3.dp,
+                                        color = NotelPrimary.copy(alpha = 0.12f),
+                                        shape = RoundedCornerShape(22.dp)
+                                    )
+                                    .border(
+                                        width = 6.dp,
+                                        color = NotelPrimary.copy(alpha = 0.04f),
+                                        shape = RoundedCornerShape(24.dp)
+                                    )
+                                    .liquidGlass(
+                                        shape = RoundedCornerShape(20.dp),
+                                        color = NotelSurface,
+                                        alpha = 0.8f,
+                                        showBorder = true
+                                    )
+                                    .clickable { onNavigateToLists() }
+                                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Start
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.List,
+                                        contentDescription = null,
+                                        tint = NotelPrimary,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                    Spacer(Modifier.width(14.dp))
+                                    Column {
+                                        Text(
+                                            text = "Lists",
+                                            color = NotelTextPrimary,
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        val userLists = lists.filter { list -> list.name != "__user_notes__" }
+                                        Text(
+                                            text = if (userLists.isEmpty()) "No lists yet"
+                                                   else "${userLists.size} ${if (userLists.size == 1) "List" else "Lists"}",
+                                            color = NotelTextSecondary,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                }
                             }
-                        }
-                    }
-                    Spacer(Modifier.height(12.dp))
 
-                    // ── Project Focus Tile ────────────────────────────────────
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(76.dp)
-                            .border(
-                                width = 3.dp,
-                                color = NotelPrimary.copy(alpha = 0.12f),
-                                shape = RoundedCornerShape(22.dp)
-                            )
-                            .border(
-                                width = 6.dp,
-                                color = NotelPrimary.copy(alpha = 0.04f),
-                                shape = RoundedCornerShape(24.dp)
-                            )
-                            .liquidGlass(
-                                shape = RoundedCornerShape(20.dp),
-                                color = NotelSurface,
-                                alpha = 0.8f,
-                                showBorder = true
-                            )
-                            .clickable { onNavigateToProjectFocus() }
-                            .padding(horizontal = 20.dp, vertical = 12.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Start
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Science,
-                                contentDescription = null,
-                                tint = NotelPrimary,
-                                modifier = Modifier.size(28.dp)
-                            )
-                            Spacer(Modifier.width(14.dp))
-                            Column {
-                                Text(
-                                    text = "Project Focus",
-                                    color = NotelTextPrimary,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "Track your experiments",
-                                    color = NotelTextSecondary,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
+                            Spacer(Modifier.height(12.dp))
+
+                            // ── Notes Tile ───────────────────────────────────────────────
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(76.dp)
+                                    .border(
+                                        width = 3.dp,
+                                        color = NotelPrimary.copy(alpha = 0.12f),
+                                        shape = RoundedCornerShape(22.dp)
+                                    )
+                                    .border(
+                                        width = 6.dp,
+                                        color = NotelPrimary.copy(alpha = 0.04f),
+                                        shape = RoundedCornerShape(24.dp)
+                                    )
+                                    .liquidGlass(
+                                        shape = RoundedCornerShape(20.dp),
+                                        color = NotelSurface,
+                                        alpha = 0.8f,
+                                        showBorder = true
+                                    )
+                                    .clickable { onNavigateToNotes() }
+                                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Start
+                                ) {
+                                    Icon(
+                                        imageVector = androidx.compose.material.icons.Icons.Default.Edit,
+                                        contentDescription = null,
+                                        tint = NotelPrimary,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                    Spacer(Modifier.width(14.dp))
+                                    Column {
+                                        Text(
+                                            text = "Notes",
+                                            color = NotelTextPrimary,
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = if (notes.isEmpty()) "No notes yet"
+                                                   else "${notes.size} ${if (notes.size == 1) "Note" else "Notes"}",
+                                            color = NotelTextSecondary,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(12.dp))
+
+                            // ── Project Focus Tile ────────────────────────────────────
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(76.dp)
+                                    .border(
+                                        width = 3.dp,
+                                        color = NotelPrimary.copy(alpha = 0.12f),
+                                        shape = RoundedCornerShape(22.dp)
+                                    )
+                                    .border(
+                                        width = 6.dp,
+                                        color = NotelPrimary.copy(alpha = 0.04f),
+                                        shape = RoundedCornerShape(24.dp)
+                                    )
+                                    .liquidGlass(
+                                        shape = RoundedCornerShape(20.dp),
+                                        color = NotelSurface,
+                                        alpha = 0.8f,
+                                        showBorder = true
+                                    )
+                                    .clickable { onNavigateToProjectFocus() }
+                                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Start
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Science,
+                                        contentDescription = null,
+                                        tint = NotelPrimary,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                    Spacer(Modifier.width(14.dp))
+                                    Column {
+                                        Text(
+                                            text = "Project Focus",
+                                            color = NotelTextPrimary,
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "Track your experiments",
+                                            color = NotelTextSecondary,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
