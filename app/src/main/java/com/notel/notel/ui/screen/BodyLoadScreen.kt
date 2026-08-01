@@ -384,26 +384,12 @@ fun BodyLoadScreen(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    "Daily Routine",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = NotelTextPrimary
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = NotelPrimary.copy(alpha = 0.15f)
-                                ) {
-                                    val checkedCount = habits.count { habitViewModel.isCheckedToday(it) }
-                                    Text(
-                                        text = "$checkedCount/${habits.size} Habits",
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                        color = NotelPrimary,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
+                            Text(
+                                "Daily Routine",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = NotelTextPrimary
+                            )
                             }
                             Spacer(Modifier.height(2.dp))
                             Text(
