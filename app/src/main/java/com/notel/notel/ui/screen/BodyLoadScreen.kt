@@ -384,14 +384,15 @@ fun BodyLoadScreen(
                     }
                 }
 
-                // All 5 routine tabs definition
-                val allRoutineTabs = remember {
-                    listOf("habits", "reminders", "lists", "notes", "project_focus")
-                }
-
-                // Sorted top 5 routine tabs based on clicks (most clicked first)
+                // Routine tabs filtering: initially Habits & Project Focus.
+                // As tiles in Info Center are clicked (count > 0), show up to top 4 tiles sorted by click count.
                 val sortedRoutineTabs = remember(routineClickCounts) {
-                    allRoutineTabs.sortedByDescending { routineClickCounts[it] ?: 0 }
+                    val defaultBase = listOf("habits", "project_focus")
+                    val clickedExtra = listOf("habits", "reminders", "lists", "notes", "project_focus")
+                        .filter { (routineClickCounts[it] ?: 0) > 0 }
+                        .sortedByDescending { routineClickCounts[it] ?: 0 }
+                    
+                    (defaultBase + clickedExtra).distinct().take(4)
                 }
 
                 val coroutineScope = rememberCoroutineScope()
