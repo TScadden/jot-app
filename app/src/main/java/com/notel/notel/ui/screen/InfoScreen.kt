@@ -11,7 +11,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -20,6 +19,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import com.notel.notel.ui.theme.*
 
 data class InfoTile(
@@ -40,10 +41,43 @@ fun InfoScreen(
     onTipsAndTricksClick: () -> Unit = {},
     onFoodClick: () -> Unit = {},
     onCommunityClick: () -> Unit = {},
+    onHabitsClick: () -> Unit = {},
+    onRemindersClick: () -> Unit = {},
+    onListsClick: () -> Unit = {},
+    onNotesClick: () -> Unit = {},
+    onProjectFocusClick: () -> Unit = {},
     onNavigateToMembership: () -> Unit = {},
     isUnlimited: Boolean = false
 ) {
-    val tiles = listOf(
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = androidx.compose.runtime.remember { com.notel.notel.data.preferences.NotelPreferences(context) }
+    val routineClickJson by prefs.routineClickCounts.collectAsState(initial = "{}")
+    val routineClickCounts = androidx.compose.runtime.remember(routineClickJson) {
+        try {
+            kotlinx.serialization.json.Json.decodeFromString<Map<String, Int>>(routineClickJson)
+        } catch (e: Exception) {
+            emptyMap()
+        }
+    }
+
+    val routineTilesMap = remember {
+        mapOf(
+            "habits" to InfoTile("Habits", Icons.Default.CheckCircle, "Daily routine tracking"),
+            "reminders" to InfoTile("Reminders", Icons.Default.Notifications, "Scheduled alerts"),
+            "lists" to InfoTile("Lists", Icons.Default.List, "Checklists & Tasks"),
+            "notes" to InfoTile("Notes", Icons.Default.Edit, "Quick notes & thoughts"),
+            "project_focus" to InfoTile("Project Focus", Icons.Default.Science, "Track experiments")
+        )
+    }
+
+    val sortedRoutineTiles = androidx.compose.runtime.remember(routineClickCounts) {
+        listOf("habits", "reminders", "lists", "notes", "project_focus")
+            .sortedByDescending { routineClickCounts[it] ?: 0 }
+            .take(5)
+            .mapNotNull { routineTilesMap[it] }
+    }
+
+    val baseTiles = listOf(
         InfoTile("Sleep", Icons.Default.Bedtime, "Analysis & Debt"),
         InfoTile("Body Info", Icons.Default.AccessibilityNew, "Impact & Side Effects"),
         InfoTile("Medications", Icons.Default.Medication, "Prescriptions & Doses"),
@@ -53,6 +87,8 @@ fun InfoScreen(
         InfoTile("Food", Icons.Default.Restaurant, "Sensitivity Checker"),
         InfoTile("Community", Icons.Default.People, "Friends & Leaderboard")
     )
+
+    val tiles = sortedRoutineTiles + baseTiles
 
     Scaffold(
         containerColor = NotelBackground,
@@ -83,6 +119,8 @@ fun InfoScreen(
                 modifier = Modifier.padding(bottom = 24.dp)
             )
 
+            val coroutineScope = rememberCoroutineScope()
+
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -90,7 +128,8 @@ fun InfoScreen(
                 contentPadding = PaddingValues(bottom = 100.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(tiles) { tile ->
+                items(tiles.size) { index ->
+                    val tile = tiles[index]
                     InfoTileCard(
                         tile = tile,
                         isUnlimited = isUnlimited,
@@ -102,7 +141,17 @@ fun InfoScreen(
                         onCoachClick = onCoachClick,
                         onTipsAndTricksClick = onTipsAndTricksClick,
                         onFoodClick = onFoodClick,
-                        onCommunityClick = onCommunityClick
+                        onCommunityClick = onCommunityClick,
+                        onHabitsClick = onHabitsClick,
+                        onRemindersClick = onRemindersClick,
+                        onListsClick = onListsClick,
+                        onNotesClick = onNotesClick,
+                        onProjectFocusClick = onProjectFocusClick,
+                        recordClick = { key ->
+                            coroutineScope.launch {
+                                prefs.recordRoutineClick(key)
+                            }
+                        }
                     )
                 }
             }
@@ -122,7 +171,13 @@ fun InfoTileCard(
     onCoachClick: () -> Unit,
     onTipsAndTricksClick: () -> Unit,
     onFoodClick: () -> Unit,
-    onCommunityClick: () -> Unit
+    onCommunityClick: () -> Unit,
+    onHabitsClick: () -> Unit = {},
+    onRemindersClick: () -> Unit = {},
+    onListsClick: () -> Unit = {},
+    onNotesClick: () -> Unit = {},
+    onProjectFocusClick: () -> Unit = {},
+    recordClick: (String) -> Unit = {}
 ) {
     val isAiGated = tile.title == "Health Coach" || tile.title == "Tips and Tricks"
     val isLocked = isAiGated && !isUnlimited
@@ -156,6 +211,11 @@ fun InfoTileCard(
                         "Tips and Tricks" -> onTipsAndTricksClick()
                         "Food" -> onFoodClick()
                         "Community" -> onCommunityClick()
+                        "Habits" -> { recordClick("habits"); onHabitsClick() }
+                        "Reminders" -> { recordClick("reminders"); onRemindersClick() }
+                        "Lists" -> { recordClick("lists"); onListsClick() }
+                        "Notes" -> { recordClick("notes"); onNotesClick() }
+                        "Project Focus" -> { recordClick("project_focus"); onProjectFocusClick() }
                     }
                 }
             }

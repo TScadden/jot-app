@@ -283,6 +283,11 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onFoodClick = { navController.navigate("food") },
                                 onCommunityClick = { navController.navigate("community") },
+                                onHabitsClick = { navController.navigate("habits") },
+                                onRemindersClick = { navController.navigate("reminders") },
+                                onListsClick = { navController.navigate("lists") },
+                                onNotesClick = { navController.navigate("notes") },
+                                onProjectFocusClick = { navController.navigate("project_focus") },
                                 onNavigateToMembership = { navController.navigate("settings?menu=MEMBERSHIP") },
                                 isUnlimited = isUnlimited
                             )
