@@ -64,16 +64,20 @@ class SyncManager @Inject constructor(
             Log.d(tag, "Full sync initiated...")
             log("SYNC_START: Beginning full sync cycle…")
 
-            // 1. Push Profile
-            if (preferences.onboardingComplete.first()) {
-                val profilePushSuccess = pushProfileData()
-                if (!profilePushSuccess) {
-                    log("SYNC_FAIL: Profile — could not push to server. Aborting.")
-                    return@withContext
-                }
+            // 1. Pull cloud data FIRST so restored accounts get their data immediately
+            val pullSuccess = pullAllData()
+            if (!pullSuccess) {
+                log("SYNC_FAIL: Cloud Pull — server unreachable or rejected")
+            } else {
+                log("SYNC_OK: Cloud Pull (logs, categories, profile, medications, insights)")
+            }
+
+            // 2. Push Profile
+            val profilePushSuccess = pushProfileData()
+            if (profilePushSuccess) {
                 log("SYNC_OK: Profile (context, medications, settings, streaks)")
             } else {
-                log("SYNC_SKIP: Profile — onboarding not yet complete")
+                log("SYNC_WARN: Profile — could not push to server.")
             }
 
             // 2. Push Categories
@@ -108,15 +112,7 @@ class SyncManager @Inject constructor(
                 log("SYNC_SKIP: Jot Logs — none found locally")
             }
 
-            // 4. Pull all cloud data
-            val pullSuccess = pullAllData()
-            if (!pullSuccess) {
-                log("SYNC_FAIL: Cloud Pull — server unreachable or rejected")
-                return@withContext
-            }
-            log("SYNC_OK: Cloud Pull (logs, categories, profile, insights)")
-
-            // 5. Documents
+            // 4. Documents
             val docSyncOk = try { syncDocuments(); true } catch (e: Exception) { false }
             if (docSyncOk) log("SYNC_OK: Documents") else log("SYNC_FAIL: Documents")
 
@@ -377,7 +373,7 @@ class SyncManager @Inject constructor(
                     hasVisibleBandAsked = preferences.hasVisibleBandAsked.first(),
                     heartRateHistory = preferences.heartRateHistory.first(),
                     // Newly synced fields
-                    medications = preferences.medications.first().let { if (it == "[]" || it.isBlank()) null else it },
+                    medications = preferences.medications.first().let { if (it.isBlank()) null else it },
                     bodyLoadRemindersEnabled = preferences.bodyLoadRemindersEnabled.first(),
                     dailyCupUpdatesEnabled = preferences.dailyCupUpdatesEnabled.first(),
                     hrSpikeAlertsEnabled = preferences.hrSpikeAlertsEnabled.first(),
