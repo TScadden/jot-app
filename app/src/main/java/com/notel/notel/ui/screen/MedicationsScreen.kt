@@ -47,6 +47,7 @@ fun MedicationsScreen(
     var medName by remember { mutableStateOf("") }
     var medDose by remember { mutableStateOf("") }
     var medFrequency by remember { mutableStateOf("Once daily") }
+    var medStartedDate by remember { mutableStateOf("") }
     var medEndedDate by remember { mutableStateOf("") }
 
     // Animated Top Banner State
@@ -63,10 +64,10 @@ fun MedicationsScreen(
         }
     }
 
-    // Check if all active medications have valid filled-out doses
+    // Took Med requires both a valid dose AND a startedDate
     val allActiveDosesValid = remember(activeMedications) {
         activeMedications.isNotEmpty() && activeMedications.none { 
-            it.dose.isBlank() || it.dose.equals("As prescribed", ignoreCase = true) 
+            it.dose.isBlank() || it.dose.equals("As prescribed", ignoreCase = true) || it.startedDate.isNullOrBlank()
         }
     }
 
@@ -185,7 +186,7 @@ fun MedicationsScreen(
                         if (activeMedications.isNotEmpty() && !allActiveDosesValid) {
                             Spacer(Modifier.height(8.dp))
                             Text(
-                                text = "⚠️ Fill out missing doses below to unlock 'Took Med' logging.",
+                                text = "⚠️ Fill out dose and date started below to unlock 'Took Med' logging.",
                                 color = NotelPrimary,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold
@@ -284,6 +285,8 @@ fun MedicationsScreen(
                             medName = med.name
                             medDose = if (med.dose == "As prescribed") "" else med.dose
                             medFrequency = med.frequency
+                            medStartedDate = med.startedDate ?: ""
+                            medEndedDate = ""
                             showAddDialog = true
                         },
                         onTookMed = { viewModel.takeSingleMedication(med) },
@@ -390,6 +393,23 @@ fun MedicationsScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    OutlinedTextField(
+                        value = medStartedDate,
+                        onValueChange = { medStartedDate = it },
+                        label = { Text("Date Started * (e.g. Apr 14, 2026)") },
+                        placeholder = { Text("Required to log doses", color = NotelPrimary.copy(alpha = 0.6f)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = medStartedDate.isBlank()
+                    )
+                    if (medStartedDate.isBlank()) {
+                        Text(
+                            text = "⚠️ Date Started is required to use 'Took Med'",
+                            color = NotelPrimary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                     if (editingMedication?.isArchived == true) {
                         OutlinedTextField(
                             value = medEndedDate,
@@ -412,14 +432,16 @@ fun MedicationsScreen(
                                     name = medName,
                                     dose = medDose,
                                     frequency = medFrequency,
+                                    startedDate = medStartedDate,
                                     endedDate = if (currentMed.isArchived) medEndedDate else currentMed.endedDate
                                 )
                             } else {
-                                viewModel.addMedication(medName, medDose, medFrequency)
+                                viewModel.addMedication(medName, medDose, medFrequency, medStartedDate)
                             }
                             medName = ""
                             medDose = ""
                             medFrequency = "Once daily"
+                            medStartedDate = ""
                             medEndedDate = ""
                             editingMedication = null
                             showAddDialog = false
@@ -504,7 +526,9 @@ fun MedicationCard(
     onUnarchive: () -> Unit = {},
     onDelete: () -> Unit = {}
 ) {
-    val isDoseValid = medication.dose.isNotBlank() && !medication.dose.equals("As prescribed", ignoreCase = true)
+    val isDoseValid = medication.dose.isNotBlank() &&
+        !medication.dose.equals("As prescribed", ignoreCase = true) &&
+        !medication.startedDate.isNullOrBlank()
 
     Box(
         modifier = Modifier
@@ -584,6 +608,29 @@ fun MedicationCard(
                             style = MaterialTheme.typography.bodySmall,
                             color = if (isDoseValid) NotelTextSecondary else NotelPrimary
                         )
+                        if (!medication.startedDate.isNullOrBlank()) {
+                            Spacer(Modifier.height(3.dp))
+                            Surface(
+                                color = NotelPrimary.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(5.dp)
+                            ) {
+                                Text(
+                                    text = "Started ${medication.startedDate}",
+                                    color = NotelPrimary,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        } else if (!isArchived) {
+                            Spacer(Modifier.height(3.dp))
+                            Text(
+                                text = "⚠️ Set start date to enable logging",
+                                fontSize = 10.sp,
+                                color = NotelPrimary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 }
             }

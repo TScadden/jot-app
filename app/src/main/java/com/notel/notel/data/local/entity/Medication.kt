@@ -14,5 +14,6 @@ data class Medication(
     val timesPerDay: Int = 1,
     val notes: String = "",
     val isArchived: Boolean = false,
+    val startedDate: String? = null,
     val endedDate: String? = null
 )

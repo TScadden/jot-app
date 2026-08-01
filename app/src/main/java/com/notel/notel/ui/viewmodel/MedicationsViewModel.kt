@@ -50,26 +50,28 @@ class MedicationsViewModel @Inject constructor(
         _statusMessage.value = null
     }
 
-    fun addMedication(name: String, dose: String, frequency: String) {
+    fun addMedication(name: String, dose: String, frequency: String, startedDate: String) {
         if (name.isBlank() || dose.isBlank()) return
         viewModelScope.launch {
             val med = Medication(
                 name = name.trim(),
                 dose = dose.trim(),
-                frequency = frequency.trim().ifEmpty { "Once daily" }
+                frequency = frequency.trim().ifEmpty { "Once daily" },
+                startedDate = startedDate.trim().ifEmpty { null }
             )
             medicationDao.insertMedication(med)
             _statusMessage.value = "Added ${med.name} (${med.dose})"
         }
     }
 
-    fun updateMedication(medication: Medication, name: String, dose: String, frequency: String, endedDate: String? = medication.endedDate) {
+    fun updateMedication(medication: Medication, name: String, dose: String, frequency: String, startedDate: String = medication.startedDate ?: "", endedDate: String? = medication.endedDate) {
         if (name.isBlank() || dose.isBlank()) return
         viewModelScope.launch {
             val updated = medication.copy(
                 name = name.trim(),
                 dose = dose.trim(),
                 frequency = frequency.trim().ifEmpty { "Once daily" },
+                startedDate = startedDate.trim().ifEmpty { null },
                 endedDate = endedDate?.trim()?.ifEmpty { null }
             )
             medicationDao.insertMedication(updated)

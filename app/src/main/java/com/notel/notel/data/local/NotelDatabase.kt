@@ -32,7 +32,7 @@ import kotlinx.coroutines.launch
         com.notel.notel.data.local.entity.Medication::class,
         com.notel.notel.data.local.entity.MedicationSideEffectCache::class
     ],
-    version = 21,
+    version = 22,
     exportSchema = false
 )
 abstract class NotelDatabase : RoomDatabase() {
@@ -192,6 +192,16 @@ abstract class NotelDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_21_22 = object : Migration(21, 22) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                try {
+                    db.execSQL("ALTER TABLE medications ADD COLUMN startedDate TEXT")
+                } catch (e: Exception) {
+                    // Column already exists
+                }
+            }
+        }
+
         private val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // Insert new Medication category
@@ -216,7 +226,7 @@ abstract class NotelDatabase : RoomDatabase() {
                     "notel_db"
                 )
                     .fallbackToDestructiveMigration()
-                    .addMigrations(MIGRATION_1_2, MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22)
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)
