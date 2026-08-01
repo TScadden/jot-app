@@ -233,7 +233,18 @@ data class SyncProfileRequest(
     val todaySpikes: Int? = null,
     val todaySleepDebt: Int? = null,
     val hasVisibleBandAsked: Boolean? = null,
-    val heartRateHistory: String? = null
+    val heartRateHistory: String? = null,
+    // Newly synced fields
+    val medications: String? = null,
+    val bodyLoadRemindersEnabled: Boolean? = null,
+    val dailyCupUpdatesEnabled: Boolean? = null,
+    val hrSpikeAlertsEnabled: Boolean? = null,
+    val spikeThreshold: Int? = null,
+    val hrDeltaEnabled: Boolean? = null,
+    val spikeDeltaThreshold: Int? = null,
+    val habitReminderEnabled: Boolean? = null,
+    val projectReminderEnabled: Boolean? = null,
+    val eventReminderEnabled: Boolean? = null
 )
 
 @Serializable
@@ -298,7 +309,18 @@ data class ProfileDtoModel(
     val todaySpikes: Int? = null,
     val todaySleepDebt: Int? = null,
     val hasVisibleBandAsked: Boolean? = null,
-    val heartRateHistory: String? = null
+    val heartRateHistory: String? = null,
+    // Newly synced fields
+    val medications: String? = null,
+    val bodyLoadRemindersEnabled: Boolean? = null,
+    val dailyCupUpdatesEnabled: Boolean? = null,
+    val hrSpikeAlertsEnabled: Boolean? = null,
+    val spikeThreshold: Int? = null,
+    val hrDeltaEnabled: Boolean? = null,
+    val spikeDeltaThreshold: Int? = null,
+    val habitReminderEnabled: Boolean? = null,
+    val projectReminderEnabled: Boolean? = null,
+    val eventReminderEnabled: Boolean? = null
 )
 
 @Serializable

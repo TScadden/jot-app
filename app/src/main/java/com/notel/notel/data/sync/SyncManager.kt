@@ -346,7 +346,18 @@ class SyncManager @Inject constructor(
                     todaySpikes = todaySpikeCount,
                     todaySleepDebt = todaySleepDebtVal,
                     hasVisibleBandAsked = preferences.hasVisibleBandAsked.first(),
-                    heartRateHistory = preferences.heartRateHistory.first()
+                    heartRateHistory = preferences.heartRateHistory.first(),
+                    // Newly synced fields
+                    medications = preferences.medications.first().let { if (it == "[]" || it.isBlank()) null else it },
+                    bodyLoadRemindersEnabled = preferences.bodyLoadRemindersEnabled.first(),
+                    dailyCupUpdatesEnabled = preferences.dailyCupUpdatesEnabled.first(),
+                    hrSpikeAlertsEnabled = preferences.hrSpikeAlertsEnabled.first(),
+                    spikeThreshold = preferences.spikeThreshold.first(),
+                    hrDeltaEnabled = preferences.hrDeltaEnabled.first(),
+                    spikeDeltaThreshold = preferences.spikeDeltaThreshold.first(),
+                    habitReminderEnabled = preferences.habitReminderEnabled.first(),
+                    projectReminderEnabled = preferences.projectReminderEnabled.first(),
+                    eventReminderEnabled = preferences.eventReminderEnabled.first()
                 )
             )
             if (response.isSuccessful) {
@@ -499,6 +510,18 @@ class SyncManager @Inject constructor(
                     profile.autoAiSuggestions?.let { preferences.setAutoAiSuggestions(it) }
                     profile.hasVisibleBandAsked?.let { preferences.setHasVisibleBandAsked(it) }
                     profile.heartRateHistory?.let { preferences.setHeartRateHistory(it) }
+                    // Restore medications
+                    profile.medications?.let { if (it.isNotBlank()) preferences.setMedications(it) }
+                    // Restore notification & alert settings
+                    profile.bodyLoadRemindersEnabled?.let { preferences.setBodyLoadRemindersEnabled(it) }
+                    profile.dailyCupUpdatesEnabled?.let { preferences.setDailyCupUpdatesEnabled(it) }
+                    profile.hrSpikeAlertsEnabled?.let { preferences.setHrSpikeAlertsEnabled(it) }
+                    profile.spikeThreshold?.let { preferences.setSpikeThreshold(it) }
+                    profile.hrDeltaEnabled?.let { preferences.setHrDeltaEnabled(it) }
+                    profile.spikeDeltaThreshold?.let { preferences.setSpikeDeltaThreshold(it) }
+                    profile.habitReminderEnabled?.let { preferences.setHabitReminderEnabled(it) }
+                    profile.projectReminderEnabled?.let { preferences.setProjectReminderEnabled(it) }
+                    profile.eventReminderEnabled?.let { preferences.setEventReminderEnabled(it) }
                     // C. Restore AI Context/Doctor's Notes (with Smarter Merging for counters)
                     profile.eventCounters?.let { serverJson ->
                         if (serverJson.isNotBlank()) {
