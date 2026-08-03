@@ -148,7 +148,7 @@ fun InfoScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "Information Center",
+                        "Tools",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = NotelTextPrimary

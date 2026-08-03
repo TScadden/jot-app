@@ -102,6 +102,15 @@ class SettingsViewModel @Inject constructor(
     val bleAutoConnectEnabled = preferences.bleAutoConnectEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
+    val showNavLabels = preferences.showNavLabels
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    fun setShowNavLabels(show: Boolean) {
+        viewModelScope.launch {
+            preferences.setShowNavLabels(show)
+        }
+    }
+
     fun setBleAutoConnectEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferences.setBleAutoConnectEnabled(enabled)

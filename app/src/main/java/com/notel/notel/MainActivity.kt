@@ -135,6 +135,7 @@ class MainActivity : ComponentActivity() {
                 val navController = rememberNavController()
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route
+                val showNavLabels by notelPreferences.showNavLabels.collectAsState(initial = true)
 
                 // Notification Permission Handling (mandatory for Android 13+)
                 val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -458,6 +459,7 @@ class MainActivity : ComponentActivity() {
                                         icon = Icons.Default.Home,
                                         label = "Home",
                                         isSelected = currentRoute == "body_load",
+                                        showLabel = showNavLabels,
                                         onClick = { 
                                             if (!isReorderingTiles && currentRoute != "body_load") {
                                                 navController.navigate("body_load") {
@@ -470,13 +472,15 @@ class MainActivity : ComponentActivity() {
                                     )
                                     NavIcon(
                                         icon = Icons.Default.Assignment,
-                                        label = "Info",
+                                        label = "Tools",
                                         isSelected = currentRoute == "info",
+                                        showLabel = showNavLabels,
                                         onClick = { if (!isReorderingTiles) navController.navigate("info") }
                                     )
                                     // Center Pencil Button — no label, always purple, slightly larger
                                     Column(
                                         horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center,
                                         modifier = Modifier
                                             .clickable {
                                                 if (!isReorderingTiles && currentRoute != "quick_log") {
@@ -493,25 +497,28 @@ class MainActivity : ComponentActivity() {
                                             imageVector = Icons.Default.Edit,
                                             contentDescription = "New Note",
                                             tint = NotelPrimary,
-                                            modifier = Modifier.size(24.dp).offset(y = 5.dp)
+                                            modifier = Modifier.size(24.dp)
                                         )
-                                        // Invisible text to match NavIcon height so everything stays leveled
-                                        Text(
-                                            text = "",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontSize = 9.sp
-                                        )
+                                        if (showNavLabels) {
+                                            Text(
+                                                text = "",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontSize = 9.sp
+                                            )
+                                        }
                                     }
                                     NavIcon(
                                         icon = Icons.Default.Favorite,
                                         label = "Heart",
                                         isSelected = currentRoute == "fitbit",
+                                        showLabel = showNavLabels,
                                         onClick = { if (!isReorderingTiles) navController.navigate("fitbit") }
                                     )
                                     NavIcon(
                                         icon = Icons.Default.Settings,
                                         label = "Settings",
                                         isSelected = currentRoute == "settings",
+                                        showLabel = showNavLabels,
                                         onClick = { if (!isReorderingTiles) navController.navigate("settings") }
                                     )
                                 }
@@ -575,10 +582,12 @@ fun NavIcon(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     isSelected: Boolean,
+    showLabel: Boolean = true,
     onClick: () -> Unit
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
         modifier = Modifier.clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 4.dp)
     ) {
         Icon(
@@ -587,13 +596,15 @@ fun NavIcon(
             tint = if (isSelected) NotelPrimary else NotelTextSecondary,
             modifier = Modifier.size(20.dp)
         )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            fontSize = 9.sp,
-            color = if (isSelected) NotelPrimary else NotelTextSecondary,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-        )
+        if (showLabel) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                fontSize = 9.sp,
+                color = if (isSelected) NotelPrimary else NotelTextSecondary,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+            )
+        }
     }
 }
 

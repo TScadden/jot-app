@@ -67,7 +67,7 @@ import kotlinx.coroutines.*
 
 
 enum class SettingsMenu {
-    MAIN, USER_PROFILE, CONNECTED_APPS, AI_AND_KNOWLEDGE, EVENT_COUNTERS, MEMBERSHIP, NOTIFICATIONS, SYNC_SETTINGS, JOT_LIVE, DEBUG
+    MAIN, USER_PROFILE, CUSTOMIZE, CONNECTED_APPS, AI_AND_KNOWLEDGE, EVENT_COUNTERS, MEMBERSHIP, NOTIFICATIONS, SYNC_SETTINGS, JOT_LIVE, DEBUG
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -119,6 +119,7 @@ fun SettingsScreen(
     val userTag by viewModel.userTag.collectAsState()
     val shareDataWithFriends by viewModel.shareDataWithFriends.collectAsState()
     val tutorialSeen by viewModel.settingsTutorialSeen.collectAsState()  // null = loading, false = not seen, true = seen
+    val showNavLabels by viewModel.showNavLabels.collectAsState()
 
     val context = LocalContext.current
 
@@ -346,6 +347,7 @@ fun SettingsScreen(
                     val titleText = when (currentMenu) {
                         SettingsMenu.MAIN -> "Settings"
                         SettingsMenu.USER_PROFILE -> "User Profile"
+                        SettingsMenu.CUSTOMIZE -> "Customize"
                         SettingsMenu.CONNECTED_APPS -> "Connected Apps"
                         SettingsMenu.AI_AND_KNOWLEDGE -> "AI & Clinical Advocate"
                         SettingsMenu.EVENT_COUNTERS -> "Event Counters"
@@ -425,7 +427,7 @@ fun SettingsScreen(
                                     )
                                     Spacer(Modifier.width(8.dp))
                                     Text(
-                                        text = "Details",
+                                        text = "Settings",
                                         color = if (currentMenu == SettingsMenu.MAIN) NotelTextPrimary else NotelTextSecondary,
                                         fontWeight = if (currentMenu == SettingsMenu.MAIN) FontWeight.Bold else FontWeight.Medium,
                                         fontSize = 14.sp
@@ -664,7 +666,22 @@ fun SettingsScreen(
                             }
                             HorizontalDivider(color = NotelSurfaceHigh.copy(alpha = 0.6f), thickness = 1.dp)
 
-                            // Row 2: AI & Clinical Advocate
+                            // Row 2: Customize
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { currentMenu = SettingsMenu.CUSTOMIZE }
+                                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Tune, contentDescription = null, tint = NotelTextSecondary, modifier = Modifier.size(22.dp))
+                                Spacer(Modifier.width(16.dp))
+                                Text("Customize", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = NotelTextSecondary.copy(alpha = 0.6f))
+                            }
+                            HorizontalDivider(color = NotelSurfaceHigh.copy(alpha = 0.6f), thickness = 1.dp)
+
+                            // Row 3: AI & Clinical Advocate
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -831,7 +848,37 @@ fun SettingsScreen(
                     Spacer(Modifier.height(40.dp))
                 }
 
+            if (currentMenu == SettingsMenu.CUSTOMIZE) {
+                Text("NAVIGATION & APPEARANCE", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
 
+                GlassyCard(
+                    shape = RoundedCornerShape(16.dp),
+                    color = NotelSurface
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Show Navigation Bar Labels", color = NotelTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Spacer(Modifier.height(2.dp))
+                            Text("Display text under icons in bottom navigation banner", color = NotelTextSecondary, fontSize = 11.sp)
+                        }
+                        Switch(
+                            checked = showNavLabels,
+                            onCheckedChange = { viewModel.setShowNavLabels(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = NotelTextPrimary,
+                                checkedTrackColor = NotelPrimary
+                            )
+                        )
+                    }
+                }
+            }
 
             if (currentMenu == SettingsMenu.EVENT_COUNTERS) {
             Text("EVENT COUNTER", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
