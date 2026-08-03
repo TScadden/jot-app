@@ -743,9 +743,6 @@ class SyncManager @Inject constructor(
                 if (logsFound > 0 && localLogCount == 0) {
                     log("Account Restored: $logsFound logs & $categoriesFound categories!")
                 }
-                
-                // CRITICAL: Recalculate streak now that we have data
-                preferences.updateStreak()
 
                 // CRITICAL: Fetch habits from the server — habits are stored server-side only
                 // (not in local SQLite), so they must be re-fetched on every login/sync.

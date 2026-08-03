@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import kotlinx.coroutines.launch
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
@@ -104,6 +105,22 @@ class MainActivity : ComponentActivity() {
                 }
             }
             
+            val lifecycleOwner = LocalLifecycleOwner.current
+            val coroutineScope = rememberCoroutineScope()
+            DisposableEffect(lifecycleOwner) {
+                val observer = LifecycleEventObserver { _, event ->
+                    if (event == Lifecycle.Event.ON_RESUME) {
+                        coroutineScope.launch {
+                            notelPreferences.updateStreak()
+                        }
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose {
+                    lifecycleOwner.lifecycle.removeObserver(observer)
+                }
+            }
+
             DisposableEffect(activity) {
                 val listener = androidx.core.util.Consumer<android.content.Intent> { intent ->
                     if (intent.data?.scheme == "potscube" && intent.data?.host == "callback") {
