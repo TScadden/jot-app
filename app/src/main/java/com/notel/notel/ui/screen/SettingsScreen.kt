@@ -365,14 +365,6 @@ fun SettingsScreen(
                     }
                 },
                 actions = {
-                    if (currentMenu == SettingsMenu.MAIN) {
-                        IconButton(
-                            onClick = { currentMenu = SettingsMenu.MEMBERSHIP },
-                            modifier = Modifier.onGloballyPositioned { coordWallet = it }
-                        ) {
-                            Icon(Icons.Default.Wallet, "Membership", tint = NotelPrimary)
-                        }
-                    }
                     if (currentMenu == SettingsMenu.JOT_LIVE) {
                         IconButton(
                             onClick = {
@@ -452,7 +444,7 @@ fun SettingsScreen(
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
-                                        imageVector = Icons.Default.Lock,
+                                        imageVector = Icons.Default.Wallet,
                                         contentDescription = null,
                                         tint = if (currentMenu == SettingsMenu.MEMBERSHIP) NotelTextPrimary else NotelTextSecondary,
                                         modifier = Modifier.size(18.dp)
@@ -502,7 +494,7 @@ fun SettingsScreen(
                                 Text(
                                     if (isUnlimited) "ADMIN" else "INACTIVE",
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                    color = if (isUnlimited) Color(0xFF4CAF50) else NotelTextSecondary,
+                                    color = if (if (isUnlimited) true else false) Color(0xFF4CAF50) else NotelTextSecondary,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Black
                                 )
@@ -732,20 +724,22 @@ fun SettingsScreen(
                                 Text("Sync Settings", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 15.sp, modifier = Modifier.weight(1f))
                                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = NotelTextSecondary.copy(alpha = 0.6f))
                             }
-                            HorizontalDivider(color = NotelSurfaceHigh.copy(alpha = 0.6f), thickness = 1.dp)
 
-                            // Row 6: Tabs Live Beta
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { currentMenu = SettingsMenu.JOT_LIVE }
-                                    .padding(horizontal = 16.dp, vertical = 16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.Bluetooth, contentDescription = null, tint = NotelTextSecondary, modifier = Modifier.size(22.dp))
-                                Spacer(Modifier.width(16.dp))
-                                Text("Tabs Live Beta", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = NotelTextSecondary.copy(alpha = 0.6f))
+                            // Row 6: Tabs Live Beta (Admins / Unlimited only)
+                            if (isUnlimited) {
+                                HorizontalDivider(color = NotelSurfaceHigh.copy(alpha = 0.6f), thickness = 1.dp)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { currentMenu = SettingsMenu.JOT_LIVE }
+                                        .padding(horizontal = 16.dp, vertical = 16.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Bluetooth, contentDescription = null, tint = NotelTextSecondary, modifier = Modifier.size(22.dp))
+                                    Spacer(Modifier.width(16.dp))
+                                    Text("Tabs Live Beta", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = NotelTextSecondary.copy(alpha = 0.6f))
+                                }
                             }
                         }
                     }
@@ -810,16 +804,10 @@ fun SettingsScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "Tabs",
+                            text = "Tabs v1.0",
                             color = NotelTextSecondary,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 13.sp
-                        )
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            text = "android physical version 1.42.458 build 458 prod",
-                            color = NotelTextSecondary.copy(alpha = 0.6f),
-                            fontSize = 11.sp
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
