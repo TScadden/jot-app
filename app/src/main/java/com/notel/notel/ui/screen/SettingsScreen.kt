@@ -1746,49 +1746,55 @@ fun SettingsScreen(
                     }
 
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Max),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         GlassyButton(
                             onClick = { viewModel.generateProfessionalReport(last30DaysOnly = false) },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
                             enabled = !isGenerating && hasLogs,
                             containerColor = NotelSurfaceHigh
                         ) {
                             if (isGenerating) {
-                                GlassySpinner(size = 20.dp)
+                                GlassySpinner(size = 18.dp)
                             } else {
                                 Icon(
                                     Icons.Default.PictureAsPdf,
                                     null,
-                                    tint = if (hasLogs) NotelPrimary else NotelTextSecondary.copy(alpha = 0.4f)
+                                    tint = if (hasLogs) NotelPrimary else NotelTextSecondary.copy(alpha = 0.4f),
+                                    modifier = Modifier.size(18.dp)
                                 )
-                                Spacer(Modifier.width(8.dp))
+                                Spacer(Modifier.width(6.dp))
                                 Text(
                                     "Full Audit",
-                                    color = if (hasLogs) NotelTextPrimary else NotelTextSecondary.copy(alpha = 0.4f)
+                                    color = if (hasLogs) NotelTextPrimary else NotelTextSecondary.copy(alpha = 0.4f),
+                                    fontSize = 12.sp,
+                                    maxLines = 1
                                 )
                             }
                         }
 
                         GlassyButton(
                             onClick = { viewModel.generateProfessionalReport(last30DaysOnly = true) },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
                             enabled = !isGenerating && hasLogs,
                             containerColor = NotelSurfaceHigh
                         ) {
                             if (isGenerating) {
-                                GlassySpinner(size = 20.dp)
+                                GlassySpinner(size = 18.dp)
                             } else {
                                 Icon(
                                     Icons.Default.PictureAsPdf,
                                     null,
-                                    tint = if (hasLogs) NotelPrimary else NotelTextSecondary.copy(alpha = 0.4f)
+                                    tint = if (hasLogs) NotelPrimary else NotelTextSecondary.copy(alpha = 0.4f),
+                                    modifier = Modifier.size(18.dp)
                                 )
-                                Spacer(Modifier.width(8.dp))
+                                Spacer(Modifier.width(6.dp))
                                 Text(
                                     "This Month",
-                                    color = if (hasLogs) NotelTextPrimary else NotelTextSecondary.copy(alpha = 0.4f)
+                                    color = if (hasLogs) NotelTextPrimary else NotelTextSecondary.copy(alpha = 0.4f),
+                                    fontSize = 12.sp,
+                                    maxLines = 1
                                 )
                             }
                         }
