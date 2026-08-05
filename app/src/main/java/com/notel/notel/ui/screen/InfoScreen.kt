@@ -156,18 +156,30 @@ fun InfoScreen(
                 },
                 actions = {
                     if (isEditMode) {
-                        Button(
+                        Surface(
                             onClick = {
                                 isEditMode = false
                                 saveTileOrder(tileList)
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
                             shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                            color = NotelPrimary
                         ) {
-                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
-                            Spacer(Modifier.width(6.dp))
-                            Text("Done", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 13.sp)
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                Spacer(Modifier.width(6.dp))
+                                Text("Done", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 13.sp)
+                            }
+                        }
+                    } else {
+                        IconButton(onClick = { isEditMode = true }) {
+                            Icon(
+                                imageVector = Icons.Default.SwapVert,
+                                contentDescription = "Reorder tiles",
+                                tint = NotelTextSecondary
+                            )
                         }
                     }
                 },
@@ -181,18 +193,37 @@ fun InfoScreen(
                 .padding(padding)
                 .padding(horizontal = 16.dp)
         ) {
-            Text(
-                text = if (isEditMode) "Hold & drag any tile to reorder. Click 'Done' to save." else "Explore your health resources and deep insights.",
-                color = if (isEditMode) NotelPrimary else NotelTextSecondary,
-                fontSize = 13.sp,
-                fontWeight = if (isEditMode) FontWeight.Bold else FontWeight.Normal,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = if (isEditMode) NotelPrimary.copy(alpha = 0.12f) else NotelSurfaceHigh.copy(alpha = 0.4f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = if (isEditMode) Icons.Default.OpenWith else Icons.Default.TouchApp,
+                        contentDescription = null,
+                        tint = if (isEditMode) NotelPrimary else NotelTextSecondary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = if (isEditMode) "Drag tiles to reorder. Tap 'Done' to save." else "Explore your health resources. Long-press to reorder.",
+                        color = if (isEditMode) NotelPrimary else NotelTextSecondary,
+                        fontSize = 12.sp,
+                        fontWeight = if (isEditMode) FontWeight.Bold else FontWeight.Medium
+                    )
+                }
+            }
 
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
                 contentPadding = PaddingValues(bottom = 100.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
@@ -200,7 +231,7 @@ fun InfoScreen(
                     val isBeingDragged = draggedIndex == index
 
                     val scale by animateFloatAsState(
-                        targetValue = if (isBeingDragged) 1.1f else 1.0f,
+                        targetValue = if (isBeingDragged) 1.05f else 1.0f,
                         label = "dragScale"
                     )
 
@@ -217,7 +248,7 @@ fun InfoScreen(
                             .graphicsLayer {
                                 scaleX = scale
                                 scaleY = scale
-                                shadowElevation = if (isBeingDragged) 24f else 0f
+                                shadowElevation = if (isBeingDragged) 16f else 0f
                                 if (isBeingDragged) {
                                     translationX = dragOffset.x
                                     translationY = dragOffset.y
@@ -241,7 +272,6 @@ fun InfoScreen(
                                             if (startCenter != null) {
                                                 val currentTouchPos = startCenter + dragOffset
                                                 
-                                                // Find closest grid cell center
                                                 var closestIndex = fromIdx
                                                 var minDistance = Float.MAX_VALUE
 
@@ -330,22 +360,25 @@ fun InfoTileCard(
 ) {
     val isAiGated = tile.id == "health_coach" || tile.id == "tips_and_tricks"
     val isLocked = isAiGated && !isUnlimited
+    val cardShape = RoundedCornerShape(20.dp)
+
+    val borderColor = when {
+        isBeingDragged -> NotelPrimary
+        isEditMode -> NotelPrimary.copy(alpha = 0.45f)
+        else -> NotelPrimary.copy(alpha = 0.15f)
+    }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
+            .clip(cardShape)
+            .background(NotelSurface)
             .border(
-                width = if (isBeingDragged) 3.dp else if (isEditMode) 2.dp else 3.dp,
-                color = if (isBeingDragged) NotelPrimary else if (isEditMode) NotelPrimary.copy(alpha = 0.6f) else NotelPrimary.copy(alpha = 0.12f),
-                shape = RoundedCornerShape(26.dp)
+                width = if (isBeingDragged) 2.dp else 1.dp,
+                color = borderColor,
+                shape = cardShape
             )
-            .border(
-                width = 6.dp,
-                color = NotelPrimary.copy(alpha = 0.04f),
-                shape = RoundedCornerShape(28.dp)
-            )
-            .clip(RoundedCornerShape(24.dp))
             .clickable(enabled = !isEditMode) {
                 if (isLocked) {
                     onNavigateToMembership()
@@ -367,13 +400,7 @@ fun InfoTileCard(
                     }
                 }
             }
-            .liquidGlass(
-                shape = RoundedCornerShape(24.dp),
-                color = NotelSurface,
-                alpha = if (isLocked) 0.35f else 0.8f,
-                showBorder = true
-            )
-            .padding(16.dp)
+            .padding(14.dp)
     ) {
         Column(
             modifier = Modifier
@@ -382,45 +409,73 @@ fun InfoTileCard(
             verticalArrangement = Arrangement.SpaceBetween,
             horizontalAlignment = Alignment.Start
         ) {
-            Icon(
-                imageVector = tile.icon,
-                contentDescription = null,
-                tint = NotelPrimary,
-                modifier = Modifier.size(32.dp)
-            )
+            // Icon Badge
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(NotelPrimary.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = tile.icon,
+                    contentDescription = null,
+                    tint = NotelPrimary,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
 
+            // Title & Description
             Column {
                 Text(
                     text = tile.title,
                     color = NotelTextPrimary,
-                    fontSize = 17.sp,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
-                    lineHeight = 20.sp
+                    lineHeight = 19.sp
                 )
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(3.dp))
                 Text(
                     text = tile.description,
                     color = NotelTextSecondary,
                     fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Normal,
+                    lineHeight = 14.sp,
+                    maxLines = 2
                 )
             }
         }
 
+        // Top right badges
         if (isLocked) {
             Box(
-                modifier = Modifier
-                    .fillMaxSize(),
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.TopEnd
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = NotelSurfaceHigh.copy(alpha = 0.85f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = "Premium Locked Feature",
+                        tint = NotelPrimary,
+                        modifier = Modifier
+                            .size(22.dp)
+                            .padding(4.dp)
+                    )
+                }
+            }
+        } else if (isEditMode) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.TopEnd
             ) {
                 Icon(
-                    imageVector = Icons.Default.Lock,
-                    contentDescription = "Premium Locked Feature",
-                    tint = NotelPrimary,
-                    modifier = Modifier
-                        .size(24.dp)
-                        .background(NotelSurfaceHigh.copy(alpha = 0.8f), RoundedCornerShape(8.dp))
-                        .padding(4.dp)
+                    imageVector = Icons.Default.DragHandle,
+                    contentDescription = "Drag Handle",
+                    tint = NotelPrimary.copy(alpha = 0.6f),
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }
