@@ -852,58 +852,30 @@ fun SettingsScreen(
                 Text("NAVIGATION & APPEARANCE", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(8.dp))
 
-                val showDailyScore by viewModel.showDailyScore.collectAsState()
-
                 GlassyCard(
                     shape = RoundedCornerShape(16.dp),
                     color = NotelSurface
                 ) {
-                    Column {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Show Navigation Bar Labels", color = NotelTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                                Spacer(Modifier.height(2.dp))
-                                Text("Display text under icons in bottom navigation banner", color = NotelTextSecondary, fontSize = 11.sp)
-                            }
-                            Switch(
-                                checked = showNavLabels,
-                                onCheckedChange = { viewModel.setShowNavLabels(it) },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = NotelTextPrimary,
-                                    checkedTrackColor = NotelPrimary
-                                )
-                            )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Show Navigation Bar Labels", color = NotelTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Spacer(Modifier.height(2.dp))
+                            Text("Display text under icons in bottom navigation banner", color = NotelTextSecondary, fontSize = 11.sp)
                         }
-
-                        HorizontalDivider(color = NotelSurfaceHigh.copy(alpha = 0.4f), thickness = 0.5.dp)
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Show Daily Score", color = NotelTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                                Spacer(Modifier.height(2.dp))
-                                Text("Display the daily score circles and details on the home screen", color = NotelTextSecondary, fontSize = 11.sp)
-                            }
-                            Switch(
-                                checked = showDailyScore,
-                                onCheckedChange = { viewModel.setShowDailyScore(it) },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = NotelTextPrimary,
-                                    checkedTrackColor = NotelPrimary
-                                )
+                        Switch(
+                            checked = showNavLabels,
+                            onCheckedChange = { viewModel.setShowNavLabels(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = NotelTextPrimary,
+                                checkedTrackColor = NotelPrimary
                             )
-                        }
+                        )
                     }
                 }
             }

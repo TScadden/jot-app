@@ -46,7 +46,7 @@ data class BodyLoadState(
     val currentStreak: Int = 0,
     val bestStreak: Int = 0,
     val cupTheorySeen: Boolean = true,
-    val showDailyScore: Boolean = true,
+    val dailyCupUpdatesEnabled: Boolean = false,
     val error: String? = null
 )
 
@@ -90,7 +90,7 @@ class BodyLoadViewModel @Inject constructor(
             preferences.cupTheorySeen.collect { seen -> _uiState.update { it.copy(cupTheorySeen = seen) } }
         }
         viewModelScope.launch {
-            preferences.showDailyScore.collect { show -> _uiState.update { it.copy(showDailyScore = show) } }
+            preferences.dailyCupUpdatesEnabled.collect { enabled -> _uiState.update { it.copy(dailyCupUpdatesEnabled = enabled) } }
         }
         viewModelScope.launch {
             // Re-update metrics whenever selectedDate, HR history, calorie history, sleep history, or AI insights changes

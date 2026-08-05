@@ -129,7 +129,7 @@ fun BodyLoadCard(
             .fillMaxWidth()
             .padding(vertical = 16.dp),
     ) {
-        if (state.showDailyScore) {
+        if (state.dailyCupUpdatesEnabled) {
             // ── Top Accent Divider ──────────────────────────────────────────
             Box(
                 modifier = Modifier
