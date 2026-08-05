@@ -56,8 +56,8 @@ class ReportGenerator @Inject constructor(
      * Generates a professional health report as a PDF.
      * Consolidates logs and asks Gemini for a natural language summary first.
      */
-    suspend fun generateReport(allEntries: List<LogEntry>, categories: List<com.notel.notel.data.local.entity.Category>): File? {
-        val summaryResult = logRepository.getMedicalReportSummary(categories)
+    suspend fun generateReport(allEntries: List<LogEntry>, categories: List<com.notel.notel.data.local.entity.Category>, last30DaysOnly: Boolean = false): File? {
+        val summaryResult = logRepository.getMedicalReportSummary(categories, last30DaysOnly = last30DaysOnly)
         val summary = summaryResult.getOrDefault("Clinical summary unavailable. Analysis based on raw logs.")
         val catMap = categories.associate { it.id to it.name }
 
@@ -165,7 +165,7 @@ class ReportGenerator @Inject constructor(
                 try { Json { ignoreUnknownKeys = true }.decodeFromString<List<AiInsight>>(insightsStr) } catch(e: Exception) { emptyList() }
             } else emptyList()
 
-            val biometricInsights = insights
+            var biometricInsights = insights
                 .filter { it.type == "Biometrics" }
                 .sortedWith { a, b ->
                     val getVersion = { id: String ->
@@ -174,6 +174,11 @@ class ReportGenerator @Inject constructor(
                     }
                     getVersion(a.id).compareTo(getVersion(b.id))
                 }
+
+            if (last30DaysOnly) {
+                val cutoff = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
+                biometricInsights = biometricInsights.filter { it.timestamp >= cutoff }
+            }
 
             val sdfDate = SimpleDateFormat("yyyy-MM-dd", Locale.US)
             val sdfOut = SimpleDateFormat("MMM d", Locale.US)

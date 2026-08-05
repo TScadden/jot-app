@@ -659,8 +659,8 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun generateProfessionalReport() {
-        logRepository.generateProfessionalReportAsync(categories.value, reportGenerator)
+    fun generateProfessionalReport(last30DaysOnly: Boolean = false) {
+        logRepository.generateProfessionalReportAsync(categories.value, reportGenerator, last30DaysOnly = last30DaysOnly)
     }
 
     fun generateWeeklyRecap() {

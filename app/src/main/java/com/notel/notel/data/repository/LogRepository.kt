@@ -107,13 +107,18 @@ class LogRepository @Inject constructor(
     }
 
     @OptIn(DelicateCoroutinesApi::class)
-    fun generateProfessionalReportAsync(allCategories: List<Category>, reportGenerator: com.notel.notel.util.ReportGenerator) {
+    fun generateProfessionalReportAsync(allCategories: List<Category>, reportGenerator: com.notel.notel.util.ReportGenerator, last30DaysOnly: Boolean = false) {
         if (_isGeneratingReport.value) return
         _isGeneratingReport.value = true
         GlobalScope.launch {
             try {
-                val entries = logEntryDao.getAllEntries().first()
-                val file = reportGenerator.generateReport(entries, allCategories)
+                val entries = if (last30DaysOnly) {
+                    val cutoff = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
+                    logEntryDao.getRecentEntriesInRange(cutoff, System.currentTimeMillis())
+                } else {
+                    logEntryDao.getRecentEntriesAll(limit = 2000)
+                }
+                val file = reportGenerator.generateReport(entries, allCategories, last30DaysOnly = last30DaysOnly)
                 _generatedReport.value = file
                 
                 file?.let {
@@ -716,8 +721,13 @@ class LogRepository @Inject constructor(
         return result
     }
 
-    suspend fun getMedicalReportSummary(allCategories: List<Category>): Result<String> {
-        val recent = logEntryDao.getRecentEntriesAll(limit = 300)
+    suspend fun getMedicalReportSummary(allCategories: List<Category>, last30DaysOnly: Boolean = false): Result<String> {
+        val recent = if (last30DaysOnly) {
+            val cutoff = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
+            logEntryDao.getRecentEntriesInRange(cutoff, System.currentTimeMillis())
+        } else {
+            logEntryDao.getRecentEntriesAll(limit = 2000)
+        }
         
         // Calculate the exact date range of the entries provided to the AI
         val dateSpanText = if (recent.isNotEmpty()) {
@@ -735,7 +745,7 @@ class LogRepository @Inject constructor(
         val hasHealthConnect = healthConnectManager.hasAllPermissions()
         val fitbitToken = preferences.fitbitToken.first()
         
-        val fitbitData = getFitbitDataSummary()
+        val fitbitData = getFitbitDataSummary(last30DaysOnly = last30DaysOnly)
         // Habits are UI-only for personal tracking; excluded from the PDF report.
         val habitData = ""
         
@@ -1178,19 +1188,20 @@ class LogRepository @Inject constructor(
         }
     }
 
-    private suspend fun getFitbitDataSummary(targetDate: String? = null): String {
+    private suspend fun getFitbitDataSummary(targetDate: String? = null, last30DaysOnly: Boolean = false): String {
         val hasHealthConnect = healthConnectManager.hasAllPermissions()
         val fitbitToken = preferences.fitbitToken.first()
         if (!hasHealthConnect && fitbitToken.isBlank()) return ""
 
         val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        val daysLimit = if (last30DaysOnly) 31 else 180
 
         // ── Spike-aware heart rate (POTS/MCAS critical) ───────────────────────
         val spikesJson = preferences.historicalHrSpikes.first()
         val spikeHistory: List<DailyHeartRateSummary> = if (spikesJson.isNotBlank()) {
             try { json.decodeFromString(spikesJson) } catch (e: Exception) { emptyList() }
         } else if (hasHealthConnect) {
-            val fresh = healthConnectManager.readHistoricalHeartRateWithSpikes(30)
+            val fresh = healthConnectManager.readHistoricalHeartRateWithSpikes(daysLimit)
             if (fresh.isNotEmpty()) {
                 preferences.setHistoricalHrSpikes(kotlinx.serialization.json.Json.encodeToString(fresh))
             }
@@ -1239,10 +1250,11 @@ class LogRepository @Inject constructor(
 
         // ── SECTION 1: Orthostatic spike report (most important for POTS) ────
         if (spikeHistory.isNotEmpty()) {
-            summary.append("ORTHOSTATIC HEART RATE SPIKE REPORT (Last 30 Days):\n")
+            val spikeTitle = if (last30DaysOnly) "ORTHOSTATIC HEART RATE SPIKE REPORT (Last 30 Days)" else "ORTHOSTATIC HEART RATE SPIKE REPORT (Full History - Last 180 Days)"
+            summary.append("$spikeTitle:\n")
             summary.append("NOTE: Heart rate spikes ≥30 bpm above resting baseline are flagged as orthostatic events.\n")
             summary.append("Format: Date | Avg | Max | Resting Baseline (p10) | Events >100bpm | Largest Spike | Details\n")
-            spikeHistory.take(15).forEach { d ->
+            spikeHistory.take(if (last30DaysOnly) 15 else 180).forEach { d ->
                 summary.append("- ${formatReportDate(d.date)}: Average: ${d.avg} bpm | Max: ${d.max} bpm | Baseline: ${d.baseline} bpm")
                 summary.append(" | Active Spike: ${d.baseline} bpm TO ${d.max} bpm (Delta jump of +${d.maxDelta}) | Count: ${d.spikeCount}")
                 if (d.eventsList.isNotEmpty()) {
@@ -1257,26 +1269,27 @@ class LogRepository @Inject constructor(
 
         // ── SECTION 2: Longer-range daily data (sleep, calories, avg HR, HRV) ─────
         val dailyMap = mutableMapOf<String, DailyBiometricData>()
-        val cutOffDate = java.time.LocalDate.now().minusDays(31).toString()
-        heartHist.filter { it.first >= cutOffDate }.take(31).forEach { (date, value) ->
+        val cutOffDate = java.time.LocalDate.now().minusDays(daysLimit.toLong()).toString()
+        heartHist.filter { it.first >= cutOffDate }.take(daysLimit).forEach { (date, value) ->
             val current = dailyMap[date] ?: DailyBiometricData()
             dailyMap[date] = current.copy(hr = value)
         }
-        sleepHist.filter { it.first >= cutOffDate }.take(31).forEach { (date, value) ->
+        sleepHist.filter { it.first >= cutOffDate }.take(daysLimit).forEach { (date, value) ->
             val current = dailyMap[date] ?: DailyBiometricData()
             dailyMap[date] = current.copy(sleep = value)
         }
-        calHist.filter { it.first >= cutOffDate }.take(31).forEach { (date, value) ->
+        calHist.filter { it.first >= cutOffDate }.take(daysLimit).forEach { (date, value) ->
             val current = dailyMap[date] ?: DailyBiometricData()
             dailyMap[date] = current.copy(cal = value)
         }
-        hrvHist.filter { it.first >= cutOffDate }.take(31).forEach { (date, value) ->
+        hrvHist.filter { it.first >= cutOffDate }.take(daysLimit).forEach { (date, value) ->
             val current = dailyMap[date] ?: DailyBiometricData()
             dailyMap[date] = current.copy(hrv = value.toInt())
         }
 
         val sortedDates = dailyMap.keys.sortedDescending()
-        summary.append("DETAILED DAILY HISTORY (Last 30 Days):\n")
+        val historyTitle = if (last30DaysOnly) "DETAILED DAILY HISTORY (Last 30 Days)" else "DETAILED DAILY HISTORY (Full History - Last 180 Days)"
+        summary.append("$historyTitle:\n")
         summary.append("Format: Date | Avg HR | Sleep | Calories | HRV\n")
         sortedDates.forEach { date ->
             val data = dailyMap[date]!!
@@ -1305,7 +1318,8 @@ class LogRepository @Inject constructor(
             val avgSpikes = spikeHistory.map { it.spikeCount }.average()
             val avgDelta = spikeHistory.map { it.maxDelta }.average().toInt()
             val worstDay = spikeHistory.maxByOrNull { it.maxDelta }
-            summary.append("\nORTHOSTATIC SPIKE SUMMARY (Last 30 Days):\n")
+            val statsTitle = if (last30DaysOnly) "ORTHOSTATIC SPIKE SUMMARY (Last 30 Days)" else "ORTHOSTATIC SPIKE SUMMARY (Full History - Last 180 Days)"
+            summary.append("\n$statsTitle:\n")
             summary.append("- Avg daily events (>100 bpm): ${"%,.1f".format(avgSpikes)}\n")
             summary.append("- Avg max jump: +${avgDelta} bpm\n")
             if (worstDay != null) {

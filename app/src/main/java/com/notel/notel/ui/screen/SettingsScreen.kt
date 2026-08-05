@@ -1745,27 +1745,52 @@ fun SettingsScreen(
                         }
                     }
 
-                    Spacer(Modifier.height(16.dp))
-
-                    GlassyButton(
-                        onClick = { viewModel.generateProfessionalReport() },
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = !isGenerating && hasLogs,
-                        containerColor = NotelSurfaceHigh
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        if (isGenerating) {
-                            GlassySpinner(size = 20.dp)
-                        } else {
-                            Icon(
-                                Icons.Default.PictureAsPdf,
-                                null,
-                                tint = if (hasLogs) NotelPrimary else NotelTextSecondary.copy(alpha = 0.4f)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                "Export Audit (PDF)",
-                                color = if (hasLogs) NotelTextPrimary else NotelTextSecondary.copy(alpha = 0.4f)
-                            )
+                        GlassyButton(
+                            onClick = { viewModel.generateProfessionalReport(last30DaysOnly = false) },
+                            modifier = Modifier.weight(1f),
+                            enabled = !isGenerating && hasLogs,
+                            containerColor = NotelSurfaceHigh
+                        ) {
+                            if (isGenerating) {
+                                GlassySpinner(size = 20.dp)
+                            } else {
+                                Icon(
+                                    Icons.Default.PictureAsPdf,
+                                    null,
+                                    tint = if (hasLogs) NotelPrimary else NotelTextSecondary.copy(alpha = 0.4f)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "Full Audit",
+                                    color = if (hasLogs) NotelTextPrimary else NotelTextSecondary.copy(alpha = 0.4f)
+                                )
+                            }
+                        }
+
+                        GlassyButton(
+                            onClick = { viewModel.generateProfessionalReport(last30DaysOnly = true) },
+                            modifier = Modifier.weight(1f),
+                            enabled = !isGenerating && hasLogs,
+                            containerColor = NotelSurfaceHigh
+                        ) {
+                            if (isGenerating) {
+                                GlassySpinner(size = 20.dp)
+                            } else {
+                                Icon(
+                                    Icons.Default.PictureAsPdf,
+                                    null,
+                                    tint = if (hasLogs) NotelPrimary else NotelTextSecondary.copy(alpha = 0.4f)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "This Month",
+                                    color = if (hasLogs) NotelTextPrimary else NotelTextSecondary.copy(alpha = 0.4f)
+                                )
+                            }
                         }
                     }
 
