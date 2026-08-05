@@ -315,6 +315,11 @@ fun BodyLoadScreen(
                             }
                         }
                         else -> {
+                            val activeCatColor = remember(quickLogState.selectedCategory) {
+                                quickLogState.selectedCategory?.let { cat ->
+                                    try { Color(android.graphics.Color.parseColor(cat.colorHex)) } catch (e: Exception) { NotelPrimary }
+                                } ?: NotelPrimary
+                            }
                             Column {
                                 FlowRow(
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
@@ -324,16 +329,18 @@ fun BodyLoadScreen(
                                 ) {
                                     quickLogState.chips.forEach { chip ->
                                         val isSelected = chip in quickLogState.selectedChips
+                                        val chipBg = if (isSelected) activeCatColor else NotelSurface
+                                        val chipBorder = if (isSelected) activeCatColor else activeCatColor.copy(alpha = 0.25f)
                                         Surface(
                                             onClick = { quickLogViewModel.toggleChip(chip) },
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .animateContentSize()
                                                 .clip(RoundedCornerShape(14.dp))
-                                                .background(if (isSelected) NotelPrimary.copy(alpha = 0.8f) else NotelSurfaceHigh.copy(alpha = 0.2f))
+                                                .background(chipBg)
                                                 .border(
                                                     width = 1.dp,
-                                                    color = if (isSelected) Color.Transparent else Color.White.copy(alpha = 0.05f),
+                                                    color = chipBorder,
                                                     shape = RoundedCornerShape(14.dp)
                                                 ),
                                             color = Color.Transparent
@@ -1187,29 +1194,46 @@ fun WeatherMetricBox(
 
 @Composable
 private fun CategoryChipSmall(category: Category, isSelected: Boolean, onClick: () -> Unit) {
+    val catColor = remember(category) {
+        try { Color(android.graphics.Color.parseColor(category.colorHex)) }
+        catch (e: Exception) { NotelPrimary }
+    }
+
+    val chipBg = if (isSelected) catColor else catColor.copy(alpha = 0.16f)
+    val chipBorder = if (isSelected) catColor else catColor.copy(alpha = 0.50f)
+    val textColor = if (isSelected) Color.White else catColor
+
     Surface(
         onClick = onClick,
         modifier = Modifier
             .animateContentSize()
             .clip(RoundedCornerShape(12.dp))
-            .background(if (isSelected) NotelPrimary else NotelSurfaceHigh.copy(alpha = 0.2f))
+            .background(chipBg)
             .border(
                 width = 1.dp,
-                color = if (isSelected) Color.Transparent else Color.White.copy(alpha = 0.05f),
+                color = chipBorder,
                 shape = RoundedCornerShape(12.dp)
             ),
         color = Color.Transparent
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
+            Box(
+                modifier = Modifier
+                    .size(7.dp)
+                    .clip(CircleShape)
+                    .background(if (isSelected) Color.White else catColor)
+            )
+            Spacer(Modifier.width(6.dp))
             Text(
-                category.name,
-                color = if (isSelected) Color.White else NotelTextSecondary,
-                fontSize = 12.sp,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                category.name.uppercase(),
+                color = textColor,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.5.sp
             )
         }
     }
