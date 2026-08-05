@@ -651,42 +651,28 @@ fun CategoryChip(category: Category, isSelected: Boolean, onClick: () -> Unit, o
         try { Color(android.graphics.Color.parseColor(category.colorHex)) }
         catch (e: Exception) { NotelPrimary }
     }
-    
-    val chipBg = if (isSelected) catColor else catColor.copy(alpha = 0.16f)
-    val chipBorder = if (isSelected) catColor else catColor.copy(alpha = 0.50f)
-    val textColor = if (isSelected) Color.White else catColor
-
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(chipBg)
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (isSelected) catColor else NotelSurface)
             .border(
                 width = 1.dp,
-                color = chipBorder,
-                shape = RoundedCornerShape(12.dp)
+                color = if (isSelected) catColor else catColor.copy(alpha = 0.35f),
+                shape = RoundedCornerShape(10.dp)
             )
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick
             )
-            .padding(horizontal = 14.dp, vertical = 9.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(if (isSelected) Color.White else catColor)
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = category.name.uppercase(),
-                color = textColor,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.5.sp
-            )
-        }
+        Text(
+            text = category.name.uppercase(),
+            color = if (isSelected) Color(0xFF0A0A0E) else NotelTextSecondary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.8.sp
+        )
     }
 }
 
