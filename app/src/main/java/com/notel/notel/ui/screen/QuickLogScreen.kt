@@ -77,14 +77,21 @@ fun QuickLogScreen(
         containerColor = NotelBackground,
         topBar = {
             TopAppBar(
-                title = { },
+                title = {
+                    Text(
+                        "Home",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = NotelTextPrimary
+                    )
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = NotelBackground),
                 actions = {
                     IconButton(onClick = onNavigateToHistory) {
                         Icon(
                             imageVector = Icons.Default.History,
                             contentDescription = "History",
-                            tint = NotelTextPrimary
+                            tint = NotelTextSecondary
                         )
                     }
                 }
@@ -101,7 +108,7 @@ fun QuickLogScreen(
             )
         ) {
             item {
-                // ── Manual Text Field Moved to Top ─────────────────────────────
+                // ── Manual Text Field ─────────────────────────────
                 val context = androidx.compose.ui.platform.LocalContext.current
                 OutlinedTextField(
                     value = state.manualText,
@@ -109,7 +116,7 @@ fun QuickLogScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
-                    placeholder = { Text("Add a custom note…", color = NotelTextSecondary) },
+                    placeholder = { Text("Add a custom note…", color = NotelTextSecondary, fontSize = 14.sp) },
                     trailingIcon = {
                         if (state.manualText.isNotBlank() || state.selectedChips.isNotEmpty()) {
                             IconButton(onClick = viewModel::saveEntry) {
@@ -127,10 +134,10 @@ fun QuickLogScreen(
                             }
                         }
                     },
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = NotelPrimary,
-                        unfocusedBorderColor = NotelPrimary.copy(alpha = 0.25f),
+                        unfocusedBorderColor = NotelPrimary.copy(alpha = 0.18f),
                         focusedTextColor = NotelTextPrimary,
                         unfocusedTextColor = NotelTextPrimary,
                         cursorColor = NotelPrimary,
@@ -141,13 +148,14 @@ fun QuickLogScreen(
 
                 // ── All Categories ──────────────────────────────────────────────
                 Text(
-                    "All Categories",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = NotelTextSecondary,
-                    modifier = Modifier.padding(start = 16.dp, top = 8.dp)
+                    "Categories",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = NotelTextPrimary,
+                    modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp)
                 )
                 LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(state.categories) { cat ->
@@ -161,12 +169,12 @@ fun QuickLogScreen(
                     item {
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(NotelSurface)
                                 .border(
                                     width = 1.dp,
-                                    color = NotelPrimary.copy(alpha = 0.35f),
-                                    shape = RoundedCornerShape(10.dp)
+                                    color = NotelPrimary.copy(alpha = 0.25f),
+                                    shape = RoundedCornerShape(12.dp)
                                 )
                                 .clickable { viewModel.showAddCategoryDialog() }
                                 .padding(horizontal = 16.dp, vertical = 10.dp)
@@ -179,7 +187,7 @@ fun QuickLogScreen(
                                     color = NotelTextSecondary,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
-                                    letterSpacing = 0.6.sp
+                                    letterSpacing = 0.5.sp
                                 )
                             }
                         }
@@ -318,7 +326,9 @@ fun QuickLogScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp)
-                        .liquidGlass(shape = RoundedCornerShape(24.dp), color = NotelBackground, alpha = 0.9f)
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(NotelSurface)
+                        .border(1.dp, NotelPrimary.copy(alpha = 0.18f), RoundedCornerShape(22.dp))
                         .padding(24.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -385,9 +395,6 @@ fun QuickLogScreen(
             )
         }
 
-        // Free Trial Bonus Dialog removed as users must sign up manually
-
-
         // Compare Documents Dialog
         if (state.showComparisonDialog) {
             Dialog(onDismissRequest = { viewModel.dismissComparison() }) {
@@ -395,7 +402,9 @@ fun QuickLogScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp)
-                        .liquidGlass(shape = RoundedCornerShape(24.dp), color = NotelBackground, alpha = 0.9f)
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(NotelSurface)
+                        .border(1.dp, NotelPrimary.copy(alpha = 0.18f), RoundedCornerShape(22.dp))
                         .padding(24.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -469,7 +478,9 @@ fun QuickLogScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp)
-                        .liquidGlass(shape = RoundedCornerShape(24.dp), color = NotelBackground, alpha = 0.9f)
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(NotelSurface)
+                        .border(1.dp, NotelPrimary.copy(alpha = 0.18f), RoundedCornerShape(22.dp))
                         .padding(24.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -634,12 +645,12 @@ fun CategoryChip(category: Category, isSelected: Boolean, onClick: () -> Unit, o
     }
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(if (isSelected) catColor else NotelSurface)
             .border(
                 width = 1.dp,
-                color = if (isSelected) catColor else catColor.copy(alpha = 0.35f),
-                shape = RoundedCornerShape(10.dp)
+                color = if (isSelected) catColor else catColor.copy(alpha = 0.22f),
+                shape = RoundedCornerShape(12.dp)
             )
             .combinedClickable(
                 onClick = onClick,
@@ -652,7 +663,7 @@ fun CategoryChip(category: Category, isSelected: Boolean, onClick: () -> Unit, o
             color = if (isSelected) Color.White else NotelTextSecondary,
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
-            letterSpacing = 0.6.sp
+            letterSpacing = 0.5.sp
         )
     }
 }
@@ -675,15 +686,15 @@ private fun ChipGrid(chips: List<String>, selected: List<String>, onToggle: (Str
                     modifier = Modifier
                         .weight(1f)
                         .animateContentSize()
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .background(if (isSelected) NotelPrimary else NotelSurface)
                         .border(
                             width = 1.dp,
-                            color = if (isSelected) NotelPrimary else NotelPrimary.copy(alpha = 0.20f),
-                            shape = RoundedCornerShape(14.dp)
+                            color = if (isSelected) NotelPrimary else NotelPrimary.copy(alpha = 0.18f),
+                            shape = RoundedCornerShape(16.dp)
                         )
                         .clickable { onToggle(chip) }
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                        .padding(horizontal = 14.dp, vertical = 12.dp)
                 ) {
                     Text(
                         text = chip,
@@ -755,67 +766,79 @@ fun ProductivityDashboard(
     val loggedInCurrentCycle = sortedDates.count { !it.isBefore(gridStartDate) && it.isBefore(gridStartDate.plusDays(90)) }
     val progressPercent = ((loggedInCurrentCycle.toFloat() / 90f) * 100).toInt().coerceAtMost(100)
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .liquidGlass(shape = RoundedCornerShape(20.dp), color = NotelBackground, alpha = 0.8f)
+            .clip(RoundedCornerShape(20.dp))
+            .background(NotelSurface)
+            .border(1.dp, NotelPrimary.copy(alpha = 0.15f), RoundedCornerShape(20.dp))
             .padding(16.dp)
             .animateContentSize()
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onExpandedChange(!isExpanded) }
-        ) {
-            Icon(Icons.Default.Insights, contentDescription = null, tint = NotelPrimary, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Productivity Agent", style = MaterialTheme.typography.titleMedium, color = NotelTextPrimary, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.weight(1f))
-            Icon(
-                if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                contentDescription = null,
-                tint = NotelTextSecondary
-            )
-        }
-        
-        if (isExpanded) {
-            Spacer(Modifier.height(16.dp))
-            
-            // Stat Cards
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                StatCard("Days", "$daysCompleted", Modifier.weight(1f))
-                StatCard("Streak", "${if (hasAnyLogs) streak.coerceAtLeast(1) else 0} \uD83D\uDD25", Modifier.weight(1f))
-                StatCard("Phase", "$currentPhase", Modifier.weight(1f))
-                StatCard("Progress", "$progressPercent%", Modifier.weight(1f))
+        Column {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onExpandedChange(!isExpanded) }
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(NotelPrimary.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Insights, contentDescription = null, tint = NotelPrimary, modifier = Modifier.size(18.dp))
+                }
+                Spacer(Modifier.width(10.dp))
+                Text("Productivity Agent", style = MaterialTheme.typography.titleMedium, color = NotelTextPrimary, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.weight(1f))
+                Icon(
+                    if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = null,
+                    tint = NotelTextSecondary
+                )
             }
-
-            Spacer(Modifier.height(16.dp))
-            Text("90-Day Journey", style = MaterialTheme.typography.labelMedium, color = NotelTextSecondary)
-            Spacer(Modifier.height(8.dp))
             
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                items(1) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        for (row in 0 until 3) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                for (col in 0 until 30) {
-                                    val dayIndex = row * 30 + col
-                                    val cellDate = gridStartDate.plusDays(dayIndex.toLong())
-                                    val isDone = sortedDates.contains(cellDate)
-                                    val isToday = cellDate == today
-                                    val color = when {
-                                        isDone -> Color(0xFF4CAF50) // Green
-                                        isToday -> Color(0xFF2196F3) // Blue
-                                        else -> NotelSurfaceHigh // Dark
+            if (isExpanded) {
+                Spacer(Modifier.height(16.dp))
+                
+                // Stat Cards
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    StatCard("Days", "$daysCompleted", Modifier.weight(1f))
+                    StatCard("Streak", "${if (hasAnyLogs) streak.coerceAtLeast(1) else 0} 🔥", Modifier.weight(1f))
+                    StatCard("Phase", "$currentPhase", Modifier.weight(1f))
+                    StatCard("Progress", "$progressPercent%", Modifier.weight(1f))
+                }
+
+                Spacer(Modifier.height(16.dp))
+                Text("90-Day Journey", style = MaterialTheme.typography.labelMedium, color = NotelTextSecondary)
+                Spacer(Modifier.height(8.dp))
+                
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    items(1) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            for (row in 0 until 3) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    for (col in 0 until 30) {
+                                        val dayIndex = row * 30 + col
+                                        val cellDate = gridStartDate.plusDays(dayIndex.toLong())
+                                        val isDone = sortedDates.contains(cellDate)
+                                        val isToday = cellDate == today
+                                        val color = when {
+                                            isDone -> Color(0xFF4CAF50)
+                                            isToday -> Color(0xFF2196F3)
+                                            else -> NotelSurfaceHigh
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .size(20.dp)
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(color)
+                                        )
                                     }
-                                    Box(
-                                        modifier = Modifier
-                                            .size(20.dp)
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(color)
-                                    )
                                 }
                             }
                         }
@@ -830,7 +853,8 @@ fun ProductivityDashboard(
 fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
-            .background(NotelSurfaceHigh, RoundedCornerShape(12.dp))
+            .background(NotelSurfaceHigh.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+            .border(1.dp, NotelPrimary.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
             .padding(8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -848,23 +872,31 @@ private fun SmartActionCard(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(18.dp))
             .background(NotelSurface)
-            .border(1.dp, NotelPrimary.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+            .border(1.dp, NotelPrimary.copy(alpha = 0.22f), RoundedCornerShape(18.dp))
     ) {
         // Left accent strip
         Box(
             modifier = Modifier
                 .align(Alignment.CenterStart)
-                .width(3.dp)
+                .width(4.dp)
                 .fillMaxHeight()
-                .background(NotelPrimary.copy(alpha = 0.8f), RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp))
+                .background(NotelPrimary, RoundedCornerShape(topStart = 18.dp, bottomStart = 18.dp))
         )
         Column(modifier = Modifier.padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Lightbulb, contentDescription = null, tint = NotelPrimary, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(NotelPrimary.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Lightbulb, contentDescription = null, tint = NotelPrimary, modifier = Modifier.size(18.dp))
+                }
+                Spacer(Modifier.width(10.dp))
                 Text(action.title, style = MaterialTheme.typography.titleMedium, color = NotelPrimary, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
                 IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
