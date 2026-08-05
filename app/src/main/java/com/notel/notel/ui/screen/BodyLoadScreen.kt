@@ -105,6 +105,10 @@ fun BodyLoadScreen(
     var showTheorySheet by remember { mutableStateOf(false) }
     var showWeatherSheet by remember { mutableStateOf(false) }
     var showUvInfo by remember { mutableStateOf(false) }
+    var showTempInfo by remember { mutableStateOf(false) }
+    var showHumidityInfo by remember { mutableStateOf(false) }
+    var showWindInfo by remember { mutableStateOf(false) }
+    var showPressureInfo by remember { mutableStateOf(false) }
     val todayStr = java.time.LocalDate.now().toString()
     val isToday = state.selectedDate == todayStr
 
@@ -849,6 +853,7 @@ fun BodyLoadScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .clickable { showTempInfo = true }
                                     .padding(vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -856,14 +861,23 @@ fun BodyLoadScreen(
                                 Spacer(Modifier.width(16.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text("Temperature", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 14.sp)
-                                    Text("Current local temperature", color = NotelTextSecondary, fontSize = 11.sp)
+                                    Text("Tap to see optimal temperature ranges", color = NotelTextSecondary, fontSize = 11.sp)
                                 }
-                                Text(
-                                    text = "${weather.temp}°${weather.unit}",
-                                    color = NotelTextPrimary,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "${weather.temp}°${weather.unit}",
+                                        color = NotelTextPrimary,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                        contentDescription = null,
+                                        tint = NotelTextSecondary.copy(alpha = 0.6f),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
                             }
                             HorizontalDivider(color = NotelSurfaceHigh.copy(alpha = 0.4f), thickness = 0.5.dp)
 
@@ -871,6 +885,7 @@ fun BodyLoadScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .clickable { showHumidityInfo = true }
                                     .padding(vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -878,14 +893,23 @@ fun BodyLoadScreen(
                                 Spacer(Modifier.width(16.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text("Humidity", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 14.sp)
-                                    Text("Relative atmospheric humidity", color = NotelTextSecondary, fontSize = 11.sp)
+                                    Text("Tap to see comfort levels & hydration guidance", color = NotelTextSecondary, fontSize = 11.sp)
                                 }
-                                Text(
-                                    text = "${weather.humidity}%",
-                                    color = NotelTextPrimary,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "${weather.humidity}%",
+                                        color = NotelTextPrimary,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                        contentDescription = null,
+                                        tint = NotelTextSecondary.copy(alpha = 0.6f),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
                             }
                             HorizontalDivider(color = NotelSurfaceHigh.copy(alpha = 0.4f), thickness = 0.5.dp)
 
@@ -893,6 +917,7 @@ fun BodyLoadScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .clickable { showWindInfo = true }
                                     .padding(vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -900,21 +925,30 @@ fun BodyLoadScreen(
                                 Spacer(Modifier.width(16.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text("Wind Velocity", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 14.sp)
-                                    Text("Current local wind speed", color = NotelTextSecondary, fontSize = 11.sp)
+                                    Text("Tap to see wind chill & training impact", color = NotelTextSecondary, fontSize = 11.sp)
                                 }
-                                Row(verticalAlignment = Alignment.Bottom) {
-                                    Text(
-                                        text = String.format("%.1f", weather.windSpeed),
-                                        color = NotelTextPrimary,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Spacer(Modifier.width(2.dp))
-                                    Text(
-                                        text = if (weather.unit == "F") "mph" else "km/h",
-                                        color = NotelTextSecondary,
-                                        fontSize = 11.sp,
-                                        modifier = Modifier.padding(bottom = 1.dp)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Row(verticalAlignment = Alignment.Bottom) {
+                                        Text(
+                                            text = String.format("%.1f", weather.windSpeed),
+                                            color = NotelTextPrimary,
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Spacer(Modifier.width(2.dp))
+                                        Text(
+                                            text = if (weather.unit == "F") "mph" else "km/h",
+                                            color = NotelTextSecondary,
+                                            fontSize = 11.sp,
+                                            modifier = Modifier.padding(bottom = 1.dp)
+                                        )
+                                    }
+                                    Spacer(Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                        contentDescription = null,
+                                        tint = NotelTextSecondary.copy(alpha = 0.6f),
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
                             }
@@ -978,6 +1012,7 @@ fun BodyLoadScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .clickable { showPressureInfo = true }
                                     .padding(vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -985,21 +1020,30 @@ fun BodyLoadScreen(
                                 Spacer(Modifier.width(16.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text("Barometric Pressure", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 14.sp)
-                                    Text("Current surface pressure", color = NotelTextSecondary, fontSize = 11.sp)
+                                    Text("Tap to see joint pain & migraine triggers", color = NotelTextSecondary, fontSize = 11.sp)
                                 }
-                                Row(verticalAlignment = Alignment.Bottom) {
-                                    Text(
-                                        text = String.format("%.0f", weather.pressure),
-                                        color = NotelTextPrimary,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Spacer(Modifier.width(2.dp))
-                                    Text(
-                                        text = "hPa",
-                                        color = NotelTextSecondary,
-                                        fontSize = 11.sp,
-                                        modifier = Modifier.padding(bottom = 1.dp)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Row(verticalAlignment = Alignment.Bottom) {
+                                        Text(
+                                            text = String.format("%.0f", weather.pressure),
+                                            color = NotelTextPrimary,
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Spacer(Modifier.width(2.dp))
+                                        Text(
+                                            text = "hPa",
+                                            color = NotelTextSecondary,
+                                            fontSize = 11.sp,
+                                            modifier = Modifier.padding(bottom = 1.dp)
+                                        )
+                                    }
+                                    Spacer(Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                        contentDescription = null,
+                                        tint = NotelTextSecondary.copy(alpha = 0.6f),
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
                             }
@@ -1248,6 +1292,376 @@ fun BodyLoadScreen(
                     description = "Stay indoors during peak hours (10am-4pm). If outside, seek shade, wear full protective UPF clothing, SPF 50+ mineral sunscreen, and wrap-around sunglasses. Unprotected skin burns in minutes.",
                     color = Color(0xFFCE93D8)
                 )
+            }
+        }
+    }
+
+    val tempSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    if (showTempInfo) {
+        ModalBottomSheet(
+            onDismissRequest = { showTempInfo = false },
+            sheetState = tempSheetState,
+            containerColor = NotelBackground,
+            dragHandle = { BottomSheetDefaults.DragHandle(color = Color.White.copy(alpha = 0.2f)) }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 64.dp)
+            ) {
+                Text(
+                    text = "TEMPERATURE",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White,
+                    letterSpacing = 2.sp
+                )
+                
+                Spacer(Modifier.height(24.dp))
+                
+                Surface(
+                    color = NotelSurface,
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Ambient Temp & Sleep Recovery", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            text = "Ambient temperature strongly influences body load recovery. Sleep studies show that cooler rooms support deeper, higher-quality sleep.",
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("❄️", fontSize = 18.sp)
+                            Spacer(Modifier.width(12.dp))
+                            Text("Optimal Sleep Range", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text("60°F - 67°F\n(15°C - 19°C)", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, textAlign = TextAlign.End)
+                        }
+                        HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Color.White.copy(alpha = 0.05f))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("🏠", fontSize = 18.sp)
+                            Spacer(Modifier.width(12.dp))
+                            Text("Comfortable Room Range", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text("68°F - 72°F\n(20°C - 22°C)", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, textAlign = TextAlign.End)
+                        }
+                    }
+                }
+                
+                Spacer(Modifier.height(24.dp))
+                
+                Text("Why Temperature Matters", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = "Extreme temperatures place additional strain on the cardiovascular system. In hot weather, the heart beats faster to pump blood to the skin for cooling. In freezing weather, blood vessels constrict to conserve core heat, raising blood pressure.\n\nWorking out in temperatures above 80°F (27°C) or below 32°F (0°C) elevates overall physiological strain, requiring slower pacing and adequate recovery times.",
+                    color = Color.White.copy(alpha = 0.6f),
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
+                
+                Spacer(Modifier.height(24.dp))
+                
+                Surface(
+                    color = Color(0xFF1A1C1E),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.2f))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("🏃", fontSize = 18.sp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Workout Performance Guidance", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Avoid strenuous outdoor exertion during midday heat waves. Ensure you hydrate with both water and electrolytes to compensate for sweat loss and preserve heart rate variability (HRV).",
+                            color = Color.White.copy(alpha = 0.5f),
+                            fontSize = 12.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    val humiditySheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    if (showHumidityInfo) {
+        ModalBottomSheet(
+            onDismissRequest = { showHumidityInfo = false },
+            sheetState = humiditySheetState,
+            containerColor = NotelBackground,
+            dragHandle = { BottomSheetDefaults.DragHandle(color = Color.White.copy(alpha = 0.2f)) }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 64.dp)
+            ) {
+                Text(
+                    text = "HUMIDITY",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White,
+                    letterSpacing = 2.sp
+                )
+                
+                Spacer(Modifier.height(24.dp))
+                
+                Surface(
+                    color = NotelSurface,
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Comfort and Health Ranges", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            text = "Relative humidity indicates the moisture levels in the air. Both very high and very low humidity can cause bodily strain.",
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("🟢", fontSize = 12.sp)
+                            Spacer(Modifier.width(12.dp))
+                            Text("Optimal Humidity Zone", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text("30% - 50%", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
+                        }
+                        HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Color.White.copy(alpha = 0.05f))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("🔴", fontSize = 12.sp)
+                            Spacer(Modifier.width(12.dp))
+                            Text("High Humidity (Sticky/Hot)", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text("> 60%", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
+                        }
+                        HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Color.White.copy(alpha = 0.05f))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("🔵", fontSize = 12.sp)
+                            Spacer(Modifier.width(12.dp))
+                            Text("Low Humidity (Dry/Irritating)", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text("< 30%", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
+                        }
+                    }
+                }
+                
+                Spacer(Modifier.height(24.dp))
+                
+                Text("How Humidity Affects Your Body", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = "High humidity prevents sweat from evaporating efficiently. Because sweat cannot evaporate, your body cannot cool itself down, causing core temperature and heart rate to rise quickly.\n\nLow humidity (below 30%) dries out the mucous membranes in your nose and throat, compromising your immune system's first line of defense and making you more susceptible to viruses.",
+                    color = Color.White.copy(alpha = 0.6f),
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
+                
+                Spacer(Modifier.height(24.dp))
+                
+                Surface(
+                    color = Color(0xFF1A1C1E),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Color(0xFFFFB74D).copy(alpha = 0.2f))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("💡", fontSize = 18.sp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Hydration & Air Quality Tips", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "In dry weather, consider using a humidifier in your bedroom. In high humidity, drink extra water, wear loose moisture-wicking clothing, and limit high-intensity workouts to ventilated indoor spaces.",
+                            color = Color.White.copy(alpha = 0.5f),
+                            fontSize = 12.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    val windSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    if (showWindInfo) {
+        ModalBottomSheet(
+            onDismissRequest = { showWindInfo = false },
+            sheetState = windSheetState,
+            containerColor = NotelBackground,
+            dragHandle = { BottomSheetDefaults.DragHandle(color = Color.White.copy(alpha = 0.2f)) }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 64.dp)
+            ) {
+                Text(
+                    text = "WIND VELOCITY",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White,
+                    letterSpacing = 2.sp
+                )
+                
+                Spacer(Modifier.height(24.dp))
+                
+                Surface(
+                    color = NotelSurface,
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Wind Thresholds & Exertion Impact", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            text = "Wind velocity affects physical drag during outdoor workouts and convective heat loss (wind chill factor).",
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("🍃", fontSize = 18.sp)
+                            Spacer(Modifier.width(12.dp))
+                            Text("Calm & Pleasant Range", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text("< 12 mph\n(< 19 km/h)", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, textAlign = TextAlign.End)
+                        }
+                        HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Color.White.copy(alpha = 0.05f))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("💨", fontSize = 18.sp)
+                            Spacer(Modifier.width(12.dp))
+                            Text("Resistant & Aerobic Strain", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text("12 - 20 mph\n(19 - 32 km/h)", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, textAlign = TextAlign.End)
+                        }
+                        HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Color.White.copy(alpha = 0.05f))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("🌪️", fontSize = 18.sp)
+                            Spacer(Modifier.width(12.dp))
+                            Text("High Wind Alert", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text("> 20 mph\n(> 32 km/h)", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, textAlign = TextAlign.End)
+                        }
+                    }
+                }
+                
+                Spacer(Modifier.height(24.dp))
+                
+                Text("Wind Chill & Drag Forces", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = "Convective heat loss increases with wind speed. In cold temperatures, strong winds strip away the thin boundary layer of warm air surrounding your skin, causing your body temperature to drop rapidly.\n\nFor cyclists and runners, headwind dramatically increases aerobic resistance. Sustained wind speeds above 15 mph can increase energy cost/heart rate by up to 20-30% to maintain the same pace, elevating training load.",
+                    color = Color.White.copy(alpha = 0.6f),
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
+            }
+        }
+    }
+
+    val pressureSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    if (showPressureInfo) {
+        ModalBottomSheet(
+            onDismissRequest = { showPressureInfo = false },
+            sheetState = pressureSheetState,
+            containerColor = NotelBackground,
+            dragHandle = { BottomSheetDefaults.DragHandle(color = Color.White.copy(alpha = 0.2f)) }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 64.dp)
+            ) {
+                Text(
+                    text = "BAROMETRIC PRESSURE",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White,
+                    letterSpacing = 2.sp
+                )
+                
+                Spacer(Modifier.height(24.dp))
+                
+                Surface(
+                    color = NotelSurface,
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Barometric Reference Ranges", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            text = "Barometric pressure measures the weight of the atmosphere. Rapid swings can trigger physical symptoms.",
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("☀️", fontSize = 18.sp)
+                            Spacer(Modifier.width(12.dp))
+                            Text("High/Stable Pressure", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text("> 1020 hPa", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
+                        }
+                        HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Color.White.copy(alpha = 0.05f))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("⛅", fontSize = 18.sp)
+                            Spacer(Modifier.width(12.dp))
+                            Text("Standard Sea Level", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text("1013 hPa", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
+                        }
+                        HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Color.White.copy(alpha = 0.05f))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("⛈️", fontSize = 18.sp)
+                            Spacer(Modifier.width(12.dp))
+                            Text("Low/Stormy Pressure", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text("< 1009 hPa", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
+                        }
+                    }
+                }
+                
+                Spacer(Modifier.height(24.dp))
+                
+                Text("How Atmospheric Pressure Impacts You", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = "A sudden drop in barometric pressure (often preceding stormy weather) allows joint tissues, tendons, and fluids to expand slightly. This expansion can cause aches in arthritic joints or old injuries.\n\nFurthermore, barometric drops affect blood flow and oxygen tension in tissues. The pressure difference between the atmosphere and your sinuses can cause sinus pressure, vascular headaches, and migraines.",
+                    color = Color.White.copy(alpha = 0.6f),
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
+                
+                Spacer(Modifier.height(24.dp))
+                
+                Surface(
+                    color = Color(0xFF1A1C1E),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Color(0xFFEF9A9A).copy(alpha = 0.2f))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("⚠️", fontSize = 18.sp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Vulnerability Warning", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "If you notice a rapid drop in barometric pressure, stay hydrated, keep joint temperatures warm, and anticipate potential headaches by scheduling recovery-focused, low-strain activities.",
+                            color = Color.White.copy(alpha = 0.5f),
+                            fontSize = 12.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+                }
             }
         }
     }
