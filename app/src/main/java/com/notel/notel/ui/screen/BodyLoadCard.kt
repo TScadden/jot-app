@@ -129,113 +129,115 @@ fun BodyLoadCard(
             .fillMaxWidth()
             .padding(vertical = 16.dp),
     ) {
-        // ── Top Accent Divider ──────────────────────────────────────────
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(2.dp)
-                .padding(horizontal = 24.dp)
-                .background(NotelSurfaceHigh.copy(alpha = 0.2f), androidx.compose.foundation.shape.RoundedCornerShape(percent = 50))
-        )
-        Spacer(Modifier.height(16.dp))
+        if (state.showDailyScore) {
+            // ── Top Accent Divider ──────────────────────────────────────────
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .padding(horizontal = 24.dp)
+                    .background(NotelSurfaceHigh.copy(alpha = 0.2f), androidx.compose.foundation.shape.RoundedCornerShape(percent = 50))
+            )
+            Spacer(Modifier.height(16.dp))
 
-        // ── Top Row: Days of the Week ──────────────────────────────────
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically, // Changed to center for better icon alignment
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val infiniteTransition = rememberInfiniteTransition()
-                val pulseColor by if (!state.cupTheorySeen) {
-                    infiniteTransition.animateColor(
-                        initialValue = NotelTextPrimary,
-                        targetValue = Color(0xFFB388FF), // Light Violet/Purple pulse
-                        animationSpec = infiniteRepeatable(
-                            animation = tween(1200, easing = FastOutSlowInEasing),
-                            repeatMode = RepeatMode.Reverse
+            // ── Top Row: Days of the Week ──────────────────────────────────
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically, // Changed to center for better icon alignment
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val infiniteTransition = rememberInfiniteTransition()
+                    val pulseColor by if (!state.cupTheorySeen) {
+                        infiniteTransition.animateColor(
+                            initialValue = NotelTextPrimary,
+                            targetValue = Color(0xFFB388FF), // Light Violet/Purple pulse
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(1200, easing = FastOutSlowInEasing),
+                                repeatMode = RepeatMode.Reverse
+                            )
                         )
-                    )
-                } else {
-                    remember { mutableStateOf(NotelTextPrimary) }
-                }
+                    } else {
+                        remember { mutableStateOf(NotelTextPrimary) }
+                    }
 
-                Text(
-                    "Daily",
-                    fontWeight = FontWeight.Black,
-                    fontSize = 14.sp,
-                    color = pulseColor,
-                    modifier = Modifier.clickable { onShowTheory() }
-                )
-            }
-            
-            val isTodayActual = state.selectedDate == java.time.LocalDate.now().toString()
-            if (!isTodayActual) {
-                IconButton(
-                    onClick = onBackToToday,
-                    modifier = Modifier.size(32.dp) // Made it bigger
-                ) {
-                    Icon(
-                        Icons.Default.DateRange,
-                        contentDescription = "Back to Today",
-                        tint = NotelPrimary,
-                        modifier = Modifier.size(20.dp) // Icon itself is bigger
+                    Text(
+                        "Daily",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 14.sp,
+                        color = pulseColor,
+                        modifier = Modifier.clickable { onShowTheory() }
                     )
                 }
-            }
-        }
-        
-        Spacer(Modifier.height(2.dp))
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 2.dp), // Tightened vertical padding
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            // Generate last 7 days
-            val last7Days = (0..6).map { 
-                val d = java.time.LocalDate.now().minusDays(it.toLong())
-                d.toString() to d.format(java.time.format.DateTimeFormatter.ofPattern("EEE"))
-            }.reversed()
-
-            last7Days.forEach { (dateStr, dayLabel) ->
-                val historicalScore = state.historyScores.find { it.date == dateStr }?.score ?: 0
-                val isSelected = state.selectedDate == dateStr
-                val isTodayActual = state.selectedDate == java.time.LocalDate.now().toString()
                 
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .width(38.dp)
-                        .combinedClickable(
-                            onClick = { onDaySelected(dateStr) },
-                            onDoubleClick = { onDayDoubleClicked(dateStr) }
-                        )
-                ) {
-                    Text(dayLabel, color = NotelTextSecondary, fontSize = 12.sp, modifier = Modifier.padding(bottom = 6.dp))
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .border(
-                                width = if (isSelected) 2.dp else 1.dp,
-                                brush = if (isSelected) Brush.linearGradient(listOf(NotelPrimary, NotelAccent)) else SolidColor(NotelSurfaceHigh.copy(alpha = 0.5f)),
-                                shape = CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
-                     ) {
-                        Text(
-                            text = if (historicalScore > 0) "$historicalScore" else "-",
-                            color = if (isSelected) NotelTextPrimary else NotelTextSecondary,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            fontSize = 13.sp
+                val isTodayActual = state.selectedDate == java.time.LocalDate.now().toString()
+                if (!isTodayActual) {
+                    IconButton(
+                        onClick = onBackToToday,
+                        modifier = Modifier.size(32.dp) // Made it bigger
+                    ) {
+                        Icon(
+                            Icons.Default.DateRange,
+                            contentDescription = "Back to Today",
+                            tint = NotelPrimary,
+                            modifier = Modifier.size(20.dp) // Icon itself is bigger
                         )
                     }
                 }
             }
-        }
+            
+            Spacer(Modifier.height(2.dp))
 
-        Spacer(Modifier.height(16.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 2.dp), // Tightened vertical padding
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Generate last 7 days
+                val last7Days = (0..6).map { 
+                    val d = java.time.LocalDate.now().minusDays(it.toLong())
+                    d.toString() to d.format(java.time.format.DateTimeFormatter.ofPattern("EEE"))
+                }.reversed()
+
+                last7Days.forEach { (dateStr, dayLabel) ->
+                    val historicalScore = state.historyScores.find { it.date == dateStr }?.score ?: 0
+                    val isSelected = state.selectedDate == dateStr
+                    val isTodayActual = state.selectedDate == java.time.LocalDate.now().toString()
+                    
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .width(38.dp)
+                            .combinedClickable(
+                                onClick = { onDaySelected(dateStr) },
+                                onDoubleClick = { onDayDoubleClicked(dateStr) }
+                            )
+                    ) {
+                        Text(dayLabel, color = NotelTextSecondary, fontSize = 12.sp, modifier = Modifier.padding(bottom = 6.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .border(
+                                    width = if (isSelected) 2.dp else 1.dp,
+                                    brush = if (isSelected) Brush.linearGradient(listOf(NotelPrimary, NotelAccent)) else SolidColor(NotelSurfaceHigh.copy(alpha = 0.5f)),
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                         ) {
+                            Text(
+                                text = if (historicalScore > 0) "$historicalScore" else "-",
+                                color = if (isSelected) NotelTextPrimary else NotelTextSecondary,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+        }
 
         Box(modifier = Modifier.fillMaxWidth()) {
             Surface(

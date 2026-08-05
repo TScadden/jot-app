@@ -12,6 +12,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.ui.graphics.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -816,93 +817,202 @@ fun BodyLoadScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 32.dp)
+                    .padding(horizontal = 24.dp)
                     .padding(bottom = 64.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 val weather = state.weather
                 if (weather != null) {
-                    Text(weather.locationName, color = NotelTextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Black)
-                    Text(weather.condition, color = NotelTextSecondary, fontSize = 14.sp)
+                    Text(
+                        text = weather.locationName.uppercase(),
+                        color = NotelTextPrimary,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.5.sp
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = weather.condition,
+                        color = NotelTextSecondary,
+                        fontSize = 13.sp
+                    )
                     
-                    Spacer(Modifier.height(32.dp))
+                    Spacer(Modifier.height(24.dp))
                     
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        maxItemsInEachRow = 2,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    GlassyCard(
+                        shape = RoundedCornerShape(20.dp),
+                        color = NotelSurfaceHigh.copy(alpha = 0.3f),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        // Temp Box
-                        WeatherMetricBox(
-                            icon = weather.icon,
-                            value = "${weather.temp}°${weather.unit}",
-                            label = "Temperature",
-                            modifier = Modifier.weight(1f)
-                        )
-                        
-                        // Humidity Box
-                        WeatherMetricBox(
-                            icon = "💧",
-                            value = "${weather.humidity}%",
-                            label = "Humidity",
-                            modifier = Modifier.weight(1f)
-                        )
-                        
-                        // Wind Box
-                        WeatherMetricBox(
-                            icon = "💨",
-                            value = String.format("%.1f", weather.windSpeed),
-                            subLabel = if (weather.unit == "F") "mph" else "km/h",
-                            label = "Wind Velocity",
-                            modifier = Modifier.weight(1f)
-                        )
-                        
-                        // UV Box (Clickable)
-                        Surface(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(20.dp))
-                                .clickable { showUvInfo = true },
-                            color = NotelSurfaceHigh.copy(alpha = 0.1f),
-                            shape = RoundedCornerShape(20.dp),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                        Column {
+                            // Row 1: Temperature
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("☀️", fontSize = 24.sp, color = if (weather.uvIndex > 5) NotelAccent else NotelTextPrimary)
-                                Spacer(Modifier.height(4.dp))
+                                Text(weather.icon, fontSize = 24.sp)
+                                Spacer(Modifier.width(16.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Temperature", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                                    Text("Current local temperature", color = NotelTextSecondary, fontSize = 11.sp)
+                                }
                                 Text(
-                                    text = String.format("%.1f", weather.uvIndex),
-                                    color = if (weather.uvIndex > 5) NotelAccent else NotelTextPrimary,
-                                    fontSize = 18.sp,
+                                    text = "${weather.temp}°${weather.unit}",
+                                    color = NotelTextPrimary,
+                                    fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold
                                 )
-                                Text("UV Index", color = NotelTextSecondary, fontSize = 11.sp)
-                                if (weather.uvIndex > 5) {
-                                    Text("High Risk", color = NotelAccent, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                            }
+                            HorizontalDivider(color = NotelSurfaceHigh.copy(alpha = 0.4f), thickness = 0.5.dp)
+
+                            // Row 2: Humidity
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("💧", fontSize = 24.sp)
+                                Spacer(Modifier.width(16.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Humidity", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                                    Text("Relative atmospheric humidity", color = NotelTextSecondary, fontSize = 11.sp)
+                                }
+                                Text(
+                                    text = "${weather.humidity}%",
+                                    color = NotelTextPrimary,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            HorizontalDivider(color = NotelSurfaceHigh.copy(alpha = 0.4f), thickness = 0.5.dp)
+
+                            // Row 3: Wind Velocity
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("💨", fontSize = 24.sp)
+                                Spacer(Modifier.width(16.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Wind Velocity", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                                    Text("Current local wind speed", color = NotelTextSecondary, fontSize = 11.sp)
+                                }
+                                Row(verticalAlignment = Alignment.Bottom) {
+                                    Text(
+                                        text = String.format("%.1f", weather.windSpeed),
+                                        color = NotelTextPrimary,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(Modifier.width(2.dp))
+                                    Text(
+                                        text = if (weather.unit == "F") "mph" else "km/h",
+                                        color = NotelTextSecondary,
+                                        fontSize = 11.sp,
+                                        modifier = Modifier.padding(bottom = 1.dp)
+                                    )
+                                }
+                            }
+                            HorizontalDivider(color = NotelSurfaceHigh.copy(alpha = 0.4f), thickness = 0.5.dp)
+
+                            // Row 4: UV Index (clickable)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { showUvInfo = true }
+                                    .padding(vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("☀️", fontSize = 24.sp, color = if (weather.uvIndex > 5) NotelAccent else NotelTextPrimary)
+                                Spacer(Modifier.width(16.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = "UV Index",
+                                            color = if (weather.uvIndex > 5) NotelAccent else NotelTextPrimary,
+                                            fontWeight = FontWeight.Medium,
+                                            fontSize = 14.sp
+                                        )
+                                        if (weather.uvIndex > 5) {
+                                            Spacer(Modifier.width(8.dp))
+                                            Surface(
+                                                color = NotelAccent.copy(alpha = 0.15f),
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = "HIGH RISK",
+                                                    color = NotelAccent,
+                                                    fontSize = 8.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Text("Tap to see safe exposure times", color = NotelTextSecondary, fontSize = 11.sp)
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = String.format("%.1f", weather.uvIndex),
+                                        color = if (weather.uvIndex > 5) NotelAccent else NotelTextPrimary,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                        contentDescription = null,
+                                        tint = NotelTextSecondary.copy(alpha = 0.6f),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                            HorizontalDivider(color = NotelSurfaceHigh.copy(alpha = 0.4f), thickness = 0.5.dp)
+
+                            // Row 5: Pressure
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("⏲️", fontSize = 24.sp)
+                                Spacer(Modifier.width(16.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Barometric Pressure", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                                    Text("Current surface pressure", color = NotelTextSecondary, fontSize = 11.sp)
+                                }
+                                Row(verticalAlignment = Alignment.Bottom) {
+                                    Text(
+                                        text = String.format("%.0f", weather.pressure),
+                                        color = NotelTextPrimary,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(Modifier.width(2.dp))
+                                    Text(
+                                        text = "hPa",
+                                        color = NotelTextSecondary,
+                                        fontSize = 11.sp,
+                                        modifier = Modifier.padding(bottom = 1.dp)
+                                    )
                                 }
                             }
                         }
-
-                        // Pressure Box
-                        WeatherMetricBox(
-                            icon = "⏲️",
-                            value = String.format("%.0f", weather.pressure),
-                            subLabel = "hPa",
-                            label = "Pressure",
-                            modifier = Modifier.weight(1f)
-                        )
                     }
                     
                     if (weather.uvIndex > 5) {
-                        Spacer(Modifier.height(24.dp))
+                        Spacer(Modifier.height(20.dp))
                         Surface(
                             color = NotelAccent.copy(alpha = 0.1f),
                             shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, NotelAccent.copy(alpha = 0.3f))
+                            border = BorderStroke(1.dp, NotelAccent.copy(alpha = 0.3f)),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
                                 modifier = Modifier.padding(12.dp),

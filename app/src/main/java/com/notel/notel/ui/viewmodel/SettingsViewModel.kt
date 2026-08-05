@@ -105,9 +105,18 @@ class SettingsViewModel @Inject constructor(
     val showNavLabels = preferences.showNavLabels
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
+    val showDailyScore = preferences.showDailyScore
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
     fun setShowNavLabels(show: Boolean) {
         viewModelScope.launch {
             preferences.setShowNavLabels(show)
+        }
+    }
+
+    fun setShowDailyScore(show: Boolean) {
+        viewModelScope.launch {
+            preferences.setShowDailyScore(show)
         }
     }
 

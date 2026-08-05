@@ -124,11 +124,17 @@ class NotelPreferences @Inject constructor(
         val ROUTINE_CLICK_COUNTS = stringPreferencesKey("routine_click_counts")
         val INFO_TILE_ORDER = stringPreferencesKey("info_tile_order")
         val SHOW_NAV_LABELS = booleanPreferencesKey("show_nav_labels")
+        val SHOW_DAILY_SCORE = booleanPreferencesKey("show_daily_score")
     }
 
     val showNavLabels: Flow<Boolean> = context.dataStore.data.map { it[SHOW_NAV_LABELS] ?: true }
     suspend fun setShowNavLabels(show: Boolean) {
         context.dataStore.edit { it[SHOW_NAV_LABELS] = show }
+    }
+
+    val showDailyScore: Flow<Boolean> = context.dataStore.data.map { it[SHOW_DAILY_SCORE] ?: true }
+    suspend fun setShowDailyScore(show: Boolean) {
+        context.dataStore.edit { it[SHOW_DAILY_SCORE] = show }
     }
 
     val infoTileOrder: Flow<String> = context.dataStore.data.map { it[INFO_TILE_ORDER] ?: "" }
