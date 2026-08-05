@@ -54,6 +54,12 @@ fun QuickLogScreen(
     val isGeneratingWeeklyRecap by viewModel.isGeneratingWeeklyRecap.collectAsState()
     val isGeneratingDeepResearch by viewModel.isGeneratingDeepResearch.collectAsState()
 
+    val activeCatColor = remember(state.selectedCategory) {
+        state.selectedCategory?.let { cat ->
+            try { Color(android.graphics.Color.parseColor(cat.colorHex)) } catch (e: Exception) { NotelPrimary }
+        } ?: NotelPrimary
+    }
+
     // Auto-fetch chips for the currently selected card (first card by default)
     // if the "Auto Ping" (autoAiSuggestions) setting is turned ON.
     LaunchedEffect(state.selectedCategory, state.isUnlimited, state.autoAiSuggestions) {
@@ -110,6 +116,7 @@ fun QuickLogScreen(
             item {
                 // ── Manual Text Field ─────────────────────────────
                 val context = androidx.compose.ui.platform.LocalContext.current
+
                 OutlinedTextField(
                     value = state.manualText,
                     onValueChange = viewModel::updateManualText,
@@ -123,24 +130,24 @@ fun QuickLogScreen(
                                 if (state.isSaving) {
                                     GlassySpinner(size = 20.dp)
                                 } else {
-                                    Icon(Icons.Default.AddCircle, null, tint = NotelPrimary)
+                                    Icon(Icons.Default.AddCircle, null, tint = activeCatColor)
                                 }
                             }
                         } else {
                             IconButton(onClick = {
                                 context.startActivity(Intent(context, com.notel.notel.VoiceLogActivity::class.java))
                             }) {
-                                Icon(Icons.Default.Mic, null, tint = NotelPrimary)
+                                Icon(Icons.Default.Mic, null, tint = activeCatColor)
                             }
                         }
                     },
                     shape = RoundedCornerShape(16.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = NotelPrimary,
-                        unfocusedBorderColor = NotelPrimary.copy(alpha = 0.18f),
+                        focusedBorderColor = activeCatColor,
+                        unfocusedBorderColor = activeCatColor.copy(alpha = 0.25f),
                         focusedTextColor = NotelTextPrimary,
                         unfocusedTextColor = NotelTextPrimary,
-                        cursorColor = NotelPrimary,
+                        cursorColor = activeCatColor,
                         unfocusedContainerColor = NotelSurface,
                         focusedContainerColor = NotelSurface
                     )
@@ -254,6 +261,7 @@ fun QuickLogScreen(
                         else -> ChipGrid(
                             chips = state.chips,
                             selected = state.selectedChips,
+                            categoryColor = activeCatColor,
                             onToggle = viewModel::toggleChip
                         )
                     }
@@ -643,34 +651,53 @@ fun CategoryChip(category: Category, isSelected: Boolean, onClick: () -> Unit, o
         try { Color(android.graphics.Color.parseColor(category.colorHex)) }
         catch (e: Exception) { NotelPrimary }
     }
+    
+    val chipBg = if (isSelected) catColor else catColor.copy(alpha = 0.16f)
+    val chipBorder = if (isSelected) catColor else catColor.copy(alpha = 0.50f)
+    val textColor = if (isSelected) Color.White else catColor
+
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(if (isSelected) catColor else NotelSurface)
+            .background(chipBg)
             .border(
                 width = 1.dp,
-                color = if (isSelected) catColor else catColor.copy(alpha = 0.22f),
+                color = chipBorder,
                 shape = RoundedCornerShape(12.dp)
             )
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick
             )
-            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .padding(horizontal = 14.dp, vertical = 9.dp)
     ) {
-        Text(
-            text = category.name.uppercase(),
-            color = if (isSelected) Color.White else NotelTextSecondary,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 0.5.sp
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(if (isSelected) Color.White else catColor)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = category.name.uppercase(),
+                color = textColor,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.5.sp
+            )
+        }
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ChipGrid(chips: List<String>, selected: List<String>, onToggle: (String) -> Unit) {
+private fun ChipGrid(
+    chips: List<String>,
+    selected: List<String>,
+    categoryColor: Color,
+    onToggle: (String) -> Unit
+) {
     Column {
         FlowRow(
             modifier = Modifier
@@ -682,15 +709,17 @@ private fun ChipGrid(chips: List<String>, selected: List<String>, onToggle: (Str
         ) {
             chips.forEach { chip ->
                 val isSelected = chip in selected
+                val chipBg = if (isSelected) categoryColor else NotelSurface
+                val chipBorder = if (isSelected) categoryColor else categoryColor.copy(alpha = 0.25f)
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .animateContentSize()
                         .clip(RoundedCornerShape(16.dp))
-                        .background(if (isSelected) NotelPrimary else NotelSurface)
+                        .background(chipBg)
                         .border(
                             width = 1.dp,
-                            color = if (isSelected) NotelPrimary else NotelPrimary.copy(alpha = 0.18f),
+                            color = chipBorder,
                             shape = RoundedCornerShape(16.dp)
                         )
                         .clickable { onToggle(chip) }
