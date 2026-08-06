@@ -36,8 +36,10 @@ import javax.inject.Singleton
 data class DailyBiometricData(
     val hr: Int? = null,
     val sleep: Int? = null,
+    val deepSleep: Int? = null,
     val cal: Int? = null,
-    val hrv: Int? = null
+    val hrv: Int? = null,
+    val spikes: Int? = null
 )
 
 @Singleton
@@ -1222,6 +1224,11 @@ class LogRepository @Inject constructor(
             else emptyList()
         } catch (e: Exception) { emptyList() }
 
+        val sleepWithDeepHist = try {
+            if (hasHealthConnect) healthConnectManager.readHistoricalSleepWithDeep(180)
+            else emptyList()
+        } catch (e: Exception) { emptyList() }
+
         val calJson = preferences.historicalCalories.first()
         val calHist = try {
             if (calJson.isNotBlank()) json.decodeFromString<List<BiomarkerPoint>>(calJson).map { it.date to it.value }
@@ -1274,9 +1281,16 @@ class LogRepository @Inject constructor(
             val current = dailyMap[date] ?: DailyBiometricData()
             dailyMap[date] = current.copy(hr = value)
         }
-        sleepHist.filter { it.first >= cutOffDate }.take(daysLimit).forEach { (date, value) ->
-            val current = dailyMap[date] ?: DailyBiometricData()
-            dailyMap[date] = current.copy(sleep = value)
+        if (sleepWithDeepHist.isNotEmpty()) {
+            sleepWithDeepHist.filter { it.date >= cutOffDate }.take(daysLimit).forEach { s ->
+                val current = dailyMap[s.date] ?: DailyBiometricData()
+                dailyMap[s.date] = current.copy(sleep = s.minutesAsleep, deepSleep = s.deepMinutes)
+            }
+        } else {
+            sleepHist.filter { it.first >= cutOffDate }.take(daysLimit).forEach { (date, value) ->
+                val current = dailyMap[date] ?: DailyBiometricData()
+                dailyMap[date] = current.copy(sleep = value)
+            }
         }
         calHist.filter { it.first >= cutOffDate }.take(daysLimit).forEach { (date, value) ->
             val current = dailyMap[date] ?: DailyBiometricData()
@@ -1286,11 +1300,15 @@ class LogRepository @Inject constructor(
             val current = dailyMap[date] ?: DailyBiometricData()
             dailyMap[date] = current.copy(hrv = value.toInt())
         }
+        spikeHistory.filter { it.date >= cutOffDate }.take(daysLimit).forEach { s ->
+            val current = dailyMap[s.date] ?: DailyBiometricData()
+            dailyMap[s.date] = current.copy(spikes = s.spikeCount)
+        }
 
         val sortedDates = dailyMap.keys.sortedDescending()
         val historyTitle = if (last30DaysOnly) "DETAILED DAILY HISTORY (Last 30 Days)" else "DETAILED DAILY HISTORY (Full History - Last 180 Days)"
         summary.append("$historyTitle:\n")
-        summary.append("Format: Date | Avg HR | Sleep | Calories | HRV\n")
+        summary.append("Format: Date | Avg HR | Sleep | Deep Sleep | Calories | HRV | HR Spikes\n")
         sortedDates.forEach { date ->
             val data = dailyMap[date]!!
             summary.append("- $date: ")
@@ -1298,9 +1316,13 @@ class LogRepository @Inject constructor(
             summary.append(" | ")
             summary.append(if (data.sleep != null) "${data.sleep} min" else "N/A")
             summary.append(" | ")
+            summary.append(if (data.deepSleep != null) "${data.deepSleep} min" else "N/A")
+            summary.append(" | ")
             summary.append(if (data.cal != null) "${data.cal} kcal" else "N/A")
             summary.append(" | ")
             summary.append(if (data.hrv != null) "${data.hrv} ms" else "N/A")
+            summary.append(" | ")
+            summary.append(if (data.spikes != null) "${data.spikes} spikes" else "N/A")
             summary.append("\n")
         }
 
