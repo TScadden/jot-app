@@ -1265,7 +1265,7 @@ class LogRepository @Inject constructor(
                 summary.append("- ${formatReportDate(d.date)}: Average: ${d.avg} bpm | Max: ${d.max} bpm | Baseline: ${d.baseline} bpm")
                 summary.append(" | Active Spike: ${d.baseline} bpm TO ${d.max} bpm (Delta jump of +${d.maxDelta}) | Count: ${d.spikeCount}")
                 if (d.eventsList.isNotEmpty()) {
-                    val details = d.eventsList.joinToString(", ") { "${it.durationMins}m peak @${it.peakBpm}" }
+                    val details = d.eventsList.joinToString(", ") { "${formatSleep(it.durationMins)} peak @${it.peakBpm}" }
                     summary.append(" | durations: [$details]")
                 }
                 if (d.maxDelta >= 30) summary.append(" ⚠️ Orthostatic threshold met")

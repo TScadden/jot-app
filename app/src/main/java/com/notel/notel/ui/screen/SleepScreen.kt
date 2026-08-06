@@ -29,6 +29,16 @@ import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.FitbitViewModel
 import com.notel.notel.ui.viewmodel.SleepData
 
+private fun formatMins(mins: Int): String {
+    val h = mins / 60
+    val m = mins % 60
+    return when {
+        h > 0 && m > 0 -> "${h}h ${m}m"
+        h > 0 -> "${h}h"
+        else -> "${m}m"
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SleepScreen(
@@ -483,13 +493,13 @@ fun SleepScreen(
                         GlassyCard(modifier = Modifier.weight(1f)) {
                             Column {
                                 Text("Deep", color = NotelTextSecondary, fontSize = 12.sp)
-                                Text("${sd.deepMinutes}m", color = NotelTextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                Text(formatMins(sd.deepMinutes), color = NotelTextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                         GlassyCard(modifier = Modifier.weight(1f)) {
                             Column {
                                 Text("Light", color = NotelTextSecondary, fontSize = 12.sp)
-                                Text("${sd.lightMinutes}m", color = NotelTextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                Text(formatMins(sd.lightMinutes), color = NotelTextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
