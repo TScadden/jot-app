@@ -1314,9 +1314,9 @@ class LogRepository @Inject constructor(
             summary.append("- $date: ")
             summary.append(if (data.hr != null) "${data.hr} bpm" else "N/A")
             summary.append(" | ")
-            summary.append(if (data.sleep != null) "${data.sleep} min" else "N/A")
+            summary.append(if (data.sleep != null) formatSleep(data.sleep) else "N/A")
             summary.append(" | ")
-            summary.append(if (data.deepSleep != null) "${data.deepSleep} min" else "N/A")
+            summary.append(if (data.deepSleep != null) formatSleep(data.deepSleep) else "N/A")
             summary.append(" | ")
             summary.append(if (data.cal != null) "${data.cal} kcal" else "N/A")
             summary.append(" | ")
@@ -1661,7 +1661,11 @@ class LogRepository @Inject constructor(
     private fun formatSleep(mins: Int): String {
         val h = mins / 60
         val m = mins % 60
-        return if (h > 0) "${h}h ${m}m" else "${m}m"
+        return when {
+            h > 0 && m > 0 -> "${h}h ${m}m"
+            h > 0 -> "${h}h"
+            else -> "${m}m"
+        }
     }
 
     private fun sigmoidScore(z: Double, k: Double = 1.2): Double {

@@ -125,6 +125,12 @@ class ReportGenerator @Inject constructor(
                     
                     val wrappedSections = wrapText(cleanSection, contentWidth, sectionPaint)
                     wrappedSections.forEach { sectionPart ->
+                        if (y > 780) {
+                            pdfDocument.finishPage(page)
+                            page = pdfDocument.startPage(pageInfo)
+                            canvas = page.canvas
+                            y = 60f
+                        }
                         canvas.drawText(sectionPart, margin, y, sectionPaint)
                         y += 22f
                     }
@@ -135,14 +141,20 @@ class ReportGenerator @Inject constructor(
                 }
                 line.contains("[BULLET]") -> {
                     val cleanBullet = line.replace("[BULLET]", "").replace("*", "").trim().removePrefix("-").trim()
-                    drawFormattedLine("• $cleanBullet", margin + 15f, y, contentWidth - 15f, canvas, bodyPaint, boldBodyPaint, italicBodyPaint).let { 
-                        y = it 
+                    y = drawFormattedLine("• $cleanBullet", margin + 15f, y, contentWidth - 15f, canvas, bodyPaint, boldBodyPaint, italicBodyPaint) {
+                        pdfDocument.finishPage(page)
+                        page = pdfDocument.startPage(pageInfo)
+                        canvas = page.canvas
+                        canvas
                     }
                     y += 8f
                 }
                 else -> {
-                    drawFormattedLine(line, margin, y, contentWidth, canvas, bodyPaint, boldBodyPaint, italicBodyPaint).let { 
-                        y = it 
+                    y = drawFormattedLine(line, margin, y, contentWidth, canvas, bodyPaint, boldBodyPaint, italicBodyPaint) {
+                        pdfDocument.finishPage(page)
+                        page = pdfDocument.startPage(pageInfo)
+                        canvas = page.canvas
+                        canvas
                     }
                     y += 8f
                 }
@@ -461,15 +473,21 @@ class ReportGenerator @Inject constructor(
         canvas: Canvas, 
         paint: Paint, 
         boldPaint: Paint,
-        italicPaint: Paint
+        italicPaint: Paint,
+        onNewPage: () -> Canvas
     ): Float {
         var y = currentY
         val lines = wrapText(text, width, paint)
         
         var isBold = false
         var isItalic = false
+        var activeCanvas = canvas
 
         lines.forEach { line ->
+            if (y > 780f) {
+                activeCanvas = onNewPage()
+                y = 60f
+            }
             var currentX = x
             // Regex to match markers or text
             val regex = "\\[BOLD\\]|\\[ITALIC\\]".toRegex()
@@ -485,7 +503,7 @@ class ReportGenerator @Inject constructor(
                         isItalic -> italicPaint
                         else -> paint
                     }
-                    canvas.drawText(segment, currentX, y, p)
+                    activeCanvas.drawText(segment, currentX, y, p)
                     currentX += p.measureText(segment)
                 }
                 
@@ -504,7 +522,7 @@ class ReportGenerator @Inject constructor(
                     isItalic -> italicPaint
                     else -> paint
                 }
-                canvas.drawText(remaining, currentX, y, p)
+                activeCanvas.drawText(remaining, currentX, y, p)
             }
             
             y += 18f
