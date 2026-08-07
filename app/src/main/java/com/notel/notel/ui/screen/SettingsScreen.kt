@@ -479,7 +479,7 @@ fun SettingsScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    if (isAdmin) "Admin Account" else if (isUnlimited) "Jot Premium" else "No Active Membership",
+                                    if (isAdmin) "Admin Account" else if (isUnlimited) "Tabs Premium" else "No Active Membership",
                                     color = NotelTextPrimary,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 18.sp
