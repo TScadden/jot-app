@@ -60,7 +60,7 @@ class BillingManager @Inject constructor(
         })
     }
 
-    private val productList = listOf(
+    private val subsProductList = listOf(
         QueryProductDetailsParams.Product.newBuilder()
             .setProductId("jot_membership_monthly")
             .setProductType(BillingClient.ProductType.SUBS)
@@ -68,7 +68,10 @@ class BillingManager @Inject constructor(
         QueryProductDetailsParams.Product.newBuilder()
             .setProductId("jot_membership_yearly")
             .setProductType(BillingClient.ProductType.SUBS)
-            .build(),
+            .build()
+    )
+
+    private val inAppProductList = listOf(
         QueryProductDetailsParams.Product.newBuilder()
             .setProductId("jot_credits_5")
             .setProductType(BillingClient.ProductType.INAPP)
@@ -86,20 +89,39 @@ class BillingManager @Inject constructor(
     private val productDetailsMap = mutableMapOf<String, ProductDetails>()
 
     private fun queryAvailableProducts() {
-        val params = QueryProductDetailsParams.newBuilder()
-            .setProductList(productList)
+        // Query Subscriptions
+        val subsParams = QueryProductDetailsParams.newBuilder()
+            .setProductList(subsProductList)
             .build()
 
-        billingClient.queryProductDetailsAsync(params) { billingResult, queryProductDetailsResult ->
+        billingClient.queryProductDetailsAsync(subsParams) { billingResult, queryProductDetailsResult ->
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
                 val productDetailsList = queryProductDetailsResult.productDetailsList ?: emptyList()
-                Log.d(tag, "Query successful. Found ${productDetailsList.size} products")
+                Log.d(tag, "Query Subscriptions successful. Found ${productDetailsList.size} products")
                 productDetailsList.forEach {
                     productDetailsMap[it.productId] = it
                     Log.d(tag, "Found product: ${it.productId} - ${it.name}")
                 }
             } else {
-                Log.e(tag, "Query failed: ${billingResult.debugMessage}")
+                Log.e(tag, "Query Subscriptions failed: ${billingResult.debugMessage}")
+            }
+        }
+
+        // Query In-App Products
+        val inAppParams = QueryProductDetailsParams.newBuilder()
+            .setProductList(inAppProductList)
+            .build()
+
+        billingClient.queryProductDetailsAsync(inAppParams) { billingResult, queryProductDetailsResult ->
+            if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                val productDetailsList = queryProductDetailsResult.productDetailsList ?: emptyList()
+                Log.d(tag, "Query In-App Products successful. Found ${productDetailsList.size} products")
+                productDetailsList.forEach {
+                    productDetailsMap[it.productId] = it
+                    Log.d(tag, "Found product: ${it.productId} - ${it.name}")
+                }
+            } else {
+                Log.e(tag, "Query In-App Products failed: ${billingResult.debugMessage}")
             }
         }
     }
