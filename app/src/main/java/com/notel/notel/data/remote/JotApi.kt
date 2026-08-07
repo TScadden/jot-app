@@ -365,6 +365,17 @@ data class BillingVerificationResponse(
     val error: String? = null
 )
 
+@Serializable
+data class SubscriptionSyncRequest(
+    val activeTokens: List<String>
+)
+
+@Serializable
+data class SubscriptionSyncResponse(
+    val success: Boolean,
+    val isUnlimited: Boolean
+)
+
 // ── Habit Data Models ──────────────────────────────────────
 @Serializable
 data class HabitDtoModel(
@@ -661,6 +672,9 @@ interface TabsApi {
     // ── BILLING ──────────────────────────────────────────
     @POST("api/billing/verify")
     suspend fun verifyPurchase(@Body request: BillingVerificationRequest): Response<BillingVerificationResponse>
+
+    @POST("api/billing/sync-subscriptions")
+    suspend fun syncSubscriptions(@Body request: SubscriptionSyncRequest): Response<SubscriptionSyncResponse>
 
     // ── HABITS ───────────────────────────────────────────
     @retrofit2.http.GET("api/habits")

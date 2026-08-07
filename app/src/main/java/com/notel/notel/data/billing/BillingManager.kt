@@ -6,6 +6,7 @@ import android.util.Log
 import com.android.billingclient.api.*
 import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.remote.BillingVerificationRequest
+import com.notel.notel.data.remote.SubscriptionSyncRequest
 import com.notel.notel.data.remote.TabsApi
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -48,6 +49,7 @@ class BillingManager @Inject constructor(
                 if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
                     Log.d(tag, "BillingClient setup finished successfully")
                     queryAvailableProducts()
+                    checkSubscriptionStatus()
                 } else {
                     Log.e(tag, "BillingClient setup failed: ${billingResult.debugMessage}")
                 }
@@ -236,6 +238,42 @@ class BillingManager @Inject constructor(
                 Log.d(tag, "Purchase consumed successfully")
             } else {
                 Log.e(tag, "Consume failed: ${result.debugMessage}")
+            }
+        }
+    }
+
+    fun checkSubscriptionStatus() {
+        Log.d(tag, "Checking active subscriptions status...")
+        if (!billingClient.isReady) {
+            Log.w(tag, "BillingClient not ready for checking subscriptions")
+            return
+        }
+
+        val params = QueryPurchasesParams.newBuilder()
+            .setProductType(BillingClient.ProductType.SUBS)
+            .build()
+
+        billingClient.queryPurchasesAsync(params) { billingResult, purchasesList ->
+            if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                val activeTokens = purchasesList.map { it.purchaseToken }
+                Log.d(tag, "Active subscription purchases found: ${activeTokens.size}")
+                
+                scope.launch {
+                    try {
+                        val response = tabsApi.syncSubscriptions(SubscriptionSyncRequest(activeTokens))
+                        if (response.isSuccessful && response.body() != null) {
+                            val serverIsUnlimited = response.body()!!.isUnlimited
+                            preferences.setIsUnlimited(serverIsUnlimited)
+                            Log.d(tag, "Subscription sync complete. Server isUnlimited = $serverIsUnlimited")
+                        } else {
+                            Log.e(tag, "Subscription sync rejected: ${response.message()}")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(tag, "Error syncing subscriptions with server: ${e.message}")
+                    }
+                }
+            } else {
+                Log.e(tag, "Query active purchases failed: ${billingResult.debugMessage}")
             }
         }
     }

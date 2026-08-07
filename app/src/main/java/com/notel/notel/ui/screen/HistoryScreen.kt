@@ -48,7 +48,17 @@ fun HistoryScreen(
 
     Scaffold(
         containerColor = NotelBackground,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = {
+            SnackbarHost(snackbarHostState) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    containerColor = NotelSurfaceHigh.copy(alpha = 0.95f),
+                    contentColor = NotelTextPrimary,
+                    actionColor = NotelPrimary,
+                    shape = RoundedCornerShape(16.dp)
+                )
+            }
+        },
         topBar = {
             TopAppBar(
                 title = { Text("History", fontWeight = FontWeight.Bold, color = NotelTextPrimary) },
