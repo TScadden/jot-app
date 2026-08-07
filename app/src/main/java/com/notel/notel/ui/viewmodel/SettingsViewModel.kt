@@ -307,6 +307,9 @@ class SettingsViewModel @Inject constructor(
     val isUnlimited = preferences.isUnlimited
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    val isAdmin = preferences.isAdmin
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     val autoAiSuggestions = preferences.autoAiSuggestions
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 

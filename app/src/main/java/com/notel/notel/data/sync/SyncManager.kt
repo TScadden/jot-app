@@ -468,6 +468,8 @@ class SyncManager @Inject constructor(
             val body = response.body()
             if (response.isSuccessful && body != null) {
                 Log.d(tag, "Cloud data received!")
+                body.isUnlimited?.let { preferences.setIsUnlimited(it) }
+                body.isAdmin?.let { preferences.setIsAdmin(it) }
                 
                 // Track if we were empty before this.
                 val localLogCount = logEntryDao.countEntries()

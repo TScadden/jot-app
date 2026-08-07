@@ -134,6 +134,7 @@ class LoginViewModel @Inject constructor(
                     preferences.setLoggedIn(true)
                     
                     body.isUnlimited?.let { preferences.setIsUnlimited(it) }
+                    body.isAdmin?.let { preferences.setIsAdmin(it) }
                     body.onboardingComplete?.let { 
                         if (it) {
                             preferences.setOnboardingComplete(true)

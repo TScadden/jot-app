@@ -86,6 +86,7 @@ fun SettingsScreen(
     val professionalUpdates by viewModel.professionalUpdates.collectAsState()
     val processedFiles by viewModel.processedFiles.collectAsState()
     val isUnlimited by viewModel.isUnlimited.collectAsState()
+    val isAdmin by viewModel.isAdmin.collectAsState()
     val isProcessing by viewModel.isProcessingFile.collectAsState()
     val processError by viewModel.processError.collectAsState()
     val aiInsights by viewModel.aiInsights.collectAsState()
@@ -383,7 +384,7 @@ fun SettingsScreen(
             )
         }
     ) { padding ->
-        if (currentMenu == SettingsMenu.DEBUG && isUnlimited) {
+        if (currentMenu == SettingsMenu.DEBUG && isAdmin) {
             DebugScreen(onBack = { currentMenu = SettingsMenu.MAIN }, viewModel = viewModel, padding = padding)
         } else {
             Column(
@@ -478,14 +479,14 @@ fun SettingsScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    if (isUnlimited) "Admin Account" else "No Active Membership",
+                                    if (isAdmin) "Admin Account" else if (isUnlimited) "Jot Premium" else "No Active Membership",
                                     color = NotelTextPrimary,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 18.sp
                                 )
                                 Spacer(Modifier.height(4.dp))
                                 Text(
-                                    if (isUnlimited) "No membership needed · All Features Unlocked" else "Subscribe to unlock all AI features",
+                                    if (isAdmin) "Developer Access · All Features Unlocked" else if (isUnlimited) "Premium Access · All Features Unlocked" else "Subscribe to unlock all AI features",
                                     color = if (isUnlimited) Color(0xFF4CAF50) else NotelTextSecondary,
                                     fontSize = 13.sp
                                 )
@@ -495,9 +496,9 @@ fun SettingsScreen(
                                 color = if (isUnlimited) Color(0xFF4CAF50).copy(alpha = 0.15f) else NotelSurfaceHigh
                             ) {
                                 Text(
-                                    if (isUnlimited) "ADMIN" else "INACTIVE",
+                                    if (isAdmin) "ADMIN" else if (isUnlimited) "ACTIVE" else "INACTIVE",
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                    color = if (if (isUnlimited) true else false) Color(0xFF4CAF50) else NotelTextSecondary,
+                                    color = if (isUnlimited) Color(0xFF4CAF50) else NotelTextSecondary,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Black
                                 )
@@ -881,7 +882,7 @@ fun SettingsScreen(
                             }
 
                             // Row 6: Tabs Live Beta (Admins / Unlimited only)
-                            if (isUnlimited) {
+                            if (isAdmin) {
                                 HorizontalDivider(color = NotelSurfaceHigh.copy(alpha = 0.6f), thickness = 1.dp)
                                 Row(
                                     modifier = Modifier
@@ -940,7 +941,7 @@ fun SettingsScreen(
                         Text("Log out", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     }
 
-                    if (isUnlimited) {
+                    if (isAdmin) {
                         Spacer(Modifier.height(8.dp))
                         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                             TextButton(onClick = { currentMenu = SettingsMenu.DEBUG }) {

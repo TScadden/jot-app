@@ -61,6 +61,7 @@ class NotelPreferences @Inject constructor(
         val USER_WEIGHT = floatPreferencesKey("user_weight")
         val USER_GENDER = stringPreferencesKey("user_gender")
         val IS_UNLIMITED = booleanPreferencesKey("is_unlimited")
+        val IS_ADMIN = booleanPreferencesKey("is_admin")
         val AUTO_AI_SUGGESTIONS = booleanPreferencesKey("auto_ai_suggestions")
 
         val EVENT_COUNTERS = stringPreferencesKey("event_counters")
@@ -379,6 +380,10 @@ class NotelPreferences @Inject constructor(
         prefs[IS_UNLIMITED] ?: false
     }
 
+    val isAdmin: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[IS_ADMIN] ?: false
+    }
+
     val userContextHidden: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[USER_CONTEXT_HIDDEN] ?: true
     }
@@ -587,6 +592,9 @@ class NotelPreferences @Inject constructor(
 
     suspend fun setIsUnlimited(unlimited: Boolean) {
         context.dataStore.edit { it[IS_UNLIMITED] = unlimited }
+    }
+    suspend fun setIsAdmin(admin: Boolean) {
+        context.dataStore.edit { it[IS_ADMIN] = admin }
     }
     suspend fun setAutoAiSuggestions(enabled: Boolean) {
         context.dataStore.edit { it[AUTO_AI_SUGGESTIONS] = enabled }

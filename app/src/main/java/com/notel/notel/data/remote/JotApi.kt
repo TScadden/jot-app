@@ -162,6 +162,7 @@ data class AuthResponse(
     val userId: String? = null,
     val email: String? = null,
     val isUnlimited: Boolean? = null,
+    val isAdmin: Boolean? = null,
     val onboardingComplete: Boolean? = null,
     val nickname: String? = null,
     val tag: String? = null,
@@ -335,6 +336,7 @@ data class SyncPullResponse(
     val coachSessions: List<CoachSessionDto> = emptyList(),
     val coachMessages: List<CoachMessageDto> = emptyList(),
     val isUnlimited: Boolean? = null,
+    val isAdmin: Boolean? = null,
     val nickname: String? = null,
     val tag: String? = null
 )
