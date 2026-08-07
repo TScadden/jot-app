@@ -96,6 +96,18 @@ class LogRepository @Inject constructor(
         suggestionCache.clear()
     }
 
+    fun clearCache() {
+        suggestionCache.clear()
+        biometricCache = null
+        lastBiometricFetch = 0
+        _generatedReport.value = null
+        _processError.value = null
+        _isGeneratingReport.value = false
+        _isGeneratingWeeklyRecap.value = false
+        _isGeneratingDeepResearch.value = false
+        _isComparingDocuments.value = false
+    }
+
     fun resetGeneratedReport() {
         _generatedReport.value = null
     }

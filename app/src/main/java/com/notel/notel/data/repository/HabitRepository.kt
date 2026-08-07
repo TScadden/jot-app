@@ -209,4 +209,14 @@ class HabitRepository @Inject constructor(
             }
         } catch (e: Exception) { /* best effort */ }
     }
+
+    fun clearCache() {
+        _habits.value = emptyList()
+        _isLoading.value = false
+        _error.value = null
+        try {
+            context.getSharedPreferences("habit_widget_cache", Context.MODE_PRIVATE)
+                .edit().clear().apply()
+        } catch (e: Exception) { /* best effort */ }
+    }
 }

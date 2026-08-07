@@ -715,14 +715,20 @@ class SyncManager @Inject constructor(
                     // Check if there is a new Graph Analysis Report from server that local app didn't have yet
                     val localIds = localInsights.map { it.id }.toSet()
                     val newGraphReports = insightsList.filter { (it.type == "Graph Analysis Report" || it.id.startsWith("graph_report_")) && it.id !in localIds }
-                    if (newGraphReports.isNotEmpty()) {
+                    // Only trigger new report notifications/events if:
+                    // 1. This isn't a fresh sync/restore (i.e. localInsights is not empty)
+                    // AND 2. The report was generated recently (in the last 10 minutes)
+                    if (newGraphReports.isNotEmpty() && localInsights.isNotEmpty()) {
                         val newestReport = newGraphReports.first()
-                        try {
-                            val pdfFile = reportGeneratorProvider.get().generateGraphPdfReport("AI Biometric Graph Analysis", newestReport.text)
-                            com.notel.notel.util.NotificationHelper(context).showGraphReportNotification(pdfFile)
-                            logRepositoryProvider.get().notifyNewAiInsight(newestReport)
-                        } catch (e: Exception) {
-                            Log.e(tag, "Failed to trigger report notification: ${e.message}")
+                        val isRecent = (System.currentTimeMillis() - newestReport.timestamp) < 10 * 60 * 1000L
+                        if (isRecent) {
+                            try {
+                                val pdfFile = reportGeneratorProvider.get().generateGraphPdfReport("AI Biometric Graph Analysis", newestReport.text)
+                                com.notel.notel.util.NotificationHelper(context).showGraphReportNotification(pdfFile)
+                                logRepositoryProvider.get().notifyNewAiInsight(newestReport)
+                            } catch (e: Exception) {
+                                Log.e(tag, "Failed to trigger report notification: ${e.message}")
+                            }
                         }
                     }
 

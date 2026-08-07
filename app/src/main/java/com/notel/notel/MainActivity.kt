@@ -178,6 +178,13 @@ class MainActivity : ComponentActivity() {
                 var aiInsight by remember { mutableStateOf<com.notel.notel.data.local.entity.AiInsight?>(null) }
                 val reportViewModel: com.notel.notel.ui.viewmodel.SettingsViewModel = hiltViewModel()
 
+                val isLoggedIn by notelPreferences.loggedIn.collectAsState(initial = false)
+                LaunchedEffect(isLoggedIn) {
+                    if (!isLoggedIn) {
+                        aiInsight = null
+                    }
+                }
+
                 LaunchedEffect(Unit) {
                     reportViewModel.aiInsightReadyEvent.collect { insight ->
                         if (insight.type != "BodyLoad") {

@@ -66,6 +66,10 @@ class BillingManager @Inject constructor(
             .setProductType(BillingClient.ProductType.SUBS)
             .build(),
         QueryProductDetailsParams.Product.newBuilder()
+            .setProductId("jot_membership_yearly")
+            .setProductType(BillingClient.ProductType.SUBS)
+            .build(),
+        QueryProductDetailsParams.Product.newBuilder()
             .setProductId("jot_credits_5")
             .setProductType(BillingClient.ProductType.INAPP)
             .build(),
@@ -86,8 +90,9 @@ class BillingManager @Inject constructor(
             .setProductList(productList)
             .build()
 
-        billingClient.queryProductDetailsAsync(params) { billingResult, productDetailsList ->
+        billingClient.queryProductDetailsAsync(params) { billingResult, queryProductDetailsResult ->
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                val productDetailsList = queryProductDetailsResult.productDetailsList ?: emptyList()
                 Log.d(tag, "Query successful. Found ${productDetailsList.size} products")
                 productDetailsList.forEach {
                     productDetailsMap[it.productId] = it
@@ -183,7 +188,10 @@ class BillingManager @Inject constructor(
                     
                     // Important: Consume the purchase so it can be bought again
                     // Since these are "Credits", they should be consumable.
-                    consumePurchase(purchase)
+                    val productDetails = productDetailsMap[productId]
+                    if (productDetails?.productType == BillingClient.ProductType.INAPP) {
+                        consumePurchase(purchase)
+                    }
                     
                 } else {
                     Log.e(tag, "Server verification failed: ${response.message()}")

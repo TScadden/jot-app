@@ -160,6 +160,7 @@ fun SettingsScreen(
 
     // Scroll state exposed so the tutorial can auto-scroll to each target
     val scrollState = rememberScrollState()
+    var selectedPlan by remember { mutableStateOf("monthly") }
 
     // Tutorial state
     var tutorialStep by remember { mutableStateOf(-1) }  // -1 = not started yet
@@ -537,16 +538,153 @@ fun SettingsScreen(
                         )
 
                         if (!isUnlimited) {
-                            Spacer(Modifier.height(20.dp))
+                            Spacer(Modifier.height(24.dp))
+                            
+                            // Plan 1: Monthly
+                            val isMonthlySelected = selectedPlan == "monthly"
+                            Surface(
+                                onClick = { selectedPlan = "monthly" },
+                                shape = RoundedCornerShape(16.dp),
+                                color = if (isMonthlySelected) NotelPrimary.copy(alpha = 0.08f) else NotelSurfaceHigh,
+                                border = BorderStroke(
+                                    width = if (isMonthlySelected) 2.dp else 1.dp,
+                                    color = if (isMonthlySelected) NotelPrimary else NotelPrimary.copy(alpha = 0.15f)
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = isMonthlySelected,
+                                        onClick = { selectedPlan = "monthly" },
+                                        colors = RadioButtonDefaults.colors(
+                                            selectedColor = NotelPrimary,
+                                            unselectedColor = NotelTextSecondary
+                                        )
+                                    )
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Monthly Plan",
+                                            color = NotelTextPrimary,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 16.sp
+                                        )
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(
+                                            text = "7-day free trial, then $5.99/mo",
+                                            color = NotelTextSecondary,
+                                            fontSize = 13.sp
+                                        )
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = NotelPrimary.copy(alpha = 0.12f),
+                                        modifier = Modifier.padding(horizontal = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = "FREE TRIAL",
+                                            color = NotelPrimary,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            
+                            Spacer(Modifier.height(12.dp))
+                            
+                            // Plan 2: Yearly
+                            val isYearlySelected = selectedPlan == "yearly"
+                            Surface(
+                                onClick = { selectedPlan = "yearly" },
+                                shape = RoundedCornerShape(16.dp),
+                                color = if (isYearlySelected) NotelPrimary.copy(alpha = 0.08f) else NotelSurfaceHigh,
+                                border = BorderStroke(
+                                    width = if (isYearlySelected) 2.dp else 1.dp,
+                                    color = if (isYearlySelected) NotelPrimary else NotelPrimary.copy(alpha = 0.15f)
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = isYearlySelected,
+                                        onClick = { selectedPlan = "yearly" },
+                                        colors = RadioButtonDefaults.colors(
+                                            selectedColor = NotelPrimary,
+                                            unselectedColor = NotelTextSecondary
+                                        )
+                                    )
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Yearly Plan",
+                                            color = NotelTextPrimary,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 16.sp
+                                        )
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(
+                                            text = "7-day free trial, then $39.99/yr",
+                                            color = NotelTextSecondary,
+                                            fontSize = 13.sp
+                                        )
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Color(0xFF4CAF50).copy(alpha = 0.12f),
+                                        modifier = Modifier.padding(horizontal = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = "SAVE 45% • BEST VALUE",
+                                            color = Color(0xFF4CAF50),
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            
+                            Spacer(Modifier.height(24.dp))
+                            
+                            // CTA Button
                             GlassyButton(
-                                onClick = { activity?.let { viewModel.purchaseCredits(it, "jot_membership_monthly") } },
+                                onClick = {
+                                    activity?.let {
+                                        viewModel.purchaseCredits(
+                                            it,
+                                            if (selectedPlan == "monthly") "jot_membership_monthly" else "jot_membership_yearly"
+                                        )
+                                    }
+                                },
                                 modifier = Modifier.fillMaxWidth(),
                                 containerColor = NotelPrimary
                             ) {
-                                Icon(Icons.Default.Wallet, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Default.Star, null, tint = Color.White, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
-                                Text("Get Unlimited Access · $3/mo", color = Color.White, fontWeight = FontWeight.Bold)
+                                Text("Start 7-Day Free Trial", color = Color.White, fontWeight = FontWeight.Bold)
                             }
+                            
+                            Spacer(Modifier.height(12.dp))
+                            
+                            Text(
+                                text = "Google Play billing applies. Recurring billing. Cancel anytime in Google Play Subscriptions.",
+                                color = NotelTextSecondary.copy(alpha = 0.6f),
+                                fontSize = 11.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         } else {
                             Spacer(Modifier.height(20.dp))
                             Text(
@@ -3083,13 +3221,18 @@ fun SettingsScreen(
 
             if (showLogoutDialog) {
                 val logoutError by viewModel.logoutError.collectAsState()
+                val isLoggingOut by viewModel.isLoggingOut.collectAsState()
                 
                 AlertDialog(
-                    onDismissRequest = { showLogoutDialog = false; viewModel.clearLogoutError() },
+                    onDismissRequest = { if (!isLoggingOut) { showLogoutDialog = false; viewModel.clearLogoutError() } },
                     title = { Text("Logout?", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
                     text = { 
                         Column {
-                            Text("Your data will be synced to the cloud before logging out.", color = NotelTextSecondary)
+                            Text(
+                                if (isLoggingOut) "Saving and syncing your data to the cloud. Please wait..."
+                                else "Your data will be synced to the cloud before logging out.",
+                                color = NotelTextSecondary
+                            )
                             if (logoutError != null) {
                                 Spacer(Modifier.height(12.dp))
                                 Text(
@@ -3102,16 +3245,31 @@ fun SettingsScreen(
                         }
                     },
                     confirmButton = {
-                        TextButton(onClick = {
-                            viewModel.logout {
-                                onLogout()
+                        TextButton(
+                            onClick = {
+                                viewModel.logout {
+                                    showLogoutDialog = false
+                                    onLogout()
+                                }
+                            },
+                            enabled = !isLoggingOut
+                        ) {
+                            if (isLoggingOut) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    GlassySpinner(size = 18.dp)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Saving...", color = NotelPrimary)
+                                }
+                            } else {
+                                Text("Logout", color = NotelPrimary)
                             }
-                        }) {
-                            Text("Logout", color = NotelPrimary)
                         }
                     },
                     dismissButton = {
-                        TextButton(onClick = { showLogoutDialog = false; viewModel.clearLogoutError() }) {
+                        TextButton(
+                            onClick = { showLogoutDialog = false; viewModel.clearLogoutError() },
+                            enabled = !isLoggingOut
+                        ) {
                             Text("Cancel", color = NotelTextSecondary)
                         }
                     },

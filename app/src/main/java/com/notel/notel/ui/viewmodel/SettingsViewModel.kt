@@ -868,9 +868,14 @@ class SettingsViewModel @Inject constructor(
     private val _logoutError = MutableStateFlow<String?>(null)
     val logoutError = _logoutError.asStateFlow()
 
+    private val _isLoggingOut = MutableStateFlow(false)
+    val isLoggingOut = _isLoggingOut.asStateFlow()
+
     fun clearLogoutError() { _logoutError.value = null }
 
     fun logout(onLogout: () -> Unit) {
+        _isLoggingOut.value = true
+        _logoutError.value = null
         viewModelScope.launch {
             // 0. Push ALL local data to the server BEFORE wiping anything
             try {
@@ -888,24 +893,52 @@ class SettingsViewModel @Inject constructor(
                     if (!entriesPushed) details.add("Entries")
                     if (!categoriesPushed) details.add("Categories")
                     _logoutError.value = "Could not verify data was saved to server (Failed: ${details.joinToString(", ")}). Please try again in a moment."
+                    _isLoggingOut.value = false
                     return@launch
                 }
             } catch (e: Exception) {
                 // Sync failed — DO NOT wipe local data
                 _logoutError.value = "Could not save data to server: ${e.message ?: "Network error"}. Your data is safe locally. Please try again."
+                _isLoggingOut.value = false
                 return@launch
             }
 
             // 1. Clear DataStore preferences (credentials, tokens, AI context, etc.)
             preferences.clearCredentials()
+
+            // 1b. Clear memory caches of Singletons to prevent cross-account leakage
+            logRepository.clearCache()
+            habitRepository.clearCache()
             
             // 2. Clear Room database (Logs, Insights, Custom Categories)
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                database.clearAllTables()
+                try {
+                    val db = database.openHelper.writableDatabase
+                    db.beginTransaction()
+                    try {
+                        db.execSQL("DELETE FROM user_list_items")
+                        db.execSQL("DELETE FROM user_lists")
+                        db.execSQL("DELETE FROM log_entries")
+                        db.execSQL("DELETE FROM reminders")
+                        db.execSQL("DELETE FROM coach_messages")
+                        db.execSQL("DELETE FROM coach_sessions")
+                        db.execSQL("DELETE FROM medications")
+                        db.execSQL("DELETE FROM medication_side_effect_cache")
+                        db.execSQL("DELETE FROM knowledge_documents")
+                        db.execSQL("DELETE FROM categories")
+                        db.setTransactionSuccessful()
+                    } finally {
+                        db.endTransaction()
+                    }
+                } catch (e: Exception) {
+                    database.clearAllTables()
+                }
+                
                 // 3. Re-seed default categories so the UI isn't empty/broken for next user
                 database.categoryDao().insertAll(com.notel.notel.data.local.DefaultCategories.all)
             }
             
+            _isLoggingOut.value = false
             onLogout()
         }
     }
