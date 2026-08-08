@@ -98,8 +98,17 @@ fun ProfileSetupScreen(
         }
     }
 
-    val wordCount = profileText.trim().split("\\s+".toRegex()).count { it.isNotBlank() }
+    val wordCount = if (profileText.isBlank()) 0 else profileText.trim().split("\\s+".toRegex()).count { it.isNotBlank() }
     val isReady = wordCount >= 10 && !isProcessingFile
+
+    val (feedbackText, feedbackColor) = when {
+        wordCount == 0 -> "Provide more context for better AI." to NotelTextSecondary
+        wordCount < 10 -> "Keep typing ($wordCount/10 words min)..." to Color(0xFFFF9800)
+        wordCount < 30 -> "Good start! Add more details." to NotelPrimary
+        wordCount < 60 -> "More detail helps AI personalize results." to Color(0xFF0288D1)
+        wordCount < 100 -> "Great context! Almost at 100 words." to Color(0xFF689F38)
+        else -> "Optimal AI context reached!" to Color(0xFF4CAF50)
+    }
 
     Scaffold(
         containerColor = NotelBackground,
@@ -154,8 +163,8 @@ fun ProfileSetupScreen(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = if (wordCount < 100) "Provide more context for better AI." else "Great context!",
-                    color = if (wordCount < 100) NotelPrimary else Color.Green,
+                    text = feedbackText,
+                    color = feedbackColor,
                     fontSize = 12.sp,
                     maxLines = 1,
                     modifier = Modifier.weight(1f).alignByBaseline()
