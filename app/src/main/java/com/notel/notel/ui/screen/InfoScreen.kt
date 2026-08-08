@@ -86,12 +86,10 @@ fun InfoScreen(
     val coroutineScope = rememberCoroutineScope()
 
     val savedOrderJson by prefs.infoTileOrder.collectAsState(initial = "")
-    val routineClickJson by prefs.routineClickCounts.collectAsState(initial = "{}")
 
     val allTilesMap = remember { DEFAULT_INFO_TILES.associateBy { it.id } }
 
     var tileList by remember { mutableStateOf(DEFAULT_INFO_TILES) }
-    var isUserCustomOrdered by remember { mutableStateOf(false) }
 
     // Reorder / Edit Mode State
     var isEditMode by remember { mutableStateOf(false) }
@@ -101,7 +99,7 @@ fun InfoScreen(
     // Store tile center positions on screen for accurate drop calculation
     val itemBoundsMap = remember { mutableStateMapOf<Int, Offset>() }
 
-    LaunchedEffect(savedOrderJson, routineClickJson) {
+    LaunchedEffect(savedOrderJson) {
         if (savedOrderJson.isNotBlank()) {
             val parsedIds = try {
                 Json.decodeFromString<List<String>>(savedOrderJson)
@@ -112,19 +110,10 @@ fun InfoScreen(
                 val customTiles = parsedIds.mapNotNull { allTilesMap[it] }
                 val missingTiles = DEFAULT_INFO_TILES.filter { it.id !in parsedIds }
                 tileList = customTiles + missingTiles
-                isUserCustomOrdered = true
                 return@LaunchedEffect
             }
         }
-
-        if (!isUserCustomOrdered) {
-            val counts = try { Json.decodeFromString<Map<String, Int>>(routineClickJson) } catch (e: Exception) { emptyMap() }
-            val sortedRoutineIds = listOf("habits", "reminders", "lists", "notes", "project_focus")
-                .sortedByDescending { counts[it] ?: 0 }
-            val routineTiles = sortedRoutineIds.mapNotNull { allTilesMap[it] }
-            val baseTiles = listOf("sleep", "body_info", "medications", "tips_and_tricks", "health_coach", "key_metrics", "food", "community").mapNotNull { allTilesMap[it] }
-            tileList = routineTiles + baseTiles
-        }
+        tileList = DEFAULT_INFO_TILES
     }
 
     // Lock bottom bar switching while in edit mode
@@ -134,7 +123,6 @@ fun InfoScreen(
 
     fun saveTileOrder(newTiles: List<InfoTile>) {
         tileList = newTiles
-        isUserCustomOrdered = true
         coroutineScope.launch {
             val ids = newTiles.map { it.id }
             val jsonStr = Json.encodeToString(ids)
@@ -392,11 +380,11 @@ fun InfoTileCard(
                         "tips_and_tricks" -> onTipsAndTricksClick()
                         "food" -> onFoodClick()
                         "community" -> onCommunityClick()
-                        "habits" -> { recordClick("habits"); onHabitsClick() }
-                        "reminders" -> { recordClick("reminders"); onRemindersClick() }
-                        "lists" -> { recordClick("lists"); onListsClick() }
-                        "notes" -> { recordClick("notes"); onNotesClick() }
-                        "project_focus" -> { recordClick("project_focus"); onProjectFocusClick() }
+                        "habits" -> onHabitsClick()
+                        "reminders" -> onRemindersClick()
+                        "lists" -> onListsClick()
+                        "notes" -> onNotesClick()
+                        "project_focus" -> onProjectFocusClick()
                     }
                 }
             }

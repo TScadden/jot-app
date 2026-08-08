@@ -386,33 +386,22 @@ fun BodyLoadScreen(
                 var isRoutineExpanded by remember { mutableStateOf(false) }
                 val context = androidx.compose.ui.platform.LocalContext.current
                 val prefs = remember { com.notel.notel.data.preferences.NotelPreferences(context) }
-                val routineClickJson by prefs.routineClickCounts.collectAsState(initial = "{}")
+                val savedOrderJson by prefs.infoTileOrder.collectAsState(initial = "")
 
-                val routineClickCounts = remember(routineClickJson) {
-                    try {
-                        kotlinx.serialization.json.Json.decodeFromString<Map<String, Int>>(routineClickJson)
-                    } catch (e: Exception) {
-                        emptyMap()
+                val sortedRoutineTabs = remember(savedOrderJson) {
+                    val allRoutineKeys = listOf("habits", "reminders", "lists", "notes", "project_focus")
+                    if (savedOrderJson.isNotBlank()) {
+                        val parsedIds = try {
+                            kotlinx.serialization.json.Json.decodeFromString<List<String>>(savedOrderJson)
+                        } catch (e: Exception) {
+                            emptyList()
+                        }
+                        val userOrdered = parsedIds.filter { it in allRoutineKeys }
+                        val missing = allRoutineKeys.filter { it !in userOrdered }
+                        (userOrdered + missing).take(4)
+                    } else {
+                        listOf("habits", "project_focus")
                     }
-                }
-
-                // Routine tabs filtering: initially Habits & Project Focus.
-                // As tiles in Info Center are clicked (count > 0), show up to top 4 tiles sorted by click count.
-                val sortedRoutineTabs = remember(routineClickCounts) {
-                    val defaultBase = listOf("habits", "project_focus")
-                    val clickedExtra = listOf("habits", "reminders", "lists", "notes", "project_focus")
-                        .filter { (routineClickCounts[it] ?: 0) > 0 }
-                        .sortedByDescending { routineClickCounts[it] ?: 0 }
-                    
-                    (defaultBase + clickedExtra).distinct().take(4)
-                }
-
-                val coroutineScope = rememberCoroutineScope()
-                val recordClick: (String, () -> Unit) -> Unit = { key, action ->
-                    coroutineScope.launch {
-                        prefs.recordRoutineClick(key)
-                    }
-                    action()
                 }
 
                 Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
@@ -484,7 +473,7 @@ fun BodyLoadScreen(
                                                     alpha = 0.8f,
                                                     showBorder = true
                                                 )
-                                                .clickable { recordClick("habits", onNavigateToHabits) }
+                                                .clickable { onNavigateToHabits() }
                                                 .padding(horizontal = 20.dp, vertical = 12.dp)
                                         ) {
                                             Row(
@@ -541,7 +530,7 @@ fun BodyLoadScreen(
                                                     alpha = 0.8f,
                                                     showBorder = true
                                                 )
-                                                .clickable { recordClick("reminders", onNavigateToReminders) }
+                                                .clickable { onNavigateToReminders() }
                                                 .padding(horizontal = 20.dp, vertical = 12.dp)
                                         ) {
                                             Row(
@@ -598,7 +587,7 @@ fun BodyLoadScreen(
                                                     alpha = 0.8f,
                                                     showBorder = true
                                                 )
-                                                .clickable { recordClick("lists", onNavigateToLists) }
+                                                .clickable { onNavigateToLists() }
                                                 .padding(horizontal = 20.dp, vertical = 12.dp)
                                         ) {
                                             Row(
@@ -656,7 +645,7 @@ fun BodyLoadScreen(
                                                     alpha = 0.8f,
                                                     showBorder = true
                                                 )
-                                                .clickable { recordClick("notes", onNavigateToNotes) }
+                                                .clickable { onNavigateToNotes() }
                                                 .padding(horizontal = 20.dp, vertical = 12.dp)
                                         ) {
                                             Row(
@@ -713,7 +702,7 @@ fun BodyLoadScreen(
                                                     alpha = 0.8f,
                                                     showBorder = true
                                                 )
-                                                .clickable { recordClick("project_focus", onNavigateToProjectFocus) }
+                                                .clickable { onNavigateToProjectFocus() }
                                                 .padding(horizontal = 20.dp, vertical = 12.dp)
                                         ) {
                                             Row(
