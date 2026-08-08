@@ -355,7 +355,17 @@ fun BodyLoadCard(
             }
 
             // Small Sync Button in bottom right corner of the rectangle
-            // Small Sync Button ALWAYS visible
+            // Refresh Button - Spins while loading data
+            val refreshTransition = rememberInfiniteTransition()
+            val refreshRotation by refreshTransition.animateFloat(
+                initialValue = 0f,
+                targetValue = 360f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(900, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart
+                )
+            )
+
             IconButton(
                 onClick = {
                     userTriggeredRefresh = true
@@ -364,23 +374,16 @@ fun BodyLoadCard(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(end = 8.dp, bottom = 1.dp)
-                    .size(44.dp),
-                enabled = !isLoading
+                    .size(44.dp)
             ) {
-                if (isLoading && userTriggeredRefresh) {
-                    CircularProgressIndicator(
-                        color = NotelPrimary,
-                        strokeWidth = 1.5.dp,
-                        modifier = Modifier.size(18.dp)
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "Sync",
-                        tint = NotelPrimary.copy(alpha = 0.7f),
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = "Sync",
+                    tint = if (isLoading) NotelPrimary else NotelPrimary.copy(alpha = 0.7f),
+                    modifier = Modifier
+                        .size(18.dp)
+                        .graphicsLayer(rotationZ = if (isLoading) refreshRotation else 0f)
+                )
             }
         }
         

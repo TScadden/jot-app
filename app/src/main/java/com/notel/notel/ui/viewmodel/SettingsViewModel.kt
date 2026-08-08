@@ -925,7 +925,7 @@ class SettingsViewModel @Inject constructor(
             // Run all three pushes in parallel to minimize wait time
             try {
                 val (profilePushed, entriesPushed, categoriesPushed) = coroutineScope {
-                    val profileDeferred = async { syncManager.pushProfileData() }
+                    val profileDeferred = async { syncManager.pushProfileData(skipHealthConnect = true) }
                     val entriesDeferred = async { syncManager.pushEntries() }
                     val categoriesDeferred = async { syncManager.pushCategories() }
                     Triple(profileDeferred.await(), entriesDeferred.await(), categoriesDeferred.await())
