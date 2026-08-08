@@ -49,14 +49,22 @@ fun HistoryScreen(
     Scaffold(
         containerColor = NotelBackground,
         snackbarHost = {
-            SnackbarHost(snackbarHostState) { data ->
-                Snackbar(
-                    snackbarData = data,
-                    containerColor = NotelSurfaceHigh.copy(alpha = 0.95f),
-                    contentColor = NotelTextPrimary,
-                    actionColor = NotelPrimary,
-                    shape = RoundedCornerShape(16.dp)
-                )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = 80.dp)
+                    .padding(horizontal = 16.dp),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                SnackbarHost(snackbarHostState) { data ->
+                    Snackbar(
+                        snackbarData = data,
+                        containerColor = NotelSurfaceHigh.copy(alpha = 0.95f),
+                        contentColor = NotelTextPrimary,
+                        actionColor = NotelPrimary,
+                        shape = RoundedCornerShape(16.dp)
+                    )
+                }
             }
         },
         topBar = {

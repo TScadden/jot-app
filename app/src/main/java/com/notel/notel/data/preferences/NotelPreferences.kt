@@ -280,7 +280,7 @@ class NotelPreferences @Inject constructor(
     }
 
     val autoAiSuggestions: Flow<Boolean> = context.dataStore.data.map { prefs ->
-        prefs[AUTO_AI_SUGGESTIONS] ?: true
+        prefs[AUTO_AI_SUGGESTIONS] ?: false
     }
 
     val loggedIn: Flow<Boolean> = context.dataStore.data.map { prefs ->

@@ -80,76 +80,82 @@ class SyncManager @Inject constructor(
                 log("SYNC_WARN: Profile — could not push to server.")
             }
 
-            // 2. Push Categories
-            val categories = categoryDao.getAllCategories().first()
-            if (categories.isNotEmpty()) {
-                val categoryDtos = categories.map {
-                    CategoryDtoModel(it.id, it.name, it.icon, it.colorHex, it.isDefault, it.sortOrder)
-                }
-                val catRes = tabsApi.syncCategories(SyncCategoriesRequest(categoryDtos))
-                if (!catRes.isSuccessful) {
-                    log("SYNC_FAIL: Categories (${categories.size}) — HTTP ${catRes.code()}")
-                    return@withContext
-                }
-                log("SYNC_OK: Categories (${categories.size} pushed)")
-            } else {
-                log("SYNC_SKIP: Categories — none found locally")
-            }
+            val isOnboarded = preferences.onboardingComplete.first()
 
-            // 3. Push Log Entries
-            val entries = logEntryDao.getAllEntries().first()
-            if (entries.isNotEmpty()) {
-                val entryDtos = entries.map {
-                    LogEntryDtoModel(it.id, it.categoryId, it.body, it.chips, it.manualText, it.timestamp)
-                }
-                val entryRes = tabsApi.syncEntries(SyncEntriesRequest(entryDtos))
-                if (!entryRes.isSuccessful) {
-                    log("SYNC_FAIL: Jot Logs (${entries.size}) — HTTP ${entryRes.code()}")
-                    return@withContext
-                }
-                log("SYNC_OK: Jot Logs (${entries.size} pushed)")
-            } else {
-                log("SYNC_SKIP: Jot Logs — none found locally")
-            }
-
-            // 4. Documents
-            val docSyncOk = try { syncDocuments(); true } catch (e: Exception) { false }
-            if (docSyncOk) log("SYNC_OK: Documents") else log("SYNC_FAIL: Documents")
-
-            // 6. Coach Sessions & Messages
-            val coachOk = try { syncCoachSessions(); syncCoachMessages(); true } catch (e: Exception) { false }
-            if (coachOk) log("SYNC_OK: Coach Sessions & Messages") else log("SYNC_FAIL: Coach Sessions")
-
-            // 7. Biometrics (Health Connect)
-            try {
-                generateHistoricalBiometricsInsights()
-                log("SYNC_OK: Biometrics (Health Connect cache rebuilt)")
-            } catch (e: Exception) {
-                log("SYNC_FAIL: Biometrics — ${e.message}")
-            }
-
-            // 8. AI Insights
-            val insightsStr = preferences.aiInsights.first()
-            if (insightsStr.isNotBlank()) {
-                val localInsights = try {
-                    Json.decodeFromString<List<com.notel.notel.data.local.entity.AiInsight>>(insightsStr)
-                } catch (e: Exception) { emptyList() }
-
-                if (localInsights.isNotEmpty()) {
-                    val insightDtos = localInsights.map {
-                        InsightDtoModel(it.id, it.text, it.type, it.timestamp)
+            if (isOnboarded) {
+                // 2. Push Categories
+                val categories = categoryDao.getAllCategories().first()
+                if (categories.isNotEmpty()) {
+                    val categoryDtos = categories.map {
+                        CategoryDtoModel(it.id, it.name, it.icon, it.colorHex, it.isDefault, it.sortOrder)
                     }
-                    val insightRes = tabsApi.syncInsights(SyncInsightsRequest(insightDtos))
-                    if (insightRes.isSuccessful) {
-                        log("SYNC_OK: AI Insights (${localInsights.size} entries)")
+                    val catRes = tabsApi.syncCategories(SyncCategoriesRequest(categoryDtos))
+                    if (!catRes.isSuccessful) {
+                        log("SYNC_FAIL: Categories (${categories.size}) — HTTP ${catRes.code()}")
+                        return@withContext
+                    }
+                    log("SYNC_OK: Categories (${categories.size} pushed)")
+                } else {
+                    log("SYNC_SKIP: Categories — none found locally")
+                }
+
+                // 3. Push Log Entries
+                val entries = logEntryDao.getAllEntries().first()
+                if (entries.isNotEmpty()) {
+                    val entryDtos = entries.map {
+                        LogEntryDtoModel(it.id, it.categoryId, it.body, it.chips, it.manualText, it.timestamp)
+                    }
+                    val entryRes = tabsApi.syncEntries(SyncEntriesRequest(entryDtos))
+                    if (!entryRes.isSuccessful) {
+                        log("SYNC_FAIL: Jot Logs (${entries.size}) — HTTP ${entryRes.code()}")
+                        return@withContext
+                    }
+                    log("SYNC_OK: Jot Logs (${entries.size} pushed)")
+                } else {
+                    log("SYNC_SKIP: Jot Logs — none found locally")
+                }
+
+                // 4. Documents
+                val docSyncOk = try { syncDocuments(); true } catch (e: Exception) { false }
+                if (docSyncOk) log("SYNC_OK: Documents") else log("SYNC_FAIL: Documents")
+
+                // 6. Coach Sessions & Messages
+                val coachOk = try { syncCoachSessions(); syncCoachMessages(); true } catch (e: Exception) { false }
+                if (coachOk) log("SYNC_OK: Coach Sessions & Messages") else log("SYNC_FAIL: Coach Sessions")
+
+                // 7. Biometrics (Health Connect)
+                try {
+                    generateHistoricalBiometricsInsights()
+                    log("SYNC_OK: Biometrics (Health Connect cache rebuilt)")
+                } catch (e: Exception) {
+                    log("SYNC_FAIL: Biometrics — ${e.message}")
+                }
+
+                // 8. AI Insights
+                val insightsStr = preferences.aiInsights.first()
+                if (insightsStr.isNotBlank()) {
+                    val localInsights = try {
+                        Json.decodeFromString<List<com.notel.notel.data.local.entity.AiInsight>>(insightsStr)
+                    } catch (e: Exception) { emptyList() }
+
+                    if (localInsights.isNotEmpty()) {
+                        val insightDtos = localInsights.map {
+                            InsightDtoModel(it.id, it.text, it.type, it.timestamp)
+                        }
+                        val insightRes = tabsApi.syncInsights(SyncInsightsRequest(insightDtos))
+                        if (insightRes.isSuccessful) {
+                            log("SYNC_OK: AI Insights (${localInsights.size} entries)")
+                        } else {
+                            log("SYNC_FAIL: AI Insights — HTTP ${insightRes.code()}")
+                        }
                     } else {
-                        log("SYNC_FAIL: AI Insights — HTTP ${insightRes.code()}")
+                        log("SYNC_SKIP: AI Insights — none found locally")
                     }
                 } else {
                     log("SYNC_SKIP: AI Insights — none found locally")
                 }
             } else {
-                log("SYNC_SKIP: AI Insights — none found locally")
+                log("SYNC_SKIP: Skipping categories, entries, documents, coach sessions, biometrics, and insights because onboarding is not complete.")
             }
 
             preferences.setLastSyncTime(System.currentTimeMillis())
@@ -259,7 +265,7 @@ class SyncManager @Inject constructor(
     var lastProfilePushError: String? = null
         private set
 
-    suspend fun pushProfileData(): Boolean = withContext(Dispatchers.IO) {
+    suspend fun pushProfileData(skipHealthConnect: Boolean = false): Boolean = withContext(Dispatchers.IO) {
         try {
             if (!preferences.loggedIn.first()) return@withContext false
             
@@ -297,7 +303,7 @@ class SyncManager @Inject constructor(
             var todayHr = hrMap2[todayStr] ?: 0
             var todaySpikeCount = 0
 
-            if (healthConnectManager.hasBasicPermissions()) {
+            if (!skipHealthConnect && healthConnectManager.hasBasicPermissions()) {
                 try {
                     val liveSleep = healthConnectManager.readSleepSession(todayStr)
                     if (liveSleep != null) {
@@ -321,7 +327,7 @@ class SyncManager @Inject constructor(
                 } catch (e: Exception) {
                     Log.e(tag, "Failed to read live Health Connect data for today: ${e.message}")
                 }
-            } else {
+            } else if (!skipHealthConnect) {
                 val spikesStr = preferences.historicalHrSpikes.first()
                 val spikesList = try {
                     if (spikesStr.isNotBlank()) json2.decodeFromString<List<com.notel.notel.data.healthconnect.DailyHeartRateSummary>>(spikesStr) else emptyList()

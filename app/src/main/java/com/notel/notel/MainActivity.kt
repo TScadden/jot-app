@@ -244,7 +244,13 @@ class MainActivity : ComponentActivity() {
                             ProfileSetupScreen(onNavigateNext = { navController.navigate("connections") })
                         }
                         composable("connections") {
-                            ConnectionsScreen(onNavigateNext = { navController.navigate("setup_loading") })
+                            ConnectionsScreen(onNavigateNext = { navController.navigate("membership_onboarding") })
+                        }
+                        composable("membership_onboarding") {
+                            com.notel.notel.ui.screen.MembershipOnboardingScreen(
+                                onSubscribe = { navController.navigate("settings?menu=MEMBERSHIP") },
+                                onSkip = { navController.navigate("setup_loading") }
+                            )
                         }
                         composable("setup_loading") {
                             SetupLoadingScreen(onNavigateMain = { 
@@ -453,7 +459,7 @@ class MainActivity : ComponentActivity() {
                     }
 
                     // Floating Glass Nav Banner
-                    val hideNavRoutes = listOf("splash", "login", "profile_setup", "connections", "setup_loading", "data_connections")
+                    val hideNavRoutes = listOf("splash", "login", "profile_setup", "connections", "membership_onboarding", "setup_loading", "data_connections")
                     val isFileViewer = currentRoute?.startsWith("file_viewer") == true
                     if (currentRoute !in hideNavRoutes && !isFileViewer && currentRoute != null) {
                         Box(

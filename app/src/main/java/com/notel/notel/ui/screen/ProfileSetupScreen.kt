@@ -5,13 +5,18 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -60,25 +65,32 @@ fun ProfileSetupScreen(
     val context = LocalContext.current
     val serverContext by viewModel.existingContext.collectAsState(initial = "")
     var profileText by remember { mutableStateOf("") }
-    var uploadedFileName by remember { mutableStateOf<String?>( null) }
+
+    // Track multiple uploaded documents
+    val uploadedFiles = remember { mutableStateListOf<String>() }
+
+    // Observe processing state from SettingsViewModel
+    val isProcessingFile by settingsViewModel.isProcessingFile.collectAsState()
 
     val filePicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        uri?.let {
-            // Derive display name
-            val cursor = context.contentResolver.query(it, null, null, null, null)
+        contract = ActivityResultContracts.GetMultipleContents()
+    ) { uris ->
+        uris.forEach { uri ->
+            val cursor = context.contentResolver.query(uri, null, null, null, null)
             val displayName = cursor?.use { c ->
                 if (c.moveToFirst()) {
                     val idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
                     if (idx != -1) c.getString(idx) else null
                 } else null
             } ?: "Document"
-            uploadedFileName = displayName
-            settingsViewModel.ingestFile(it, context.contentResolver)
+
+            if (!uploadedFiles.contains(displayName)) {
+                uploadedFiles.add(displayName)
+            }
+            settingsViewModel.ingestFile(uri, context.contentResolver)
         }
     }
-    
+
     // Pre-fill once when server data arrives
     LaunchedEffect(serverContext) {
         if (profileText.isBlank() && serverContext.isNotBlank()) {
@@ -87,7 +99,7 @@ fun ProfileSetupScreen(
     }
 
     val wordCount = profileText.trim().split("\\s+".toRegex()).count { it.isNotBlank() }
-    val isReady = wordCount >= 10
+    val isReady = wordCount >= 10 && !isProcessingFile
 
     Scaffold(
         containerColor = NotelBackground,
@@ -107,7 +119,7 @@ fun ProfileSetupScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.height(16.dp))
-            
+
             Text("Welcome to Tabs", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = NotelPrimary)
             Spacer(modifier = Modifier.height(8.dp))
             Text(
@@ -115,9 +127,9 @@ fun ProfileSetupScreen(
                 color = NotelTextSecondary,
                 fontSize = 14.sp
             )
-            
+
             Spacer(modifier = Modifier.height(24.dp))
-            
+
             OutlinedTextField(
                 value = profileText,
                 onValueChange = { profileText = it },
@@ -134,32 +146,109 @@ fun ProfileSetupScreen(
                 ),
                 maxLines = 10
             )
-            
-            Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(if (wordCount < 100) "Keep going! The more context, the better the AI." else "Great context!", color = if (wordCount < 100) NotelPrimary else Color.Green, fontSize = 12.sp)
-                Text("$wordCount / 100 words", color = NotelTextSecondary, fontSize = 12.sp)
-            }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            GlassyButton(
-                onClick = { filePicker.launch("*/*") },
-                modifier = Modifier.fillMaxWidth(),
-                containerColor = NotelSurfaceHigh
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                if (uploadedFileName != null) {
-                    Icon(Icons.Default.CheckCircle, "Uploaded", tint = Color(0xFF4CAF50))
+                Text(
+                    text = if (wordCount < 100) "Provide more context for better AI." else "Great context!",
+                    color = if (wordCount < 100) NotelPrimary else Color.Green,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f).alignByBaseline()
+                )
+                Text(
+                    text = "$wordCount / 100 words",
+                    color = NotelTextSecondary,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.padding(start = 8.dp).alignByBaseline()
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Upload Documents section
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Upload Documents (Optional)", color = NotelTextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    if (isProcessingFile) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(
+                                color = NotelPrimary,
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text("AI reading...", color = NotelTextSecondary, fontSize = 12.sp)
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                Text(
+                    "Upload medical records, lab results, or any documents that give the AI more context about your health. PDF, images, and text files are all supported.",
+                    color = NotelTextSecondary,
+                    fontSize = 12.sp,
+                    lineHeight = 18.sp
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                // Show uploaded files
+                if (uploadedFiles.isNotEmpty()) {
+                    uploadedFiles.forEachIndexed { index, name ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(NotelSurface)
+                                .border(1.dp, NotelPrimary.copy(alpha = 0.2f), RoundedCornerShape(10.dp))
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.CheckCircle, "Done", tint = Color(0xFF4CAF50), modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(name, color = NotelTextPrimary, fontSize = 13.sp, modifier = Modifier.weight(1f), maxLines = 1)
+                            IconButton(
+                                onClick = { uploadedFiles.removeAt(index) },
+                                modifier = Modifier.size(20.dp)
+                            ) {
+                                Icon(Icons.Default.Close, "Remove", tint = NotelTextSecondary, modifier = Modifier.size(14.dp))
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                GlassyButton(
+                    onClick = { filePicker.launch("*/*") },
+                    modifier = Modifier.fillMaxWidth(),
+                    containerColor = NotelSurfaceHigh,
+                    enabled = !isProcessingFile
+                ) {
+                    Icon(Icons.Default.UploadFile, "Upload", tint = if (isProcessingFile) NotelTextSecondary else NotelPrimary)
                     Spacer(Modifier.width(8.dp))
-                    Text(uploadedFileName!!, color = Color(0xFF4CAF50), fontWeight = FontWeight.SemiBold, maxLines = 1)
-                } else {
-                    Icon(Icons.Default.UploadFile, "Upload", tint = NotelPrimary)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Upload Documents (Optional)", color = NotelTextPrimary, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (uploadedFiles.isEmpty()) "Add Documents" else "Add More Documents",
+                        color = if (isProcessingFile) NotelTextSecondary else NotelTextPrimary,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(48.dp))
-            
+
             GlassyButton(
                 onClick = {
                     viewModel.saveProfileData(profileText)
@@ -168,9 +257,15 @@ fun ProfileSetupScreen(
                 modifier = Modifier.fillMaxWidth(),
                 enabled = isReady
             ) {
-                Text("Next Step", color = if (isReady) Color.White else Color.Gray, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                if (isProcessingFile) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text("AI is reading your documents...", color = Color.Gray, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                } else {
+                    Text("Next Step", color = if (isReady) Color.White else Color.Gray, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                }
             }
-            
+
             Spacer(modifier = Modifier.height(32.dp))
         }
     }

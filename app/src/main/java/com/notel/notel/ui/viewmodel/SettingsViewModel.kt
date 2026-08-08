@@ -7,6 +7,8 @@ import com.notel.notel.data.repository.CategoryRepository
 import com.notel.notel.data.repository.LogRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.decodeFromString
@@ -859,12 +861,51 @@ class SettingsViewModel @Inject constructor(
         return name
     }
 
-    fun restartOnboarding(onRestart: () -> Unit) {
+    fun restartOnboarding(onLogout: () -> Unit) {
         viewModelScope.launch {
-            preferences.setOnboardingComplete(false)
-            // Push the "false" status to the server so it removes the checkmark
-            syncManager.pushProfileData() 
-            onRestart()
+            try {
+                // 1. Delete account from server (removes user row + all server-side data via CASCADE)
+                logRepository.deleteAccountData()
+            } catch (_: Exception) {
+                // Even if server call fails, still wipe locally so the user is fully logged out
+            }
+
+            // 2. Clear all local credentials and preferences
+            preferences.clearCredentials()
+
+            // 3. Clear memory caches
+            logRepository.clearCache()
+            habitRepository.clearCache()
+
+            // 4. Wipe Room database
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    val db = database.openHelper.writableDatabase
+                    db.beginTransaction()
+                    try {
+                        db.execSQL("DELETE FROM user_list_items")
+                        db.execSQL("DELETE FROM user_lists")
+                        db.execSQL("DELETE FROM log_entries")
+                        db.execSQL("DELETE FROM reminders")
+                        db.execSQL("DELETE FROM coach_messages")
+                        db.execSQL("DELETE FROM coach_sessions")
+                        db.execSQL("DELETE FROM medications")
+                        db.execSQL("DELETE FROM medication_side_effect_cache")
+                        db.execSQL("DELETE FROM knowledge_documents")
+                        db.execSQL("DELETE FROM categories")
+                        db.setTransactionSuccessful()
+                    } finally {
+                        db.endTransaction()
+                    }
+                } catch (_: Exception) {
+                    database.clearAllTables()
+                }
+                // Re-seed default categories for the next user
+                database.categoryDao().insertAll(com.notel.notel.data.local.DefaultCategories.all)
+            }
+
+            // 5. Navigate to login screen (same callback as logout)
+            onLogout()
         }
     }
 
@@ -881,11 +922,15 @@ class SettingsViewModel @Inject constructor(
         _logoutError.value = null
         viewModelScope.launch {
             // 0. Push ALL local data to the server BEFORE wiping anything
+            // Run all three pushes in parallel to minimize wait time
             try {
-                val profilePushed = syncManager.pushProfileData()
-                val entriesPushed = syncManager.pushEntries()
-                val categoriesPushed = syncManager.pushCategories()
-                
+                val (profilePushed, entriesPushed, categoriesPushed) = coroutineScope {
+                    val profileDeferred = async { syncManager.pushProfileData() }
+                    val entriesDeferred = async { syncManager.pushEntries() }
+                    val categoriesDeferred = async { syncManager.pushCategories() }
+                    Triple(profileDeferred.await(), entriesDeferred.await(), categoriesDeferred.await())
+                }
+
                 // Verify the sync pushes actually reached the server
                 if (!profilePushed || !entriesPushed || !categoriesPushed) {
                     val details = mutableListOf<String>()

@@ -341,6 +341,15 @@ fun LoginScreen(
             if (errorMsg != null) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(errorMsg, color = MaterialTheme.colorScheme.error, fontSize = 14.sp)
+                if (errorMsg.contains("No account found", ignoreCase = true)) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextButton(onClick = {
+                        isRegisterMode = true
+                        viewModel.setError(null)
+                    }) {
+                        Text("Sign up instead →", color = NotelPrimary, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
             if (successMsg != null) {
                 Spacer(modifier = Modifier.height(16.dp))

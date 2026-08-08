@@ -342,7 +342,25 @@ fun SettingsScreen(
     Box(modifier = Modifier.fillMaxSize()) {
     Scaffold(
         containerColor = NotelBackground,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = 80.dp)
+                    .padding(horizontal = 16.dp),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                SnackbarHost(snackbarHostState) { data ->
+                    Snackbar(
+                        snackbarData = data,
+                        containerColor = NotelSurfaceHigh.copy(alpha = 0.95f),
+                        contentColor = NotelTextPrimary,
+                        actionColor = NotelPrimary,
+                        shape = RoundedCornerShape(16.dp)
+                    )
+                }
+            }
+        },
         topBar = {
             TopAppBar(
                 title = { 
@@ -3230,9 +3248,15 @@ fun SettingsScreen(
                     text = { 
                         Column {
                             Text(
-                                if (isLoggingOut) "Saving and syncing your data to the cloud. Please wait..."
+                                if (isLoggingOut) "Saving and syncing your data to the cloud..."
                                 else "Your data will be synced to the cloud before logging out.",
-                                color = NotelTextSecondary
+                                color = NotelTextPrimary
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "Note: saving and syncing everything to the server may take a minute or two depending on how much data you have. Please keep the app open.",
+                                color = NotelTextSecondary.copy(alpha = 0.8f),
+                                fontSize = 13.sp
                             )
                             if (logoutError != null) {
                                 Spacer(Modifier.height(12.dp))
@@ -3281,16 +3305,16 @@ fun SettingsScreen(
             if (showRestartDialog) {
                 AlertDialog(
                     onDismissRequest = { showRestartDialog = false },
-                    title = { Text("Reset Account?", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
+                    title = { Text("Delete Account?", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
                     text = { 
-                        Text("Are you sure? This will wipe your checkmark from the server and let you start the introduction tour over again.", color = NotelTextSecondary) 
+                        Text("This will permanently delete your account and all associated data from our servers. You will be logged out immediately and cannot undo this.", color = NotelTextSecondary) 
                     },
                     confirmButton = {
                         TextButton(onClick = {
-                            viewModel.restartOnboarding(onRestartOnboarding)
                             showRestartDialog = false
+                            viewModel.restartOnboarding(onLogout)
                         }) {
-                            Text("Reset", color = Color.Red)
+                            Text("Delete Account", color = Color.Red)
                         }
                     },
                     dismissButton = {
