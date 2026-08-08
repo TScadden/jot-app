@@ -556,6 +556,24 @@ fun SettingsScreen(
                             modifier = Modifier.fillMaxWidth()
                         )
 
+                        Spacer(Modifier.height(12.dp))
+
+                        OutlinedButton(
+                            onClick = { viewModel.billingManager.checkSubscriptionStatus() },
+                            modifier = Modifier.align(Alignment.CenterHorizontally),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.3f))
+                        ) {
+                            Icon(
+                                Icons.Default.Sync,
+                                contentDescription = null,
+                                tint = NotelPrimary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text("Refresh Subscription Status", color = NotelPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        }
+
                         if (!isUnlimited) {
                             Spacer(Modifier.height(24.dp))
                             
