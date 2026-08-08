@@ -112,6 +112,7 @@ class MainActivity : ComponentActivity() {
                     if (event == Lifecycle.Event.ON_RESUME) {
                         coroutineScope.launch {
                             notelPreferences.updateStreak()
+                            settingsViewModel.billingManager.checkSubscriptionStatus()
                         }
                     }
                 }

@@ -165,9 +165,11 @@ class BillingManager @Inject constructor(
             }
         } else if (billingResult.responseCode == BillingClient.BillingResponseCode.USER_CANCELED) {
             Log.i(tag, "User canceled the purchase flow")
+            checkSubscriptionStatus()
         } else {
             Log.e(tag, "Purchase failed: ${billingResult.debugMessage}")
             scope.launch { _billingEvents.emit("Purchase failed: ${billingResult.debugMessage}") }
+            checkSubscriptionStatus()
         }
     }
 
