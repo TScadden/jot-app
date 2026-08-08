@@ -54,15 +54,18 @@ fun BodyLoadCard(
     val score = state.score
     val isLoading = state.isLoading
     var userTriggeredRefresh by remember { mutableStateOf(false) }
-    var hasStartedLoading by remember { mutableStateOf(false) }
-    var isInitialLoad by remember { mutableStateOf(true) }
 
-    // Clear loading flags once loading completes
+    // Clear userTriggeredRefresh when loading completes
     LaunchedEffect(isLoading) {
-        if (isLoading) {
-            hasStartedLoading = true
-        } else if (hasStartedLoading) {
-            isInitialLoad = false
+        if (!isLoading) {
+            userTriggeredRefresh = false
+        }
+    }
+
+    // Safety timeout: Never spin for more than 5 seconds
+    LaunchedEffect(userTriggeredRefresh) {
+        if (userTriggeredRefresh) {
+            kotlinx.coroutines.delay(5000)
             userTriggeredRefresh = false
         }
     }
@@ -373,7 +376,7 @@ fun BodyLoadCard(
                 )
             )
 
-            val shouldSpin = isLoading && (userTriggeredRefresh || isInitialLoad)
+            val shouldSpin = isLoading && userTriggeredRefresh
 
             IconButton(
                 onClick = {
