@@ -94,10 +94,11 @@ class MainActivity : ComponentActivity() {
                 com.notel.notel.data.BleManager.getInstance(context).scanAndAutoStart(context, notelPreferences)
                 com.notel.notel.util.NotificationHelper(context)
 
-                // Active background polling loop (checks for web graph reports sent to app every 7s)
+                // Active background polling loop (checks subscriptions and web graph reports every 7s)
                 while (true) {
                     kotlinx.coroutines.delay(7000L)
                     try {
+                        settingsViewModel.billingManager.checkSubscriptionStatus()
                         settingsViewModel.syncManager.pullAllData()
                     } catch (e: Exception) {
                         // Ignore periodic polling errors
