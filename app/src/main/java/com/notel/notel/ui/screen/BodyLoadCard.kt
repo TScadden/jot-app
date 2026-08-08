@@ -54,13 +54,16 @@ fun BodyLoadCard(
     val score = state.score
     val isLoading = state.isLoading
     var userTriggeredRefresh by remember { mutableStateOf(false) }
+    var hasStartedLoading by remember { mutableStateOf(false) }
     var isInitialLoad by remember { mutableStateOf(true) }
 
-    // Clear loading flags once loading finishes
+    // Clear loading flags once loading completes
     LaunchedEffect(isLoading) {
-        if (!isLoading) {
-            userTriggeredRefresh = false
+        if (isLoading) {
+            hasStartedLoading = true
+        } else if (hasStartedLoading) {
             isInitialLoad = false
+            userTriggeredRefresh = false
         }
     }
     val todayStr = java.time.LocalDate.now().toString()

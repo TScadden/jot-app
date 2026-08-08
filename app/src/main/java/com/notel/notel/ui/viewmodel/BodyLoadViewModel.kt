@@ -339,7 +339,6 @@ class BodyLoadViewModel @Inject constructor(
 
     fun refresh(force: Boolean = false) {
         val dateStr = _uiState.value.selectedDate
-        _uiState.update { it.copy(isLoading = true) }
         viewModelScope.launch {
             try {
                 val lastRefresh = preferences.lastBodyLoadRefresh.first()
@@ -347,16 +346,12 @@ class BodyLoadViewModel @Inject constructor(
                 val today = LocalDate.now().toString()
                 
                 if (!force) {
-                    if (dateStr != today) {
-                        _uiState.update { it.copy(isLoading = false) }
-                        return@launch
-                    }
-                    if (now - lastRefresh < 60 * 60 * 1000L) {
-                        _uiState.update { it.copy(isLoading = false) }
+                    if (dateStr != today || now - lastRefresh < 60 * 60 * 1000L) {
                         return@launch
                     }
                 }
 
+                _uiState.update { it.copy(isLoading = true) }
                 logRepository.getDailyStatsSummary(dateStr, forceRefresh = true)
                 
                 val categories = categoryRepository.getAllCategories().first()
