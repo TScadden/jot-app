@@ -54,10 +54,14 @@ fun BodyLoadCard(
     val score = state.score
     val isLoading = state.isLoading
     var userTriggeredRefresh by remember { mutableStateOf(false) }
+    var isInitialLoad by remember { mutableStateOf(true) }
 
-    // Clear the user-triggered flag once loading finishes
+    // Clear loading flags once loading finishes
     LaunchedEffect(isLoading) {
-        if (!isLoading) userTriggeredRefresh = false
+        if (!isLoading) {
+            userTriggeredRefresh = false
+            isInitialLoad = false
+        }
     }
     val todayStr = java.time.LocalDate.now().toString()
     
@@ -366,6 +370,8 @@ fun BodyLoadCard(
                 )
             )
 
+            val shouldSpin = isLoading && (userTriggeredRefresh || isInitialLoad)
+
             IconButton(
                 onClick = {
                     userTriggeredRefresh = true
@@ -379,10 +385,10 @@ fun BodyLoadCard(
                 Icon(
                     imageVector = Icons.Default.Refresh,
                     contentDescription = "Sync",
-                    tint = if (isLoading) NotelPrimary else NotelPrimary.copy(alpha = 0.7f),
+                    tint = if (shouldSpin) NotelPrimary else NotelPrimary.copy(alpha = 0.7f),
                     modifier = Modifier
                         .size(18.dp)
-                        .graphicsLayer(rotationZ = if (isLoading) refreshRotation else 0f)
+                        .graphicsLayer(rotationZ = if (shouldSpin) refreshRotation else 0f)
                 )
             }
         }
