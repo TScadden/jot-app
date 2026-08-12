@@ -772,14 +772,33 @@ class SettingsViewModel @Inject constructor(
             )
             current.add(newMed)
             preferences.setMedications(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(Medication.serializer()), current))
+            
+            // Sync with Room SQLite DB
+            val dbMed = com.notel.notel.data.local.entity.Medication(
+                name = name.trim(),
+                dose = "As prescribed",
+                frequency = "Daily",
+                isArchived = !isPresent,
+                startedDate = startDate.trim().ifEmpty { null },
+                endedDate = if (!isPresent) endDate.trim().ifEmpty { null } else null
+            )
+            database.medicationDao().insertMedication(dbMed)
+            
             syncManager.pushProfileData()
         }
     }
 
     fun deleteMedication(id: String) {
         viewModelScope.launch {
+            val medToDelete = medications.value.find { it.id == id }
             val current = medications.value.filter { it.id != id }
             preferences.setMedications(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(Medication.serializer()), current))
+            
+            // Sync deletion with Room SQLite DB
+            medToDelete?.let {
+                database.medicationDao().deleteMedicationByName(it.name)
+            }
+            
             syncManager.pushProfileData()
         }
     }
@@ -832,6 +851,20 @@ class SettingsViewModel @Inject constructor(
                             
                             val updated = (medications.value + parsed).distinctBy { it.name.lowercase().trim() }
                             preferences.setMedications(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(Medication.serializer()), updated))
+                            
+                            // Sync extraction with Room SQLite DB
+                            parsed.forEach { item ->
+                                val dbMed = com.notel.notel.data.local.entity.Medication(
+                                    name = item.name.trim(),
+                                    dose = "As prescribed",
+                                    frequency = "Daily",
+                                    isArchived = !item.isPresent,
+                                    startedDate = item.startDate.trim().ifEmpty { null },
+                                    endedDate = if (!item.isPresent) item.endDate.trim().ifEmpty { null } else null
+                                )
+                                database.medicationDao().insertMedication(dbMed)
+                            }
+                            
                             syncManager.pushProfileData()
                             
                             onResult(parsed)

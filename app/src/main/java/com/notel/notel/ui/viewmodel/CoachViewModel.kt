@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.notel.notel.data.local.dao.CoachMessageDao
 import com.notel.notel.data.local.dao.CoachSessionDao
+import com.notel.notel.data.local.dao.MedicationDao
 import com.notel.notel.data.local.entity.CoachMessageEntity
 import com.notel.notel.data.local.entity.CoachSession
 import com.notel.notel.data.preferences.NotelPreferences
@@ -416,6 +417,7 @@ class CoachViewModel @Inject constructor(
     private val preferences: NotelPreferences,
     private val coachSessionDao: CoachSessionDao,
     private val coachMessageDao: CoachMessageDao,
+    private val medicationDao: MedicationDao,
     private val tabsApi: TabsApi,
     private val geminiService: com.notel.notel.data.remote.GeminiService,
     savedStateHandle: SavedStateHandle
@@ -496,6 +498,19 @@ class CoachViewModel @Inject constructor(
                 // Add new meds and deduplicate by name
                 val updatedList = (currentList + proposedMeds).distinctBy { it.name.lowercase().trim() }
                 preferences.setMedications(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(Medication.serializer()), updatedList))
+
+                // Also write to Room SQLite database:
+                proposedMeds.forEach { item ->
+                    val dbMed = com.notel.notel.data.local.entity.Medication(
+                        name = item.name.trim(),
+                        dose = "As prescribed",
+                        frequency = "Daily",
+                        isArchived = !item.isPresent,
+                        startedDate = item.startDate.trim().ifEmpty { null },
+                        endedDate = if (!item.isPresent) item.endDate.trim().ifEmpty { null } else null
+                    )
+                    medicationDao.insertMedication(dbMed)
+                }
 
                 // Mark the message as approved in SQLite
                 val dbEntities = coachMessageDao.getMessagesForSession(sessionId).first()

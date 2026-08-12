@@ -24,4 +24,8 @@ interface MedicationDao {
 
     @Query("DELETE FROM medication_side_effect_cache")
     suspend fun clearAllSideEffectCache()
+
+    @Query("DELETE FROM medications WHERE name = :name")
+    suspend fun deleteMedicationByName(name: String)
 }
+

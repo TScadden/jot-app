@@ -8,6 +8,7 @@ import com.notel.notel.data.local.entity.Reminder
 import com.notel.notel.data.local.dao.CategoryDao
 import com.notel.notel.data.local.dao.LogEntryDao
 import com.notel.notel.data.preferences.NotelPreferences
+import com.notel.notel.data.local.dao.MedicationDao
 import com.notel.notel.notifications.ReminderScheduler
 import com.notel.notel.data.remote.*
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -28,6 +29,7 @@ class SyncManager @Inject constructor(
     private val tabsApi: TabsApi,
     private val logEntryDao: LogEntryDao,
     private val categoryDao: CategoryDao,
+    private val medicationDao: MedicationDao,
     private val knowledgeDocumentDao: com.notel.notel.data.local.dao.KnowledgeDocumentDao,
     private val coachSessionDao: com.notel.notel.data.local.dao.CoachSessionDao,
     private val coachMessageDao: com.notel.notel.data.local.dao.CoachMessageDao,
@@ -48,7 +50,7 @@ class SyncManager @Inject constructor(
         logCallback = callback
     }
 
-    private fun log(message: String) {
+    fun log(message: String) {
         Log.d(tag, message)
         logCallback?.invoke(message)
     }
@@ -64,15 +66,7 @@ class SyncManager @Inject constructor(
             Log.d(tag, "Full sync initiated...")
             log("SYNC_START: Beginning full sync cycle…")
 
-            // 1. Pull cloud data FIRST so restored accounts get their data immediately
-            val pullSuccess = pullAllData()
-            if (!pullSuccess) {
-                log("SYNC_FAIL: Cloud Pull — server unreachable or rejected")
-            } else {
-                log("SYNC_OK: Cloud Pull (logs, categories, profile, medications, insights)")
-            }
-
-            // 2. Push Profile
+            // 1. Push Profile
             val profilePushSuccess = pushProfileData()
             if (profilePushSuccess) {
                 log("SYNC_OK: Profile (context, medications, settings, streaks)")
@@ -92,9 +86,9 @@ class SyncManager @Inject constructor(
                     val catRes = tabsApi.syncCategories(SyncCategoriesRequest(categoryDtos))
                     if (!catRes.isSuccessful) {
                         log("SYNC_FAIL: Categories (${categories.size}) — HTTP ${catRes.code()}")
-                        return@withContext
+                    } else {
+                        log("SYNC_OK: Categories (${categories.size} pushed)")
                     }
-                    log("SYNC_OK: Categories (${categories.size} pushed)")
                 } else {
                     log("SYNC_SKIP: Categories — none found locally")
                 }
@@ -108,9 +102,9 @@ class SyncManager @Inject constructor(
                     val entryRes = tabsApi.syncEntries(SyncEntriesRequest(entryDtos))
                     if (!entryRes.isSuccessful) {
                         log("SYNC_FAIL: Jot Logs (${entries.size}) — HTTP ${entryRes.code()}")
-                        return@withContext
+                    } else {
+                        log("SYNC_OK: Jot Logs (${entries.size} pushed)")
                     }
-                    log("SYNC_OK: Jot Logs (${entries.size} pushed)")
                 } else {
                     log("SYNC_SKIP: Jot Logs — none found locally")
                 }
@@ -156,6 +150,14 @@ class SyncManager @Inject constructor(
                 }
             } else {
                 log("SYNC_SKIP: Skipping categories, entries, documents, coach sessions, biometrics, and insights because onboarding is not complete.")
+            }
+
+            // 9. Pull cloud data LAST
+            val pullSuccess = pullAllData()
+            if (!pullSuccess) {
+                log("SYNC_FAIL: Cloud Pull — server unreachable or rejected")
+            } else {
+                log("SYNC_OK: Cloud Pull (logs, categories, profile, medications, insights)")
             }
 
             preferences.setLastSyncTime(System.currentTimeMillis())
@@ -551,7 +553,40 @@ class SyncManager @Inject constructor(
                     profile.heartRateHistory?.let { preferences.setHeartRateHistory(it) }
                     // Restore medications
                     Log.d(tag, "RESTORE_MEDS: Server medications raw value = '${profile.medications}'")
-                    profile.medications?.let { if (it.isNotBlank()) preferences.setMedications(it) }
+                    profile.medications?.let { medsJson ->
+                        if (medsJson.isNotBlank()) {
+                            preferences.setMedications(medsJson)
+                            try {
+                                val serverMeds = Json.decodeFromString<List<com.notel.notel.ui.viewmodel.Medication>>(medsJson)
+                                val existingMeds = medicationDao.getAllMedications().first()
+                                val serverNames = serverMeds.map { it.name.trim().lowercase() }.toSet()
+
+                                // Delete local meds that are no longer on the server
+                                for (existing in existingMeds) {
+                                    if (!serverNames.contains(existing.name.trim().lowercase())) {
+                                        medicationDao.deleteMedication(existing)
+                                    }
+                                }
+
+                                // Upsert server meds into Room SQLite database
+                                for (med in serverMeds) {
+                                    val existingMatch = existingMeds.find { it.name.trim().lowercase() == med.name.trim().lowercase() }
+                                    val dbMed = com.notel.notel.data.local.entity.Medication(
+                                        id = existingMatch?.id ?: 0,
+                                        name = med.name.trim(),
+                                        dose = existingMatch?.dose ?: "As prescribed",
+                                        frequency = existingMatch?.frequency ?: "Daily",
+                                        isArchived = !med.isPresent,
+                                        startedDate = med.startDate.trim().ifEmpty { null },
+                                        endedDate = if (!med.isPresent) med.endDate.trim().ifEmpty { null } else null
+                                    )
+                                    medicationDao.insertMedication(dbMed)
+                                }
+                            } catch (e: Exception) {
+                                Log.e(tag, "Failed to parse/sync medications to Room DB in pullAllData: ${e.message}")
+                            }
+                        }
+                    }
                     // Restore notification & alert settings
                     profile.bodyLoadRemindersEnabled?.let { preferences.setBodyLoadRemindersEnabled(it) }
                     profile.dailyCupUpdatesEnabled?.let { preferences.setDailyCupUpdatesEnabled(it) }

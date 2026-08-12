@@ -9,9 +9,11 @@ import com.notel.notel.data.local.entity.MedicationSideEffectCache
 import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.remote.GeminiService
 import com.notel.notel.data.repository.LogRepository
+import com.notel.notel.data.sync.SyncManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
 import javax.inject.Inject
 
 @HiltViewModel
@@ -19,7 +21,8 @@ class MedicationsViewModel @Inject constructor(
     private val medicationDao: MedicationDao,
     private val logRepository: LogRepository,
     private val preferences: NotelPreferences,
-    private val geminiService: GeminiService
+    private val geminiService: GeminiService,
+    private val syncManager: SyncManager
 ) : ViewModel() {
 
     private val allMedsFlow = medicationDao.getAllMedications()
@@ -61,6 +64,7 @@ class MedicationsViewModel @Inject constructor(
             )
             medicationDao.insertMedication(med)
             _statusMessage.value = "Added ${med.name} (${med.dose})"
+            syncMedicationsToPreferencesAndCloud()
         }
     }
 
@@ -78,6 +82,7 @@ class MedicationsViewModel @Inject constructor(
             // Clear side effect cache for this med so AI generates fresh evaluation
             medicationDao.clearAllSideEffectCache()
             _statusMessage.value = "Updated ${updated.name}"
+            syncMedicationsToPreferencesAndCloud()
         }
     }
 
@@ -87,6 +92,7 @@ class MedicationsViewModel @Inject constructor(
             val updated = medication.copy(isArchived = true, endedDate = todayStr)
             medicationDao.insertMedication(updated)
             _statusMessage.value = "Archived ${medication.name} (Ended $todayStr)"
+            syncMedicationsToPreferencesAndCloud()
         }
     }
 
@@ -95,6 +101,7 @@ class MedicationsViewModel @Inject constructor(
             val updated = medication.copy(isArchived = false, endedDate = null)
             medicationDao.insertMedication(updated)
             _statusMessage.value = "Re-activated ${medication.name}"
+            syncMedicationsToPreferencesAndCloud()
         }
     }
 
@@ -102,6 +109,33 @@ class MedicationsViewModel @Inject constructor(
         viewModelScope.launch {
             medicationDao.deleteMedication(medication)
             _statusMessage.value = "Permanently deleted ${medication.name}"
+            syncMedicationsToPreferencesAndCloud()
+        }
+    }
+
+    private suspend fun syncMedicationsToPreferencesAndCloud() {
+        try {
+            val allMeds = medicationDao.getAllMedications().first()
+            val mappedList = allMeds.map { med ->
+                com.notel.notel.ui.viewmodel.Medication(
+                    id = med.id.toString(),
+                    name = med.name,
+                    startDate = med.startedDate ?: "",
+                    endDate = if (!med.isArchived) "Present" else (med.endedDate ?: ""),
+                    isPresent = !med.isArchived
+                )
+            }
+            preferences.setMedications(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(com.notel.notel.ui.viewmodel.Medication.serializer()), mappedList))
+            
+            syncManager.log("MEDS_SYNC: Saved ${mappedList.size} medication(s) locally. Pushing to cloud...")
+            val success = syncManager.pushProfileData()
+            if (success) {
+                syncManager.log("MEDS_SYNC_SUCCESS: Successfully synchronized medication list to cloud ✓")
+            } else {
+                syncManager.log("MEDS_SYNC_WARN: Could not push medication updates to cloud server.")
+            }
+        } catch (e: Exception) {
+            syncManager.log("MEDS_SYNC_ERROR: Failed to update preferences/cloud: ${e.message}")
         }
     }
 
