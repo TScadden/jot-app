@@ -207,13 +207,27 @@ fun ProfileSetupScreen(
                 )
             }
             var promptIndex by remember { mutableIntStateOf(0) }
+            val alphaAnim = remember { androidx.compose.animation.core.Animatable(1f) }
 
             LaunchedEffect(profileText) {
                 if (profileText.isEmpty()) {
                     while (true) {
-                        kotlinx.coroutines.delay(3500)
+                        kotlinx.coroutines.delay(3000)
+                        // Smoothly fade out to 0
+                        alphaAnim.animateTo(
+                            targetValue = 0f,
+                            animationSpec = androidx.compose.animation.core.tween(durationMillis = 600, easing = androidx.compose.animation.core.LinearOutSlowInEasing)
+                        )
+                        // Change prompt text while hidden
                         promptIndex = (promptIndex + 1) % placeholderPrompts.size
+                        // Smoothly fade back in to 1
+                        alphaAnim.animateTo(
+                            targetValue = 1f,
+                            animationSpec = androidx.compose.animation.core.tween(durationMillis = 600, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+                        )
                     }
+                } else {
+                    alphaAnim.snapTo(1f)
                 }
             }
 
@@ -221,20 +235,11 @@ fun ProfileSetupScreen(
                 value = profileText,
                 onValueChange = { profileText = it },
                 placeholder = {
-                    androidx.compose.animation.AnimatedContent(
-                        targetState = placeholderPrompts[promptIndex],
-                        transitionSpec = {
-                            androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(800)) togetherWith
-                                    androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(800))
-                        },
-                        label = "PlaceholderAnimation"
-                    ) { targetPrompt ->
-                        Text(
-                            text = targetPrompt,
-                            color = NotelTextSecondary,
-                            fontSize = 14.sp
-                        )
-                    }
+                    Text(
+                        text = placeholderPrompts[promptIndex],
+                        color = NotelTextSecondary.copy(alpha = NotelTextSecondary.alpha * alphaAnim.value),
+                        fontSize = 14.sp
+                    )
                 },
                 modifier = Modifier
                     .fillMaxWidth()
