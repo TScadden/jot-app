@@ -198,6 +198,8 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                val hasConsentedState by notelPreferences.hasConsented.collectAsState(initial = false)
+
                 Box(modifier = Modifier.fillMaxSize()) {
                     // Main Content
                     NavHost(
@@ -213,7 +215,11 @@ class MainActivity : ComponentActivity() {
                             com.notel.notel.ui.screen.SplashScreen(
                                 onNavigateNext = { isLoggedIn, isOnboarded ->
                                     if (isLoggedIn) {
-                                        if (isOnboarded) {
+                                        if (!hasConsentedState) {
+                                            navController.navigate("consent") {
+                                                popUpTo("splash") { inclusive = true }
+                                            }
+                                        } else if (isOnboarded) {
                                             navController.navigate("body_load") {
                                                 popUpTo("splash") { inclusive = true }
                                             }
@@ -248,10 +254,23 @@ class MainActivity : ComponentActivity() {
                         composable("consent") {
                             com.notel.notel.ui.screen.ConsentScreen(
                                 onConsent = {
-                                    navController.navigate("profile_setup") { popUpTo("consent") { inclusive = true } }
+                                    coroutineScope.launch {
+                                        notelPreferences.setHasConsented(true)
+                                        navController.navigate("consultation_intro") { popUpTo("consent") { inclusive = true } }
+                                    }
                                 },
                                 onDecline = {
-                                    navController.popBackStack()
+                                    coroutineScope.launch {
+                                        notelPreferences.setLoggedIn(false)
+                                        navController.navigate("welcome_onboarding") { popUpTo(0) { inclusive = true } }
+                                    }
+                                }
+                            )
+                        }
+                        composable("consultation_intro") {
+                            com.notel.notel.ui.screen.ConsultationIntroScreen(
+                                onContinue = {
+                                    navController.navigate("profile_setup") { popUpTo("consultation_intro") { inclusive = true } }
                                 }
                             )
                         }

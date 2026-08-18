@@ -12,6 +12,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,6 +28,50 @@ fun ConsentScreen(
     onConsent: () -> Unit,
     onDecline: () -> Unit
 ) {
+    var showDeclineDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+
+    if (showDeclineDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeclineDialog = false },
+            title = {
+                Text(
+                    text = "Data Consent Required",
+                    fontWeight = FontWeight.Bold,
+                    color = NotelTextPrimary
+                )
+            },
+            text = {
+                Text(
+                    text = "Tabs relies on health notes and biometric data to generate personalized AI insights and recaps. Declining limits app capabilities. Would you like to go back to login or continue with limited functionality?",
+                    color = NotelTextSecondary,
+                    fontSize = 14.sp
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeclineDialog = false
+                        onConsent() // Proceed with core features
+                    }
+                ) {
+                    Text("I Consent", color = NotelPrimary, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDeclineDialog = false
+                        onDecline()
+                    }
+                ) {
+                    Text("Log Out", color = NotelTextSecondary)
+                }
+            },
+            containerColor = NotelSurface,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
     Scaffold(
         containerColor = NotelBackground
     ) { padding ->
@@ -75,7 +121,7 @@ fun ConsentScreen(
                         Spacer(Modifier.height(20.dp))
 
                         Text(
-                            text = "Before getting started",
+                            text = "Privacy & Data Consent",
                             fontSize = 24.sp,
                             fontWeight = FontWeight.Bold,
                             color = NotelTextPrimary
@@ -84,7 +130,7 @@ fun ConsentScreen(
                         Spacer(Modifier.height(16.dp))
 
                         Text(
-                            text = "This app processes health data to deliver its core features. Because health data is sensitive, we need your explicit consent before we can use it.",
+                            text = "Tabs helps you build smart health logs and notes that grow with you. To calculate health trends and power your personalized AI recaps, we need your consent to securely process your health metrics.",
                             fontSize = 14.sp,
                             color = NotelTextSecondary,
                             lineHeight = 20.sp
@@ -93,7 +139,7 @@ fun ConsentScreen(
                         Spacer(Modifier.height(14.dp))
 
                         Text(
-                            text = "If you consent, we will collect and use your health data (such as health conditions, symptoms, treatments and medical history) to track and visualize your health journey, and to provide technical support.",
+                            text = "By consenting, you allow Tabs to sync and process your symptoms, biometric metrics (such as heart rate, sleep, and HRV), and logged notes to deliver your personalized dashboards and weekly health summaries.",
                             fontSize = 14.sp,
                             color = NotelTextSecondary,
                             lineHeight = 20.sp
@@ -102,7 +148,7 @@ fun ConsentScreen(
                         Spacer(Modifier.height(14.dp))
 
                         Text(
-                            text = "We also combine your data with other users' data, removing details that could identify you individually. This helps us analyze user trends, produce statistics, improve existing features and decide what new features to build.",
+                            text = "Your privacy is paramount. Anonymized and aggregated metrics help us improve trend models and build better features. Your personal data is never sold to third parties.",
                             fontSize = 14.sp,
                             color = NotelTextSecondary,
                             lineHeight = 20.sp
@@ -113,7 +159,7 @@ fun ConsentScreen(
                         val context = androidx.compose.ui.platform.LocalContext.current
                         Row {
                             Text(
-                                text = "See the ",
+                                text = "Read our ",
                                 fontSize = 14.sp,
                                 color = NotelTextSecondary
                             )
@@ -128,7 +174,7 @@ fun ConsentScreen(
                                 }
                             )
                             Text(
-                                text = " for more detail.",
+                                text = " for full details.",
                                 fontSize = 14.sp,
                                 color = NotelTextSecondary
                             )
@@ -145,7 +191,7 @@ fun ConsentScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Button(
-                        onClick = onDecline,
+                        onClick = { showDeclineDialog = true },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = NotelSurfaceHigh
                         ),
@@ -158,21 +204,25 @@ fun ConsentScreen(
                             text = "Decline",
                             color = NotelTextPrimary,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
+                            fontSize = 15.sp
                         )
                     }
 
-                    GlassyButton(
+                    Button(
                         onClick = onConsent,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = NotelPrimary
+                        ),
+                        shape = RoundedCornerShape(24.dp),
                         modifier = Modifier
-                            .weight(2f)
+                            .weight(1f)
                             .height(52.dp)
                     ) {
                         Text(
                             text = "I consent",
                             color = Color.White,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
+                            fontSize = 15.sp
                         )
                     }
                 }
