@@ -1,5 +1,6 @@
 package com.notel.notel.ui.screen
 
+import androidx.compose.animation.togetherWith
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -194,10 +195,47 @@ fun ProfileSetupScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            val placeholderPrompts = remember {
+                listOf(
+                    "I am training for a race and I want to focus on...",
+                    "I want to learn more about my health and why...",
+                    "I want to know why I am getting migraines and how...",
+                    "I want to track my symptoms and recovery after...",
+                    "I want to improve my sleep quality and daily energy...",
+                    "I am managing a chronic condition and want to track...",
+                    "I want to prepare detailed health summaries for my doctor..."
+                )
+            }
+            var promptIndex by remember { mutableIntStateOf(0) }
+
+            LaunchedEffect(profileText) {
+                if (profileText.isEmpty()) {
+                    while (true) {
+                        kotlinx.coroutines.delay(3500)
+                        promptIndex = (promptIndex + 1) % placeholderPrompts.size
+                    }
+                }
+            }
+
             OutlinedTextField(
                 value = profileText,
                 onValueChange = { profileText = it },
-                label = { Text("I am training for a race and I want to focus on...", color = NotelTextSecondary) },
+                placeholder = {
+                    androidx.compose.animation.AnimatedContent(
+                        targetState = placeholderPrompts[promptIndex],
+                        transitionSpec = {
+                            androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(800)) togetherWith
+                                    androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(800))
+                        },
+                        label = "PlaceholderAnimation"
+                    ) { targetPrompt ->
+                        Text(
+                            text = targetPrompt,
+                            color = NotelTextSecondary,
+                            fontSize = 14.sp
+                        )
+                    }
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(180.dp),
