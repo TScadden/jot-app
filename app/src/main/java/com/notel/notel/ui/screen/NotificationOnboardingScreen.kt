@@ -5,7 +5,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -16,10 +15,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -84,14 +79,15 @@ fun NotificationOnboardingScreen(
                 }
             }
 
-            // MAIN CONTENT COLUMN
+            // MAIN CONTENT COLUMN - CENTERED
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.Center),
-                horizontalAlignment = Alignment.CenterHorizontally
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
-                // NOTIFICATION PERMISSION CARD (Matching iOS style popup preview)
+                // NOTIFICATION PERMISSION CARD
                 GlassyCard(
                     shape = RoundedCornerShape(32.dp),
                     color = NotelSurface,
@@ -151,46 +147,7 @@ fun NotificationOnboardingScreen(
                     }
                 }
 
-                Spacer(Modifier.height(24.dp))
-
-                // CURVED ARROW POINTING UP TO ALLOW BUTTON
-                Box(
-                    modifier = Modifier
-                        .width(120.dp)
-                        .height(70.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    val arrowColor = NotelTextSecondary.copy(alpha = 0.6f)
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        val path = Path().apply {
-                            moveTo(size.width * 0.7f, size.height * 0.9f)
-                            cubicTo(
-                                size.width * 0.9f, size.height * 0.4f,
-                                size.width * 0.6f, size.height * 0.1f,
-                                size.width * 0.35f, size.height * 0.15f
-                            )
-                        }
-                        drawPath(
-                            path = path,
-                            color = arrowColor,
-                            style = Stroke(width = 4.dp.toPx())
-                        )
-                        // Arrowhead
-                        val headPath = Path().apply {
-                            moveTo(size.width * 0.35f, size.height * 0.15f)
-                            lineTo(size.width * 0.45f, size.height * 0.02f)
-                            moveTo(size.width * 0.35f, size.height * 0.15f)
-                            lineTo(size.width * 0.45f, size.height * 0.30f)
-                        }
-                        drawPath(
-                            path = headPath,
-                            color = arrowColor,
-                            style = Stroke(width = 4.dp.toPx())
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(36.dp))
 
                 Text(
                     text = "Press \"Allow\"",
