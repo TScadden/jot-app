@@ -223,10 +223,17 @@ class MainActivity : ComponentActivity() {
                                             }
                                         }
                                     } else {
-                                        navController.navigate("login") {
+                                        navController.navigate("welcome_onboarding") {
                                             popUpTo("splash") { inclusive = true }
                                         }
                                     }
+                                }
+                            )
+                        }
+                        composable("welcome_onboarding") {
+                            com.notel.notel.ui.screen.WelcomeOnboardingScreen(
+                                onGetStarted = {
+                                    navController.navigate("login")
                                 }
                             )
                         }
@@ -234,11 +241,17 @@ class MainActivity : ComponentActivity() {
                             val loginViewModel: com.notel.notel.ui.screen.LoginViewModel = hiltViewModel()
                             LoginScreen(
                                 onLoginSuccess = { isComplete ->
-                                    if (isComplete) {
-                                        navController.navigate("body_load") { popUpTo("login") { inclusive = true } }
-                                    } else {
-                                        navController.navigate("profile_setup") { popUpTo("login") { inclusive = true } }
-                                    }
+                                    navController.navigate("consent") { popUpTo("login") { inclusive = true } }
+                                }
+                            )
+                        }
+                        composable("consent") {
+                            com.notel.notel.ui.screen.ConsentScreen(
+                                onConsent = {
+                                    navController.navigate("profile_setup") { popUpTo("consent") { inclusive = true } }
+                                },
+                                onDecline = {
+                                    navController.popBackStack()
                                 }
                             )
                         }
@@ -461,7 +474,7 @@ class MainActivity : ComponentActivity() {
                     }
 
                     // Floating Glass Nav Banner
-                    val hideNavRoutes = listOf("splash", "login", "profile_setup", "connections", "membership_onboarding", "setup_loading", "data_connections")
+                    val hideNavRoutes = listOf("splash", "welcome_onboarding", "consent", "login", "profile_setup", "connections", "membership_onboarding", "setup_loading", "data_connections")
                     val isFileViewer = currentRoute?.startsWith("file_viewer") == true
                     if (currentRoute !in hideNavRoutes && !isFileViewer && currentRoute != null) {
                         Box(

@@ -574,8 +574,8 @@ class SyncManager @Inject constructor(
                                     val dbMed = com.notel.notel.data.local.entity.Medication(
                                         id = existingMatch?.id ?: 0,
                                         name = med.name.trim(),
-                                        dose = existingMatch?.dose ?: "As prescribed",
-                                        frequency = existingMatch?.frequency ?: "Daily",
+                                        dose = if (existingMatch != null && existingMatch.dose.isNotBlank()) existingMatch.dose else "As prescribed",
+                                        frequency = if (existingMatch != null && existingMatch.frequency.isNotBlank()) existingMatch.frequency else "Daily",
                                         isArchived = !med.isPresent,
                                         startedDate = med.startDate.trim().ifEmpty { null },
                                         endedDate = if (!med.isPresent) med.endDate.trim().ifEmpty { null } else null
