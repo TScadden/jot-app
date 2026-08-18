@@ -558,7 +558,7 @@ fun LoginScreen(
                                 fontWeight = FontWeight.Bold,
                                 color = NotelPrimary,
                                 modifier = Modifier.clickable {
-                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://jottracker.com/terms.html"))
+                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://api.jottracker.com/terms.html"))
                                     context.startActivity(intent)
                                 }
                             )
@@ -573,7 +573,7 @@ fun LoginScreen(
                                 fontWeight = FontWeight.Bold,
                                 color = NotelPrimary,
                                 modifier = Modifier.clickable {
-                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://jottracker.com/privacy.html"))
+                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://api.jottracker.com/privacy.html"))
                                     context.startActivity(intent)
                                 }
                             )
