@@ -5,18 +5,18 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -111,13 +111,7 @@ fun ProfileSetupScreen(
     }
 
     Scaffold(
-        containerColor = NotelBackground,
-        topBar = {
-            TopAppBar(
-                title = { Text("Profile Setup", fontWeight = FontWeight.Black, color = NotelTextPrimary) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = NotelBackground)
-            )
-        }
+        containerColor = NotelBackground
     ) { padding ->
         Column(
             modifier = Modifier
@@ -129,15 +123,76 @@ fun ProfileSetupScreen(
         ) {
             Spacer(modifier = Modifier.height(16.dp))
 
-            Text("Welcome to Tabs", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = NotelPrimary)
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                "Let's build your Tabs experience. Tell us why you're using this app. Are you training for a race? Managing a health condition? Detail your goals below so Tabs can customize its AI models to your lifestyle.",
-                color = NotelTextSecondary,
-                fontSize = 14.sp
-            )
+            // CENTER FLOATING ORB & HEALTH ICONS GRAPHIC (Same theme as intro)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                // Central Glowing Gradient Orb
+                Box(
+                    modifier = Modifier
+                        .size(120.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.radialGradient(
+                                colors = listOf(
+                                    NotelPrimary.copy(alpha = 0.8f),
+                                    NotelAccent.copy(alpha = 0.5f),
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                )
 
-            Spacer(modifier = Modifier.height(24.dp))
+                // Surrounding Icon Bubble 1 (Top Left)
+                IconBubble(
+                    icon = Icons.Default.MedicalServices,
+                    bubbleColor = Color(0xFF38BDF8),
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .offset(x = 30.dp, y = 10.dp)
+                )
+
+                // Surrounding Icon Bubble 2 (Top Right)
+                IconBubble(
+                    icon = Icons.Default.Favorite,
+                    bubbleColor = Color(0xFFEC4899),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = (-30).dp, y = 20.dp)
+                )
+
+                // Surrounding Icon Bubble 3 (Mid Left)
+                IconBubble(
+                    icon = Icons.Default.Search,
+                    bubbleColor = Color(0xFFA855F7),
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .offset(x = 10.dp, y = 0.dp)
+                )
+
+                // Surrounding Icon Bubble 4 (Mid Right)
+                IconBubble(
+                    icon = Icons.Default.Psychology,
+                    bubbleColor = Color(0xFF8B5CF6),
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .offset(x = (-10).dp, y = 10.dp)
+                )
+
+                // Surrounding Icon Bubble 5 (Bottom Left)
+                IconBubble(
+                    icon = Icons.Default.LocalHospital,
+                    bubbleColor = Color(0xFF22C55E),
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .offset(x = 40.dp, y = (-10).dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             OutlinedTextField(
                 value = profileText,
@@ -145,7 +200,7 @@ fun ProfileSetupScreen(
                 label = { Text("I am training for a race and I want to focus on...", color = NotelTextSecondary) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(200.dp),
+                    .height(180.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = NotelPrimary,
                     unfocusedBorderColor = NotelTextSecondary,
@@ -153,7 +208,7 @@ fun ProfileSetupScreen(
                     unfocusedTextColor = NotelTextPrimary,
                     cursorColor = NotelPrimary
                 ),
-                maxLines = 10
+                maxLines = 8
             )
 
             Row(
@@ -202,13 +257,12 @@ fun ProfileSetupScreen(
                     }
                 }
 
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(4.dp))
 
                 Text(
-                    "Upload medical records, lab results, or any documents that give the AI more context about your health. PDF, images, and text files are all supported.",
+                    "PDF, images with text, text files, etc.",
                     color = NotelTextSecondary,
-                    fontSize = 12.sp,
-                    lineHeight = 18.sp
+                    fontSize = 12.sp
                 )
 
                 Spacer(Modifier.height(12.dp))
@@ -256,7 +310,7 @@ fun ProfileSetupScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(36.dp))
 
             GlassyButton(
                 onClick = {
@@ -277,5 +331,32 @@ fun ProfileSetupScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
         }
+    }
+}
+
+@Composable
+private fun IconBubble(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    bubbleColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .size(38.dp)
+            .clip(CircleShape)
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(bubbleColor, bubbleColor.copy(alpha = 0.7f))
+                )
+            )
+            .border(1.5.dp, Color.White.copy(alpha = 0.6f), CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier.size(18.dp)
+        )
     }
 }

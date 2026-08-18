@@ -127,7 +127,7 @@ fun ConsultationIntroScreen(
                     Spacer(Modifier.height(16.dp))
 
                     Text(
-                        text = "Start by sharing your goals and why you are using this app so we can make sure the AI knows how to best help you.",
+                        text = "Start by sharing your goals and why you are using this app, so we can make sure the AI knows how to best help you.",
                         fontSize = 15.sp,
                         color = NotelTextSecondary,
                         textAlign = TextAlign.Center,
