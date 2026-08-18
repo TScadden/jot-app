@@ -382,6 +382,7 @@ class SyncManager @Inject constructor(
                     heartRateHistory = preferences.heartRateHistory.first(),
                     // Newly synced fields
                     medications = preferences.medications.first().let { if (it.isBlank()) null else it },
+                    conditions = preferences.userConditions.first().let { if (it.isBlank()) null else it },
                     bodyLoadRemindersEnabled = preferences.bodyLoadRemindersEnabled.first(),
                     dailyCupUpdatesEnabled = preferences.dailyCupUpdatesEnabled.first(),
                     hrSpikeAlertsEnabled = preferences.hrSpikeAlertsEnabled.first(),
@@ -534,6 +535,7 @@ class SyncManager @Inject constructor(
                             preferences.setUserContext(serverCtx)
                         }
                     }
+                    profile.conditions?.let { if (it.isNotBlank()) preferences.setUserConditions(it) }
                     profile.knowledgeBase?.let { if (it.isNotBlank()) preferences.setKnowledgeBase(it) }
                     profile.professionalUpdates?.let { if (it.isNotBlank()) preferences.setProfessionalUpdates(it) }
                     profile.processedFiles?.let { if (it.isNotBlank()) preferences.setProcessedFiles(it) }

@@ -285,7 +285,19 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         composable("profile_setup") {
-                            ProfileSetupScreen(onNavigateNext = { navController.navigate("connections") })
+                            ProfileSetupScreen(onNavigateNext = { navController.navigate("conditions") })
+                        }
+                        composable("conditions") {
+                            com.notel.notel.ui.screen.ConditionsScreen(
+                                onNavigateNext = { navController.navigate("notification_onboarding") },
+                                onSkip = { navController.navigate("notification_onboarding") }
+                            )
+                        }
+                        composable("notification_onboarding") {
+                            com.notel.notel.ui.screen.NotificationOnboardingScreen(
+                                onNavigateNext = { navController.navigate("connections") },
+                                onSkip = { navController.navigate("connections") }
+                            )
                         }
                         composable("connections") {
                             ConnectionsScreen(onNavigateNext = { navController.navigate("membership_onboarding") })
@@ -503,7 +515,7 @@ class MainActivity : ComponentActivity() {
                     }
 
                     // Floating Glass Nav Banner
-                    val hideNavRoutes = listOf("splash", "welcome_onboarding", "consent", "login", "consultation_intro", "profile_setup", "connections", "membership_onboarding", "setup_loading", "data_connections")
+                    val hideNavRoutes = listOf("splash", "welcome_onboarding", "consent", "login", "consultation_intro", "profile_setup", "conditions", "notification_onboarding", "connections", "membership_onboarding", "setup_loading", "data_connections")
                     val isFileViewer = currentRoute?.startsWith("file_viewer") == true
                     if (currentRoute !in hideNavRoutes && !isFileViewer && currentRoute != null) {
                         Box(

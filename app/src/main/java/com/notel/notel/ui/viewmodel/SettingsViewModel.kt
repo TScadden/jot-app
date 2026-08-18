@@ -442,6 +442,45 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    val userConditionsStr = preferences.userConditions.stateIn(
+        viewModelScope,
+        SharingStarted.Lazily,
+        "[]"
+    )
+
+    fun addUserCondition(condition: String) {
+        viewModelScope.launch {
+            val currentJson = preferences.userConditions.first()
+            val list = try {
+                kotlinx.serialization.json.Json.decodeFromString<List<String>>(currentJson).toMutableList()
+            } catch (e: Exception) {
+                mutableListOf()
+            }
+            if (!list.contains(condition)) {
+                list.add(condition)
+                val newJson = kotlinx.serialization.json.Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(kotlinx.serialization.serializer<String>()), list.toList())
+                preferences.setUserConditions(newJson)
+                syncManager.pushProfileData()
+            }
+        }
+    }
+
+    fun removeUserCondition(condition: String) {
+        viewModelScope.launch {
+            val currentJson = preferences.userConditions.first()
+            val list = try {
+                kotlinx.serialization.json.Json.decodeFromString<List<String>>(currentJson).toMutableList()
+            } catch (e: Exception) {
+                mutableListOf()
+            }
+            if (list.remove(condition)) {
+                val newJson = kotlinx.serialization.json.Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(kotlinx.serialization.serializer<String>()), list.toList())
+                preferences.setUserConditions(newJson)
+                syncManager.pushProfileData()
+            }
+        }
+    }
+
     fun saveUserProfile(age: Int, height: Float, weight: Float, gender: String) {
         viewModelScope.launch {
             preferences.setUserProfileStats(age, height, weight, gender)

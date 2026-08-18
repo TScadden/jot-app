@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -2699,6 +2700,191 @@ fun SettingsScreen(
                             onClick = { showAddMedicationDialog = false }
                         ) {
                             Text("Cancel", color = NotelTextSecondary)
+                        }
+                    },
+                    containerColor = NotelSurface
+                )
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // Conditions section
+            var isConditionsExpanded by remember { mutableStateOf(false) }
+            val userConditionsStr by viewModel.userConditionsStr.collectAsState()
+            val userConditionsList = remember(userConditionsStr) {
+                try {
+                    kotlinx.serialization.json.Json.decodeFromString<List<String>>(userConditionsStr)
+                } catch (e: Exception) {
+                    emptyList()
+                }
+            }
+            var showAddConditionDialog by remember { mutableStateOf(false) }
+            var conditionSearchQuery by remember { mutableStateOf("") }
+
+            GlassyCard(
+                shape = RoundedCornerShape(16.dp),
+                color = NotelSurface
+            ) {
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { isConditionsExpanded = !isConditionsExpanded }
+                        ) {
+                            Icon(Icons.Default.MedicalServices, null, tint = NotelPrimary, modifier = Modifier.size(28.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Conditions", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                                Text("Diagnosed or suspected conditions", color = NotelTextSecondary, fontSize = 12.sp)
+                            }
+                            Icon(
+                                imageVector = if (isConditionsExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                contentDescription = if (isConditionsExpanded) "Collapse" else "Expand",
+                                tint = NotelTextSecondary
+                            )
+                        }
+
+                        if (isConditionsExpanded) {
+                            Spacer(Modifier.height(16.dp))
+                            if (userConditionsList.isEmpty()) {
+                                Text(
+                                    "No conditions added yet. Tap the + button to search and add one.",
+                                    color = NotelTextSecondary,
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+                            } else {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    userConditionsList.forEach { condition ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(NotelSurfaceHigh.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                                                .padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = condition,
+                                                color = NotelTextPrimary,
+                                                fontWeight = FontWeight.Medium,
+                                                fontSize = 14.sp,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            IconButton(
+                                                onClick = { viewModel.removeUserCondition(condition) },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(48.dp))
+                        }
+                    }
+
+                    if (isConditionsExpanded) {
+                        FloatingActionButton(
+                            onClick = {
+                                conditionSearchQuery = ""
+                                showAddConditionDialog = true
+                            },
+                            containerColor = NotelPrimary,
+                            contentColor = Color.White,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .size(40.dp)
+                                .padding(0.dp),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.Add, "Add Condition", modifier = Modifier.size(20.dp))
+                        }
+                    }
+                }
+            }
+
+            if (showAddConditionDialog) {
+                val filteredConditions = remember(conditionSearchQuery) {
+                    if (conditionSearchQuery.isBlank()) {
+                        com.notel.notel.data.CommonConditionsList.list
+                    } else {
+                        com.notel.notel.data.CommonConditionsList.list.filter {
+                            it.contains(conditionSearchQuery, ignoreCase = true)
+                        }
+                    }
+                }
+
+                AlertDialog(
+                    onDismissRequest = { showAddConditionDialog = false },
+                    title = { Text("Add Condition", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
+                    text = {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.fillMaxWidth().height(350.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = conditionSearchQuery,
+                                onValueChange = { conditionSearchQuery = it },
+                                label = { Text("Search Conditions", color = NotelTextSecondary) },
+                                leadingIcon = { Icon(Icons.Default.Search, null, tint = NotelTextSecondary) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = NotelPrimary,
+                                    cursorColor = NotelPrimary,
+                                    focusedTextColor = NotelTextPrimary,
+                                    unfocusedTextColor = NotelTextPrimary
+                                )
+                            )
+
+                            androidx.compose.foundation.lazy.LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                items(filteredConditions) { condition ->
+                                    val isAdded = userConditionsList.contains(condition)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                if (isAdded) {
+                                                    viewModel.removeUserCondition(condition)
+                                                } else {
+                                                    viewModel.addUserCondition(condition)
+                                                }
+                                            }
+                                            .padding(vertical = 10.dp, horizontal = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = condition,
+                                            fontSize = 13.sp,
+                                            color = NotelTextPrimary,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        if (isAdded) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = "Added",
+                                                tint = NotelPrimary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                    HorizontalDivider(color = NotelSurfaceHigh.copy(alpha = 0.5f))
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showAddConditionDialog = false }) {
+                            Text("Done", color = NotelPrimary)
                         }
                     },
                     containerColor = NotelSurface

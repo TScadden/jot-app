@@ -237,6 +237,7 @@ data class SyncProfileRequest(
     val heartRateHistory: String? = null,
     // Newly synced fields
     val medications: String? = null,
+    val conditions: String? = null,
     val bodyLoadRemindersEnabled: Boolean? = null,
     val dailyCupUpdatesEnabled: Boolean? = null,
     val hrSpikeAlertsEnabled: Boolean? = null,
@@ -314,6 +315,7 @@ data class ProfileDtoModel(
     val heartRateHistory: String? = null,
     // Newly synced fields
     val medications: String? = null,
+    val conditions: String? = null,
     val bodyLoadRemindersEnabled: Boolean? = null,
     val dailyCupUpdatesEnabled: Boolean? = null,
     val hrSpikeAlertsEnabled: Boolean? = null,

@@ -40,6 +40,7 @@ class NotelPreferences @Inject constructor(
         val HAS_CONSENTED = booleanPreferencesKey("has_consented")
         val INTRO_CONSULTATION_SEEN = booleanPreferencesKey("intro_consultation_seen")
         val USER_CONTEXT = stringPreferencesKey("user_context")
+        val USER_CONDITIONS = stringPreferencesKey("user_conditions")
         val KNOWLEDGE_BASE = stringPreferencesKey("knowledge_base")
         val PROCESSED_FILES = stringPreferencesKey("processed_files")
         val PROFESSIONAL_UPDATES = stringPreferencesKey("professional_updates")
@@ -301,6 +302,13 @@ class NotelPreferences @Inject constructor(
 
     val userContext: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[USER_CONTEXT] ?: ""
+    }
+
+    val userConditions: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[USER_CONDITIONS] ?: "[]"
+    }
+    suspend fun setUserConditions(conditionsJson: String) {
+        context.dataStore.edit { it[USER_CONDITIONS] = conditionsJson }
     }
 
     val knowledgeBase: Flow<String> = context.dataStore.data.map { prefs ->
