@@ -199,6 +199,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val hasConsentedState by notelPreferences.hasConsented.collectAsState(initial = false)
+                val introConsultationSeenState by notelPreferences.introConsultationSeen.collectAsState(initial = false)
 
                 Box(modifier = Modifier.fillMaxSize()) {
                     // Main Content
@@ -217,6 +218,10 @@ class MainActivity : ComponentActivity() {
                                     if (isLoggedIn) {
                                         if (!hasConsentedState) {
                                             navController.navigate("consent") {
+                                                popUpTo("splash") { inclusive = true }
+                                            }
+                                        } else if (!introConsultationSeenState) {
+                                            navController.navigate("consultation_intro") {
                                                 popUpTo("splash") { inclusive = true }
                                             }
                                         } else if (isOnboarded) {
@@ -262,6 +267,8 @@ class MainActivity : ComponentActivity() {
                                 onDecline = {
                                     coroutineScope.launch {
                                         notelPreferences.setLoggedIn(false)
+                                        notelPreferences.setHasConsented(false)
+                                        notelPreferences.setIntroConsultationSeen(false)
                                         navController.navigate("welcome_onboarding") { popUpTo(0) { inclusive = true } }
                                     }
                                 }
@@ -270,7 +277,10 @@ class MainActivity : ComponentActivity() {
                         composable("consultation_intro") {
                             com.notel.notel.ui.screen.ConsultationIntroScreen(
                                 onContinue = {
-                                    navController.navigate("profile_setup") { popUpTo("consultation_intro") { inclusive = true } }
+                                    coroutineScope.launch {
+                                        notelPreferences.setIntroConsultationSeen(true)
+                                        navController.navigate("profile_setup") { popUpTo("consultation_intro") { inclusive = true } }
+                                    }
                                 }
                             )
                         }
@@ -493,7 +503,7 @@ class MainActivity : ComponentActivity() {
                     }
 
                     // Floating Glass Nav Banner
-                    val hideNavRoutes = listOf("splash", "welcome_onboarding", "consent", "login", "profile_setup", "connections", "membership_onboarding", "setup_loading", "data_connections")
+                    val hideNavRoutes = listOf("splash", "welcome_onboarding", "consent", "login", "consultation_intro", "profile_setup", "connections", "membership_onboarding", "setup_loading", "data_connections")
                     val isFileViewer = currentRoute?.startsWith("file_viewer") == true
                     if (currentRoute !in hideNavRoutes && !isFileViewer && currentRoute != null) {
                         Box(

@@ -38,6 +38,7 @@ class NotelPreferences @Inject constructor(
         val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
         val LOGGED_IN = booleanPreferencesKey("logged_in")
         val HAS_CONSENTED = booleanPreferencesKey("has_consented")
+        val INTRO_CONSULTATION_SEEN = booleanPreferencesKey("intro_consultation_seen")
         val USER_CONTEXT = stringPreferencesKey("user_context")
         val KNOWLEDGE_BASE = stringPreferencesKey("knowledge_base")
         val PROCESSED_FILES = stringPreferencesKey("processed_files")
@@ -136,6 +137,11 @@ class NotelPreferences @Inject constructor(
     val hasConsented: Flow<Boolean> = context.dataStore.data.map { it[HAS_CONSENTED] ?: false }
     suspend fun setHasConsented(consented: Boolean) {
         context.dataStore.edit { it[HAS_CONSENTED] = consented }
+    }
+
+    val introConsultationSeen: Flow<Boolean> = context.dataStore.data.map { it[INTRO_CONSULTATION_SEEN] ?: false }
+    suspend fun setIntroConsultationSeen(seen: Boolean) {
+        context.dataStore.edit { it[INTRO_CONSULTATION_SEEN] = seen }
     }
 
     val infoTileOrder: Flow<String> = context.dataStore.data.map { it[INFO_TILE_ORDER] ?: "" }
