@@ -153,9 +153,9 @@ fun SetupLoadingScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Image(
-                        painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                        painter = painterResource(id = R.drawable.ic_tabs_note),
                         contentDescription = "Tabs Logo",
-                        modifier = Modifier.size(120.dp)
+                        modifier = Modifier.size(110.dp)
                     )
                 }
 
