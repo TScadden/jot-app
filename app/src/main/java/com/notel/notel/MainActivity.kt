@@ -267,6 +267,7 @@ class MainActivity : ComponentActivity() {
                         }
                         composable("consent") {
                             com.notel.notel.ui.screen.ConsentScreen(
+                                onBack = { navController.popBackStack() },
                                 onConsent = {
                                     coroutineScope.launch {
                                         notelPreferences.setHasConsented(true)
