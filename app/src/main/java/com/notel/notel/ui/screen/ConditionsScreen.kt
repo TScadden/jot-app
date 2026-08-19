@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -81,6 +82,7 @@ class ConditionsViewModel @Inject constructor(
 @Composable
 fun ConditionsScreen(
     viewModel: ConditionsViewModel = hiltViewModel(),
+    onBack: () -> Unit = {},
     onNavigateNext: () -> Unit,
     onSkip: () -> Unit
 ) {
@@ -173,6 +175,7 @@ fun ConditionsScreen(
                                     } else {
                                         viewModel.addCondition(condition)
                                     }
+                                    isSearching = false
                                 }
                                 .padding(vertical = 12.dp, horizontal = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -203,13 +206,31 @@ fun ConditionsScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
-                    .padding(24.dp)
             ) {
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier
+                        .padding(start = 16.dp, top = 16.dp)
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(NotelSurfaceHigh)
+                        .align(Alignment.TopStart)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = NotelTextPrimary
+                    )
+                }
+
                 Column(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 24.dp, vertical = 16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
+                    TopLogoHeader(modifier = Modifier.padding(top = 8.dp))
                     // TOP SKIP BAR
                     Row(
                         modifier = Modifier.fillMaxWidth(),

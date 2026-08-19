@@ -1,12 +1,9 @@
 package com.notel.notel.ui.screen
 
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -19,7 +16,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -35,7 +31,8 @@ import com.notel.notel.ui.theme.*
 
 @Composable
 fun WelcomeOnboardingScreen(
-    onGetStarted: () -> Unit
+    onLogin: () -> Unit,
+    onSignUp: () -> Unit
 ) {
     Scaffold(
         containerColor = NotelBackground
@@ -49,28 +46,32 @@ fun WelcomeOnboardingScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 24.dp),
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
+                // TOP LOGO HEADER
+                TopLogoHeader(modifier = Modifier.padding(top = 8.dp))
+
                 Spacer(Modifier.height(16.dp))
 
-                // TOP FLOATING AVATARS & CALLOUT CARDS CONTAINER
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(380.dp)
+                // PEOPLE & CHIPS VERTICAL LIST (ONE AFTER THE OTHER WITH TIGHT SPACING)
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // Item 1: Man Avatar + "Track symptoms & treatments"
+                    // Item 1: Man Avatar + "Track symptoms and treatments"
                     Row(
                         modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .offset(y = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Start
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(90.dp)
+                                .size(50.dp)
                                 .clip(CircleShape)
                                 .background(
                                     Brush.radialGradient(
@@ -80,8 +81,8 @@ fun WelcomeOnboardingScreen(
                                         )
                                     )
                                 )
-                                .border(2.dp, NotelPrimary.copy(alpha = 0.3f), CircleShape)
-                                .padding(4.dp)
+                                .border(1.5.dp, NotelPrimary.copy(alpha = 0.3f), CircleShape)
+                                .padding(2.dp)
                         ) {
                             Image(
                                 painter = painterResource(id = R.drawable.onboarding_avatar_man),
@@ -92,32 +93,31 @@ fun WelcomeOnboardingScreen(
                                     .clip(CircleShape)
                             )
                         }
-                        Spacer(Modifier.width(10.dp))
+                        Spacer(Modifier.width(8.dp))
                         CalloutChip(
                             icon = Icons.Default.Biotech,
                             iconBg = Color(0xFF38BDF8),
-                            title = "Track symptoms",
-                            subtitle = "and treatments"
+                            text = "Track symptoms and treatments"
                         )
                     }
 
-                    // Item 2: "Contribute to research" + Blonde Woman Avatar
+                    // Item 2: Blonde Woman Avatar + "Reach your goals"
                     Row(
                         modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .offset(y = (-20).dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.End
                     ) {
                         CalloutChip(
                             icon = Icons.Default.EmojiEvents,
                             iconBg = Color(0xFFA855F7),
-                            title = "Reach your",
-                            subtitle = "goals"
+                            text = "Reach your goals"
                         )
-                        Spacer(Modifier.width(10.dp))
+                        Spacer(Modifier.width(8.dp))
                         Box(
                             modifier = Modifier
-                                .size(95.dp)
+                                .size(50.dp)
                                 .clip(CircleShape)
                                 .background(
                                     Brush.radialGradient(
@@ -127,8 +127,8 @@ fun WelcomeOnboardingScreen(
                                         )
                                     )
                                 )
-                                .border(2.dp, NotelAccent.copy(alpha = 0.3f), CircleShape)
-                                .padding(4.dp)
+                                .border(1.5.dp, NotelAccent.copy(alpha = 0.3f), CircleShape)
+                                .padding(2.dp)
                         ) {
                             Image(
                                 painter = painterResource(id = R.drawable.onboarding_avatar_woman1),
@@ -141,16 +141,17 @@ fun WelcomeOnboardingScreen(
                         }
                     }
 
-                    // Item 3: Asian Woman Avatar + "Learn patterns & get insights"
+                    // Item 3: Asian Woman Avatar + "Learn patterns and get insights"
                     Row(
                         modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .offset(y = (-10).dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Start
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(90.dp)
+                                .size(50.dp)
                                 .clip(CircleShape)
                                 .background(
                                     Brush.radialGradient(
@@ -160,8 +161,8 @@ fun WelcomeOnboardingScreen(
                                         )
                                     )
                                 )
-                                .border(2.dp, Color(0xFFEC4899).copy(alpha = 0.3f), CircleShape)
-                                .padding(4.dp)
+                                .border(1.5.dp, Color(0xFFEC4899).copy(alpha = 0.3f), CircleShape)
+                                .padding(2.dp)
                         ) {
                             Image(
                                 painter = painterResource(id = R.drawable.onboarding_avatar_woman2),
@@ -172,46 +173,68 @@ fun WelcomeOnboardingScreen(
                                     .clip(CircleShape)
                             )
                         }
-                        Spacer(Modifier.width(10.dp))
+                        Spacer(Modifier.width(8.dp))
                         CalloutChip(
                             icon = Icons.Default.Fingerprint,
                             iconBg = Color(0xFFA855F7),
-                            title = "Learn patterns",
-                            subtitle = "and get insights"
+                            text = "Learn patterns and get insights"
                         )
                     }
                 }
 
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(16.dp))
 
-                // MIDDLE HEADLINE & BRANDING
+                // DISCORD-STYLE REGISTRATION / LOGIN BUTTONS ABOVE FOOTER TEXT
                 Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
+                    // Sign Up / Register Button
+                    Button(
+                        onClick = onSignUp,
+                        colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
+                        shape = RoundedCornerShape(24.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
                     ) {
-                        Image(
-                            painter = painterResource(id = R.drawable.ic_tabs_note),
-                            contentDescription = null,
-                            modifier = Modifier.size(32.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
                         Text(
-                            text = "tabs",
-                            fontSize = 32.sp,
-                            fontWeight = FontWeight.Black,
-                            color = NotelPrimary,
-                            letterSpacing = 1.sp
+                            text = "Register",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
                         )
                     }
 
-                    Spacer(Modifier.height(16.dp))
+                    // Log In Button
+                    Button(
+                        onClick = onLogin,
+                        colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh),
+                        shape = RoundedCornerShape(24.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                    ) {
+                        Text(
+                            text = "Log In",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NotelPrimary
+                        )
+                    }
+                }
 
+                Spacer(Modifier.height(16.dp))
+
+                // BOTTOM SLOGAN TEXT: Notes that build with you
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                ) {
                     Text(
                         text = "Notes that build",
-                        fontSize = 34.sp,
+                        fontSize = 24.sp,
                         fontWeight = FontWeight.Light,
                         fontStyle = FontStyle.Italic,
                         fontFamily = FontFamily.Serif,
@@ -220,7 +243,7 @@ fun WelcomeOnboardingScreen(
                     )
                     Text(
                         text = "with you",
-                        fontSize = 42.sp,
+                        fontSize = 30.sp,
                         fontWeight = FontWeight.Bold,
                         fontStyle = FontStyle.Italic,
                         fontFamily = FontFamily.Serif,
@@ -228,25 +251,6 @@ fun WelcomeOnboardingScreen(
                         textAlign = TextAlign.Center
                     )
                 }
-
-                Spacer(Modifier.height(36.dp))
-
-                // BOTTOM GET STARTED BUTTON
-                GlassyButton(
-                    onClick = onGetStarted,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp)
-                ) {
-                    Text(
-                        text = "Get started",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                }
-
-                Spacer(Modifier.height(32.dp))
             }
         }
     }
@@ -256,15 +260,14 @@ fun WelcomeOnboardingScreen(
 private fun CalloutChip(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     iconBg: Color,
-    title: String,
-    subtitle: String
+    text: String
 ) {
     Surface(
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(20.dp),
         color = NotelSurface,
-        shadowElevation = 8.dp,
+        shadowElevation = 4.dp,
         border = BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.15f)),
-        modifier = Modifier.padding(vertical = 4.dp)
+        modifier = Modifier.padding(vertical = 2.dp)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -272,7 +275,7 @@ private fun CalloutChip(
         ) {
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(30.dp)
                     .clip(CircleShape)
                     .background(
                         Brush.linearGradient(
@@ -285,26 +288,17 @@ private fun CalloutChip(
                     imageVector = icon,
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(16.dp)
                 )
             }
-            Spacer(Modifier.width(10.dp))
-            Column {
-                Text(
-                    text = title,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = NotelTextPrimary,
-                    lineHeight = 14.sp
-                )
-                Text(
-                    text = subtitle,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = NotelTextSecondary,
-                    lineHeight = 14.sp
-                )
-            }
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = text,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = NotelTextPrimary,
+                maxLines = 1
+            )
         }
     }
 }

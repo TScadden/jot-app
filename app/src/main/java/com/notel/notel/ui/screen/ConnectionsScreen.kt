@@ -13,6 +13,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.ui.draw.clip
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.FitbitViewModel
 
@@ -20,6 +24,7 @@ import com.notel.notel.ui.viewmodel.FitbitViewModel
 @Composable
 fun ConnectionsScreen(
     fitbitViewModel: FitbitViewModel = hiltViewModel(),
+    onBack: () -> Unit = {},
     onNavigateNext: () -> Unit
 ) {
     val state by fitbitViewModel.state.collectAsState()
@@ -34,22 +39,36 @@ fun ConnectionsScreen(
     }
 
     Scaffold(
-        containerColor = NotelBackground,
-        topBar = {
-            TopAppBar(
-                title = { Text("App Connections", fontWeight = FontWeight.Black, color = NotelTextPrimary) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = NotelBackground)
-            )
-        }
+        containerColor = NotelBackground
     ) { padding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .padding(horizontal = 24.dp, vertical = 16.dp)
         ) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(NotelSurfaceHigh)
+                    .align(Alignment.TopStart)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = NotelTextPrimary
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                TopLogoHeader(modifier = Modifier.padding(top = 8.dp))
             Icon(Icons.Default.Favorite, contentDescription = "Heart", tint = NotelPrimary, modifier = Modifier.size(64.dp))
             Spacer(modifier = Modifier.height(24.dp))
             
@@ -101,4 +120,5 @@ fun ConnectionsScreen(
             }
         }
     }
+}
 }

@@ -9,7 +9,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,6 +27,7 @@ import com.notel.notel.ui.theme.*
 
 @Composable
 fun NotificationOnboardingScreen(
+    onBack: () -> Unit = {},
     onNavigateNext: () -> Unit,
     onSkip: () -> Unit
 ) {
@@ -62,13 +65,28 @@ fun NotificationOnboardingScreen(
                 .padding(padding)
                 .padding(horizontal = 24.dp, vertical = 16.dp)
         ) {
-            // TOP SKIP BUTTON
+            // TOP BACK BUTTON & SKIP BUTTON ROW
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.TopStart),
-                horizontalArrangement = Arrangement.Start
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(NotelSurfaceHigh)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = NotelTextPrimary
+                    )
+                }
+
                 Button(
                     onClick = onSkip,
                     colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh),
@@ -87,6 +105,8 @@ fun NotificationOnboardingScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
+                TopLogoHeader(modifier = Modifier.padding(bottom = 20.dp))
+
                 // NOTIFICATION PERMISSION CARD
                 GlassyCard(
                     shape = RoundedCornerShape(32.dp),

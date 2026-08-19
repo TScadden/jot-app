@@ -26,6 +26,9 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.notel.notel.ui.theme.*
 
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+
 private data class PremiumFeature(
     val icon: ImageVector,
     val title: String,
@@ -42,6 +45,7 @@ private val premiumFeatures = listOf(
 @Composable
 fun MembershipOnboardingScreen(
     settingsViewModel: com.notel.notel.ui.viewmodel.SettingsViewModel = hiltViewModel(),
+    onBack: () -> Unit = {},
     onSubscribe: () -> Unit,
     onSkip: () -> Unit
 ) {
@@ -70,15 +74,36 @@ fun MembershipOnboardingScreen(
     )
 
     Scaffold(containerColor = NotelBackground) { padding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(Modifier.height(32.dp))
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier
+                    .padding(start = 16.dp, top = 16.dp)
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(NotelSurfaceHigh)
+                    .align(Alignment.TopStart)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = NotelTextPrimary
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                TopLogoHeader(modifier = Modifier.padding(top = 8.dp))
+                Spacer(Modifier.height(16.dp))
 
             // Glow badge
             Box(
@@ -304,4 +329,5 @@ fun MembershipOnboardingScreen(
             Spacer(Modifier.height(32.dp))
         }
     }
+}
 }

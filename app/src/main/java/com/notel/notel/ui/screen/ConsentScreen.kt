@@ -1,24 +1,20 @@
 package com.notel.notel.ui.screen
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.notel.notel.ui.theme.*
@@ -79,16 +75,20 @@ fun ConsentScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(24.dp),
+                .padding(horizontal = 24.dp, vertical = 16.dp),
             contentAlignment = Alignment.Center
         ) {
             Column(
                 modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.SpaceBetween
+                verticalArrangement = Arrangement.SpaceBetween,
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Spacer(Modifier.height(12.dp))
+                // TOP LOGO HEADER
+                TopLogoHeader(modifier = Modifier.padding(top = 8.dp))
 
-                // CONSENT CARD
+                Spacer(Modifier.height(16.dp))
+
+                // CONSENT CARD (Heart Icon removed)
                 Surface(
                     shape = RoundedCornerShape(28.dp),
                     color = NotelSurface,
@@ -102,27 +102,9 @@ fun ConsentScreen(
                             .verticalScroll(rememberScrollState())
                             .padding(24.dp)
                     ) {
-                        // Heart Health Icon Badge
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(CircleShape)
-                                .background(NotelPrimary.copy(alpha = 0.15f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.FavoriteBorder,
-                                contentDescription = null,
-                                tint = NotelPrimary,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-
-                        Spacer(Modifier.height(20.dp))
-
                         Text(
                             text = "Privacy & Data Consent",
-                            fontSize = 24.sp,
+                            fontSize = 22.sp,
                             fontWeight = FontWeight.Bold,
                             color = NotelTextPrimary
                         )
@@ -153,33 +135,53 @@ fun ConsentScreen(
                             color = NotelTextSecondary,
                             lineHeight = 20.sp
                         )
-
-                        Spacer(Modifier.height(14.dp))
-
-                        val context = androidx.compose.ui.platform.LocalContext.current
-                        Row {
-                            Text(
-                                text = "Read our ",
-                                fontSize = 14.sp,
-                                color = NotelTextSecondary
-                            )
-                            Text(
-                                text = "Privacy Policy",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = NotelPrimary,
-                                modifier = Modifier.clickable {
-                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://api.jottracker.com/privacy.html"))
-                                    context.startActivity(intent)
-                                }
-                            )
-                            Text(
-                                text = " for full details.",
-                                fontSize = 14.sp,
-                                color = NotelTextSecondary
-                            )
-                        }
                     }
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                // PRIVACY & TERMS LINKS OUTSIDE MAIN BOX
+                val context = androidx.compose.ui.platform.LocalContext.current
+                FlowRow(
+                    horizontalArrangement = Arrangement.Center,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Read our ",
+                        fontSize = 12.sp,
+                        color = NotelTextSecondary
+                    )
+                    Text(
+                        text = "Terms of Use",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NotelPrimary,
+                        modifier = Modifier.clickable {
+                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://api.jottracker.com/terms.html"))
+                            context.startActivity(intent)
+                        }
+                    )
+                    Text(
+                        text = " and ",
+                        fontSize = 12.sp,
+                        color = NotelTextSecondary
+                    )
+                    Text(
+                        text = "Privacy Policy",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NotelPrimary,
+                        modifier = Modifier.clickable {
+                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://api.jottracker.com/privacy.html"))
+                            context.startActivity(intent)
+                        }
+                    )
+                    Text(
+                        text = " for full details.",
+                        fontSize = 12.sp,
+                        color = NotelTextSecondary
+                    )
                 }
 
                 // BOTTOM BUTTON BAR (Decline & I consent)

@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -61,6 +62,7 @@ class ProfileSetupViewModel @Inject constructor(
 fun ProfileSetupScreen(
     viewModel: ProfileSetupViewModel = hiltViewModel(),
     settingsViewModel: SettingsViewModel = hiltViewModel(),
+    onBack: () -> Unit = {},
     onNavigateNext: () -> Unit
 ) {
     val context = LocalContext.current
@@ -114,15 +116,37 @@ fun ProfileSetupScreen(
     Scaffold(
         containerColor = NotelBackground
     ) { padding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(16.dp))
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier
+                    .padding(start = 16.dp, top = 16.dp)
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(NotelSurfaceHigh)
+                    .align(Alignment.TopStart)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = NotelTextPrimary
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                TopLogoHeader(modifier = Modifier.padding(top = 8.dp))
+
+                Spacer(modifier = Modifier.height(12.dp))
 
             // CENTER FLOATING ORB & HEALTH ICONS GRAPHIC (Same theme as intro)
             Box(
@@ -375,6 +399,7 @@ fun ProfileSetupScreen(
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
+}
 }
 
 @Composable

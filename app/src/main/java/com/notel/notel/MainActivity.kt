@@ -243,16 +243,25 @@ class MainActivity : ComponentActivity() {
                         }
                         composable("welcome_onboarding") {
                             com.notel.notel.ui.screen.WelcomeOnboardingScreen(
-                                onGetStarted = {
-                                    navController.navigate("login")
+                                onLogin = {
+                                    navController.navigate("login?mode=login")
+                                },
+                                onSignUp = {
+                                    navController.navigate("login?mode=register")
                                 }
                             )
                         }
-                        composable("login") {
+                        composable(
+                            "login?mode={mode}",
+                            arguments = listOf(androidx.navigation.navArgument("mode") { defaultValue = "register" })
+                        ) { backStackEntry ->
+                            val initialMode = backStackEntry.arguments?.getString("mode") ?: "register"
                             val loginViewModel: com.notel.notel.ui.screen.LoginViewModel = hiltViewModel()
                             LoginScreen(
+                                initialMode = initialMode,
+                                onBack = { navController.popBackStack() },
                                 onLoginSuccess = { isComplete ->
-                                    navController.navigate("consent") { popUpTo("login") { inclusive = true } }
+                                    navController.navigate("consent") { popUpTo("welcome_onboarding") { inclusive = true } }
                                 }
                             )
                         }
@@ -276,34 +285,44 @@ class MainActivity : ComponentActivity() {
                         }
                         composable("consultation_intro") {
                             com.notel.notel.ui.screen.ConsultationIntroScreen(
+                                onBack = { navController.popBackStack() },
                                 onContinue = {
                                     coroutineScope.launch {
                                         notelPreferences.setIntroConsultationSeen(true)
-                                        navController.navigate("profile_setup") { popUpTo("consultation_intro") { inclusive = true } }
+                                        navController.navigate("profile_setup")
                                     }
                                 }
                             )
                         }
                         composable("profile_setup") {
-                            ProfileSetupScreen(onNavigateNext = { navController.navigate("conditions") })
+                            ProfileSetupScreen(
+                                onBack = { navController.popBackStack() },
+                                onNavigateNext = { navController.navigate("conditions") }
+                            )
                         }
                         composable("conditions") {
                             com.notel.notel.ui.screen.ConditionsScreen(
+                                onBack = { navController.popBackStack() },
                                 onNavigateNext = { navController.navigate("notification_onboarding") },
                                 onSkip = { navController.navigate("notification_onboarding") }
                             )
                         }
                         composable("notification_onboarding") {
                             com.notel.notel.ui.screen.NotificationOnboardingScreen(
+                                onBack = { navController.popBackStack() },
                                 onNavigateNext = { navController.navigate("connections") },
                                 onSkip = { navController.navigate("connections") }
                             )
                         }
                         composable("connections") {
-                            ConnectionsScreen(onNavigateNext = { navController.navigate("membership_onboarding") })
+                            ConnectionsScreen(
+                                onBack = { navController.popBackStack() },
+                                onNavigateNext = { navController.navigate("membership_onboarding") }
+                            )
                         }
                         composable("membership_onboarding") {
                             com.notel.notel.ui.screen.MembershipOnboardingScreen(
+                                onBack = { navController.popBackStack() },
                                 onSubscribe = { navController.navigate("settings?menu=MEMBERSHIP") },
                                 onSkip = { navController.navigate("setup_loading") }
                             )

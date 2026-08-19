@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -252,15 +253,16 @@ class LoginViewModel @Inject constructor(
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
+    initialMode: String = "register",
+    onBack: () -> Unit,
     viewModel: LoginViewModel = hiltViewModel(),
     onLoginSuccess: (Boolean) -> Unit
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var isRegisterMode by remember { mutableStateOf(true) }
+    var isRegisterMode by remember { mutableStateOf(initialMode == "register") }
     var isForgotPasswordMode by remember { mutableStateOf(false) }
     var passwordVisible by remember { mutableStateOf(false) }
-    var showPrivacyDialog by remember { mutableStateOf(false) }
     
     val context = androidx.compose.ui.platform.LocalContext.current
     val loggedIn = viewModel.isLoggedIn
@@ -298,35 +300,34 @@ fun LoginScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
-            contentAlignment = Alignment.Center
+                .padding(padding)
         ) {
+            // TOP BACK BUTTON
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier
+                    .padding(start = 16.dp, top = 16.dp)
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(NotelSurfaceHigh)
+                    .align(Alignment.TopStart)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = NotelTextPrimary
+                )
+            }
+
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .fillMaxSize()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 24.dp, vertical = 32.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Image(
-                        painter = painterResource(id = R.drawable.ic_tabs_note),
-                        contentDescription = null,
-                        modifier = Modifier.size(32.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = "tabs",
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.Black,
-                        color = NotelPrimary,
-                        letterSpacing = 1.sp
-                    )
-                }
+                TopLogoHeader(modifier = Modifier.padding(top = 16.dp))
 
                 Spacer(Modifier.height(24.dp))
 
@@ -338,9 +339,7 @@ fun LoginScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp),
+                        modifier = Modifier.padding(24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Surface(
@@ -450,22 +449,36 @@ fun LoginScreen(
 
                         Spacer(Modifier.height(16.dp))
 
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            HorizontalDivider(modifier = Modifier.weight(1f), color = NotelTextSecondary.copy(alpha = 0.2f))
+                            Text(
+                                text = "  or  ",
+                                fontSize = 12.sp,
+                                color = NotelTextSecondary
+                            )
+                            HorizontalDivider(modifier = Modifier.weight(1f), color = NotelTextSecondary.copy(alpha = 0.2f))
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+
                         OutlinedTextField(
                             value = email,
-                            onValueChange = { email = it },
-                            placeholder = { Text("Email", color = NotelTextSecondary) },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp),
+                            onValueChange = { email = it; viewModel.setError(null) },
+                            label = { Text("Email Address") },
+                            leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = NotelTextSecondary) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                            singleLine = true,
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = NotelSurfaceHigh,
-                                unfocusedContainerColor = NotelSurfaceHigh,
                                 focusedBorderColor = NotelPrimary,
-                                unfocusedBorderColor = Color.Transparent,
-                                focusedTextColor = NotelTextPrimary,
-                                unfocusedTextColor = NotelTextPrimary,
-                                cursorColor = NotelPrimary
+                                unfocusedBorderColor = NotelTextSecondary.copy(alpha = 0.4f),
+                                focusedLabelColor = NotelPrimary,
+                                unfocusedLabelColor = NotelTextSecondary
                             ),
-                            singleLine = true
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth()
                         )
 
                         if (!isForgotPasswordMode) {
@@ -473,64 +486,80 @@ fun LoginScreen(
 
                             OutlinedTextField(
                                 value = password,
-                                onValueChange = { password = it },
-                                placeholder = { Text("Password", color = NotelTextSecondary) },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(16.dp),
-                                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                onValueChange = { password = it; viewModel.setError(null) },
+                                label = { Text("Password") },
+                                leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = NotelTextSecondary) },
                                 trailingIcon = {
-                                    val image = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff
                                     IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                                        Icon(imageVector = image, contentDescription = null, tint = NotelTextSecondary)
+                                        Icon(
+                                            imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                            contentDescription = null,
+                                            tint = NotelTextSecondary
+                                        )
                                     }
                                 },
+                                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedContainerColor = NotelSurfaceHigh,
-                                    unfocusedContainerColor = NotelSurfaceHigh,
                                     focusedBorderColor = NotelPrimary,
-                                    unfocusedBorderColor = Color.Transparent,
-                                    focusedTextColor = NotelTextPrimary,
-                                    unfocusedTextColor = NotelTextPrimary,
-                                    cursorColor = NotelPrimary
+                                    unfocusedBorderColor = NotelTextSecondary.copy(alpha = 0.4f),
+                                    focusedLabelColor = NotelPrimary,
+                                    unfocusedLabelColor = NotelTextSecondary
                                 ),
-                                singleLine = true
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.fillMaxWidth()
                             )
                         }
 
                         if (errorMsg != null) {
                             Spacer(Modifier.height(12.dp))
-                            Text(errorMsg, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, textAlign = TextAlign.Center)
+                            Text(
+                                text = errorMsg,
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
+
                         if (successMsg != null) {
                             Spacer(Modifier.height(12.dp))
-                            Text(successMsg, color = Color(0xFF4CAF50), fontSize = 13.sp, textAlign = TextAlign.Center)
+                            Text(
+                                text = successMsg,
+                                color = Color(0xFF4CAF50),
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
 
                         Spacer(Modifier.height(20.dp))
 
                         GlassyButton(
                             onClick = {
-                                viewModel.setError(null)
-                                viewModel.setSuccess(null)
-                                when {
-                                    isForgotPasswordMode -> viewModel.forgotPassword(email)
-                                    isRegisterMode -> viewModel.register(email, password)
-                                    else -> viewModel.login(email, password)
+                                if (isForgotPasswordMode) {
+                                    viewModel.forgotPassword(email)
+                                } else if (isRegisterMode) {
+                                    viewModel.register(email, password)
+                                } else {
+                                    viewModel.login(email, password)
                                 }
                             },
+                            enabled = !isLoading,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(50.dp)
+                                .height(52.dp),
+                            containerColor = NotelPrimary
                         ) {
                             if (isLoading) {
-                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
+                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
                             } else {
                                 Text(
                                     text = when {
                                         isForgotPasswordMode -> "Send Reset Link"
-                                        isRegisterMode -> "Sign up"
-                                        else -> "Log in"
+                                        isRegisterMode -> "Create Account"
+                                        else -> "Log In"
                                     },
                                     color = Color.White,
                                     fontWeight = FontWeight.Bold,
@@ -539,78 +568,13 @@ fun LoginScreen(
                             }
                         }
 
-                        Spacer(Modifier.height(16.dp))
-
-                        FlowRow(
-                            horizontalArrangement = Arrangement.Center,
-                            verticalArrangement = Arrangement.Center,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = "By signing up you agree to our ",
-                                fontSize = 11.sp,
-                                color = NotelTextSecondary,
-                                textAlign = TextAlign.Center
-                            )
-                            Text(
-                                text = "Terms of Use",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = NotelPrimary,
-                                modifier = Modifier.clickable {
-                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://api.jottracker.com/terms.html"))
-                                    context.startActivity(intent)
-                                }
-                            )
-                            Text(
-                                text = " and ",
-                                fontSize = 11.sp,
-                                color = NotelTextSecondary
-                            )
-                            Text(
-                                text = "Privacy Policy",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = NotelPrimary,
-                                modifier = Modifier.clickable {
-                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://api.jottracker.com/privacy.html"))
-                                    context.startActivity(intent)
-                                }
-                            )
-                            Text(
-                                text = ".",
-                                fontSize = 11.sp,
-                                color = NotelTextSecondary
-                            )
-                        }
-
-                        Spacer(Modifier.height(12.dp))
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
-                            modifier = Modifier.clickable { showPrivacyDialog = true }
-                        ) {
-                            Text(
-                                text = "Read more about ",
-                                fontSize = 12.sp,
-                                color = NotelTextSecondary
-                            )
-                            Text(
-                                text = "our Privacy Promise",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = NotelPrimary
-                            )
-                        }
-
                         if (!isRegisterMode && !isForgotPasswordMode) {
-                            Spacer(Modifier.height(8.dp))
+                            Spacer(Modifier.height(12.dp))
                             TextButton(onClick = { isForgotPasswordMode = true; viewModel.setError(null) }) {
                                 Text("Forgot Password?", color = NotelPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                         } else if (isForgotPasswordMode) {
-                            Spacer(Modifier.height(8.dp))
+                            Spacer(Modifier.height(12.dp))
                             TextButton(onClick = { isForgotPasswordMode = false; viewModel.setError(null) }) {
                                 Text("Back to Log in", color = NotelTextSecondary, fontSize = 12.sp)
                             }
@@ -618,32 +582,54 @@ fun LoginScreen(
                     }
                 }
 
-                Spacer(Modifier.height(32.dp))
+                Spacer(Modifier.height(16.dp))
+
+                // SMALL TERMS & PRIVACY TEXT OUTSIDE MAIN CARD
+                FlowRow(
+                    horizontalArrangement = Arrangement.Center,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "By signing up you agree to our ",
+                        fontSize = 10.sp,
+                        color = NotelTextSecondary,
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        text = "Terms of Use",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NotelPrimary,
+                        modifier = Modifier.clickable {
+                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://api.jottracker.com/terms.html"))
+                            context.startActivity(intent)
+                        }
+                    )
+                    Text(
+                        text = " and ",
+                        fontSize = 10.sp,
+                        color = NotelTextSecondary
+                    )
+                    Text(
+                        text = "Privacy Policy",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NotelPrimary,
+                        modifier = Modifier.clickable {
+                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://api.jottracker.com/privacy.html"))
+                            context.startActivity(intent)
+                        }
+                    )
+                    Text(
+                        text = ".",
+                        fontSize = 10.sp,
+                        color = NotelTextSecondary
+                    )
+                }
+
+                Spacer(Modifier.height(24.dp))
             }
         }
     }
-
-    if (showPrivacyDialog) {
-        AlertDialog(
-            onDismissRequest = { showPrivacyDialog = false },
-            title = {
-                Text("Our Privacy Promise", fontWeight = FontWeight.Bold, color = NotelTextPrimary)
-            },
-            text = {
-                Text(
-                    "Tabs is designed with zero-compromise health data privacy. Your biometric entries and health metrics are encrypted and never sold or shared with third-party advertisers.",
-                    color = NotelTextSecondary,
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp
-                )
-            },
-            confirmButton = {
-                Button(onClick = { showPrivacyDialog = false }) {
-                    Text("Got it")
-                }
-            },
-            containerColor = NotelSurface
-        )
-    }
 }
-
