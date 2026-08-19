@@ -342,128 +342,22 @@ fun LoginScreen(
                         modifier = Modifier.padding(24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Surface(
-                            shape = RoundedCornerShape(20.dp),
-                            color = NotelSurfaceHigh,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(46.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(4.dp)
-                            ) {
-                                Surface(
-                                    onClick = {
-                                        isRegisterMode = true
-                                        isForgotPasswordMode = false
-                                        viewModel.setError(null)
-                                    },
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = if (isRegisterMode && !isForgotPasswordMode) NotelSurface else Color.Transparent,
-                                    shadowElevation = if (isRegisterMode && !isForgotPasswordMode) 2.dp else 0.dp,
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight()
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(
-                                            text = "Sign up",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp,
-                                            color = if (isRegisterMode && !isForgotPasswordMode) NotelTextPrimary else NotelTextSecondary
-                                        )
-                                    }
-                                }
-
-                                Surface(
-                                    onClick = {
-                                        isRegisterMode = false
-                                        isForgotPasswordMode = false
-                                        viewModel.setError(null)
-                                    },
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = if (!isRegisterMode && !isForgotPasswordMode) NotelSurface else Color.Transparent,
-                                    shadowElevation = if (!isRegisterMode && !isForgotPasswordMode) 2.dp else 0.dp,
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight()
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(
-                                            text = "Log in",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp,
-                                            color = if (!isRegisterMode && !isForgotPasswordMode) NotelTextPrimary else NotelTextSecondary
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                        // HEADER TITLE (Log In or Sign Up)
+                        Text(
+                            text = when {
+                                isForgotPasswordMode -> "Reset Password"
+                                isRegisterMode -> "Create Your Account"
+                                else -> "Welcome Back"
+                            },
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NotelTextPrimary,
+                            textAlign = TextAlign.Center
+                        )
 
                         Spacer(Modifier.height(20.dp))
 
-                        Button(
-                            onClick = {
-                                try {
-                                    val intent = android.accounts.AccountManager.newChooseAccountIntent(
-                                        null,
-                                        null,
-                                        arrayOf("com.google"),
-                                        false,
-                                        null,
-                                        null,
-                                        null,
-                                        null
-                                    )
-                                    googleAccountLauncher.launch(intent)
-                                } catch (e: Exception) {
-                                    viewModel.loginWithGoogleAccount("tysonscadden@gmail.com")
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh),
-                            shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(50.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Image(
-                                    painter = painterResource(id = R.drawable.ic_google_logo),
-                                    contentDescription = "Google Logo",
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(Modifier.width(12.dp))
-                                Text(
-                                    text = if (isRegisterMode) "Continue with Google" else "Log in with Google",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = NotelTextPrimary
-                                )
-                            }
-                        }
-
-                        Spacer(Modifier.height(16.dp))
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            HorizontalDivider(modifier = Modifier.weight(1f), color = NotelTextSecondary.copy(alpha = 0.2f))
-                            Text(
-                                text = "  or  ",
-                                fontSize = 12.sp,
-                                color = NotelTextSecondary
-                            )
-                            HorizontalDivider(modifier = Modifier.weight(1f), color = NotelTextSecondary.copy(alpha = 0.2f))
-                        }
-
-                        Spacer(Modifier.height(16.dp))
-
+                        // EMAIL TEXT FIELD
                         OutlinedTextField(
                             value = email,
                             onValueChange = { email = it; viewModel.setError(null) },
@@ -536,6 +430,7 @@ fun LoginScreen(
 
                         Spacer(Modifier.height(20.dp))
 
+                        // SUBMIT BUTTON (Log In / Create Account)
                         GlassyButton(
                             onClick = {
                                 if (isForgotPasswordMode) {
@@ -579,6 +474,67 @@ fun LoginScreen(
                                 Text("Back to Log in", color = NotelTextSecondary, fontSize = 12.sp)
                             }
                         }
+
+                        Spacer(Modifier.height(20.dp))
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            HorizontalDivider(modifier = Modifier.weight(1f), color = NotelTextSecondary.copy(alpha = 0.2f))
+                            Text(
+                                text = "  or  ",
+                                fontSize = 12.sp,
+                                color = NotelTextSecondary
+                            )
+                            HorizontalDivider(modifier = Modifier.weight(1f), color = NotelTextSecondary.copy(alpha = 0.2f))
+                        }
+
+                        Spacer(Modifier.height(20.dp))
+
+                        // GOOGLE AUTH BUTTON (ON BOTTOM)
+                        Button(
+                            onClick = {
+                                try {
+                                    val intent = android.accounts.AccountManager.newChooseAccountIntent(
+                                        null,
+                                        null,
+                                        arrayOf("com.google"),
+                                        false,
+                                        null,
+                                        null,
+                                        null,
+                                        null
+                                    )
+                                    googleAccountLauncher.launch(intent)
+                                } catch (e: Exception) {
+                                    viewModel.loginWithGoogleAccount("tysonscadden@gmail.com")
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Image(
+                                    painter = painterResource(id = R.drawable.ic_google_logo),
+                                    contentDescription = "Google Logo",
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    text = if (isRegisterMode) "Continue with Google" else "Log in with Google",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = NotelTextPrimary
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -592,13 +548,13 @@ fun LoginScreen(
                 ) {
                     Text(
                         text = "By signing up you agree to our ",
-                        fontSize = 10.sp,
+                        fontSize = 9.5.sp,
                         color = NotelTextSecondary,
                         textAlign = TextAlign.Center
                     )
                     Text(
                         text = "Terms of Use",
-                        fontSize = 10.sp,
+                        fontSize = 9.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = NotelPrimary,
                         modifier = Modifier.clickable {
@@ -608,12 +564,12 @@ fun LoginScreen(
                     )
                     Text(
                         text = " and ",
-                        fontSize = 10.sp,
+                        fontSize = 9.5.sp,
                         color = NotelTextSecondary
                     )
                     Text(
                         text = "Privacy Policy",
-                        fontSize = 10.sp,
+                        fontSize = 9.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = NotelPrimary,
                         modifier = Modifier.clickable {
@@ -623,7 +579,7 @@ fun LoginScreen(
                     )
                     Text(
                         text = ".",
-                        fontSize = 10.sp,
+                        fontSize = 9.5.sp,
                         color = NotelTextSecondary
                     )
                 }

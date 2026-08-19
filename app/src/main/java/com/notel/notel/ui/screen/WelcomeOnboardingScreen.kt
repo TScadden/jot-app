@@ -46,32 +46,30 @@ fun WelcomeOnboardingScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
                 // TOP LOGO HEADER
                 TopLogoHeader(modifier = Modifier.padding(top = 8.dp))
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(12.dp))
 
                 // PEOPLE & CHIPS VERTICAL LIST (ONE AFTER THE OTHER WITH TIGHT SPACING)
                 Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     // Item 1: Man Avatar + "Track symptoms and treatments"
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Start
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(50.dp)
+                                .size(40.dp)
                                 .clip(CircleShape)
                                 .background(
                                     Brush.radialGradient(
@@ -97,15 +95,13 @@ fun WelcomeOnboardingScreen(
                         CalloutChip(
                             icon = Icons.Default.Biotech,
                             iconBg = Color(0xFF38BDF8),
-                            text = "Track symptoms and treatments"
+                            text = "Track symptoms, reach goals"
                         )
                     }
 
                     // Item 2: Blonde Woman Avatar + "Reach your goals"
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.End
                     ) {
@@ -117,7 +113,7 @@ fun WelcomeOnboardingScreen(
                         Spacer(Modifier.width(8.dp))
                         Box(
                             modifier = Modifier
-                                .size(50.dp)
+                                .size(40.dp)
                                 .clip(CircleShape)
                                 .background(
                                     Brush.radialGradient(
@@ -143,15 +139,13 @@ fun WelcomeOnboardingScreen(
 
                     // Item 3: Asian Woman Avatar + "Learn patterns and get insights"
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Start
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(50.dp)
+                                .size(40.dp)
                                 .clip(CircleShape)
                                 .background(
                                     Brush.radialGradient(
@@ -177,79 +171,83 @@ fun WelcomeOnboardingScreen(
                         CalloutChip(
                             icon = Icons.Default.Fingerprint,
                             iconBg = Color(0xFFA855F7),
-                            text = "Learn patterns and get insights"
+                            text = "Learn patterns & insights"
                         )
                     }
                 }
 
                 Spacer(Modifier.height(16.dp))
 
-                // DISCORD-STYLE REGISTRATION / LOGIN BUTTONS ABOVE FOOTER TEXT
+                // SLOGAN + BUTTONS AT THE BOTTOM
                 Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // Sign Up / Register Button
-                    Button(
-                        onClick = onSignUp,
-                        colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
-                        shape = RoundedCornerShape(24.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp)
+                    // SLOGAN TEXT: Notes that build with you (Above Buttons)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(bottom = 16.dp)
                     ) {
                         Text(
-                            text = "Register",
-                            fontSize = 17.sp,
+                            text = "Notes that build",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Light,
+                            fontStyle = FontStyle.Italic,
+                            fontFamily = FontFamily.Serif,
+                            color = NotelPrimary,
+                            textAlign = TextAlign.Center
+                        )
+                        Text(
+                            text = "with you",
+                            fontSize = 28.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            fontStyle = FontStyle.Italic,
+                            fontFamily = FontFamily.Serif,
+                            color = NotelPrimary,
+                            textAlign = TextAlign.Center
                         )
                     }
 
-                    // Log In Button
-                    Button(
-                        onClick = onLogin,
-                        colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh),
-                        shape = RoundedCornerShape(24.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp)
+                    // DISCORD-STYLE REGISTRATION / LOGIN BUTTONS AT VERY BOTTOM
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Text(
-                            text = "Log In",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = NotelPrimary
-                        )
+                        // Sign Up / Register Button
+                        Button(
+                            onClick = onSignUp,
+                            colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
+                            shape = RoundedCornerShape(24.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp)
+                        ) {
+                            Text(
+                                text = "Register",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+
+                        // Log In Button
+                        Button(
+                            onClick = onLogin,
+                            colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh),
+                            shape = RoundedCornerShape(24.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp)
+                        ) {
+                            Text(
+                                text = "Log In",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = NotelPrimary
+                            )
+                        }
                     }
-                }
-
-                Spacer(Modifier.height(16.dp))
-
-                // BOTTOM SLOGAN TEXT: Notes that build with you
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                ) {
-                    Text(
-                        text = "Notes that build",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Light,
-                        fontStyle = FontStyle.Italic,
-                        fontFamily = FontFamily.Serif,
-                        color = NotelPrimary,
-                        textAlign = TextAlign.Center
-                    )
-                    Text(
-                        text = "with you",
-                        fontSize = 30.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontStyle = FontStyle.Italic,
-                        fontFamily = FontFamily.Serif,
-                        color = NotelPrimary,
-                        textAlign = TextAlign.Center
-                    )
                 }
             }
         }
@@ -294,10 +292,9 @@ private fun CalloutChip(
             Spacer(Modifier.width(8.dp))
             Text(
                 text = text,
-                fontSize = 14.sp,
+                fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
-                color = NotelTextPrimary,
-                maxLines = 1
+                color = NotelTextPrimary
             )
         }
     }
