@@ -141,21 +141,18 @@ class LoginViewModel @Inject constructor(
                     preferences.setAuthToken(body.token!!)
                     preferences.setLoggedIn(true)
                     preferences.setUserEmail(email)
+                    preferences.setOnboardingComplete(true)
+                    preferences.setCupTheorySeen(true)
+                    preferences.setSettingsTutorialSeen(true)
                     
                     body.isUnlimited?.let { preferences.setIsUnlimited(it) }
                     body.isAdmin?.let { preferences.setIsAdmin(it) }
-                    body.onboardingComplete?.let { 
-                        if (it) {
-                            preferences.setOnboardingComplete(true)
-                            preferences.setCupTheorySeen(true)
-                        }
-                    }
                     body.nickname?.let { preferences.setUserNickname(it) }
                     body.tag?.let { preferences.setUserTag(it) }
                     
                     syncManager.pullAllData()
                     
-                    onboardingCompleteByServer = preferences.onboardingComplete.first()
+                    onboardingCompleteByServer = true
                     isLoggedIn = true
                 } else {
                     val errorBody = response.errorBody()?.string()
@@ -191,18 +188,18 @@ class LoginViewModel @Inject constructor(
                     preferences.setUserEmail(email)
                     preferences.setGoogleAccountConnected(true)
                     preferences.setGoogleAccountEmail(email)
+                    preferences.setOnboardingComplete(true)
+                    preferences.setCupTheorySeen(true)
+                    preferences.setSettingsTutorialSeen(true)
+
                     body.isUnlimited?.let { preferences.setIsUnlimited(it) }
                     body.isAdmin?.let { preferences.setIsAdmin(it) }
-                    body.onboardingComplete?.let { 
-                        if (it) {
-                            preferences.setOnboardingComplete(true)
-                            preferences.setCupTheorySeen(true)
-                        }
-                    }
                     body.nickname?.let { preferences.setUserNickname(it) }
                     body.tag?.let { preferences.setUserTag(it) }
+
                     syncManager.pullAllData()
-                    onboardingCompleteByServer = preferences.onboardingComplete.first()
+
+                    onboardingCompleteByServer = true
                     isLoggedIn = true
                 } else if (response.code() == 401 || (body != null && body.error?.contains("password", ignoreCase = true) == true)) {
                     // Account exists with email/password but is not linked to Google
