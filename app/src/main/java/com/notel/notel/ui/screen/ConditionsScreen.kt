@@ -263,6 +263,20 @@ fun ConditionsScreen(
                                     .padding(16.dp)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape)
+                                            .background(NotelPrimary.copy(alpha = 0.2f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Default.MedicalServices, contentDescription = null, tint = NotelPrimary, modifier = Modifier.size(20.dp))
+                                    }
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("Your conditions", color = NotelTextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                        Text("Diagnosed or suspected conditions.", color = NotelTextSecondary, fontSize = 12.sp)
+                                    }
                                     IconButton(
                                         onClick = { isSearching = true },
                                         modifier = Modifier
@@ -271,11 +285,6 @@ fun ConditionsScreen(
                                             .background(NotelPrimary.copy(alpha = 0.2f))
                                     ) {
                                         Icon(Icons.Default.Search, contentDescription = "Search conditions", tint = NotelPrimary, modifier = Modifier.size(20.dp))
-                                    }
-                                    Spacer(Modifier.width(12.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text("Your conditions", color = NotelTextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                                        Text("Diagnosed or suspected conditions.", color = NotelTextSecondary, fontSize = 12.sp)
                                     }
                                 }
 
@@ -343,8 +352,6 @@ fun ConditionsScreen(
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .clickable { isSearching = true }
                                             .padding(vertical = 20.dp, horizontal = 16.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
