@@ -17,6 +17,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -308,36 +313,50 @@ fun ConditionsScreen(
                                         }
                                     }
                                 } else {
-                                    Spacer(Modifier.height(20.dp))
-                                    Row(
+                                    Spacer(Modifier.height(16.dp))
+                                    val inlineContentId = "search_icon"
+                                    val annotatedString = remember {
+                                        buildAnnotatedString {
+                                            append("Looks like you need to add some. Click the ")
+                                            appendInlineContent(inlineContentId, "[search]")
+                                            append(" to search.")
+                                        }
+                                    }
+                                    val inlineContent = remember {
+                                        mapOf(
+                                            inlineContentId to InlineTextContent(
+                                                Placeholder(
+                                                    width = 18.sp,
+                                                    height = 18.sp,
+                                                    placeholderVerticalAlign = PlaceholderVerticalAlign.Center
+                                                )
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Search,
+                                                    contentDescription = "Search",
+                                                    tint = NotelPrimary
+                                                )
+                                            }
+                                        )
+                                    }
+
+                                    Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clip(RoundedCornerShape(12.dp))
                                             .clickable { isSearching = true }
-                                            .padding(vertical = 16.dp, horizontal = 8.dp),
-                                        horizontalArrangement = Arrangement.Center,
-                                        verticalAlignment = Alignment.CenterVertically
+                                            .padding(vertical = 20.dp, horizontal = 16.dp),
+                                        contentAlignment = Alignment.Center
                                     ) {
                                         Text(
-                                            text = "Looks like you need to add some. Click the ",
+                                            text = annotatedString,
+                                            inlineContent = inlineContent,
                                             color = NotelTextSecondary,
-                                            fontSize = 13.sp,
-                                            textAlign = TextAlign.Center
-                                        )
-                                        Icon(
-                                            imageVector = Icons.Default.Search,
-                                            contentDescription = "Search",
-                                            tint = NotelPrimary,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text(
-                                            text = " to search.",
-                                            color = NotelTextSecondary,
-                                            fontSize = 13.sp,
-                                            textAlign = TextAlign.Center
+                                            fontSize = 14.sp,
+                                            textAlign = TextAlign.Center,
+                                            lineHeight = 20.sp
                                         )
                                     }
-                                    Spacer(Modifier.height(8.dp))
                                 }
                             }
                         }
