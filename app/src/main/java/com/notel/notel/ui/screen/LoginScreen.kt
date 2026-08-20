@@ -180,6 +180,7 @@ class LoginViewModel @Inject constructor(
             isLoading = true
             errorMsg = null
             try {
+                // Try logging in with Google auth password
                 val response = tabsApi.login(AuthRequest(email, "GoogleAuthPass!2026"))
                 val body = response.body()
                 
@@ -199,11 +200,15 @@ class LoginViewModel @Inject constructor(
                     syncManager.pullAllData()
                     onboardingCompleteByServer = preferences.onboardingComplete.first()
                     isLoggedIn = true
+                } else if (response.code() == 401 || (body != null && body.error?.contains("password", ignoreCase = true) == true)) {
+                    // Account exists with email/password but is not linked to Google
+                    errorMsg = "An account with this email already exists using password login. Please log in with your email and password instead."
                 } else {
+                    // If account doesn't exist at all, register a new account with Google auth
                     register(email, "GoogleAuthPass!2026")
                 }
             } catch (e: Exception) {
-                register(email, "GoogleAuthPass!2026")
+                errorMsg = e.message ?: "Google login failed"
             } finally {
                 isLoading = false
             }
@@ -306,16 +311,16 @@ fun LoginScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                verticalArrangement = Arrangement.SpaceBetween
             ) {
                 TopLogoHeader(
                     onBack = onBack,
                     modifier = Modifier.padding(top = 8.dp)
                 )
 
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(16.dp))
 
                 Surface(
                     shape = RoundedCornerShape(28.dp),
@@ -482,19 +487,14 @@ fun LoginScreen(
                         Button(
                             onClick = {
                                 try {
-                                    val intent = android.accounts.AccountManager.newChooseAccountIntent(
-                                        null,
-                                        null,
-                                        arrayOf("com.google"),
-                                        false,
-                                        null,
-                                        null,
-                                        null,
-                                        null
+                                    val intent = com.google.android.gms.common.AccountPicker.newChooseAccountIntent(
+                                        com.google.android.gms.common.AccountPicker.AccountChooserOptions.Builder()
+                                            .setAllowableAccountsTypes(listOf("com.google"))
+                                            .build()
                                     )
                                     googleAccountLauncher.launch(intent)
                                 } catch (e: Exception) {
-                                    viewModel.loginWithGoogleAccount("tysonscadden@gmail.com")
+                                    viewModel.setError("Could not launch Google Sign In: ${e.message}")
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh),
