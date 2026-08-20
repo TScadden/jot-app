@@ -312,299 +312,295 @@ fun LoginScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            Column(
+            // TOP LOGO HEADER - PINNED TO TOP
+            Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 16.dp)
+                    .align(Alignment.TopCenter)
             ) {
                 TopLogoHeader(
                     onBack = onBack,
                     modifier = Modifier.padding(top = 8.dp)
                 )
+            }
 
-                // CENTER-ALIGNED CONTAINER FOR CARD + TERMS DIRECTLY BELOW
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f, fill = false)
-                        .padding(vertical = 16.dp),
-                    contentAlignment = Alignment.Center
+            // CARD + TERMS - PERFECTLY CENTERED VERTICALLY AND HORIZONTALLY IN SCREEN
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.Center)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(28.dp),
+                    color = NotelSurface,
+                    shadowElevation = 8.dp,
+                    border = BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.15f)),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Surface(
-                            shape = RoundedCornerShape(28.dp),
-                            color = NotelSurface,
-                            shadowElevation = 8.dp,
-                            border = BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.15f)),
+                        // HEADER TITLE (Log In or Sign Up)
+                        Text(
+                            text = when {
+                                isForgotPasswordMode -> "Reset Password"
+                                isRegisterMode -> "Create Your Account"
+                                else -> "Welcome Back"
+                            },
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NotelTextPrimary,
+                            textAlign = TextAlign.Center
+                        )
+
+                        Spacer(Modifier.height(20.dp))
+
+                        // EMAIL TEXT FIELD
+                        OutlinedTextField(
+                            value = email,
+                            onValueChange = { email = it; viewModel.setError(null) },
+                            label = { Text("Email Address") },
+                            leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = NotelTextSecondary) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = NotelPrimary,
+                                unfocusedBorderColor = NotelTextSecondary.copy(alpha = 0.4f),
+                                focusedLabelColor = NotelPrimary,
+                                cursorColor = NotelPrimary,
+                                focusedTextColor = NotelTextPrimary,
+                                unfocusedTextColor = NotelTextPrimary
+                            ),
+                            shape = RoundedCornerShape(14.dp),
                             modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                        )
+
+                        Spacer(Modifier.height(14.dp))
+
+                        if (!isForgotPasswordMode) {
+                            // PASSWORD TEXT FIELD
+                            OutlinedTextField(
+                                value = password,
+                                onValueChange = { password = it; viewModel.setError(null) },
+                                label = { Text("Password") },
+                                leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = NotelTextSecondary) },
+                                trailingIcon = {
+                                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                        Icon(
+                                            imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                            contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                                            tint = NotelTextSecondary
+                                        )
+                                    }
+                                },
+                                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = NotelPrimary,
+                                    unfocusedBorderColor = NotelTextSecondary.copy(alpha = 0.4f),
+                                    focusedLabelColor = NotelPrimary,
+                                    cursorColor = NotelPrimary,
+                                    focusedTextColor = NotelTextPrimary,
+                                    unfocusedTextColor = NotelTextPrimary
+                                ),
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Spacer(Modifier.height(8.dp))
+                        }
+
+                        // ERROR / SUCCESS MESSAGES
+                        AnimatedVisibility(visible = errorMsg != null || successMsg != null) {
+                            Text(
+                                text = errorMsg ?: successMsg ?: "",
+                                color = if (errorMsg != null) MaterialTheme.colorScheme.error else NotelPrimary,
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+                        }
+
+                        // FORGOT PASSWORD LINK (Shown only in Login mode)
+                        if (!isRegisterMode && !isForgotPasswordMode) {
+                            Box(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.CenterEnd
                             ) {
-                                // HEADER TITLE (Log In or Sign Up)
+                                TextButton(onClick = { isForgotPasswordMode = true }) {
+                                    Text("Forgot Password?", color = NotelPrimary, fontSize = 13.sp)
+                                }
+                            }
+                        } else {
+                            Spacer(Modifier.height(8.dp))
+                        }
+
+                        // MAIN ACTION BUTTON (Log In, Sign Up, or Reset)
+                        Button(
+                            onClick = {
+                                if (isForgotPasswordMode) {
+                                    viewModel.forgotPassword(email)
+                                } else if (isRegisterMode) {
+                                    viewModel.register(email, password)
+                                } else {
+                                    viewModel.login(email, password)
+                                }
+                            },
+                            enabled = !isLoading,
+                            colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp)
+                        ) {
+                            if (isLoading) {
+                                CircularProgressIndicator(modifier = Modifier.size(24.dp), color = NotelBackground)
+                            } else {
                                 Text(
                                     text = when {
-                                        isForgotPasswordMode -> "Reset Password"
-                                        isRegisterMode -> "Create Your Account"
-                                        else -> "Welcome Back"
+                                        isForgotPasswordMode -> "Send Reset Link"
+                                        isRegisterMode -> "Sign Up"
+                                        else -> "Log In"
                                     },
-                                    fontSize = 22.sp,
+                                    fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = NotelTextPrimary,
-                                    textAlign = TextAlign.Center
+                                    color = NotelBackground
                                 )
-
-                                Spacer(Modifier.height(20.dp))
-
-                                // EMAIL TEXT FIELD
-                                OutlinedTextField(
-                                    value = email,
-                                    onValueChange = { email = it; viewModel.setError(null) },
-                                    label = { Text("Email Address") },
-                                    leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = NotelTextSecondary) },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                                    singleLine = true,
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = NotelPrimary,
-                                        unfocusedBorderColor = NotelTextSecondary.copy(alpha = 0.4f),
-                                        focusedLabelColor = NotelPrimary,
-                                        cursorColor = NotelPrimary,
-                                        focusedTextColor = NotelTextPrimary,
-                                        unfocusedTextColor = NotelTextPrimary
-                                    ),
-                                    shape = RoundedCornerShape(14.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-
-                                Spacer(Modifier.height(14.dp))
-
-                                if (!isForgotPasswordMode) {
-                                    // PASSWORD TEXT FIELD
-                                    OutlinedTextField(
-                                        value = password,
-                                        onValueChange = { password = it; viewModel.setError(null) },
-                                        label = { Text("Password") },
-                                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = NotelTextSecondary) },
-                                        trailingIcon = {
-                                            IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                                                Icon(
-                                                    imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                                    contentDescription = if (passwordVisible) "Hide password" else "Show password",
-                                                    tint = NotelTextSecondary
-                                                )
-                                            }
-                                        },
-                                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                                        singleLine = true,
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = NotelPrimary,
-                                            unfocusedBorderColor = NotelTextSecondary.copy(alpha = 0.4f),
-                                            focusedLabelColor = NotelPrimary,
-                                            cursorColor = NotelPrimary,
-                                            focusedTextColor = NotelTextPrimary,
-                                            unfocusedTextColor = NotelTextPrimary
-                                        ),
-                                        shape = RoundedCornerShape(14.dp),
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-
-                                    Spacer(Modifier.height(8.dp))
-                                }
-
-                                // ERROR / SUCCESS MESSAGES
-                                AnimatedVisibility(visible = errorMsg != null || successMsg != null) {
-                                    Text(
-                                        text = errorMsg ?: successMsg ?: "",
-                                        color = if (errorMsg != null) MaterialTheme.colorScheme.error else NotelPrimary,
-                                        fontSize = 13.sp,
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier.padding(vertical = 4.dp)
-                                    )
-                                }
-
-                                // FORGOT PASSWORD LINK (Shown only in Login mode)
-                                if (!isRegisterMode && !isForgotPasswordMode) {
-                                    Box(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        contentAlignment = Alignment.CenterEnd
-                                    ) {
-                                        TextButton(onClick = { isForgotPasswordMode = true }) {
-                                            Text("Forgot Password?", color = NotelPrimary, fontSize = 13.sp)
-                                        }
-                                    }
-                                } else {
-                                    Spacer(Modifier.height(8.dp))
-                                }
-
-                                // MAIN ACTION BUTTON (Log In, Sign Up, or Reset)
-                                Button(
-                                    onClick = {
-                                        if (isForgotPasswordMode) {
-                                            viewModel.forgotPassword(email)
-                                        } else if (isRegisterMode) {
-                                            viewModel.register(email, password)
-                                        } else {
-                                            viewModel.login(email, password)
-                                        }
-                                    },
-                                    enabled = !isLoading,
-                                    colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
-                                    shape = RoundedCornerShape(16.dp),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(50.dp)
-                                ) {
-                                    if (isLoading) {
-                                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = NotelBackground)
-                                    } else {
-                                        Text(
-                                            text = when {
-                                                isForgotPasswordMode -> "Send Reset Link"
-                                                isRegisterMode -> "Sign Up"
-                                                else -> "Log In"
-                                            },
-                                            fontSize = 16.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = NotelBackground
-                                        )
-                                    }
-                                }
-
-                                Spacer(Modifier.height(12.dp))
-
-                                // TOGGLE BETWEEN LOGIN AND REGISTER MODES
-                                TextButton(
-                                    onClick = {
-                                        if (isForgotPasswordMode) {
-                                            isForgotPasswordMode = false
-                                        } else {
-                                            isRegisterMode = !isRegisterMode
-                                        }
-                                        viewModel.setError(null)
-                                    }
-                                ) {
-                                    Text(
-                                        text = when {
-                                            isForgotPasswordMode -> "Back to Log In"
-                                            isRegisterMode -> "Already have an account? Log In"
-                                            else -> "Don't have an account? Sign Up"
-                                        },
-                                        color = NotelTextSecondary,
-                                        fontSize = 13.sp
-                                    )
-                                }
-
-                                Spacer(Modifier.height(16.dp))
-
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    HorizontalDivider(modifier = Modifier.weight(1f), color = NotelTextSecondary.copy(alpha = 0.2f))
-                                    Text(
-                                        text = "  or  ",
-                                        fontSize = 12.sp,
-                                        color = NotelTextSecondary
-                                    )
-                                    HorizontalDivider(modifier = Modifier.weight(1f), color = NotelTextSecondary.copy(alpha = 0.2f))
-                                }
-
-                                Spacer(Modifier.height(16.dp))
-
-                                // GOOGLE AUTH BUTTON (ON BOTTOM)
-                                Button(
-                                    onClick = {
-                                        try {
-                                            val intent = com.google.android.gms.common.AccountPicker.newChooseAccountIntent(
-                                                com.google.android.gms.common.AccountPicker.AccountChooserOptions.Builder()
-                                                    .setAllowableAccountsTypes(listOf("com.google"))
-                                                    .build()
-                                            )
-                                            googleAccountLauncher.launch(intent)
-                                        } catch (e: Exception) {
-                                            viewModel.setError("Could not launch Google Sign In: ${e.message}")
-                                        }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh),
-                                    shape = RoundedCornerShape(16.dp),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(50.dp)
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.Center
-                                    ) {
-                                        Image(
-                                            painter = painterResource(id = R.drawable.ic_google_logo),
-                                            contentDescription = "Google Logo",
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                        Spacer(Modifier.width(12.dp))
-                                        Text(
-                                            text = if (isRegisterMode) "Continue with Google" else "Log in with Google",
-                                            fontSize = 15.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = NotelTextPrimary
-                                        )
-                                    }
-                                }
                             }
                         }
 
-                        Spacer(Modifier.height(10.dp))
+                        Spacer(Modifier.height(12.dp))
 
-                        // SMALL TERMS & PRIVACY TEXT DIRECTLY BELOW CARD
-                        FlowRow(
-                            horizontalArrangement = Arrangement.Center,
-                            verticalArrangement = Arrangement.Center,
-                            modifier = Modifier.fillMaxWidth()
+                        // TOGGLE BETWEEN LOGIN AND REGISTER MODES
+                        TextButton(
+                            onClick = {
+                                if (isForgotPasswordMode) {
+                                    isForgotPasswordMode = false
+                                } else {
+                                    isRegisterMode = !isRegisterMode
+                                }
+                                viewModel.setError(null)
+                            }
                         ) {
                             Text(
-                                text = "By signing up you agree to our ",
-                                fontSize = 8.5.sp,
+                                text = when {
+                                    isForgotPasswordMode -> "Back to Log In"
+                                    isRegisterMode -> "Already have an account? Log In"
+                                    else -> "Don't have an account? Sign Up"
+                                },
                                 color = NotelTextSecondary,
-                                textAlign = TextAlign.Center
-                            )
-                            Text(
-                                text = "Terms of Use",
-                                fontSize = 8.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = NotelPrimary,
-                                modifier = Modifier.clickable {
-                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://api.jottracker.com/terms.html"))
-                                    context.startActivity(intent)
-                                }
-                            )
-                            Text(
-                                text = " and ",
-                                fontSize = 8.5.sp,
-                                color = NotelTextSecondary
-                            )
-                            Text(
-                                text = "Privacy Policy",
-                                fontSize = 8.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = NotelPrimary,
-                                modifier = Modifier.clickable {
-                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://api.jottracker.com/privacy.html"))
-                                    context.startActivity(intent)
-                                }
-                            )
-                            Text(
-                                text = ".",
-                                fontSize = 8.5.sp,
-                                color = NotelTextSecondary
+                                fontSize = 13.sp
                             )
                         }
+
+                        Spacer(Modifier.height(16.dp))
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            HorizontalDivider(modifier = Modifier.weight(1f), color = NotelTextSecondary.copy(alpha = 0.2f))
+                            Text(
+                                text = "  or  ",
+                                fontSize = 12.sp,
+                                color = NotelTextSecondary
+                            )
+                            HorizontalDivider(modifier = Modifier.weight(1f), color = NotelTextSecondary.copy(alpha = 0.2f))
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+
+                        // GOOGLE AUTH BUTTON (ON BOTTOM)
+                        Button(
+                            onClick = {
+                                try {
+                                    val intent = com.google.android.gms.common.AccountPicker.newChooseAccountIntent(
+                                        com.google.android.gms.common.AccountPicker.AccountChooserOptions.Builder()
+                                            .setAllowableAccountsTypes(listOf("com.google"))
+                                            .build()
+                                    )
+                                    googleAccountLauncher.launch(intent)
+                                } catch (e: Exception) {
+                                    viewModel.setError("Could not launch Google Sign In: ${e.message}")
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Image(
+                                    painter = painterResource(id = R.drawable.ic_google_logo),
+                                    contentDescription = "Google Logo",
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    text = if (isRegisterMode) "Continue with Google" else "Log in with Google",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = NotelTextPrimary
+                                )
+                            }
+                        }
                     }
+                }
+
+                Spacer(Modifier.height(10.dp))
+
+                // SMALL TERMS & PRIVACY TEXT DIRECTLY BELOW CARD
+                FlowRow(
+                    horizontalArrangement = Arrangement.Center,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "By signing up you agree to our ",
+                        fontSize = 8.5.sp,
+                        color = NotelTextSecondary,
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        text = "Terms of Use",
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NotelPrimary,
+                        modifier = Modifier.clickable {
+                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://api.jottracker.com/terms.html"))
+                            context.startActivity(intent)
+                        }
+                    )
+                    Text(
+                        text = " and ",
+                        fontSize = 8.5.sp,
+                        color = NotelTextSecondary
+                    )
+                    Text(
+                        text = "Privacy Policy",
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NotelPrimary,
+                        modifier = Modifier.clickable {
+                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://api.jottracker.com/privacy.html"))
+                            context.startActivity(intent)
+                        }
+                    )
+                    Text(
+                        text = ".",
+                        fontSize = 8.5.sp,
+                        color = NotelTextSecondary
+                    )
                 }
             }
         }
