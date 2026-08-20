@@ -302,32 +302,18 @@ fun LoginScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // TOP BACK BUTTON
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier
-                    .padding(start = 16.dp, top = 16.dp)
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(NotelSurfaceHigh)
-                    .align(Alignment.TopStart)
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = NotelTextPrimary
-                )
-            }
-
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 24.dp, vertical = 32.dp),
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                TopLogoHeader(modifier = Modifier.padding(top = 16.dp))
+                TopLogoHeader(
+                    onBack = onBack,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
 
                 Spacer(Modifier.height(24.dp))
 

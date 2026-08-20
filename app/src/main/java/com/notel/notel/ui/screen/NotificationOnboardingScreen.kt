@@ -65,47 +65,18 @@ fun NotificationOnboardingScreen(
                 .padding(padding)
                 .padding(horizontal = 24.dp, vertical = 16.dp)
         ) {
-            // TOP BACK BUTTON & SKIP BUTTON ROW
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.TopStart),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(
-                    onClick = onBack,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(NotelSurfaceHigh)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = NotelTextPrimary
-                    )
-                }
-
-                Button(
-                    onClick = onSkip,
-                    colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh),
-                    shape = CircleShape,
-                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 6.dp)
-                ) {
-                    Text("Skip", color = NotelTextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                }
-            }
-
-            // MAIN CONTENT COLUMN - CENTERED
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.Center),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.SpaceBetween,
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                TopLogoHeader(modifier = Modifier.padding(bottom = 20.dp))
+                TopLogoHeader(
+                    onBack = onBack,
+                    onSkip = onSkip,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+
+                // NOTIFICATION PERMISSION CARD
 
                 // NOTIFICATION PERMISSION CARD
                 GlassyCard(

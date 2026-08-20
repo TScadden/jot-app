@@ -79,22 +79,6 @@ fun MembershipOnboardingScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier
-                    .padding(start = 16.dp, top = 16.dp)
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(NotelSurfaceHigh)
-                    .align(Alignment.TopStart)
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = NotelTextPrimary
-                )
-            }
-
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -102,7 +86,10 @@ fun MembershipOnboardingScreen(
                     .padding(horizontal = 24.dp, vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                TopLogoHeader(modifier = Modifier.padding(top = 8.dp))
+                TopLogoHeader(
+                    onBack = onBack,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
                 Spacer(Modifier.height(16.dp))
 
             // Glow badge

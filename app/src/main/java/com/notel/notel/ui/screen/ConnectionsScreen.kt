@@ -47,28 +47,16 @@ fun ConnectionsScreen(
                 .padding(padding)
                 .padding(horizontal = 24.dp, vertical = 16.dp)
         ) {
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(NotelSurfaceHigh)
-                    .align(Alignment.TopStart)
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = NotelTextPrimary
-                )
-            }
-
             Column(
                 modifier = Modifier
                     .fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                TopLogoHeader(modifier = Modifier.padding(top = 8.dp))
+                TopLogoHeader(
+                    onBack = onBack,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
             Icon(Icons.Default.Favorite, contentDescription = "Heart", tint = NotelPrimary, modifier = Modifier.size(64.dp))
             Spacer(modifier = Modifier.height(24.dp))
             

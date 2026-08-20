@@ -58,7 +58,7 @@ fun WelcomeOnboardingScreen(
                 // PEOPLE & CHIPS VERTICAL LIST (ONE AFTER THE OTHER WITH TIGHT SPACING)
                 Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     // Item 1: Man Avatar + "Track symptoms and treatments"
@@ -69,7 +69,7 @@ fun WelcomeOnboardingScreen(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(40.dp)
+                                .size(58.dp)
                                 .clip(CircleShape)
                                 .background(
                                     Brush.radialGradient(
@@ -79,8 +79,8 @@ fun WelcomeOnboardingScreen(
                                         )
                                     )
                                 )
-                                .border(1.5.dp, NotelPrimary.copy(alpha = 0.3f), CircleShape)
-                                .padding(2.dp)
+                                .border(2.dp, NotelPrimary.copy(alpha = 0.35f), CircleShape)
+                                .padding(3.dp)
                         ) {
                             Image(
                                 painter = painterResource(id = R.drawable.onboarding_avatar_man),
@@ -91,11 +91,12 @@ fun WelcomeOnboardingScreen(
                                     .clip(CircleShape)
                             )
                         }
-                        Spacer(Modifier.width(8.dp))
+                        Spacer(Modifier.width(10.dp))
                         CalloutChip(
                             icon = Icons.Default.Biotech,
                             iconBg = Color(0xFF38BDF8),
-                            text = "Track symptoms, reach goals"
+                            text = "Track symptoms and treatments",
+                            modifier = Modifier.weight(1f, fill = false)
                         )
                     }
 
@@ -108,12 +109,13 @@ fun WelcomeOnboardingScreen(
                         CalloutChip(
                             icon = Icons.Default.EmojiEvents,
                             iconBg = Color(0xFFA855F7),
-                            text = "Reach your goals"
+                            text = "Reach your goals",
+                            modifier = Modifier.weight(1f, fill = false)
                         )
-                        Spacer(Modifier.width(8.dp))
+                        Spacer(Modifier.width(10.dp))
                         Box(
                             modifier = Modifier
-                                .size(40.dp)
+                                .size(58.dp)
                                 .clip(CircleShape)
                                 .background(
                                     Brush.radialGradient(
@@ -123,8 +125,8 @@ fun WelcomeOnboardingScreen(
                                         )
                                     )
                                 )
-                                .border(1.5.dp, NotelAccent.copy(alpha = 0.3f), CircleShape)
-                                .padding(2.dp)
+                                .border(2.dp, NotelAccent.copy(alpha = 0.35f), CircleShape)
+                                .padding(3.dp)
                         ) {
                             Image(
                                 painter = painterResource(id = R.drawable.onboarding_avatar_woman1),
@@ -145,7 +147,7 @@ fun WelcomeOnboardingScreen(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(40.dp)
+                                .size(58.dp)
                                 .clip(CircleShape)
                                 .background(
                                     Brush.radialGradient(
@@ -155,8 +157,8 @@ fun WelcomeOnboardingScreen(
                                         )
                                     )
                                 )
-                                .border(1.5.dp, Color(0xFFEC4899).copy(alpha = 0.3f), CircleShape)
-                                .padding(2.dp)
+                                .border(2.dp, Color(0xFFEC4899).copy(alpha = 0.35f), CircleShape)
+                                .padding(3.dp)
                         ) {
                             Image(
                                 painter = painterResource(id = R.drawable.onboarding_avatar_woman2),
@@ -167,11 +169,12 @@ fun WelcomeOnboardingScreen(
                                     .clip(CircleShape)
                             )
                         }
-                        Spacer(Modifier.width(8.dp))
+                        Spacer(Modifier.width(10.dp))
                         CalloutChip(
                             icon = Icons.Default.Fingerprint,
                             iconBg = Color(0xFFA855F7),
-                            text = "Learn patterns & insights"
+                            text = "Learn patterns and get insights",
+                            modifier = Modifier.weight(1f, fill = false)
                         )
                     }
                 }
@@ -258,14 +261,15 @@ fun WelcomeOnboardingScreen(
 private fun CalloutChip(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     iconBg: Color,
-    text: String
+    text: String,
+    modifier: Modifier = Modifier
 ) {
     Surface(
         shape = RoundedCornerShape(20.dp),
         color = NotelSurface,
         shadowElevation = 4.dp,
         border = BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.15f)),
-        modifier = Modifier.padding(vertical = 2.dp)
+        modifier = modifier.padding(vertical = 2.dp)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -273,7 +277,7 @@ private fun CalloutChip(
         ) {
             Box(
                 modifier = Modifier
-                    .size(30.dp)
+                    .size(34.dp)
                     .clip(CircleShape)
                     .background(
                         Brush.linearGradient(
@@ -286,15 +290,17 @@ private fun CalloutChip(
                     imageVector = icon,
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(10.dp))
             Text(
                 text = text,
-                fontSize = 13.sp,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
-                color = NotelTextPrimary
+                color = NotelTextPrimary,
+                maxLines = 2,
+                softWrap = true
             )
         }
     }

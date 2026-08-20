@@ -84,28 +84,16 @@ fun ConsentScreen(
                 .padding(horizontal = 24.dp, vertical = 16.dp),
             contentAlignment = Alignment.Center
         ) {
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(NotelSurfaceHigh)
-                    .align(Alignment.TopStart)
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = NotelTextPrimary
-                )
-            }
-
             Column(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.SpaceBetween,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // TOP LOGO HEADER
-                TopLogoHeader(modifier = Modifier.padding(top = 8.dp))
+                TopLogoHeader(
+                    onBack = onBack,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
 
                 Spacer(Modifier.height(16.dp))
 

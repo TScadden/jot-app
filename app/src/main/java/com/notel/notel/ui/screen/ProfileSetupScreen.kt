@@ -121,22 +121,6 @@ fun ProfileSetupScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier
-                    .padding(start = 16.dp, top = 16.dp)
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(NotelSurfaceHigh)
-                    .align(Alignment.TopStart)
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = NotelTextPrimary
-                )
-            }
-
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -144,7 +128,10 @@ fun ProfileSetupScreen(
                     .padding(horizontal = 24.dp, vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                TopLogoHeader(modifier = Modifier.padding(top = 8.dp))
+                TopLogoHeader(
+                    onBack = onBack,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
 
                 Spacer(modifier = Modifier.height(12.dp))
 

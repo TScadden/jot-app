@@ -207,22 +207,6 @@ fun ConditionsScreen(
                     .fillMaxSize()
                     .padding(padding)
             ) {
-                IconButton(
-                    onClick = onBack,
-                    modifier = Modifier
-                        .padding(start = 16.dp, top = 16.dp)
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(NotelSurfaceHigh)
-                        .align(Alignment.TopStart)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = NotelTextPrimary
-                    )
-                }
-
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -230,22 +214,11 @@ fun ConditionsScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    TopLogoHeader(modifier = Modifier.padding(top = 8.dp))
-                    // TOP SKIP BAR
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Button(
-                            onClick = onSkip,
-                            colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh),
-                            shape = CircleShape,
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
-                        ) {
-                            Text("Skip", color = NotelTextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                        }
-                    }
+                    TopLogoHeader(
+                        onBack = onBack,
+                        onSkip = onSkip,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
 
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
