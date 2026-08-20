@@ -4,6 +4,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.accounts.AccountManager
 import android.app.Activity
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
@@ -100,6 +102,8 @@ fun SettingsScreen(
     val healthConnectConnected by viewModel.healthConnectConnected.collectAsState()
     val googleCalendarConnected by viewModel.googleCalendarConnected.collectAsState()
     val googleCalendarEmail by viewModel.googleCalendarEmail.collectAsState()
+    val googleAccountConnected by viewModel.googleAccountConnected.collectAsState()
+    val googleAccountEmail by viewModel.googleAccountEmail.collectAsState()
     
     val userAge by viewModel.userAge.collectAsState()
     val userHeight by viewModel.userHeight.collectAsState()
@@ -138,6 +142,17 @@ fun SettingsScreen(
             val accountName = result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
             if (accountName != null) {
                 viewModel.connectGoogleCalendar(accountName)
+            }
+        }
+    }
+
+    val googleAccountLinkLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val accountName = result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
+            if (accountName != null) {
+                viewModel.connectGoogleAccount(accountName)
             }
         }
     }
@@ -2188,6 +2203,74 @@ fun SettingsScreen(
                         containerColor = NotelPrimary.copy(alpha = 0.8f)
                     ) {
                         Text("Connect Google Calendar", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            // GOOGLE ACCOUNT
+            GlassyCard(
+                shape = RoundedCornerShape(16.dp),
+                color = NotelSurface
+            ) {
+                if (googleAccountConnected) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(
+                            painter = painterResource(id = com.notel.notel.R.drawable.ic_google_logo),
+                            contentDescription = "Google Account",
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Google Account Connected", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                            Text("Connected as $googleAccountEmail", color = NotelTextSecondary, fontSize = 12.sp)
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    GlassyButton(
+                        onClick = { viewModel.disconnectGoogleAccount() },
+                        modifier = Modifier.fillMaxWidth(),
+                        containerColor = NotelSurfaceHigh
+                    ) {
+                        Text("Disconnect Google Account", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
+                    }
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(
+                            painter = painterResource(id = com.notel.notel.R.drawable.ic_google_logo),
+                            contentDescription = "Google Account",
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Google Account", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                            Text("Link your Google account to sign in with Google or email & password.", color = NotelTextSecondary, fontSize = 12.sp)
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    GlassyButton(
+                        onClick = {
+                            try {
+                                val intent = AccountManager.newChooseAccountIntent(
+                                    null,
+                                    null,
+                                    arrayOf("com.google"),
+                                    false,
+                                    null,
+                                    null,
+                                    null,
+                                    null
+                                )
+                                googleAccountLinkLauncher.launch(intent)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        containerColor = NotelPrimary.copy(alpha = 0.8f)
+                    ) {
+                        Text("Connect Google Account", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
             }

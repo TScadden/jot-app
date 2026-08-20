@@ -101,6 +101,12 @@ class SettingsViewModel @Inject constructor(
     val googleCalendarEmail = preferences.googleCalendarEmail
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
+    val googleAccountConnected = preferences.googleAccountConnected
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val googleAccountEmail = preferences.googleAccountEmail
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+
     val bleAutoConnectEnabled = preferences.bleAutoConnectEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
@@ -130,6 +136,20 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             preferences.setGoogleCalendarConnected(false)
             preferences.setGoogleCalendarEmail("")
+        }
+    }
+
+    fun connectGoogleAccount(email: String) {
+        viewModelScope.launch {
+            preferences.setGoogleAccountConnected(true)
+            preferences.setGoogleAccountEmail(email)
+        }
+    }
+
+    fun disconnectGoogleAccount() {
+        viewModelScope.launch {
+            preferences.setGoogleAccountConnected(false)
+            preferences.setGoogleAccountEmail("")
         }
     }
 

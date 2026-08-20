@@ -124,6 +124,8 @@ class NotelPreferences @Inject constructor(
         val HEART_RATE_HISTORY = stringPreferencesKey("heart_rate_history")
         val GOOGLE_CALENDAR_CONNECTED = booleanPreferencesKey("google_calendar_connected")
         val GOOGLE_CALENDAR_EMAIL = stringPreferencesKey("google_calendar_email")
+        val GOOGLE_ACCOUNT_CONNECTED = booleanPreferencesKey("google_account_connected")
+        val GOOGLE_ACCOUNT_EMAIL = stringPreferencesKey("google_account_email")
         val MEDICATIONS = stringPreferencesKey("medications")
         val ROUTINE_CLICK_COUNTS = stringPreferencesKey("routine_click_counts")
         val INFO_TILE_ORDER = stringPreferencesKey("info_tile_order")
@@ -191,6 +193,16 @@ class NotelPreferences @Inject constructor(
     val googleCalendarEmail: Flow<String> = context.dataStore.data.map { it[GOOGLE_CALENDAR_EMAIL] ?: "" }
     suspend fun setGoogleCalendarEmail(email: String) {
         context.dataStore.edit { it[GOOGLE_CALENDAR_EMAIL] = email }
+    }
+
+    val googleAccountConnected: Flow<Boolean> = context.dataStore.data.map { it[GOOGLE_ACCOUNT_CONNECTED] ?: false }
+    suspend fun setGoogleAccountConnected(connected: Boolean) {
+        context.dataStore.edit { it[GOOGLE_ACCOUNT_CONNECTED] = connected }
+    }
+
+    val googleAccountEmail: Flow<String> = context.dataStore.data.map { it[GOOGLE_ACCOUNT_EMAIL] ?: "" }
+    suspend fun setGoogleAccountEmail(email: String) {
+        context.dataStore.edit { it[GOOGLE_ACCOUNT_EMAIL] = email }
     }
 
 
