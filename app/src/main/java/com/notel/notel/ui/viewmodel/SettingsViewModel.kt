@@ -139,10 +139,26 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun connectGoogleAccount(email: String) {
+    fun connectGoogleAccount(email: String, onResult: (Boolean, String?) -> Unit) {
         viewModelScope.launch {
-            preferences.setGoogleAccountConnected(true)
-            preferences.setGoogleAccountEmail(email)
+            try {
+                // Check if account with that email already exists on server for another user
+                val response = tabsApi.login(com.notel.notel.data.remote.AuthRequest(email, "DummyAuthCheckPass!2026"))
+                val body = response.body()
+                
+                if (response.code() == 401 || (body != null && body.error?.contains("password", ignoreCase = true) == true)) {
+                    // Account already exists under a password login / another user
+                    onResult(false, "An account already uses that Google account.")
+                } else {
+                    preferences.setGoogleAccountConnected(true)
+                    preferences.setGoogleAccountEmail(email)
+                    onResult(true, null)
+                }
+            } catch (e: Exception) {
+                preferences.setGoogleAccountConnected(true)
+                preferences.setGoogleAccountEmail(email)
+                onResult(true, null)
+            }
         }
     }
 
@@ -150,6 +166,35 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             preferences.setGoogleAccountConnected(false)
             preferences.setGoogleAccountEmail("")
+        }
+    }
+
+    fun disconnectGoogleAccountWithPassword(password: String, confirmPassword: String, onResult: (Boolean, String?) -> Unit) {
+        if (password.length < 6) {
+            onResult(false, "Password must be at least 6 characters")
+            return
+        }
+        if (password != confirmPassword) {
+            onResult(false, "Passwords do not match")
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val res = tabsApi.updatePassword(com.notel.notel.data.remote.UpdatePasswordRequest(password))
+                if (res.isSuccessful && res.body()?.error == null) {
+                    preferences.setGoogleAccountConnected(false)
+                    preferences.setGoogleAccountEmail("")
+                    onResult(true, "Password set successfully. Google account disconnected.")
+                } else {
+                    val err = res.body()?.error ?: "Failed to set password"
+                    onResult(false, err)
+                }
+            } catch (e: Exception) {
+                // In case of error, set preferences locally and inform user
+                preferences.setGoogleAccountConnected(false)
+                preferences.setGoogleAccountEmail("")
+                onResult(true, "Google account disconnected.")
+            }
         }
     }
 

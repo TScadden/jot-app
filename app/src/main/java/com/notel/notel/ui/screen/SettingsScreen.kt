@@ -152,10 +152,19 @@ fun SettingsScreen(
         if (result.resultCode == Activity.RESULT_OK) {
             val accountName = result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
             if (accountName != null) {
-                viewModel.connectGoogleAccount(accountName)
+                viewModel.connectGoogleAccount(accountName) { success, errorMsg ->
+                    if (!success && errorMsg != null) {
+                        android.widget.Toast.makeText(context, errorMsg, android.widget.Toast.LENGTH_LONG).show()
+                    }
+                }
             }
         }
     }
+
+    var showDisconnectGoogleDialog by remember { mutableStateOf(false) }
+    var disconnectPassword by remember { mutableStateOf("") }
+    var disconnectConfirmPassword by remember { mutableStateOf("") }
+    var disconnectErrorMsg by remember { mutableStateOf<String?>(null) }
 
     fun checkAndToggle(enabled: Boolean, onToggle: (Boolean) -> Unit) {
         if (enabled) {
@@ -2229,7 +2238,12 @@ fun SettingsScreen(
                     }
                     Spacer(Modifier.height(16.dp))
                     GlassyButton(
-                        onClick = { viewModel.disconnectGoogleAccount() },
+                        onClick = {
+                            disconnectPassword = ""
+                            disconnectConfirmPassword = ""
+                            disconnectErrorMsg = null
+                            showDisconnectGoogleDialog = true
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         containerColor = NotelSurfaceHigh
                     ) {
@@ -2271,6 +2285,124 @@ fun SettingsScreen(
                         containerColor = NotelPrimary.copy(alpha = 0.8f)
                     ) {
                         Text("Connect Google Account", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            if (showDisconnectGoogleDialog) {
+                Dialog(onDismissRequest = { showDisconnectGoogleDialog = false }) {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = NotelSurface,
+                        border = BorderStroke(1.dp, NotelSurfaceHigh),
+                        modifier = Modifier.fillMaxWidth().padding(16.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "Set Password to Disconnect",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = NotelTextPrimary
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = "To disconnect your Google account, set a password so you can sign in with your email in the future. If you close this, your Google account stays connected.",
+                                fontSize = 13.sp,
+                                color = NotelTextSecondary,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(Modifier.height(16.dp))
+
+                            OutlinedTextField(
+                                value = googleAccountEmail,
+                                onValueChange = {},
+                                enabled = false,
+                                label = { Text("Account Email") },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    disabledTextColor = NotelTextPrimary,
+                                    disabledBorderColor = NotelSurfaceHigh,
+                                    disabledLabelColor = NotelTextSecondary
+                                )
+                            )
+                            Spacer(Modifier.height(12.dp))
+
+                            OutlinedTextField(
+                                value = disconnectPassword,
+                                onValueChange = { disconnectPassword = it; disconnectErrorMsg = null },
+                                label = { Text("New Password") },
+                                visualTransformation = PasswordVisualTransformation(),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = NotelPrimary,
+                                    unfocusedBorderColor = NotelSurfaceHigh,
+                                    focusedLabelColor = NotelPrimary,
+                                    unfocusedLabelColor = NotelTextSecondary
+                                )
+                            )
+                            Spacer(Modifier.height(12.dp))
+
+                            OutlinedTextField(
+                                value = disconnectConfirmPassword,
+                                onValueChange = { disconnectConfirmPassword = it; disconnectErrorMsg = null },
+                                label = { Text("Confirm Password") },
+                                visualTransformation = PasswordVisualTransformation(),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = NotelPrimary,
+                                    unfocusedBorderColor = NotelSurfaceHigh,
+                                    focusedLabelColor = NotelPrimary,
+                                    unfocusedLabelColor = NotelTextSecondary
+                                )
+                            )
+
+                            if (disconnectErrorMsg != null) {
+                                Spacer(Modifier.height(10.dp))
+                                Text(
+                                    text = disconnectErrorMsg!!,
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontSize = 12.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+
+                            Spacer(Modifier.height(20.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                TextButton(onClick = { showDisconnectGoogleDialog = false }) {
+                                    Text("Cancel", color = NotelTextSecondary)
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                Button(
+                                    onClick = {
+                                        viewModel.disconnectGoogleAccountWithPassword(
+                                            disconnectPassword,
+                                            disconnectConfirmPassword
+                                        ) { success, msg ->
+                                            if (success) {
+                                                showDisconnectGoogleDialog = false
+                                                disconnectPassword = ""
+                                                disconnectConfirmPassword = ""
+                                                disconnectErrorMsg = null
+                                            } else {
+                                                disconnectErrorMsg = msg
+                                            }
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary)
+                                ) {
+                                    Text("Set & Disconnect", color = Color.White, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
                     }
                 }
             }

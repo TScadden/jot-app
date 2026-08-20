@@ -149,6 +149,11 @@ data class ForgotPasswordRequest(
 )
 
 @Serializable
+data class UpdatePasswordRequest(
+    val newPassword: String
+)
+
+@Serializable
 data class GenericResponse(
     val success: Boolean,
     val message: String? = null,
@@ -546,6 +551,9 @@ interface TabsApi {
 
     @POST("api/auth/forgot-password")
     suspend fun forgotPassword(@Body request: ForgotPasswordRequest): Response<GenericResponse>
+
+    @POST("api/auth/update-password")
+    suspend fun updatePassword(@Body request: UpdatePasswordRequest): Response<GenericResponse>
 
     @retrofit2.http.GET("api/auth/check-nickname")
     suspend fun checkNickname(@retrofit2.http.Query("name") name: String): Response<NicknameCheckResponse>
