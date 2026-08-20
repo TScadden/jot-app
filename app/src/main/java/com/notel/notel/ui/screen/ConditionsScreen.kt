@@ -249,7 +249,39 @@ fun ConditionsScreen(
                             lineHeight = 20.sp
                         )
 
-                        Spacer(Modifier.height(24.dp))
+                        Spacer(Modifier.height(20.dp))
+
+                        // STANDALONE SEARCH BAR (OPTION 4)
+                        Surface(
+                            onClick = { isSearching = true },
+                            shape = RoundedCornerShape(16.dp),
+                            color = NotelSurface,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 16.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = "Search",
+                                    tint = NotelPrimary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    text = "Search conditions...",
+                                    color = NotelTextSecondary,
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(20.dp))
 
                         // YOUR CONDITIONS LIST CARD
                         GlassyCard(
@@ -257,124 +289,75 @@ fun ConditionsScreen(
                             color = NotelSurface,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Box(
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(16.dp)
                             ) {
-                                // TOP RIGHT CORNER SEARCH ICON (No circle background, smaller size)
-                                IconButton(
-                                    onClick = { isSearching = true },
-                                    modifier = Modifier
-                                        .size(24.dp)
-                                        .align(Alignment.TopEnd)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Search,
-                                        contentDescription = "Search conditions",
-                                        tint = NotelTextSecondary,
-                                        modifier = Modifier.size(20.dp)
-                                    )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape)
+                                            .background(NotelPrimary.copy(alpha = 0.2f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Default.MedicalServices, contentDescription = null, tint = NotelPrimary, modifier = Modifier.size(20.dp))
+                                    }
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("Your conditions", color = NotelTextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                        Text("Diagnosed or suspected conditions.", color = NotelTextSecondary, fontSize = 12.sp)
+                                    }
                                 }
 
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(end = 28.dp)
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(40.dp)
-                                                .clip(CircleShape)
-                                                .background(NotelPrimary.copy(alpha = 0.2f)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(Icons.Default.MedicalServices, contentDescription = null, tint = NotelPrimary, modifier = Modifier.size(20.dp))
-                                        }
-                                        Spacer(Modifier.width(12.dp))
-                                        Column {
-                                            Text("Your conditions", color = NotelTextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                                            Text("Diagnosed or suspected conditions.", color = NotelTextSecondary, fontSize = 12.sp)
-                                        }
-                                    }
-
-                                    if (viewModel.selectedConditions.isNotEmpty()) {
-                                        Spacer(Modifier.height(16.dp))
-                                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            viewModel.selectedConditions.forEach { condition ->
-                                                Row(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .background(NotelSurfaceHigh.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
-                                                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.SpaceBetween
-                                                ) {
-                                                    Text(
-                                                        text = condition,
-                                                        color = NotelTextPrimary,
-                                                        fontSize = 14.sp,
-                                                        fontWeight = FontWeight.Medium,
-                                                        modifier = Modifier.weight(1f)
-                                                    )
-                                                    IconButton(
-                                                        onClick = { viewModel.removeCondition(condition) },
-                                                        modifier = Modifier.size(24.dp)
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.Delete,
-                                                            contentDescription = "Delete condition",
-                                                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
-                                                            modifier = Modifier.size(18.dp)
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    } else {
-                                        Spacer(Modifier.height(16.dp))
-                                        val inlineContentId = "search_icon"
-                                        val annotatedString = remember {
-                                            buildAnnotatedString {
-                                                append("Looks like you need to add some. Click the ")
-                                                appendInlineContent(inlineContentId, "[search]")
-                                                append(" to search.")
-                                            }
-                                        }
-                                        val inlineContent = remember {
-                                            mapOf(
-                                                inlineContentId to InlineTextContent(
-                                                    Placeholder(
-                                                        width = 18.sp,
-                                                        height = 18.sp,
-                                                        placeholderVerticalAlign = PlaceholderVerticalAlign.Center
-                                                    )
+                                if (viewModel.selectedConditions.isNotEmpty()) {
+                                    Spacer(Modifier.height(16.dp))
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        viewModel.selectedConditions.forEach { condition ->
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .background(NotelSurfaceHigh.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(
+                                                    text = condition,
+                                                    color = NotelTextPrimary,
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                IconButton(
+                                                    onClick = { viewModel.removeCondition(condition) },
+                                                    modifier = Modifier.size(24.dp)
                                                 ) {
                                                     Icon(
-                                                        imageVector = Icons.Default.Search,
-                                                        contentDescription = "Search",
-                                                        tint = NotelPrimary
+                                                        imageVector = Icons.Default.Delete,
+                                                        contentDescription = "Delete condition",
+                                                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
+                                                        modifier = Modifier.size(18.dp)
                                                     )
                                                 }
-                                            )
+                                            }
                                         }
-
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(vertical = 20.dp, horizontal = 8.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = annotatedString,
-                                                inlineContent = inlineContent,
-                                                color = NotelTextSecondary,
-                                                fontSize = 14.sp,
-                                                textAlign = TextAlign.Center,
-                                                lineHeight = 20.sp
-                                            )
-                                        }
+                                    }
+                                } else {
+                                    Spacer(Modifier.height(8.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 20.dp, horizontal = 16.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "Search above to add your conditions.",
+                                            color = NotelTextSecondary,
+                                            fontSize = 14.sp,
+                                            textAlign = TextAlign.Center
+                                        )
                                     }
                                 }
                             }
