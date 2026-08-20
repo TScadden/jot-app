@@ -145,16 +145,26 @@ class SettingsViewModel @Inject constructor(
                 val currentEmail = preferences.userEmail.first()
                 val currentGoogleEmail = preferences.googleAccountEmail.first()
 
-                // If the selected Google email matches the user's logged-in account email or current google email, allow connecting!
-                if ((currentEmail.isNotBlank() && currentEmail.equals(email, ignoreCase = true)) ||
-                    (currentGoogleEmail.isNotBlank() && currentGoogleEmail.equals(email, ignoreCase = true))) {
+                // Case 1: Active session where userEmail wasn't cached yet, or first-time connection
+                if (currentEmail.isBlank() && currentGoogleEmail.isBlank()) {
+                    preferences.setUserEmail(email)
                     preferences.setGoogleAccountConnected(true)
                     preferences.setGoogleAccountEmail(email)
                     onResult(true, null)
                     return@launch
                 }
 
-                // Check if account with that email already exists on server for ANOTHER user
+                // Case 2: Connecting the same email as current account email or current linked google email
+                if ((currentEmail.isNotBlank() && currentEmail.equals(email, ignoreCase = true)) ||
+                    (currentGoogleEmail.isNotBlank() && currentGoogleEmail.equals(email, ignoreCase = true))) {
+                    preferences.setUserEmail(email)
+                    preferences.setGoogleAccountConnected(true)
+                    preferences.setGoogleAccountEmail(email)
+                    onResult(true, null)
+                    return@launch
+                }
+
+                // Case 3: Trying to connect a DIFFERENT Google email. Check if that email is used by another account on server.
                 val response = tabsApi.login(com.notel.notel.data.remote.AuthRequest(email, "DummyAuthCheckPass!2026"))
                 val body = response.body()
                 
@@ -162,11 +172,13 @@ class SettingsViewModel @Inject constructor(
                     // Account already exists under a DIFFERENT user
                     onResult(false, "An account already uses that Google account.")
                 } else {
+                    preferences.setUserEmail(email)
                     preferences.setGoogleAccountConnected(true)
                     preferences.setGoogleAccountEmail(email)
                     onResult(true, null)
                 }
             } catch (e: Exception) {
+                preferences.setUserEmail(email)
                 preferences.setGoogleAccountConnected(true)
                 preferences.setGoogleAccountEmail(email)
                 onResult(true, null)
