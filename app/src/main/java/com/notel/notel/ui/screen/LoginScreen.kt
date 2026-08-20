@@ -175,7 +175,7 @@ class LoginViewModel @Inject constructor(
         }
     }
 
-    fun loginWithGoogleAccount(email: String) {
+    fun loginWithGoogleAccount(email: String, isRegisterMode: Boolean) {
         viewModelScope.launch {
             isLoading = true
             errorMsg = null
@@ -204,8 +204,13 @@ class LoginViewModel @Inject constructor(
                     // Account exists with email/password but is not linked to Google
                     errorMsg = "An account with this email already exists using password login. Please log in with your email and password instead."
                 } else {
-                    // If account doesn't exist at all, register a new account with Google auth
-                    register(email, "GoogleAuthPass!2026")
+                    if (isRegisterMode) {
+                        // If account doesn't exist and in sign up mode, register a new account with Google auth
+                        register(email, "GoogleAuthPass!2026")
+                    } else {
+                        // If account doesn't exist and in log in mode, show error
+                        errorMsg = "No account was found with that Google account. Please sign up first."
+                    }
                 }
             } catch (e: Exception) {
                 errorMsg = e.message ?: "Google login failed"
@@ -281,7 +286,7 @@ fun LoginScreen(
         if (result.resultCode == android.app.Activity.RESULT_OK && result.data != null) {
             val accountName = result.data?.getStringExtra(android.accounts.AccountManager.KEY_ACCOUNT_NAME)
             if (!accountName.isNullOrBlank()) {
-                viewModel.loginWithGoogleAccount(accountName)
+                viewModel.loginWithGoogleAccount(accountName, isRegisterMode)
             }
         }
     }
@@ -524,9 +529,9 @@ fun LoginScreen(
                     }
                 }
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(10.dp))
 
-                // SMALL TERMS & PRIVACY TEXT OUTSIDE MAIN CARD
+                // SMALL TERMS & PRIVACY TEXT OUTSIDE MAIN CARD DIRECTLY BELOW IT
                 FlowRow(
                     horizontalArrangement = Arrangement.Center,
                     verticalArrangement = Arrangement.Center,
@@ -569,8 +574,6 @@ fun LoginScreen(
                         color = NotelTextSecondary
                     )
                 }
-
-                Spacer(Modifier.height(24.dp))
             }
         }
     }

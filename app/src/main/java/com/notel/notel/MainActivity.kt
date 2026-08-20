@@ -537,7 +537,9 @@ class MainActivity : ComponentActivity() {
                     // Floating Glass Nav Banner
                     val hideNavRoutes = listOf("splash", "welcome_onboarding", "consent", "login", "consultation_intro", "profile_setup", "conditions", "notification_onboarding", "connections", "membership_onboarding", "setup_loading", "data_connections")
                     val isFileViewer = currentRoute?.startsWith("file_viewer") == true
-                    if (currentRoute !in hideNavRoutes && !isFileViewer && currentRoute != null) {
+                    val isLoginRoute = currentRoute?.startsWith("login") == true
+                    val baseRoute = currentRoute?.substringBefore("?")
+                    if (baseRoute !in hideNavRoutes && !isFileViewer && !isLoginRoute && currentRoute != null) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
