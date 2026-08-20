@@ -187,6 +187,8 @@ class LoginViewModel @Inject constructor(
                 if (response.isSuccessful && body != null && body.token?.isNotBlank() == true) {
                     preferences.setAuthToken(body.token!!)
                     preferences.setLoggedIn(true)
+                    preferences.setGoogleAccountConnected(true)
+                    preferences.setGoogleAccountEmail(email)
                     body.isUnlimited?.let { preferences.setIsUnlimited(it) }
                     body.isAdmin?.let { preferences.setIsAdmin(it) }
                     body.onboardingComplete?.let { 
@@ -237,6 +239,10 @@ class LoginViewModel @Inject constructor(
                 if (response.isSuccessful && body != null && body.token?.isNotBlank() == true) {
                     preferences.setAuthToken(body.token!!)
                     preferences.setLoggedIn(true)
+                    if (pass == "GoogleAuthPass!2026") {
+                        preferences.setGoogleAccountConnected(true)
+                        preferences.setGoogleAccountEmail(email)
+                    }
                     body.nickname?.let { preferences.setUserNickname(it) }
                     body.tag?.let { preferences.setUserTag(it) }
                     onboardingCompleteByServer = false
