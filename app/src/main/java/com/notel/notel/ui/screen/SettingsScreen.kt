@@ -36,6 +36,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -164,6 +165,8 @@ fun SettingsScreen(
     var showDisconnectGoogleDialog by remember { mutableStateOf(false) }
     var disconnectPassword by remember { mutableStateOf("") }
     var disconnectConfirmPassword by remember { mutableStateOf("") }
+    var disconnectPasswordVisible by remember { mutableStateOf(false) }
+    var disconnectConfirmPasswordVisible by remember { mutableStateOf(false) }
     var disconnectErrorMsg by remember { mutableStateOf<String?>(null) }
 
     fun checkAndToggle(enabled: Boolean, onToggle: (Boolean) -> Unit) {
@@ -2290,74 +2293,150 @@ fun SettingsScreen(
             }
 
             if (showDisconnectGoogleDialog) {
-                Dialog(onDismissRequest = { showDisconnectGoogleDialog = false }) {
+                Dialog(
+                    onDismissRequest = { showDisconnectGoogleDialog = false },
+                    properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+                ) {
                     Surface(
-                        shape = RoundedCornerShape(20.dp),
+                        shape = RoundedCornerShape(24.dp),
                         color = NotelSurface,
-                        border = BorderStroke(1.dp, NotelSurfaceHigh),
-                        modifier = Modifier.fillMaxWidth().padding(16.dp)
+                        border = BorderStroke(1.dp, NotelSurfaceHigh.copy(alpha = 0.8f)),
+                        modifier = Modifier
+                            .fillMaxWidth(0.92f)
+                            .wrapContentHeight()
                     ) {
                         Column(
-                            modifier = Modifier.padding(20.dp),
+                            modifier = Modifier.padding(24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(52.dp)
+                                    .background(NotelPrimary.copy(alpha = 0.15f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = null,
+                                    tint = NotelPrimary,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
+
+                            Spacer(Modifier.height(14.dp))
+
                             Text(
                                 text = "Set Password to Disconnect",
-                                fontSize = 18.sp,
+                                fontSize = 19.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = NotelTextPrimary
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                text = "To disconnect your Google account, set a password so you can sign in with your email in the future. If you close this, your Google account stays connected.",
-                                fontSize = 13.sp,
-                                color = NotelTextSecondary,
+                                color = NotelTextPrimary,
                                 textAlign = TextAlign.Center
                             )
-                            Spacer(Modifier.height(16.dp))
 
-                            OutlinedTextField(
-                                value = googleAccountEmail,
-                                onValueChange = {},
-                                enabled = false,
-                                label = { Text("Account Email") },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    disabledTextColor = NotelTextPrimary,
-                                    disabledBorderColor = NotelSurfaceHigh,
-                                    disabledLabelColor = NotelTextSecondary
-                                )
+                            Spacer(Modifier.height(6.dp))
+
+                            Text(
+                                text = "Set a password to safely disconnect your Google account. If you close this, your Google account stays connected.",
+                                fontSize = 13.sp,
+                                color = NotelTextSecondary,
+                                textAlign = TextAlign.Center,
+                                lineHeight = 18.sp
                             )
-                            Spacer(Modifier.height(12.dp))
 
+                            Spacer(Modifier.height(20.dp))
+
+                            // Clean Read-Only Account Email Card
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Text(
+                                    text = "ACCOUNT EMAIL",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = NotelTextSecondary.copy(alpha = 0.8f),
+                                    letterSpacing = 0.5.sp
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(NotelSurfaceHigh.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
+                                        .border(1.dp, NotelSurfaceHigh.copy(alpha = 0.8f), RoundedCornerShape(14.dp))
+                                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Image(
+                                        painter = painterResource(id = com.notel.notel.R.drawable.ic_google_logo),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(
+                                        text = googleAccountEmail,
+                                        color = NotelTextPrimary,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+
+                            Spacer(Modifier.height(14.dp))
+
+                            // New Password Field
                             OutlinedTextField(
                                 value = disconnectPassword,
                                 onValueChange = { disconnectPassword = it; disconnectErrorMsg = null },
                                 label = { Text("New Password") },
-                                visualTransformation = PasswordVisualTransformation(),
                                 singleLine = true,
+                                shape = RoundedCornerShape(14.dp),
+                                visualTransformation = if (disconnectPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                trailingIcon = {
+                                    IconButton(onClick = { disconnectPasswordVisible = !disconnectPasswordVisible }) {
+                                        Icon(
+                                            imageVector = if (disconnectPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                            contentDescription = null,
+                                            tint = NotelTextSecondary
+                                        )
+                                    }
+                                },
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = NotelPrimary,
                                     unfocusedBorderColor = NotelSurfaceHigh,
                                     focusedLabelColor = NotelPrimary,
-                                    unfocusedLabelColor = NotelTextSecondary
+                                    unfocusedLabelColor = NotelTextSecondary,
+                                    focusedTextColor = NotelTextPrimary,
+                                    unfocusedTextColor = NotelTextPrimary
                                 )
                             )
+
                             Spacer(Modifier.height(12.dp))
 
+                            // Confirm Password Field
                             OutlinedTextField(
                                 value = disconnectConfirmPassword,
                                 onValueChange = { disconnectConfirmPassword = it; disconnectErrorMsg = null },
                                 label = { Text("Confirm Password") },
-                                visualTransformation = PasswordVisualTransformation(),
                                 singleLine = true,
+                                shape = RoundedCornerShape(14.dp),
+                                visualTransformation = if (disconnectConfirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                trailingIcon = {
+                                    IconButton(onClick = { disconnectConfirmPasswordVisible = !disconnectConfirmPasswordVisible }) {
+                                        Icon(
+                                            imageVector = if (disconnectConfirmPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                            contentDescription = null,
+                                            tint = NotelTextSecondary
+                                        )
+                                    }
+                                },
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = NotelPrimary,
                                     unfocusedBorderColor = NotelSurfaceHigh,
                                     focusedLabelColor = NotelPrimary,
-                                    unfocusedLabelColor = NotelTextSecondary
+                                    unfocusedLabelColor = NotelTextSecondary,
+                                    focusedTextColor = NotelTextPrimary,
+                                    unfocusedTextColor = NotelTextPrimary
                                 )
                             )
 
@@ -2371,16 +2450,24 @@ fun SettingsScreen(
                                 )
                             }
 
-                            Spacer(Modifier.height(20.dp))
+                            Spacer(Modifier.height(24.dp))
 
+                            // Action Buttons Row
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                TextButton(onClick = { showDisconnectGoogleDialog = false }) {
-                                    Text("Cancel", color = NotelTextSecondary)
+                                OutlinedButton(
+                                    onClick = { showDisconnectGoogleDialog = false },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(46.dp),
+                                    shape = RoundedCornerShape(14.dp),
+                                    border = BorderStroke(1.dp, NotelSurfaceHigh)
+                                ) {
+                                    Text("Cancel", color = NotelTextSecondary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                                 }
-                                Spacer(Modifier.width(8.dp))
+
                                 Button(
                                     onClick = {
                                         viewModel.disconnectGoogleAccountWithPassword(
@@ -2397,9 +2484,20 @@ fun SettingsScreen(
                                             }
                                         }
                                     },
+                                    modifier = Modifier
+                                        .weight(1.2f)
+                                        .height(46.dp),
+                                    shape = RoundedCornerShape(14.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary)
                                 ) {
-                                    Text("Set & Disconnect", color = Color.White, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        text = "Set & Disconnect",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
                             }
                         }

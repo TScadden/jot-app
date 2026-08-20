@@ -142,12 +142,24 @@ class SettingsViewModel @Inject constructor(
     fun connectGoogleAccount(email: String, onResult: (Boolean, String?) -> Unit) {
         viewModelScope.launch {
             try {
-                // Check if account with that email already exists on server for another user
+                val currentEmail = preferences.userEmail.first()
+                val currentGoogleEmail = preferences.googleAccountEmail.first()
+
+                // If the selected Google email matches the user's logged-in account email or current google email, allow connecting!
+                if ((currentEmail.isNotBlank() && currentEmail.equals(email, ignoreCase = true)) ||
+                    (currentGoogleEmail.isNotBlank() && currentGoogleEmail.equals(email, ignoreCase = true))) {
+                    preferences.setGoogleAccountConnected(true)
+                    preferences.setGoogleAccountEmail(email)
+                    onResult(true, null)
+                    return@launch
+                }
+
+                // Check if account with that email already exists on server for ANOTHER user
                 val response = tabsApi.login(com.notel.notel.data.remote.AuthRequest(email, "DummyAuthCheckPass!2026"))
                 val body = response.body()
                 
                 if (response.code() == 401 || (body != null && body.error?.contains("password", ignoreCase = true) == true)) {
-                    // Account already exists under a password login / another user
+                    // Account already exists under a DIFFERENT user
                     onResult(false, "An account already uses that Google account.")
                 } else {
                     preferences.setGoogleAccountConnected(true)

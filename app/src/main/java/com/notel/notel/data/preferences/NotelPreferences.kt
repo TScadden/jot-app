@@ -109,6 +109,7 @@ class NotelPreferences @Inject constructor(
         val FOOD_CHECKER_LAST_QUERY = stringPreferencesKey("food_checker_last_query")
         val USER_NICKNAME = stringPreferencesKey("user_nickname")
         val USER_TAG = stringPreferencesKey("user_tag")
+        val USER_EMAIL = stringPreferencesKey("user_email")
         val WEEKLY_SCORE = intPreferencesKey("weekly_score")
         val SHARE_DATA_WITH_FRIENDS = booleanPreferencesKey("share_data_with_friends")
         val TODAY_SLEEP_MINS = intPreferencesKey("today_sleep_mins")
@@ -280,6 +281,7 @@ class NotelPreferences @Inject constructor(
     val lastOpenDate: Flow<String> = context.dataStore.data.map { it[LAST_OPEN_DATE] ?: "" }
     val userNickname: Flow<String> = context.dataStore.data.map { it[USER_NICKNAME] ?: "" }
     val userTag: Flow<String> = context.dataStore.data.map { it[USER_TAG] ?: "" }
+    val userEmail: Flow<String> = context.dataStore.data.map { it[USER_EMAIL] ?: "" }
     val weeklyScore: Flow<Int> = context.dataStore.data.map { it[WEEKLY_SCORE] ?: 0 }
     val shareDataWithFriends: Flow<Boolean> = context.dataStore.data.map { it[SHARE_DATA_WITH_FRIENDS] ?: true }
     val todaySleepMins: Flow<Int> = context.dataStore.data.map { it[TODAY_SLEEP_MINS] ?: 0 }
@@ -763,6 +765,10 @@ class NotelPreferences @Inject constructor(
 
     suspend fun setUserTag(tag: String) {
         context.dataStore.edit { it[USER_TAG] = tag }
+    }
+
+    suspend fun setUserEmail(email: String) {
+        context.dataStore.edit { it[USER_EMAIL] = email }
     }
 
     suspend fun setCupTheorySeen(seen: Boolean) {
