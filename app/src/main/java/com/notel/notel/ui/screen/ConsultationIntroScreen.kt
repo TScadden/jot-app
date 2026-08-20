@@ -46,7 +46,6 @@ fun ConsultationIntroScreen(
                     onBack = onBack,
                     modifier = Modifier.padding(top = 8.dp)
                 )
-                TopLogoHeader(modifier = Modifier.padding(top = 8.dp))
 
                 // CENTER FLOATING ORB & HEALTH ICONS GRAPHIC
                 Box(

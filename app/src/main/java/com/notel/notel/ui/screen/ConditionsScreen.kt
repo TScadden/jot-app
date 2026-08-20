@@ -246,48 +246,29 @@ fun ConditionsScreen(
 
                         Spacer(Modifier.height(24.dp))
 
-                        // SEARCH BUTTON CARD
-                        GlassyCard(
-                            shape = RoundedCornerShape(24.dp),
-                            color = NotelSurfaceHigh,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { isSearching = true }
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 14.dp, horizontal = 16.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Icon(Icons.Default.Search, null, tint = NotelTextSecondary, modifier = Modifier.size(20.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("Search all conditions", color = NotelTextSecondary, fontSize = 15.sp)
-                            }
-                        }
-
-                        Spacer(Modifier.height(20.dp))
-
                         // YOUR CONDITIONS LIST CARD
                         GlassyCard(
                             shape = RoundedCornerShape(20.dp),
                             color = NotelSurface,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp)
+                            ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
+                                    IconButton(
+                                        onClick = { isSearching = true },
                                         modifier = Modifier
                                             .size(40.dp)
                                             .clip(CircleShape)
-                                            .background(NotelPrimary.copy(alpha = 0.2f)),
-                                        contentAlignment = Alignment.Center
+                                            .background(NotelPrimary.copy(alpha = 0.2f))
                                     ) {
-                                        Icon(Icons.Default.MedicalServices, null, tint = NotelPrimary, modifier = Modifier.size(20.dp))
+                                        Icon(Icons.Default.Search, contentDescription = "Search conditions", tint = NotelPrimary, modifier = Modifier.size(20.dp))
                                     }
                                     Spacer(Modifier.width(12.dp))
-                                    Column {
+                                    Column(modifier = Modifier.weight(1f)) {
                                         Text("Your conditions", color = NotelTextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                                         Text("Diagnosed or suspected conditions.", color = NotelTextSecondary, fontSize = 12.sp)
                                     }
@@ -326,6 +307,37 @@ fun ConditionsScreen(
                                             }
                                         }
                                     }
+                                } else {
+                                    Spacer(Modifier.height(20.dp))
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .clickable { isSearching = true }
+                                            .padding(vertical = 16.dp, horizontal = 8.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "Looks like you need to add some. Click the ",
+                                            color = NotelTextSecondary,
+                                            fontSize = 13.sp,
+                                            textAlign = TextAlign.Center
+                                        )
+                                        Icon(
+                                            imageVector = Icons.Default.Search,
+                                            contentDescription = "Search",
+                                            tint = NotelPrimary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            text = " to search.",
+                                            color = NotelTextSecondary,
+                                            fontSize = 13.sp,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                    Spacer(Modifier.height(8.dp))
                                 }
                             }
                         }

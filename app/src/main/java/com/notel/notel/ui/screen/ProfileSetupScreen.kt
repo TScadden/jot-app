@@ -278,8 +278,9 @@ fun ProfileSetupScreen(
                     maxLines = 1,
                     modifier = Modifier.weight(1f).alignByBaseline()
                 )
+                val targetDenominator = if (wordCount > 100) wordCount else 100
                 Text(
-                    text = "$wordCount / 100 words",
+                    text = "$wordCount / $targetDenominator words",
                     color = NotelTextSecondary,
                     fontSize = 12.sp,
                     maxLines = 1,

@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.ui.draw.clip
 import com.notel.notel.ui.theme.*
@@ -48,8 +49,7 @@ fun ConnectionsScreen(
                 .padding(horizontal = 24.dp, vertical = 16.dp)
         ) {
             Column(
-                modifier = Modifier
-                    .fillMaxSize(),
+                modifier = Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
@@ -57,56 +57,92 @@ fun ConnectionsScreen(
                     onBack = onBack,
                     modifier = Modifier.padding(top = 8.dp)
                 )
-            Icon(Icons.Default.Favorite, contentDescription = "Heart", tint = NotelPrimary, modifier = Modifier.size(64.dp))
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            Text("Connect Health Data", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = NotelTextPrimary)
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            Text(
-                "Linking Health Connect allows Tabs to securely pull in your intraday heart rate and nightly sleep phases. This biometric data is invaluable for the AI to understand your physical state when building trends and insights.",
-                color = NotelTextSecondary,
-                fontSize = 16.sp,
-                textAlign = TextAlign.Center
-            )
-            
-            Spacer(modifier = Modifier.height(48.dp))
-            
-            if (state.isConnected) {
-                GlassyCard(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), color = Color.Green.copy(alpha = 0.2f)) {
-                    Text("Health Connect is successfully connected!", color = Color.Green, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
-                }
-                Spacer(modifier = Modifier.height(32.dp))
-            } else {
-                GlassyButton(
-                    onClick = { healthConnectLauncher.launch(fitbitViewModel.healthConnectManager.permissions) },
-                    modifier = Modifier.fillMaxWidth(),
-                    containerColor = NotelPrimary
-                ) {
-                    Text("Connect Health Data", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                TextButton(
-                    onClick = {
-                        try {
-                            val intent = android.content.Intent("android.health.connect.action.HEALTH_HOME_SETTINGS")
-                            context.startActivity(intent)
-                        } catch(e: Exception) {}
-                    },
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Manage access in settings", color = NotelTextSecondary, fontSize = 12.sp)
+                    Text(
+                        text = "Connect Health Data",
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = NotelTextPrimary,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = "Sync your heart rate and sleep data so AI can personalize your insights.",
+                        color = NotelTextSecondary,
+                        fontSize = 15.sp,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 22.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    if (state.isConnected) {
+                        GlassyCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = Color(0xFF4CAF50).copy(alpha = 0.15f)
+                        ) {
+                            Text(
+                                text = "Looks like you are already connected!",
+                                color = Color(0xFF4CAF50),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    } else {
+                        Button(
+                            onClick = { healthConnectLauncher.launch(fitbitViewModel.healthConnectManager.permissions) },
+                            colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
+                            shape = RoundedCornerShape(24.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(54.dp)
+                        ) {
+                            Text("Connect Health Data", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        TextButton(
+                            onClick = {
+                                try {
+                                    val intent = android.content.Intent("android.health.connect.action.HEALTH_HOME_SETTINGS")
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {}
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Manage access in settings", color = NotelTextSecondary, fontSize = 12.sp)
+                        }
+                    }
                 }
-                Spacer(modifier = Modifier.height(16.dp))
+
+                // NEXT / CONTINUE SETUP BUTTON (STANDARD PRIMARY BUTTON)
+                Button(
+                    onClick = onNavigateNext,
+                    colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
+                    shape = RoundedCornerShape(24.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp)
+                ) {
+                    Text(
+                        text = if (state.isConnected) "Next" else "Skip for now",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                }
             }
-            
-            TextButton(
-                onClick = onNavigateNext,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(if (state.isConnected) "Continue Setup" else "Skip for now, I'll do it later in settings", color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
-            }
-        }
     }
 }
 }

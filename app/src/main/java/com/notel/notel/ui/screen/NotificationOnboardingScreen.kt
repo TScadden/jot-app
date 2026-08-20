@@ -65,99 +65,74 @@ fun NotificationOnboardingScreen(
                 .padding(padding)
                 .padding(horizontal = 24.dp, vertical = 16.dp)
         ) {
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.SpaceBetween,
-                horizontalAlignment = Alignment.CenterHorizontally
+            TopLogoHeader(
+                onBack = onBack,
+                onSkip = onSkip,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 8.dp)
+            )
+
+            // NOTIFICATION PERMISSION CARD - CENTERED IN MIDDLE OF SCREEN
+            GlassyCard(
+                shape = RoundedCornerShape(32.dp),
+                color = NotelSurface,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.Center)
             ) {
-                TopLogoHeader(
-                    onBack = onBack,
-                    onSkip = onSkip,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-
-                // NOTIFICATION PERMISSION CARD
-
-                // NOTIFICATION PERMISSION CARD
-                GlassyCard(
-                    shape = RoundedCornerShape(32.dp),
-                    color = NotelSurface,
-                    modifier = Modifier.fillMaxWidth()
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 32.dp, horizontal = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Column(
+                    Icon(
+                        imageVector = Icons.Outlined.Notifications,
+                        contentDescription = null,
+                        tint = NotelPrimary,
+                        modifier = Modifier.size(36.dp)
+                    )
+
+                    Spacer(Modifier.height(20.dp))
+
+                    Text(
+                        text = "Allow Tabs to send you\nnotifications?",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = NotelTextPrimary,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 23.sp
+                    )
+
+                    Spacer(Modifier.height(28.dp))
+
+                    // ALLOW BUTTON
+                    Button(
+                        onClick = { requestNotificationPermission() },
+                        colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh),
+                        shape = RoundedCornerShape(16.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 32.dp, horizontal = 24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                            .height(50.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Notifications,
-                            contentDescription = null,
-                            tint = NotelPrimary,
-                            modifier = Modifier.size(36.dp)
-                        )
+                        Text("Allow", color = NotelPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    }
 
-                        Spacer(Modifier.height(20.dp))
+                    Spacer(Modifier.height(10.dp))
 
-                        Text(
-                            text = "Allow Tabs to send you\nnotifications?",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = NotelTextPrimary,
-                            textAlign = TextAlign.Center,
-                            lineHeight = 23.sp
-                        )
-
-                        Spacer(Modifier.height(28.dp))
-
-                        // ALLOW BUTTON
-                        Button(
-                            onClick = { requestNotificationPermission() },
-                            colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh),
-                            shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(50.dp)
-                        ) {
-                            Text("Allow", color = NotelPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        }
-
-                        Spacer(Modifier.height(10.dp))
-
-                        // DON'T ALLOW BUTTON
-                        Button(
-                            onClick = onSkip,
-                            colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh.copy(alpha = 0.5f)),
-                            shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(50.dp)
-                        ) {
-                            Text("Don't Allow", color = NotelPrimary.copy(alpha = 0.8f), fontWeight = FontWeight.Medium, fontSize = 16.sp)
-                        }
+                    // DON'T ALLOW BUTTON
+                    Button(
+                        onClick = onSkip,
+                        colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh.copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp)
+                    ) {
+                        Text("Don't Allow", color = NotelPrimary.copy(alpha = 0.8f), fontWeight = FontWeight.Medium, fontSize = 16.sp)
                     }
                 }
-
-                Spacer(Modifier.height(36.dp))
-
-                Text(
-                    text = "Press \"Allow\"",
-                    fontSize = 14.sp,
-                    color = NotelPrimary,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center
-                )
-
-                Spacer(Modifier.height(8.dp))
-
-                Text(
-                    text = "Never miss a\ncheck-in",
-                    fontSize = 34.sp,
-                    fontWeight = FontWeight.Black,
-                    color = NotelPrimary,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 40.sp
-                )
             }
         }
     }
