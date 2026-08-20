@@ -24,6 +24,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.ui.draw.clip
 import com.notel.notel.ui.theme.*
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ConsentScreen(
     onBack: () -> Unit = {},
