@@ -261,7 +261,16 @@ class MainActivity : ComponentActivity() {
                                 initialMode = initialMode,
                                 onBack = { navController.popBackStack() },
                                 onLoginSuccess = { isComplete ->
-                                    navController.navigate("consent") { popUpTo("welcome_onboarding") { inclusive = true } }
+                                    if (isComplete) {
+                                        coroutineScope.launch {
+                                            notelPreferences.setHasConsented(true)
+                                            notelPreferences.setIntroConsultationSeen(true)
+                                            notelPreferences.setOnboardingComplete(true)
+                                            navController.navigate("body_load") { popUpTo("welcome_onboarding") { inclusive = true } }
+                                        }
+                                    } else {
+                                        navController.navigate("consent") { popUpTo("welcome_onboarding") { inclusive = true } }
+                                    }
                                 }
                             )
                         }
