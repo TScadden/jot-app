@@ -6,6 +6,8 @@
     <!-- Widget Strings -->
     <string name="habit_widget_label">Daily Habits</string>
     <string name="habit_widget_description">Track and check off your daily wellness habits in real-time.</string>
+    <string name="single_habit_widget_label">Single Habit Tracker</string>
+    <string name="single_habit_widget_description">Track a single daily habit on your home screen.</string>
     <string name="voice_widget_label">Quick Voice Log</string>
     <string name="voice_widget_description">Tap to record symptom and wellness notes with AI audio transcription.</string>
 </resources>

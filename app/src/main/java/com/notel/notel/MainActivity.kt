@@ -44,6 +44,7 @@ import androidx.navigation.navDeepLink
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalContext
@@ -74,9 +75,27 @@ val BowtieShape = object : Shape {
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    @javax.inject.Inject
+    lateinit var habitRepository: com.notel.notel.data.repository.HabitRepository
+
+    val selectWidgetAppWidgetIdState = mutableStateOf(-1)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        
+        android.util.Log.d("MainActivityWidget", "onCreate: intent=$intent, extras=${intent?.extras?.keySet()?.associateWith { intent.extras?.get(it) }}")
+        val isSelectAction = intent?.action?.startsWith("com.notel.notel.ACTION_SELECT_HABIT_") == true
+        val widgetId = if (isSelectAction) {
+            intent?.action?.substringAfterLast("_")?.toIntOrNull() ?: -1
+        } else {
+            intent?.getIntExtra("EXTRA_APP_WIDGET_ID", -1) ?: -1
+        }
+        if ((intent?.getBooleanExtra("EXTRA_SELECT_WIDGET_HABIT", false) == true || isSelectAction) && widgetId != -1) {
+            selectWidgetAppWidgetIdState.value = widgetId
+            intent?.removeExtra("EXTRA_SELECT_WIDGET_HABIT")
+            intent?.removeExtra("EXTRA_APP_WIDGET_ID")
+        }
         setContent {
             val context = LocalContext.current
             val activity = context as? ComponentActivity
@@ -87,6 +106,8 @@ class MainActivity : ComponentActivity() {
             val quickLogViewModel: com.notel.notel.ui.viewmodel.QuickLogViewModel = hiltViewModel()
             val settingsViewModel: com.notel.notel.ui.viewmodel.SettingsViewModel = hiltViewModel()
             val notelPreferences = remember { com.notel.notel.data.preferences.NotelPreferences(context) }
+            var selectWidgetAppWidgetId by selectWidgetAppWidgetIdState
+            android.util.Log.d("MainActivityWidget", "setContent: selectWidgetAppWidgetId=$selectWidgetAppWidgetId")
             
             LaunchedEffect(Unit) {
                 notelPreferences.updateStreak()
@@ -689,8 +710,81 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
-                }
+
+                    if (selectWidgetAppWidgetId != -1) {
+                            LaunchedEffect(Unit) {
+                                habitRepository.fetchHabits()
+                            }
+                            val habits by habitRepository.habits.collectAsState()
+                            android.util.Log.d("MainActivityWidget", "setContent: habits collected, size = ${habits.size}")
+
+                            androidx.compose.material3.AlertDialog(
+                                onDismissRequest = { selectWidgetAppWidgetId = -1 },
+                                title = { Text("Select Habit for Widget", color = NotelTextPrimary) },
+                                text = {
+                                    Column {
+                                        if (habits.isEmpty()) {
+                                            Text("No habits found. Please create a habit first in the app.", color = NotelTextSecondary)
+                                        } else {
+                                            habits.forEach { habit ->
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clickable {
+                                                            val sPrefs = context.getSharedPreferences("single_habit_widget_prefs", android.content.Context.MODE_PRIVATE)
+                                                            sPrefs.edit().putString("habit_id_$selectWidgetAppWidgetId", habit.id).apply()
+                                                            lifecycleScope.launch {
+                                                                try {
+                                                                    val manager = androidx.glance.appwidget.GlanceAppWidgetManager(context)
+                                                                    val glanceId = manager.getGlanceIdBy(selectWidgetAppWidgetId)
+                                                                    com.notel.notel.widget.SingleHabitWidget().update(context, glanceId)
+                                                                } catch (e: Exception) {
+                                                                    android.util.Log.e("MainActivityWidget", "Error updating single widget", e)
+                                                                }
+                                                            }
+                                                            selectWidgetAppWidgetId = -1
+                                                        }
+                                                        .padding(vertical = 12.dp, horizontal = 4.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(habit.title, color = NotelTextPrimary, style = MaterialTheme.typography.bodyLarge)
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                confirmButton = {
+                                    androidx.compose.material3.TextButton(onClick = { selectWidgetAppWidgetId = -1 }) {
+                                        Text("Cancel", color = NotelPrimary)
+                                    }
+                                },
+                                containerColor = NotelSurface,
+                                textContentColor = NotelTextPrimary,
+                                titleContentColor = NotelTextPrimary
+                            )
+                        }
+
+
             }
+        }
+    }
+}
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        android.util.Log.d("MainActivityWidget", "onNewIntent: intent=$intent, extras=${intent.extras?.keySet()?.associateWith { intent.extras?.get(it) }}")
+        val isSelectAction = intent.action?.startsWith("com.notel.notel.ACTION_SELECT_HABIT_") == true
+        val widgetId = if (isSelectAction) {
+            intent.action?.substringAfterLast("_")?.toIntOrNull() ?: -1
+        } else {
+            intent.getIntExtra("EXTRA_APP_WIDGET_ID", -1)
+        }
+        if ((intent.getBooleanExtra("EXTRA_SELECT_WIDGET_HABIT", false) || isSelectAction) && widgetId != -1) {
+            selectWidgetAppWidgetIdState.value = widgetId
+            intent.removeExtra("EXTRA_SELECT_WIDGET_HABIT")
+            intent.removeExtra("EXTRA_APP_WIDGET_ID")
+        }
     }
 }
 
@@ -725,4 +819,3 @@ fun NavIcon(
     }
 }
 
-}

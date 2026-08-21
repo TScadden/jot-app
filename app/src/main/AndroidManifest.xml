@@ -119,6 +119,19 @@
                 android:resource="@xml/habit_widget_info" />
         </receiver>
 
+        <!-- Single Habit Widget -->
+        <receiver
+            android:name=".widget.SingleHabitWidgetReceiver"
+            android:label="@string/single_habit_widget_label"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/single_habit_widget_info" />
+        </receiver>
+
         <service
             android:name=".service.HrSpikeMonitorService"
             android:enabled="true"

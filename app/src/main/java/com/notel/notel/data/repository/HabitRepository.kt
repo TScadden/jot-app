@@ -7,9 +7,11 @@ import com.notel.notel.data.remote.CreateHabitRequest
 import com.notel.notel.data.remote.HabitDtoModel
 import com.notel.notel.data.remote.TabsApi
 import com.notel.notel.data.remote.LogHabitRequest
+import androidx.glance.appwidget.updateAll
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.text.SimpleDateFormat
@@ -71,7 +73,7 @@ class HabitRepository @Inject constructor(
                 
                 // Auto-enable habit reminders for the first habit
                 preferences.autoEnableHabitReminders()
-                
+                saveWidgetCache(_habits.value)
                 Result.success(habit)
             } else {
                 val msg = "Failed to create habit (${response.code()}). Is the server deployed?"
@@ -89,6 +91,7 @@ class HabitRepository @Inject constructor(
             val response = api.deleteHabit(habitId)
             if (response.isSuccessful) {
                 _habits.value = _habits.value.filter { it.id != habitId }
+                saveWidgetCache(_habits.value)
                 Result.success(Unit)
             } else {
                 Result.failure(Exception("Failed to delete habit"))
@@ -113,6 +116,7 @@ class HabitRepository @Inject constructor(
                         habit.copy(logs = updatedLogs)
                     } else habit
                 }
+                saveWidgetCache(_habits.value)
                 Result.success(Unit)
             } else {
                 Result.failure(Exception("Failed to toggle habit log"))
@@ -200,12 +204,13 @@ class HabitRepository @Inject constructor(
             val json = Json.encodeToString(habits)
             context.getSharedPreferences("habit_widget_cache", Context.MODE_PRIVATE)
                 .edit().putString("habits_json", json).apply()
-            // Notify the widget to refresh
-            val manager = AppWidgetManager.getInstance(context)
-            val component = ComponentName(context, com.notel.notel.widget.HabitWidgetReceiver::class.java)
-            val ids = manager.getAppWidgetIds(component)
-            if (ids.isNotEmpty()) {
-                manager.notifyAppWidgetViewDataChanged(ids, android.R.id.list)
+            
+            // Trigger Glance widget updates
+            kotlinx.coroutines.GlobalScope.launch {
+                try {
+                    com.notel.notel.widget.HabitWidget().updateAll(context)
+                    com.notel.notel.widget.SingleHabitWidget().updateAll(context)
+                } catch (e: Exception) { /* ignore */ }
             }
         } catch (e: Exception) { /* best effort */ }
     }
