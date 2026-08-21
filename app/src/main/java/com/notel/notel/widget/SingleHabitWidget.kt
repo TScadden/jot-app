@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.action.clickable
@@ -49,6 +50,11 @@ class SingleHabitWidget : GlanceAppWidget() {
         } catch (e: Exception) { emptyList() }
 
         val habit = habits.find { it.id == habitId }
+        val entryPoint = EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            WidgetEntryPoint::class.java
+        )
+        val repository = entryPoint.habitRepository()
 
         provideContent {
             Column(
@@ -77,6 +83,7 @@ class SingleHabitWidget : GlanceAppWidget() {
                 } else {
                     val isDone = today in habit.logs
                     val animStreak = singlePrefs.getInt("anim_streak_$habitId", 0)
+                    val currentStreak = repository.calculateStreak(habit.logs)
 
                     Row(
                         modifier = GlanceModifier
@@ -97,20 +104,28 @@ class SingleHabitWidget : GlanceAppWidget() {
                                 )
                             )
                         } else {
-                            Text(
-                                text = if (isDone) "✅" else "⬜",
-                            )
+                            Text(text = if (isDone) "✅" else "⬜")
                             Spacer(GlanceModifier.width(8.dp))
-                            Text(
-                                text = habit.title,
-                                style = TextStyle(
-                                    color = ColorProvider(
-                                        if (isDone) Color.White
-                                        else Color(0xFFAAAAAA)
-                                    ),
-                                    fontWeight = FontWeight.Bold
+                            Column {
+                                Text(
+                                    text = habit.title,
+                                    style = TextStyle(
+                                        color = ColorProvider(
+                                            if (isDone) Color.White else Color(0xFFAAAAAA)
+                                        ),
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 )
-                            )
+                                if (currentStreak > 0) {
+                                    Text(
+                                        text = "🔥 $currentStreak day streak",
+                                        style = TextStyle(
+                                            color = ColorProvider(Color(0xFFE2A123)),
+                                            fontSize = 12.sp
+                                        )
+                                    )
+                                }
+                            }
                         }
                     }
                 }
