@@ -116,7 +116,9 @@ class HabitRepository @Inject constructor(
                         habit.copy(logs = updatedLogs)
                     } else habit
                 }
-                saveWidgetCache(_habits.value)
+                if (_habits.value.isNotEmpty()) {
+                    saveWidgetCache(_habits.value)
+                }
                 Result.success(Unit)
             } else {
                 Result.failure(Exception("Failed to toggle habit log"))

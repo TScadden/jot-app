@@ -40,7 +40,9 @@ class SingleHabitWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val appWidgetId = GlanceAppWidgetManager(context).getAppWidgetId(id)
         val singlePrefs = context.getSharedPreferences("single_habit_widget_prefs", Context.MODE_PRIVATE)
+        val allKeys = singlePrefs.all.keys.toList()
         val habitId = singlePrefs.getString("habit_id_$appWidgetId", null)
+        android.util.Log.d("SingleHabitWidget", "provideGlance: appWidgetId=$appWidgetId, habitId=$habitId, allPrefsKeys=$allKeys")
 
         val prefs = context.getSharedPreferences("habit_widget_cache", Context.MODE_PRIVATE)
         val json = prefs.getString("habits_json", "[]") ?: "[]"
@@ -183,21 +185,17 @@ class ToggleSingleHabitCallback : ActionCallback {
         if (!isDone) {
             val newStreak = repository.calculateStreak(habit.logs + today)
             singlePrefs.edit().putInt("anim_streak_$habitId", newStreak).apply()
-            
+
             SingleHabitWidget().update(context, glanceId)
 
-            kotlinx.coroutines.GlobalScope.launch {
-                repository.toggleHabitLog(habitId, today, true)
-            }
+            repository.toggleHabitLog(habitId, today, true)
 
             kotlinx.coroutines.delay(1200L)
             singlePrefs.edit().remove("anim_streak_$habitId").apply()
             SingleHabitWidget().update(context, glanceId)
         } else {
             SingleHabitWidget().update(context, glanceId)
-            kotlinx.coroutines.GlobalScope.launch {
-                repository.toggleHabitLog(habitId, today, false)
-            }
+            repository.toggleHabitLog(habitId, today, false)
         }
     }
 }

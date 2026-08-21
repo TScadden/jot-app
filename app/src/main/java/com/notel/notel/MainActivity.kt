@@ -732,11 +732,13 @@ class MainActivity : ComponentActivity() {
                                                         .fillMaxWidth()
                                                         .clickable {
                                                             val sPrefs = context.getSharedPreferences("single_habit_widget_prefs", android.content.Context.MODE_PRIVATE)
+                                                            android.util.Log.d("MainActivityWidget", "Saving habit_id_$selectWidgetAppWidgetId = ${habit.id}")
                                                             sPrefs.edit().putString("habit_id_$selectWidgetAppWidgetId", habit.id).apply()
                                                             lifecycleScope.launch {
                                                                 try {
                                                                     val manager = androidx.glance.appwidget.GlanceAppWidgetManager(context)
                                                                     val glanceId = manager.getGlanceIdBy(selectWidgetAppWidgetId)
+                                                                    android.util.Log.d("MainActivityWidget", "Got glanceId=$glanceId for widgetId=$selectWidgetAppWidgetId, calling update")
                                                                     com.notel.notel.widget.SingleHabitWidget().update(context, glanceId)
                                                                 } catch (e: Exception) {
                                                                     android.util.Log.e("MainActivityWidget", "Error updating single widget", e)
