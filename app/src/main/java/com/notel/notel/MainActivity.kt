@@ -54,6 +54,7 @@ import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.BodyLoadViewModel
 import com.notel.notel.ui.viewmodel.FitbitViewModel
 import dagger.hilt.android.AndroidEntryPoint
+import androidx.glance.appwidget.updateAll
 
 // Custom Bowtie shape for the main button
 val BowtieShape = object : Shape {
@@ -788,7 +789,43 @@ class MainActivity : ComponentActivity() {
             intent.removeExtra("EXTRA_APP_WIDGET_ID")
         }
     }
+
+    private val dateChangedReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
+            if (intent.action == android.content.Intent.ACTION_DATE_CHANGED ||
+                intent.action == android.content.Intent.ACTION_TIME_CHANGED) {
+                refreshWidgets()
+            }
+        }
+    }
+
+    private fun refreshWidgets() {
+        lifecycleScope.launch {
+            try {
+                com.notel.notel.widget.HabitWidget().updateAll(this@MainActivity)
+                com.notel.notel.widget.SingleHabitWidget().updateAll(this@MainActivity)
+            } catch (e: Exception) { /* best effort */ }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Refresh widgets whenever app comes to foreground so they always match app state
+        refreshWidgets()
+        // Also listen for date changes (midnight rollover) while app is in foreground
+        val filter = android.content.IntentFilter().apply {
+            addAction(android.content.Intent.ACTION_DATE_CHANGED)
+            addAction(android.content.Intent.ACTION_TIME_CHANGED)
+        }
+        registerReceiver(dateChangedReceiver, filter)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        try { unregisterReceiver(dateChangedReceiver) } catch (e: Exception) { /* ignore */ }
+    }
 }
+
 
 @Composable
 fun NavIcon(
