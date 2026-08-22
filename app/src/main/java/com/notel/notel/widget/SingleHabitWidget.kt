@@ -189,14 +189,14 @@ class ToggleSingleHabitCallback : ActionCallback {
         }
 
         val updatedJson = Json.encodeToString(updatedHabits)
-        prefs.edit().putString("habits_json", updatedJson).apply()
+        prefs.edit().putString("habits_json", updatedJson).commit()
 
         val singlePrefs = context.getSharedPreferences("single_habit_widget_prefs", Context.MODE_PRIVATE)
 
         if (!isDone) {
             val newStreak = repository.calculateStreak(habit.logs + today)
             android.util.Log.d("SingleHabitWidget", "onAction: Toggling check. New streak=$newStreak")
-            singlePrefs.edit().putInt("anim_streak_$habitId", newStreak).apply()
+            singlePrefs.edit().putInt("anim_streak_$habitId", newStreak).commit()
 
             SingleHabitWidget().updateAll(context)
 
@@ -206,11 +206,14 @@ class ToggleSingleHabitCallback : ActionCallback {
             }
 
             kotlinx.coroutines.delay(600L)
-            singlePrefs.edit().remove("anim_streak_$habitId").apply()
+            singlePrefs.edit().remove("anim_streak_$habitId").commit()
             SingleHabitWidget().updateAll(context)
         } else {
             android.util.Log.d("SingleHabitWidget", "onAction: Toggling uncheck.")
+            
+            // Re-render immediately to show unchecked state (using the updated cached json from line 192)
             SingleHabitWidget().updateAll(context)
+            
             kotlinx.coroutines.GlobalScope.launch {
                 val result = repository.toggleHabitLog(habitId, today, false)
                 android.util.Log.d("SingleHabitWidget", "onAction: untoggleHabitLog API completed, success=${result.isSuccess}")
