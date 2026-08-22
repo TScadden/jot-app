@@ -188,14 +188,18 @@ class ToggleSingleHabitCallback : ActionCallback {
 
             SingleHabitWidget().update(context, glanceId)
 
-            repository.toggleHabitLog(habitId, today, true)
+            kotlinx.coroutines.GlobalScope.launch {
+                repository.toggleHabitLog(habitId, today, true)
+            }
 
             kotlinx.coroutines.delay(1200L)
             singlePrefs.edit().remove("anim_streak_$habitId").apply()
             SingleHabitWidget().update(context, glanceId)
         } else {
             SingleHabitWidget().update(context, glanceId)
-            repository.toggleHabitLog(habitId, today, false)
+            kotlinx.coroutines.GlobalScope.launch {
+                repository.toggleHabitLog(habitId, today, false)
+            }
         }
     }
 }
