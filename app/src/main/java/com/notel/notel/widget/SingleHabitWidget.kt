@@ -34,6 +34,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import androidx.glance.appwidget.GlanceAppWidgetManager
+import androidx.glance.appwidget.updateAll
 
 class SingleHabitWidget : GlanceAppWidget() {
 
@@ -197,7 +198,7 @@ class ToggleSingleHabitCallback : ActionCallback {
             android.util.Log.d("SingleHabitWidget", "onAction: Toggling check. New streak=$newStreak")
             singlePrefs.edit().putInt("anim_streak_$habitId", newStreak).apply()
 
-            SingleHabitWidget().update(context, glanceId)
+            SingleHabitWidget().updateAll(context)
 
             kotlinx.coroutines.GlobalScope.launch {
                 val result = repository.toggleHabitLog(habitId, today, true)
@@ -206,10 +207,10 @@ class ToggleSingleHabitCallback : ActionCallback {
 
             kotlinx.coroutines.delay(600L)
             singlePrefs.edit().remove("anim_streak_$habitId").apply()
-            SingleHabitWidget().update(context, glanceId)
+            SingleHabitWidget().updateAll(context)
         } else {
             android.util.Log.d("SingleHabitWidget", "onAction: Toggling uncheck.")
-            SingleHabitWidget().update(context, glanceId)
+            SingleHabitWidget().updateAll(context)
             kotlinx.coroutines.GlobalScope.launch {
                 val result = repository.toggleHabitLog(habitId, today, false)
                 android.util.Log.d("SingleHabitWidget", "onAction: untoggleHabitLog API completed, success=${result.isSuccess}")
