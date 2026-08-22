@@ -106,6 +106,26 @@ class HabitRepository @Inject constructor(
             val response = api.logHabit(LogHabitRequest(habit_id = habitId, completed_date = date, is_completed = isCompleted))
             if (response.isSuccessful) {
                 // Update local cache optimistically
+                val cachedPrefs = context.getSharedPreferences("habit_widget_cache", Context.MODE_PRIVATE)
+                val json = cachedPrefs.getString("habits_json", "[]") ?: "[]"
+                val cachedHabits: List<HabitDtoModel> = try {
+                    Json { ignoreUnknownKeys = true }.decodeFromString(json)
+                } catch (e: Exception) { emptyList() }
+                
+                val updatedCached = cachedHabits.map { habit ->
+                    if (habit.id == habitId) {
+                        val updatedLogs = if (isCompleted) {
+                            if (date !in habit.logs) habit.logs + date else habit.logs
+                        } else {
+                            habit.logs.filter { it != date }
+                        }
+                        habit.copy(logs = updatedLogs)
+                    } else habit
+                }
+                
+                val updatedJson = Json.encodeToString(updatedCached)
+                cachedPrefs.edit().putString("habits_json", updatedJson).commit()
+
                 _habits.value = _habits.value.map { habit ->
                     if (habit.id == habitId) {
                         val updatedLogs = if (isCompleted) {
@@ -116,9 +136,10 @@ class HabitRepository @Inject constructor(
                         habit.copy(logs = updatedLogs)
                     } else habit
                 }
-                if (_habits.value.isNotEmpty()) {
-                    saveWidgetCache(_habits.value)
-                }
+                
+                // Trigger widget update with the fresh cached habits JSON
+                com.notel.notel.widget.HabitWidget().updateAll(context)
+                com.notel.notel.widget.SingleHabitWidget().updateAll(context)
                 Result.success(Unit)
             } else {
                 Result.failure(Exception("Failed to toggle habit log"))
