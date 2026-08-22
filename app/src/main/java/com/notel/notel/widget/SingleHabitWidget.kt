@@ -97,30 +97,28 @@ class SingleHabitWidget : GlanceAppWidget() {
                         verticalAlignment = Alignment.Vertical.CenterVertically,
                         horizontalAlignment = Alignment.Horizontal.CenterHorizontally
                     ) {
-                        if (animStreak > 0) {
                             Text(
-                                text = "🔥 $animStreak",
+                                text = if (animStreak > 0) "🔥" else if (isDone) "✅" else "⬜",
                                 style = TextStyle(
-                                    color = ColorProvider(Color(0xFFE2A123)),
-                                    fontWeight = FontWeight.Bold
+                                    fontSize = 18.sp
                                 )
                             )
-                        } else {
-                            Text(text = if (isDone) "✅" else "⬜")
                             Spacer(GlanceModifier.width(8.dp))
                             Column {
                                 Text(
                                     text = currentHabit.title,
                                     style = TextStyle(
                                         color = ColorProvider(
-                                            if (isDone) Color.White else Color(0xFFAAAAAA)
+                                            if (isDone || animStreak > 0) Color.White else Color(0xFFAAAAAA)
                                         ),
                                         fontWeight = FontWeight.Bold
                                     )
                                 )
-                                if (currentStreak > 0) {
+                                // If animating, display the new streak count immediately, otherwise show current streak
+                                val streakToShow = if (animStreak > 0) animStreak else currentStreak
+                                if (streakToShow > 0) {
                                     Text(
-                                        text = "🔥 $currentStreak day streak",
+                                        text = "🔥 $streakToShow day streak",
                                         style = TextStyle(
                                             color = ColorProvider(Color(0xFFE2A123)),
                                             fontSize = 12.sp
@@ -128,7 +126,6 @@ class SingleHabitWidget : GlanceAppWidget() {
                                     )
                                 }
                             }
-                        }
                     }
                 }
             }
