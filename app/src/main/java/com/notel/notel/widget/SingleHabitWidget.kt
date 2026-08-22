@@ -40,23 +40,20 @@ class SingleHabitWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val appWidgetId = GlanceAppWidgetManager(context).getAppWidgetId(id)
         val singlePrefs = context.getSharedPreferences("single_habit_widget_prefs", Context.MODE_PRIVATE)
-        val allKeys = singlePrefs.all.keys.toList()
-        val habitId = singlePrefs.getString("habit_id_$appWidgetId", null)
-        android.util.Log.d("SingleHabitWidget", "provideGlance: appWidgetId=$appWidgetId, habitId=$habitId, allPrefsKeys=$allKeys")
-
         val prefs = context.getSharedPreferences("habit_widget_cache", Context.MODE_PRIVATE)
-        val json = prefs.getString("habits_json", "[]") ?: "[]"
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-        val habits: List<HabitDtoModel> = try {
-            Json { ignoreUnknownKeys = true }.decodeFromString(json)
-        } catch (e: Exception) { emptyList() }
-
-        val habit = habits.find { it.id == habitId }
         val entryPoint = EntryPointAccessors.fromApplication(
             context.applicationContext,
             WidgetEntryPoint::class.java
         )
         val repository = entryPoint.habitRepository()
+
+        val habitId = singlePrefs.getString("habit_id_$appWidgetId", null)
+        val json = prefs.getString("habits_json", "[]") ?: "[]"
+        val habits: List<HabitDtoModel> = try {
+            Json { ignoreUnknownKeys = true }.decodeFromString(json)
+        } catch (e: Exception) { emptyList() }
+        val habit = habits.find { it.id == habitId }
 
         provideContent {
             Column(
