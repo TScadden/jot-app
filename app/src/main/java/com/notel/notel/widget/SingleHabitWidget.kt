@@ -149,7 +149,11 @@ class ToggleSingleHabitCallback : ActionCallback {
     }
 
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
-        val habitId = parameters[PARAM_HABIT_ID] ?: return
+        val habitId = parameters[PARAM_HABIT_ID] ?: run {
+            android.util.Log.d("SingleHabitWidget", "onAction: habitId is null")
+            return
+        }
+        android.util.Log.d("SingleHabitWidget", "onAction: clicked habitId = $habitId")
         val entryPoint = EntryPointAccessors.fromApplication(
             context.applicationContext,
             WidgetEntryPoint::class.java
@@ -161,10 +165,17 @@ class ToggleSingleHabitCallback : ActionCallback {
         val json = prefs.getString("habits_json", "[]") ?: "[]"
         val habits: List<HabitDtoModel> = try {
             Json { ignoreUnknownKeys = true }.decodeFromString(json)
-        } catch (e: Exception) { emptyList() }
+        } catch (e: Exception) {
+            android.util.Log.e("SingleHabitWidget", "onAction: error decoding habits", e)
+            emptyList()
+        }
 
-        val habit = habits.find { it.id == habitId } ?: return
+        val habit = habits.find { it.id == habitId } ?: run {
+            android.util.Log.d("SingleHabitWidget", "onAction: habit not found in cache for id $habitId")
+            return
+        }
         val isDone = today in habit.logs
+        android.util.Log.d("SingleHabitWidget", "onAction: isDone=$isDone, logs=${habit.logs}")
 
         val updatedHabits = habits.map {
             if (it.id == habitId) {
@@ -184,21 +195,25 @@ class ToggleSingleHabitCallback : ActionCallback {
 
         if (!isDone) {
             val newStreak = repository.calculateStreak(habit.logs + today)
+            android.util.Log.d("SingleHabitWidget", "onAction: Toggling check. New streak=$newStreak")
             singlePrefs.edit().putInt("anim_streak_$habitId", newStreak).apply()
 
             SingleHabitWidget().update(context, glanceId)
 
             kotlinx.coroutines.GlobalScope.launch {
-                repository.toggleHabitLog(habitId, today, true)
+                val result = repository.toggleHabitLog(habitId, today, true)
+                android.util.Log.d("SingleHabitWidget", "onAction: toggleHabitLog API completed, success=${result.isSuccess}")
             }
 
-            kotlinx.coroutines.delay(1200L)
+            kotlinx.coroutines.delay(600L)
             singlePrefs.edit().remove("anim_streak_$habitId").apply()
             SingleHabitWidget().update(context, glanceId)
         } else {
+            android.util.Log.d("SingleHabitWidget", "onAction: Toggling uncheck.")
             SingleHabitWidget().update(context, glanceId)
             kotlinx.coroutines.GlobalScope.launch {
-                repository.toggleHabitLog(habitId, today, false)
+                val result = repository.toggleHabitLog(habitId, today, false)
+                android.util.Log.d("SingleHabitWidget", "onAction: untoggleHabitLog API completed, success=${result.isSuccess}")
             }
         }
     }
