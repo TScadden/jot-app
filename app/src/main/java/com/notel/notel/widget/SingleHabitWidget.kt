@@ -48,14 +48,16 @@ class SingleHabitWidget : GlanceAppWidget() {
         )
         val repository = entryPoint.habitRepository()
 
-        val habitId = singlePrefs.getString("habit_id_$appWidgetId", null)
-        val json = prefs.getString("habits_json", "[]") ?: "[]"
-        val habits: List<HabitDtoModel> = try {
-            Json { ignoreUnknownKeys = true }.decodeFromString(json)
-        } catch (e: Exception) { emptyList() }
-        val habit = habits.find { it.id == habitId }
+
 
         provideContent {
+            val hId = singlePrefs.getString("habit_id_$appWidgetId", null)
+            val habitsJson = prefs.getString("habits_json", "[]") ?: "[]"
+            val habitsList: List<HabitDtoModel> = try {
+                Json { ignoreUnknownKeys = true }.decodeFromString(habitsJson)
+            } catch (e: Exception) { emptyList() }
+            val currentHabit = habitsList.find { it.id == hId }
+
             Column(
                 modifier = GlanceModifier
                     .fillMaxSize()
@@ -64,7 +66,7 @@ class SingleHabitWidget : GlanceAppWidget() {
                 verticalAlignment = Alignment.Vertical.CenterVertically,
                 horizontalAlignment = Alignment.Horizontal.CenterHorizontally
             ) {
-                if (habit == null) {
+                if (currentHabit == null) {
                     val pickIntent = Intent(context, MainActivity::class.java).apply {
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                         action = "com.notel.notel.ACTION_SELECT_HABIT_$appWidgetId"
@@ -80,16 +82,16 @@ class SingleHabitWidget : GlanceAppWidget() {
                         modifier = GlanceModifier.clickable(actionStartActivity(pickIntent))
                     )
                 } else {
-                    val isDone = today in habit.logs
-                    val animStreak = singlePrefs.getInt("anim_streak_$habitId", 0)
-                    val currentStreak = repository.calculateStreak(habit.logs)
+                    val isDone = today in currentHabit.logs
+                    val animStreak = singlePrefs.getInt("anim_streak_$hId", 0)
+                    val currentStreak = repository.calculateStreak(currentHabit.logs)
 
                     Row(
                         modifier = GlanceModifier
                             .fillMaxWidth()
                             .padding(vertical = 4.dp)
                             .clickable(actionRunCallback<ToggleSingleHabitCallback>(
-                                actionParametersOf(ToggleSingleHabitCallback.PARAM_HABIT_ID to habit.id)
+                                actionParametersOf(ToggleSingleHabitCallback.PARAM_HABIT_ID to currentHabit.id)
                             )),
                         verticalAlignment = Alignment.Vertical.CenterVertically,
                         horizontalAlignment = Alignment.Horizontal.CenterHorizontally
@@ -107,7 +109,7 @@ class SingleHabitWidget : GlanceAppWidget() {
                             Spacer(GlanceModifier.width(8.dp))
                             Column {
                                 Text(
-                                    text = habit.title,
+                                    text = currentHabit.title,
                                     style = TextStyle(
                                         color = ColorProvider(
                                             if (isDone) Color.White else Color(0xFFAAAAAA)
