@@ -200,10 +200,13 @@ class ToggleSingleHabitCallback : ActionCallback {
                 repository.toggleHabitLog(habitId, today, true)
             }
 
-            kotlinx.coroutines.delay(600L)
-
-            prefs.edit().remove("anim_streak_$habitId").commit()
-            SingleHabitWidget().updateAll(context)
+            // Launch the animation clearing delay in a decoupled coroutine scope so the ActionCallback
+            // can finish executing immediately, preventing Android from killing the process during delay()
+            kotlinx.coroutines.GlobalScope.launch {
+                kotlinx.coroutines.delay(800L)
+                prefs.edit().remove("anim_streak_$habitId").commit()
+                SingleHabitWidget().updateAll(context)
+            }
         } else {
             SingleHabitWidget().updateAll(context)
             kotlinx.coroutines.GlobalScope.launch {
