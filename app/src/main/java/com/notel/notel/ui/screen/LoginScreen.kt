@@ -35,10 +35,15 @@ import androidx.lifecycle.viewModelScope
 import com.notel.notel.R
 import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.remote.AuthRequest
+import com.notel.notel.data.remote.GoogleAuthRequest
 import com.notel.notel.data.remote.ForgotPasswordRequest
 import com.notel.notel.data.remote.TabsApi
 import com.notel.notel.data.sync.SyncManager
 import com.notel.notel.ui.theme.*
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount
+import com.google.android.gms.common.api.ApiException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -173,16 +178,16 @@ class LoginViewModel @Inject constructor(
         }
     }
 
-    fun loginWithGoogleAccount(email: String, isRegisterMode: Boolean) {
+    fun loginWithGoogleAccount(idToken: String, isRegisterMode: Boolean) {
         viewModelScope.launch {
             isLoading = true
             errorMsg = null
             try {
-                // Try logging in with Google auth password
-                val response = tabsApi.login(AuthRequest(email, "GoogleAuthPass!2026"))
+                val response = tabsApi.googleLogin(GoogleAuthRequest(idToken, isRegisterMode))
                 val body = response.body()
                 
                 if (response.isSuccessful && body != null && body.token?.isNotBlank() == true) {
+                    val email = body.email ?: ""
                     preferences.setAuthToken(body.token!!)
                     preferences.setLoggedIn(true)
                     preferences.setUserEmail(email)
@@ -201,17 +206,15 @@ class LoginViewModel @Inject constructor(
 
                     onboardingCompleteByServer = true
                     isLoggedIn = true
-                } else if (response.code() == 401 || (body != null && body.error?.contains("password", ignoreCase = true) == true)) {
-                    // Account exists with email/password but is not linked to Google
-                    errorMsg = "An account with this email already exists using password login. Please log in with your email and password instead."
                 } else {
-                    if (isRegisterMode) {
-                        // If account doesn't exist and in sign up mode, register a new account with Google auth
-                        register(email, "GoogleAuthPass!2026")
-                    } else {
-                        // If account doesn't exist and in log in mode, show error
-                        errorMsg = "No account was found with that Google account. Please sign up first."
-                    }
+                    val errorStr = response.errorBody()?.string() ?: ""
+                    val errorMessage = try {
+                        if (errorStr.contains("\"error\":")) {
+                           errorStr.substringAfter("\"error\":\"").substringBefore("\"")
+                        } else null
+                    } catch (e: Exception) { null }
+                    
+                    errorMsg = errorMessage ?: (body?.error ?: "Google login failed")
                 }
             } catch (e: Exception) {
                 errorMsg = e.message ?: "Google login failed"
@@ -286,13 +289,31 @@ fun LoginScreen(
     val successMsg = viewModel.successMsg
     val isLoading = viewModel.isLoading
 
+    val googleSignInOptions = remember {
+        GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestIdToken(context.getString(R.string.google_web_client_id))
+            .requestEmail()
+            .build()
+    }
+    val googleSignInClient = remember {
+        GoogleSignIn.getClient(context, googleSignInOptions)
+    }
+
     val googleAccountLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK && result.data != null) {
-            val accountName = result.data?.getStringExtra(android.accounts.AccountManager.KEY_ACCOUNT_NAME)
-            if (!accountName.isNullOrBlank()) {
-                viewModel.loginWithGoogleAccount(accountName, isRegisterMode)
+            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            try {
+                val account: GoogleSignInAccount = task.getResult(ApiException::class.java)
+                val idToken = account.idToken
+                if (!idToken.isNullOrBlank()) {
+                    viewModel.loginWithGoogleAccount(idToken, isRegisterMode)
+                } else {
+                    viewModel.setError("Could not get Google ID token")
+                }
+            } catch (e: ApiException) {
+                viewModel.setError("Google Sign In failed: ${e.message} (status code: ${e.statusCode})")
             }
         }
     }
@@ -526,12 +547,10 @@ fun LoginScreen(
                         Button(
                             onClick = {
                                 try {
-                                    val intent = com.google.android.gms.common.AccountPicker.newChooseAccountIntent(
-                                        com.google.android.gms.common.AccountPicker.AccountChooserOptions.Builder()
-                                            .setAllowableAccountsTypes(listOf("com.google"))
-                                            .build()
-                                    )
-                                    googleAccountLauncher.launch(intent)
+                                    googleSignInClient.signOut().addOnCompleteListener {
+                                        val signInIntent = googleSignInClient.signInIntent
+                                        googleAccountLauncher.launch(signInIntent)
+                                    }
                                 } catch (e: Exception) {
                                     viewModel.setError("Could not launch Google Sign In: ${e.message}")
                                 }

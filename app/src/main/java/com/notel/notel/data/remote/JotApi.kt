@@ -144,6 +144,12 @@ data class AuthRequest(
 )
 
 @Serializable
+data class GoogleAuthRequest(
+    val idToken: String,
+    val isRegisterMode: Boolean
+)
+
+@Serializable
 data class ForgotPasswordRequest(
     val email: String
 )
@@ -548,6 +554,9 @@ interface TabsApi {
 
     @POST("api/auth/login")
     suspend fun login(@Body request: AuthRequest): Response<AuthResponse>
+
+    @POST("api/auth/google")
+    suspend fun googleLogin(@Body request: GoogleAuthRequest): Response<AuthResponse>
 
     @POST("api/auth/forgot-password")
     suspend fun forgotPassword(@Body request: ForgotPasswordRequest): Response<GenericResponse>

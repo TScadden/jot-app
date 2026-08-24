@@ -107,6 +107,7 @@ dependencies {
 
     // Location
     implementation("com.google.android.gms:play-services-location:21.3.0")
+    implementation("com.google.android.gms:play-services-auth:21.2.0")
 
     // Jetpack Glance (home screen widget)
     implementation("androidx.glance:glance-appwidget:1.1.1")
