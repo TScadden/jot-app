@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Delete Account - Tabs</title>
+    <link rel="icon" type="image/png" href="/tabs_logo.png">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 500px; margin: 0 auto; padding: 40px 20px; background-color: #f9f9f9; }
+        .container { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        h1 { color: #d9534f; margin-bottom: 20px; font-size: 24px; text-align: center; }
+        p { margin-bottom: 20px; color: #555; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="email"], input[type="password"] { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
+        button { width: 100%; padding: 12px; background-color: #d9534f; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background-color 0.2s; }
+        button:hover { background-color: #c9302c; }
+        .error { color: #d9534f; margin-top: 15px; font-weight: bold; text-align: center; display: none; }
+        .success { color: #5cb85c; margin-top: 15px; font-weight: bold; text-align: center; display: none; }
+        .loading { text-align: center; display: none; margin-top: 15px; color: #777; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Delete Your Tabs Account</h1>
+        <p>This action is permanent and cannot be undone. All your notes, settings, logs, and synchronized Google Health Connect data will be immediately and permanently deleted from our servers.</p>
+        
+        <form id="deleteForm">
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input type="email" id="email" required placeholder="Enter your account email">
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" required placeholder="Enter your password">
+            </div>
+            <button type="submit" id="submitBtn">Permanently Delete Account</button>
+        </form>
+
+        <div class="loading" id="loading">Processing request...</div>
+        <div class="error" id="errorMsg"></div>
+        <div class="success" id="successMsg">Your account and all associated data have been permanently deleted. You can close this window.</div>
+    </div>
+    
+    <script>
+        document.getElementById('deleteForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            
+            const submitBtn = document.getElementById('submitBtn');
+            const loading = document.getElementById('loading');
+            const errorMsg = document.getElementById('errorMsg');
+            const successMsg = document.getElementById('successMsg');
+            
+            errorMsg.style.display = 'none';
+            successMsg.style.display = 'none';
+            loading.style.display = 'block';
+            submitBtn.disabled = true;
+            
+            try {
+                // 1. Authenticate the user to retrieve token
+                const loginResponse = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const loginData = await loginResponse.json();
+                if (!loginResponse.ok) {
+                    throw new Error(loginData.error || 'Authentication failed. Please check your credentials.');
+                }
+                
+                const token = loginData.token;
+                
+                // 2. Call the delete endpoint with Authorization header
+                const deleteResponse = await fetch('/api/auth/delete-account', {
+                    method: 'DELETE',
+                    headers: { 
+                        'Authorization': 'Bearer ' + token,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const deleteData = await deleteResponse.json();
+                if (!deleteResponse.ok) {
+                    throw new Error(deleteData.error || 'Account deletion failed.');
+                }
+                
+                // 3. Display success
+                successMsg.style.display = 'block';
+                document.getElementById('deleteForm').reset();
+                document.getElementById('deleteForm').style.display = 'none';
+                
+            } catch (err) {
+                errorMsg.textContent = err.message;
+                errorMsg.style.display = 'block';
+                submitBtn.disabled = false;
+            } finally {
+                loading.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
