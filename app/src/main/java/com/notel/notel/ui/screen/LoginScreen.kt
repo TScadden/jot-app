@@ -298,8 +298,9 @@ fun LoginScreen(
     val googleAccountLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == android.app.Activity.RESULT_OK && result.data != null) {
-            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        val data = result.data
+        if (data != null) {
+            val task = GoogleSignIn.getSignedInAccountFromIntent(data)
             try {
                 val account: GoogleSignInAccount = task.getResult(ApiException::class.java)
                 val idToken = account.idToken
@@ -309,14 +310,18 @@ fun LoginScreen(
                     viewModel.setError("Could not get Google ID token")
                 }
             } catch (e: ApiException) {
-                viewModel.setError("Google Sign In failed: ${e.message} (status code: ${e.statusCode})")
+                if (e.statusCode == 12501) { // GoogleSignInStatusCodes.SIGN_IN_CANCELLED
+                    viewModel.setError("Google Sign In cancelled by user")
+                } else {
+                    viewModel.setError("Google Sign In failed: ${e.message} (status code: ${e.statusCode}). (Note: Status code 10 indicates a Google OAuth client configuration mismatch. Ensure your client ID is registered in Google Cloud Console with the correct SHA-1 fingerprint: 0C:59:52:94:76:05:42:D7:97:DB:2D:96:5D:64:05:4F:84:F3:0A:F1)")
+                }
             }
         } else {
             val resultCode = result.resultCode
             if (resultCode == android.app.Activity.RESULT_CANCELED) {
                 viewModel.setError("Google Sign In cancelled by user")
             } else {
-                viewModel.setError("Google Sign In failed with result code: $resultCode. (Note: Status code 10 indicates a Google OAuth client configuration mismatch. Ensure your client ID is registered in Google Cloud Console with the correct SHA-1 fingerprint: 0C:59:52:94:76:05:42:D7:97:DB:2D:96:5D:64:05:4F:84:F3:0A:F1)")
+                viewModel.setError("Google Sign In failed with result code: $resultCode")
             }
         }
     }
