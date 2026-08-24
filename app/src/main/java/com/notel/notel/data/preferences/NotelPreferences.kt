@@ -35,6 +35,7 @@ class NotelPreferences @Inject constructor(
 ) {
     companion object {
         val AUTH_TOKEN = stringPreferencesKey("auth_token")
+        val REFRESH_TOKEN = stringPreferencesKey("refresh_token")
         val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
         val LOGGED_IN = booleanPreferencesKey("logged_in")
         val HAS_CONSENTED = booleanPreferencesKey("has_consented")
@@ -425,6 +426,26 @@ class NotelPreferences @Inject constructor(
     suspend fun setAuthToken(token: String) {
         val encrypted = NotelCrypto.encrypt(token)
         context.dataStore.edit { it[AUTH_TOKEN] = encrypted }
+    }
+
+    val refreshToken: Flow<String> = context.dataStore.data.map { prefs ->
+        val encrypted = prefs[REFRESH_TOKEN] ?: ""
+        if (encrypted.isEmpty()) return@map ""
+        if (!NotelCrypto.isLikelyCiphertext(encrypted)) {
+            encrypted
+        } else {
+            val decrypted = NotelCrypto.decrypt(encrypted)
+            if (decrypted.isNotEmpty()) decrypted else ""
+        }
+    }
+
+    suspend fun setRefreshToken(token: String) {
+        val encrypted = NotelCrypto.encrypt(token)
+        context.dataStore.edit { it[REFRESH_TOKEN] = encrypted }
+    }
+
+    suspend fun clearRefreshToken() {
+        context.dataStore.edit { it.remove(REFRESH_TOKEN) }
     }
 
     suspend fun setOnboardingComplete(complete: Boolean) {

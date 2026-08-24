@@ -144,6 +144,7 @@ class LoginViewModel @Inject constructor(
                 
                 if (response.isSuccessful && body != null && body.token?.isNotBlank() == true) {
                     preferences.setAuthToken(body.token!!)
+                    body.refreshToken?.takeIf { it.isNotBlank() }?.let { preferences.setRefreshToken(it) }
                     preferences.setLoggedIn(true)
                     preferences.setUserEmail(email)
                     preferences.setOnboardingComplete(true)
@@ -189,6 +190,7 @@ class LoginViewModel @Inject constructor(
                 if (response.isSuccessful && body != null && body.token?.isNotBlank() == true) {
                     val email = body.email ?: ""
                     preferences.setAuthToken(body.token!!)
+                    body.refreshToken?.takeIf { it.isNotBlank() }?.let { preferences.setRefreshToken(it) }
                     preferences.setLoggedIn(true)
                     preferences.setUserEmail(email)
                     preferences.setGoogleAccountConnected(true)
@@ -240,6 +242,7 @@ class LoginViewModel @Inject constructor(
                 
                 if (response.isSuccessful && body != null && body.token?.isNotBlank() == true) {
                     preferences.setAuthToken(body.token!!)
+                    body.refreshToken?.takeIf { it.isNotBlank() }?.let { preferences.setRefreshToken(it) }
                     preferences.setLoggedIn(true)
                     preferences.setUserEmail(email)
                     body.nickname?.let { preferences.setUserNickname(it) }

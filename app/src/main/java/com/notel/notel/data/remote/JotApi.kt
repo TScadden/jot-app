@@ -170,6 +170,7 @@ data class GenericResponse(
 @Serializable
 data class AuthResponse(
     val token: String? = null,
+    val refreshToken: String? = null,
     val userId: String? = null,
     val email: String? = null,
     val isUnlimited: Boolean? = null,
@@ -179,6 +180,19 @@ data class AuthResponse(
     val tag: String? = null,
     val error: String? = null
 )
+
+@Serializable
+data class RefreshTokenRequest(val refreshToken: String)
+
+@Serializable
+data class RefreshTokenResponse(
+    val token: String? = null,
+    val refreshToken: String? = null,
+    val error: String? = null
+)
+
+@Serializable
+data class LogoutRequest(val refreshToken: String)
 
 // Simplified representations for networking to avoid issues with Room annotations
 @Serializable
@@ -572,6 +586,12 @@ interface TabsApi {
 
     @retrofit2.http.DELETE("api/auth/delete-account")
     suspend fun deleteAccount(): Response<GenericResponse>
+
+    @POST("api/auth/refresh-token")
+    suspend fun refreshToken(@Body request: RefreshTokenRequest): Response<RefreshTokenResponse>
+
+    @POST("api/auth/logout")
+    suspend fun logout(@Body request: LogoutRequest): Response<GenericResponse>
 
     @POST("api/friends/request")
     suspend fun sendFriendRequest(@Body request: FriendRequestApiRequest): Response<GenericResponse>
