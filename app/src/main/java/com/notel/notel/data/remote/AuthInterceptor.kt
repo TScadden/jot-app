@@ -10,6 +10,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import java.util.concurrent.locks.ReentrantLock
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -18,13 +19,11 @@ class AuthInterceptor @Inject constructor(
     private val preferences: NotelPreferences
 ) : Interceptor {
 
-    // Refresh endpoint path — must not trigger another refresh attempt
     private val refreshPath = "api/auth/refresh-token"
     private val logoutPath = "api/auth/logout"
 
-    // Mutex flag to avoid concurrent refresh storms
-    @Volatile private var isRefreshing = false
-    private val refreshLock = Object()
+    // Use ReentrantLock for structured, professional concurrent request holding
+    private val refreshLock = ReentrantLock()
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
@@ -34,7 +33,7 @@ class AuthInterceptor @Inject constructor(
         val authedRequest = originalRequest.withBearerToken(accessToken)
         val response = chain.proceed(authedRequest)
 
-        // Only attempt refresh on 401, and not for the refresh or logout endpoints themselves
+        // Only attempt refresh on 401, and not for refresh/logout endpoints
         val requestPath = originalRequest.url.encodedPath
         if (response.code != 401 || requestPath.contains(refreshPath) || requestPath.contains(logoutPath)) {
             return response
@@ -43,24 +42,22 @@ class AuthInterceptor @Inject constructor(
         // Close the failed response body before retrying
         response.close()
 
-        // Synchronize so only one thread refreshes at a time
-        synchronized(refreshLock) {
-            // Double-check: if another thread already refreshed while we waited,
-            // the stored access token will now differ from the one that got the 401
+        // Structured shared concurrency: lock and check if token changed while waiting
+        refreshLock.lock()
+        try {
             val currentToken = runBlocking { preferences.authToken.first() }
             if (currentToken != accessToken && currentToken.isNotBlank()) {
-                // Token was already refreshed by another thread — just retry with the new one
+                // Another request already completed the refresh successfully
                 return chain.proceed(originalRequest.withBearerToken(currentToken))
             }
 
             // Attempt to refresh
             val refreshToken = runBlocking { preferences.refreshToken.first() }
             if (refreshToken.isBlank()) {
-                // No refresh token — cannot recover; caller will handle the 401
                 return chain.proceed(originalRequest.withBearerToken(""))
             }
 
-            val newTokens = performRefresh(chain.request().url.toString(), refreshToken)
+            val newTokens = performRefresh(originalRequest.url, refreshToken)
 
             return if (newTokens != null) {
                 runBlocking {
@@ -69,7 +66,7 @@ class AuthInterceptor @Inject constructor(
                 }
                 chain.proceed(originalRequest.withBearerToken(newTokens.first))
             } else {
-                // Refresh failed — clear local session so the app shows the login screen
+                // Refresh failed — clear local session completely
                 runBlocking {
                     preferences.clearRefreshToken()
                     preferences.setAuthToken("")
@@ -77,19 +74,17 @@ class AuthInterceptor @Inject constructor(
                 }
                 chain.proceed(originalRequest.withBearerToken(""))
             }
+        } finally {
+            refreshLock.unlock()
         }
     }
 
     /**
-     * Performs the token refresh synchronously using a bare OkHttpClient
-     * (separate from Retrofit to avoid circular interceptor dependency).
-     * Returns Pair(newAccessToken, newRefreshToken) on success, null on failure.
+     * Performs the token refresh synchronously using a bare OkHttpClient.
      */
-    private fun performRefresh(originalUrl: String, refreshToken: String): Pair<String, String>? {
+    private fun performRefresh(originalUrl: okhttp3.HttpUrl, refreshToken: String): Pair<String, String>? {
         return try {
-            // Derive base URL from original request URL
-            val uri = okhttp3.HttpUrl.get(originalUrl)
-            val baseUrl = "${uri.scheme}://${uri.host}${if (uri.port != -1 && uri.port != 80 && uri.port != 443) ":${uri.port}" else ""}/"
+            val baseUrl = "${originalUrl.scheme}://${originalUrl.host}${if (originalUrl.port != -1 && originalUrl.port != 80 && originalUrl.port != 443) ":${originalUrl.port}" else ""}/"
             val refreshUrl = "${baseUrl}${refreshPath}"
 
             val json = """{"refreshToken":"$refreshToken"}"""

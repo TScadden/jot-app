@@ -1025,6 +1025,16 @@ class SettingsViewModel @Inject constructor(
     fun restartOnboarding(onLogout: () -> Unit) {
         viewModelScope.launch {
             try {
+                // Read refresh token before clearing credentials
+                val rfToken = preferences.refreshToken.first()
+                if (rfToken.isNotEmpty()) {
+                    try {
+                        tabsApi.logout(LogoutRequest(rfToken))
+                    } catch (_: Exception) {}
+                }
+            } catch (_: Exception) {}
+
+            try {
                 // 1. Delete account from server (removes user row + all server-side data via CASCADE)
                 logRepository.deleteAccountData()
             } catch (_: Exception) {
@@ -1084,6 +1094,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             // 0. Push ALL local data to the server BEFORE wiping anything
             // Run all three pushes in parallel to minimize wait time
+            var syncSuccess = true
             try {
                 val (profilePushed, entriesPushed, categoriesPushed) = coroutineScope {
                     val profileDeferred = async { syncManager.pushProfileData(skipHealthConnect = true) }
@@ -1094,28 +1105,32 @@ class SettingsViewModel @Inject constructor(
 
                 // Verify the sync pushes actually reached the server
                 if (!profilePushed || !entriesPushed || !categoriesPushed) {
-                    val details = mutableListOf<String>()
-                    if (!profilePushed) {
-                        val serverErr = syncManager.lastProfilePushError ?: "Unknown error"
-                        details.add("Profile: $serverErr")
-                    }
-                    if (!entriesPushed) details.add("Entries")
-                    if (!categoriesPushed) details.add("Categories")
-                    _logoutError.value = "Could not verify data was saved to server (Failed: ${details.joinToString(", ")}). Please try again in a moment."
-                    _isLoggingOut.value = false
-                    return@launch
+                    syncSuccess = false
                 }
             } catch (e: Exception) {
-                // Sync failed — DO NOT wipe local data
-                _logoutError.value = "Could not save data to server: ${e.message ?: "Network error"}. Your data is safe locally. Please try again."
-                _isLoggingOut.value = false
-                return@launch
+                syncSuccess = false
             }
 
-            // 1. Clear DataStore preferences (credentials, tokens, AI context, etc.)
+            if (!syncSuccess) {
+                // If sync failed, we let the user know, but do not block security-sensitive session termination.
+                // We proceed with the logout and token revocation on the server.
+                _logoutError.value = "Data sync failed before logout. Logging out anyway to secure your account."
+            }
+
+            // 1. Call server logout to revoke refresh token
+            try {
+                val rfToken = preferences.refreshToken.first()
+                if (rfToken.isNotEmpty()) {
+                    tabsApi.logout(LogoutRequest(rfToken))
+                }
+            } catch (_: Exception) {
+                // If network/logout call fails, proceed with local session cleanup anyway
+            }
+
+            // 2. Clear DataStore preferences (credentials, tokens, AI context, etc.)
             preferences.clearCredentials()
 
-            // 1b. Clear memory caches of Singletons to prevent cross-account leakage
+            // 2b. Clear memory caches of Singletons to prevent cross-account leakage
             logRepository.clearCache()
             habitRepository.clearCache()
             
