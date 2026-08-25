@@ -238,7 +238,7 @@ class QuickLogViewModel @Inject constructor(
             // 2. Check Repository-level session cache (survives tab switches)
             val repoCached = logRepository.getCachedSuggestions(cat.id)
             if (repoCached != null) {
-                val cleaned = processRawChips(repoCached)
+                val cleaned = processRawChips(repoCached, cat.name)
                 chipCache[cat.id] = cleaned
                 _uiState.update { it.copy(chips = cleaned, isLoadingChips = false, chipsError = null) }
                 return
@@ -255,7 +255,7 @@ class QuickLogViewModel @Inject constructor(
             _uiState.update { it.copy(isLoadingChips = true, chipsError = null, retryAfterSeconds = 0) }
             logRepository.getChipSuggestions(cat).fold(
                 onSuccess = { rawChips ->
-                    val chips = processRawChips(rawChips)
+                    val chips = processRawChips(rawChips, cat.name)
                     chipCache[cat.id] = chips  // store in cache
                     _uiState.update { it.copy(chips = chips, isLoadingChips = false) }
                 },
@@ -672,25 +672,26 @@ class QuickLogViewModel @Inject constructor(
         }
     }
 
-    private fun processRawChips(raw: List<String>): List<String> {
-        return raw.map { 
-            val cleaned = it.replace(Regex("\\(.*?\\)"), "") // Remove () and everything inside
-              .replace("?", "")
-              .trim()
-              .replace("\\s+".toRegex(), " ")
-            
+    private fun processRawChips(raw: List<String>, categoryName: String): List<String> {
+        val medicationCategory = categoryName.trim().equals("Medication", ignoreCase = true) ||
+            categoryName.trim().equals("Medications", ignoreCase = true)
+        val prohibitedMedicationTerms = Regex(
+            """\b(water|gallon|hydration|liquid\s*iv|water\s*boy|compression|garment|worn|wear|handicap|pass|appointment|exercise|rest|sleep|symptom|pain)\b""",
+            RegexOption.IGNORE_CASE
+        )
+
+        return raw.map {
+            val cleaned = it.replace(Regex("\\(.*?\\)"), "")
+                .replace("?", "")
+                .trim()
+                .replace("\\s+".toRegex(), " ")
+
             val words = cleaned.split(" ")
-            val truncated = if (words.size > 3) {
-                words.take(3).joinToString(" ")
-            } else {
-                cleaned
-            }
-            
-            if (truncated.length > 20) {
-                truncated.take(20).trim()
-            } else {
-                truncated
-            }
-        }.filter { it.isNotBlank() }
+            val truncated = if (words.size > 3) words.take(3).joinToString(" ") else cleaned
+            if (truncated.length > 20) truncated.take(20).trim() else truncated
+        }
+            .filter { it.isNotBlank() }
+            .filterNot { medicationCategory && prohibitedMedicationTerms.containsMatchIn(it) }
+            .distinctBy { it.lowercase() }
     }
 }
