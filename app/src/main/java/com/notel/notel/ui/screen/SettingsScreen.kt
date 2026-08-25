@@ -2332,13 +2332,12 @@ fun SettingsScreen(
                             Box(
                                 modifier = Modifier
                                     .size(52.dp)
-                                    .background(NotelPrimary.copy(alpha = 0.15f), CircleShape),
+                                    .background(NotelSurfaceHigh, CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Lock,
+                                Image(
+                                    painter = painterResource(id = com.notel.notel.R.drawable.ic_google_logo),
                                     contentDescription = null,
-                                    tint = NotelPrimary,
                                     modifier = Modifier.size(26.dp)
                                 )
                             }
