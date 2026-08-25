@@ -2325,8 +2325,11 @@ fun SettingsScreen(
 
                             Spacer(Modifier.height(14.dp))
 
+                            val userEmailConnected = userEmail.equals(googleAccountEmail, ignoreCase = true)
+                            val showOnlyConfirm = !userEmailConnected && userEmail.isNotBlank()
+
                             Text(
-                                text = "Set Password to Disconnect",
+                                text = if (showOnlyConfirm) "Disconnect Google Account" else "Set Password to Disconnect",
                                 fontSize = 19.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = NotelTextPrimary,
@@ -2336,7 +2339,9 @@ fun SettingsScreen(
                             Spacer(Modifier.height(6.dp))
 
                             Text(
-                                text = "Set a password to safely disconnect your Google account. If you close this, your Google account stays connected.",
+                                text = if (showOnlyConfirm) 
+                                    "Are you sure you want to disconnect this Google account? You will still be able to sign in using your email and password." 
+                                    else "Set a password to safely disconnect your Google account. If you close this, your Google account stays connected.",
                                 fontSize = 13.sp,
                                 color = NotelTextSecondary,
                                 textAlign = TextAlign.Center,
@@ -2345,100 +2350,102 @@ fun SettingsScreen(
 
                             Spacer(Modifier.height(20.dp))
 
-                            // Clean Read-Only Account Email Card
-                            Column(modifier = Modifier.fillMaxWidth()) {
-                                Text(
-                                    text = "ACCOUNT EMAIL",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = NotelTextSecondary.copy(alpha = 0.8f),
-                                    letterSpacing = 0.5.sp
-                                )
-                                Spacer(Modifier.height(6.dp))
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(NotelSurfaceHigh.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
-                                        .border(1.dp, NotelSurfaceHigh.copy(alpha = 0.8f), RoundedCornerShape(14.dp))
-                                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Image(
-                                        painter = painterResource(id = com.notel.notel.R.drawable.ic_google_logo),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(Modifier.width(12.dp))
+                            if (!showOnlyConfirm) {
+                                // Clean Read-Only Account Email Card
+                                Column(modifier = Modifier.fillMaxWidth()) {
                                     Text(
-                                        text = googleAccountEmail,
-                                        color = NotelTextPrimary,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        text = "ACCOUNT EMAIL",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = NotelTextSecondary.copy(alpha = 0.8f),
+                                        letterSpacing = 0.5.sp
                                     )
+                                    Spacer(Modifier.height(6.dp))
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(NotelSurfaceHigh.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
+                                            .border(1.dp, NotelSurfaceHigh.copy(alpha = 0.8f), RoundedCornerShape(14.dp))
+                                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Image(
+                                            painter = painterResource(id = com.notel.notel.R.drawable.ic_google_logo),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(Modifier.width(12.dp))
+                                        Text(
+                                            text = googleAccountEmail,
+                                            color = NotelTextPrimary,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
                                 }
+
+                                Spacer(Modifier.height(14.dp))
+
+                                // New Password Field
+                                OutlinedTextField(
+                                    value = disconnectPassword,
+                                    onValueChange = { disconnectPassword = it; disconnectErrorMsg = null },
+                                    label = { Text("New Password") },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(14.dp),
+                                    visualTransformation = if (disconnectPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                    trailingIcon = {
+                                        IconButton(onClick = { disconnectPasswordVisible = !disconnectPasswordVisible }) {
+                                            Icon(
+                                                imageVector = if (disconnectPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                                contentDescription = null,
+                                                tint = NotelTextSecondary
+                                            )
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = NotelPrimary,
+                                        unfocusedBorderColor = NotelSurfaceHigh,
+                                        focusedLabelColor = NotelPrimary,
+                                        unfocusedLabelColor = NotelTextSecondary,
+                                        focusedTextColor = NotelTextPrimary,
+                                        unfocusedTextColor = NotelTextPrimary
+                                    )
+                                )
+
+                                Spacer(Modifier.height(12.dp))
+
+                                // Confirm Password Field
+                                OutlinedTextField(
+                                    value = disconnectConfirmPassword,
+                                    onValueChange = { disconnectConfirmPassword = it; disconnectErrorMsg = null },
+                                    label = { Text("Confirm Password") },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(14.dp),
+                                    visualTransformation = if (disconnectConfirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                    trailingIcon = {
+                                        IconButton(onClick = { disconnectConfirmPasswordVisible = !disconnectConfirmPasswordVisible }) {
+                                            Icon(
+                                                imageVector = if (disconnectConfirmPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                                contentDescription = null,
+                                                tint = NotelTextSecondary
+                                            )
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = NotelPrimary,
+                                        unfocusedBorderColor = NotelSurfaceHigh,
+                                        focusedLabelColor = NotelPrimary,
+                                        unfocusedLabelColor = NotelTextSecondary,
+                                        focusedTextColor = NotelTextPrimary,
+                                        unfocusedTextColor = NotelTextPrimary
+                                    )
+                                )
                             }
-
-                            Spacer(Modifier.height(14.dp))
-
-                            // New Password Field
-                            OutlinedTextField(
-                                value = disconnectPassword,
-                                onValueChange = { disconnectPassword = it; disconnectErrorMsg = null },
-                                label = { Text("New Password") },
-                                singleLine = true,
-                                shape = RoundedCornerShape(14.dp),
-                                visualTransformation = if (disconnectPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                                trailingIcon = {
-                                    IconButton(onClick = { disconnectPasswordVisible = !disconnectPasswordVisible }) {
-                                        Icon(
-                                            imageVector = if (disconnectPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                            contentDescription = null,
-                                            tint = NotelTextSecondary
-                                        )
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = NotelPrimary,
-                                    unfocusedBorderColor = NotelSurfaceHigh,
-                                    focusedLabelColor = NotelPrimary,
-                                    unfocusedLabelColor = NotelTextSecondary,
-                                    focusedTextColor = NotelTextPrimary,
-                                    unfocusedTextColor = NotelTextPrimary
-                                )
-                            )
-
-                            Spacer(Modifier.height(12.dp))
-
-                            // Confirm Password Field
-                            OutlinedTextField(
-                                value = disconnectConfirmPassword,
-                                onValueChange = { disconnectConfirmPassword = it; disconnectErrorMsg = null },
-                                label = { Text("Confirm Password") },
-                                singleLine = true,
-                                shape = RoundedCornerShape(14.dp),
-                                visualTransformation = if (disconnectConfirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                                trailingIcon = {
-                                    IconButton(onClick = { disconnectConfirmPasswordVisible = !disconnectConfirmPasswordVisible }) {
-                                        Icon(
-                                            imageVector = if (disconnectConfirmPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                            contentDescription = null,
-                                            tint = NotelTextSecondary
-                                        )
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = NotelPrimary,
-                                    unfocusedBorderColor = NotelSurfaceHigh,
-                                    focusedLabelColor = NotelPrimary,
-                                    unfocusedLabelColor = NotelTextSecondary,
-                                    focusedTextColor = NotelTextPrimary,
-                                    unfocusedTextColor = NotelTextPrimary
-                                )
-                            )
 
                             if (disconnectErrorMsg != null) {
                                 Spacer(Modifier.height(10.dp))
@@ -2470,17 +2477,28 @@ fun SettingsScreen(
 
                                 Button(
                                     onClick = {
-                                        viewModel.disconnectGoogleAccountWithPassword(
-                                            disconnectPassword,
-                                            disconnectConfirmPassword
-                                        ) { success, msg ->
-                                            if (success) {
-                                                showDisconnectGoogleDialog = false
-                                                disconnectPassword = ""
-                                                disconnectConfirmPassword = ""
-                                                disconnectErrorMsg = null
-                                            } else {
-                                                disconnectErrorMsg = msg
+                                        if (showOnlyConfirm) {
+                                            viewModel.disconnectGoogleAccount { success, msg ->
+                                                if (success) {
+                                                    showDisconnectGoogleDialog = false
+                                                    disconnectErrorMsg = null
+                                                } else {
+                                                    disconnectErrorMsg = msg
+                                                }
+                                            }
+                                        } else {
+                                            viewModel.disconnectGoogleAccountWithPassword(
+                                                disconnectPassword,
+                                                disconnectConfirmPassword
+                                            ) { success, msg ->
+                                                if (success) {
+                                                    showDisconnectGoogleDialog = false
+                                                    disconnectPassword = ""
+                                                    disconnectConfirmPassword = ""
+                                                    disconnectErrorMsg = null
+                                                } else {
+                                                    disconnectErrorMsg = msg
+                                                }
                                             }
                                         }
                                     },
@@ -2491,7 +2509,7 @@ fun SettingsScreen(
                                     colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary)
                                 ) {
                                     Text(
-                                        text = "Set & Disconnect",
+                                        text = if (showOnlyConfirm) "Disconnect" else "Set & Disconnect",
                                         color = Color.White,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 13.sp,

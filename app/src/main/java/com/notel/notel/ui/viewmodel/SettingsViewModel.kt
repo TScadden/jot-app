@@ -25,6 +25,7 @@ import com.notel.notel.data.ConnectionState
 import com.notel.notel.service.HeartRateLoggingService
 import java.io.File
 import com.notel.notel.data.sync.SyncManager
+import com.notel.notel.data.remote.LogoutRequest
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
@@ -186,10 +187,23 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun disconnectGoogleAccount() {
+    fun disconnectGoogleAccount(onResult: (Boolean, String?) -> Unit) {
         viewModelScope.launch {
-            preferences.setGoogleAccountConnected(false)
-            preferences.setGoogleAccountEmail("")
+            try {
+                val res = tabsApi.disconnectGoogle()
+                if (res.isSuccessful && res.body()?.error == null) {
+                    preferences.setGoogleAccountConnected(false)
+                    preferences.setGoogleAccountEmail("")
+                    onResult(true, "Google account disconnected successfully.")
+                } else {
+                    val err = res.body()?.error ?: "Failed to disconnect Google account"
+                    onResult(false, err)
+                }
+            } catch (e: Exception) {
+                preferences.setGoogleAccountConnected(false)
+                preferences.setGoogleAccountEmail("")
+                onResult(true, "Google account disconnected.")
+            }
         }
     }
 

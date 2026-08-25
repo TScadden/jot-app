@@ -593,6 +593,9 @@ interface TabsApi {
     @POST("api/auth/logout")
     suspend fun logout(@Body request: LogoutRequest): Response<GenericResponse>
 
+    @POST("api/auth/disconnect-google")
+    suspend fun disconnectGoogle(): Response<GenericResponse>
+
     @POST("api/friends/request")
     suspend fun sendFriendRequest(@Body request: FriendRequestApiRequest): Response<GenericResponse>
 
