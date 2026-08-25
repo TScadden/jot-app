@@ -66,3 +66,15 @@ captures/
 # Website
 website/node_modules/
 website/dist/
+
+# Private keys, certificates, environment files, and credentials
+**/id_ecdsa
+**/*_id_ecdsa
+**/*.key
+**/*.pem
+**/*.pub
+**/*.cert
+**/cert.pub
+.env
+.env.*
+

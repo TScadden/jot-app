@@ -9,6 +9,9 @@
         
         <!-- Exclude credentials, access tokens, and settings stored in sharedpreferences/datastore -->
         <exclude domain="sharedpref" path="."/>
+        
+        <!-- Exclude health/knowledge documents -->
+        <exclude domain="file" path="knowledge_docs"/>
     </cloud-backup>
     <device-transfer>
         <!-- Exclude sensitive database storing medical logs and wellness data -->
@@ -19,5 +22,8 @@
         
         <!-- Exclude credentials, access tokens, and settings stored in sharedpreferences/datastore -->
         <exclude domain="sharedpref" path="."/>
+        
+        <!-- Exclude health/knowledge documents -->
+        <exclude domain="file" path="knowledge_docs"/>
     </device-transfer>
 </data-extraction-rules>

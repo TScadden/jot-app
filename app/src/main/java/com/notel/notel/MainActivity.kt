@@ -147,10 +147,11 @@ class MainActivity : ComponentActivity() {
 
             DisposableEffect(activity) {
                 val listener = androidx.core.util.Consumer<android.content.Intent> { intent ->
-                    if (intent.data?.scheme == "potscube" && intent.data?.host == "callback") {
+                    if (intent.data?.scheme == "com.notel.notel.fitbit" && intent.data?.host == "callback") {
                         val code = intent.data?.getQueryParameter("code")
+                        val state = intent.data?.getQueryParameter("state") ?: ""
                         if (code != null) {
-                            fitbitViewModel.exchangeCodeForToken(code)
+                            fitbitViewModel.exchangeCodeForToken(code, state)
                             intent.data = null
                         }
                     }
@@ -159,10 +160,11 @@ class MainActivity : ComponentActivity() {
                 
                 // Check initial intent in case the app was launched directly via link
                 val initialData = activity?.intent?.data
-                if (initialData?.scheme == "potscube" && initialData.host == "callback") {
+                if (initialData?.scheme == "com.notel.notel.fitbit" && initialData.host == "callback") {
                     val code = initialData.getQueryParameter("code")
+                    val state = initialData.getQueryParameter("state") ?: ""
                     if (code != null) {
-                        fitbitViewModel.exchangeCodeForToken(code)
+                        fitbitViewModel.exchangeCodeForToken(code, state)
                         activity?.intent?.data = null
                     }
                 }

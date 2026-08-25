@@ -8,4 +8,7 @@
     
     <!-- Exclude credentials, access tokens, and settings stored in sharedpreferences/datastore -->
     <exclude domain="sharedpref" path="."/>
+    
+    <!-- Exclude health/knowledge documents -->
+    <exclude domain="file" path="knowledge_docs"/>
 </full-backup-content>

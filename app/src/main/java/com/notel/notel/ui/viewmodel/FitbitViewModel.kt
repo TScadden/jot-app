@@ -1122,6 +1122,7 @@ class FitbitViewModel @Inject constructor(
         viewModelScope.launch {
             preferences.setFitbitToken("")
             preferences.setFitbitRefreshToken("")
+            preferences.clearFitbitOauthPending()
             _state.update { it.copy(isFitbitConnected = false) }
         }
     }
@@ -1133,32 +1134,84 @@ class FitbitViewModel @Inject constructor(
         }
     }
 
-    fun connectFitbit(context: android.content.Context) {
-        val clientId = "23TRPL"
-        val redirectUri = "potscube://callback"
-        val scope = "activity heartrate sleep profile weight oxygen_saturation respiratory_rate"
-        val url = "https://www.fitbit.com/oauth2/authorize?response_type=code&client_id=$clientId&redirect_uri=${java.net.URLEncoder.encode(redirectUri, "UTF-8")}&scope=${java.net.URLEncoder.encode(scope, "UTF-8")}"
-        
-        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
-        context.startActivity(intent)
+    private fun generateSecureRandomString(byteLength: Int): String {
+        val random = java.security.SecureRandom()
+        val bytes = ByteArray(byteLength)
+        random.nextBytes(bytes)
+        return android.util.Base64.encodeToString(bytes, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING)
     }
 
-    fun exchangeCodeForToken(code: String) {
+    private fun generateCodeChallenge(verifier: String): String {
+        val bytes = verifier.toByteArray(Charsets.US_ASCII)
+        val messageDigest = java.security.MessageDigest.getInstance("SHA-256")
+        val digest = messageDigest.digest(bytes)
+        return android.util.Base64.encodeToString(digest, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING)
+    }
+
+    fun connectFitbit(context: android.content.Context) {
+        viewModelScope.launch {
+            val state = generateSecureRandomString(16)
+            val codeVerifier = generateSecureRandomString(32)
+            val codeChallenge = generateCodeChallenge(codeVerifier)
+            
+            preferences.setFitbitOauthPending(codeVerifier, state, System.currentTimeMillis())
+
+            val clientId = "23TRPL"
+            val redirectUri = "com.notel.notel.fitbit://callback"
+            val scope = "activity heartrate sleep profile weight oxygen_saturation respiratory_rate"
+            val url = "https://www.fitbit.com/oauth2/authorize?response_type=code&client_id=$clientId&redirect_uri=${java.net.URLEncoder.encode(redirectUri, "UTF-8")}&scope=${java.net.URLEncoder.encode(scope, "UTF-8")}&code_challenge=$codeChallenge&code_challenge_method=S256&state=$state"
+            
+            withContext(Dispatchers.Main) {
+                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)).apply {
+                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            }
+        }
+    }
+
+    fun exchangeCodeForToken(code: String, receivedState: String) {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true) }
             try {
+                // Load pending OAuth state
+                val pendingState = preferences.fitbitOauthState.first()
+                val pendingVerifier = preferences.fitbitCodeVerifier.first()
+                val pendingTime = preferences.fitbitOauthTime.first()
+
+                if (pendingState.isBlank() || pendingVerifier.isBlank()) {
+                    _state.update { it.copy(isLoading = false, errorMessage = "No pending login request found.") }
+                    return@launch
+                }
+
+                if (System.currentTimeMillis() - pendingTime > 600000L) { // 10 minutes timeout
+                    preferences.clearFitbitOauthPending() // Clear expired transaction
+                    _state.update { it.copy(isLoading = false, errorMessage = "Login request timed out. Please try again.") }
+                    return@launch
+                }
+
+                if (pendingState != receivedState) {
+                    // Reject mismatched state WITHOUT deleting the valid, unexpired pending transaction
+                    _state.update { it.copy(isLoading = false, errorMessage = "Mismatched OAuth state.") }
+                    return@launch
+                }
+
+                // Validation succeeded. Consume matching transaction immediately (single-use)
+                preferences.clearFitbitOauthPending()
+
                 val clientId = "23TRPL"
-                val clientSecret = "ffd7cbb8199676bfe4a83dd718741e2f"
+                // Construct Basic Auth header for public client: client_id with no secret
                 val authHeader = android.util.Base64.encodeToString(
-                    "$clientId:$clientSecret".toByteArray(),
+                    "$clientId:".toByteArray(),
                     android.util.Base64.NO_WRAP
                 )
 
                 val requestBody = okhttp3.FormBody.Builder()
                     .add("client_id", clientId)
                     .add("grant_type", "authorization_code")
-                    .add("redirect_uri", "potscube://callback")
+                    .add("redirect_uri", "com.notel.notel.fitbit://callback")
                     .add("code", code)
+                    .add("code_verifier", pendingVerifier)
                     .build()
 
                 val request = okhttp3.Request.Builder()
@@ -1181,7 +1234,7 @@ class FitbitViewModel @Inject constructor(
                                 viewModelScope.launch {
                                     preferences.setFitbitToken(token)
                                     preferences.setFitbitRefreshToken(refresh)
-                                    _state.update { it.copy(isFitbitConnected = true, isLoading = false) }
+                                    _state.update { it.copy(isFitbitConnected = true, isLoading = false, errorMessage = null) }
                                     sync()
                                 }
                             }

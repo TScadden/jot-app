@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; font-src https://fonts.gstatic.com; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; script-src 'self'; img-src 'self' data:;">
     <title>Jot Admin Portal</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
     <style>
@@ -265,7 +266,7 @@
                 <h1>Jot Admin</h1>
                 <p style="color: var(--text-dim); margin-top: 4px;">Live Management Dashboard</p>
             </div>
-            <button class="refresh-btn" id="refresh-btn" onclick="loadData()">
+            <button class="refresh-btn" id="refresh-btn">
                 <svg id="refresh-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
                 Refresh Data
             </button>
@@ -333,130 +334,6 @@
 
     <div id="toast" class="toast">Action completed successfully</div>
 
-    <script>
-        async function loadData() {
-            const btn = document.getElementById('refresh-btn');
-            const icon = document.getElementById('refresh-icon');
-            
-            btn.classList.add('loading');
-            icon.classList.add('spinning');
-
-            try {
-                // Fetch data and wait at least 1 second for the "satisfying" spin
-                const [usersRes, logsRes] = await Promise.all([
-                    fetch('/api/users'),
-                    fetch('/api/logs'),
-                    new Promise(resolve => setTimeout(resolve, 1000))
-                ]);
-                
-                const users = await usersRes.json();
-                const logs = await logsRes.json();
-
-                renderUsers(users);
-                renderLogs(logs);
-                updateStats(users);
-            } catch (err) {
-                console.error(err);
-                showToast('Failed to load data', true);
-            } finally {
-                btn.classList.remove('loading');
-                icon.classList.remove('spinning');
-            }
-        }
-
-        function updateStats(users) {
-            document.getElementById('total-users').textContent = users.length;
-            document.getElementById('unlimited-users').textContent = users.filter(u => u.has_access).length;
-            document.getElementById('admin-count').textContent = users.filter(u => u.is_admin).length;
-        }
-
-        function renderUsers(users) {
-            const tbody = document.getElementById('users-table');
-            tbody.innerHTML = users.map(user => `
-                <tr>
-                    <td style="font-weight: 600;">${user.email}</td>
-                    <td>
-                        <span class="badge ${user.is_admin ? 'badge-admin' : 'badge-none'}">
-                            ${user.is_admin ? 'ADMIN' : 'USER'}
-                        </span>
-                    </td>
-                    <td>
-                        <span class="badge ${user.has_access ? 'badge-access' : 'badge-none'}">
-                            ${user.has_access ? 'UNLIMITED' : 'STANDARD'}
-                        </span>
-                    </td>
-                    <td class="timestamp">${user.expiry.split(' ')[0]}</td>
-                    <td class="timestamp">${new Date(user.created_at).toLocaleDateString()}</td>
-                    <td style="text-align: right; display: flex; gap: 8px; justify-content: flex-end;">
-                        <button class="btn btn-sm ${user.is_admin ? 'btn-outline' : ''}" onclick="toggleAdmin('${user.email}', ${!user.is_admin})">
-                            ${user.is_admin ? 'Revoke Admin' : 'Make Admin'}
-                        </button>
-                        <button class="btn btn-sm btn-danger" onclick="trashAccount('${user.id}', '${user.email}')">
-                            Remove Account
-                        </button>
-                    </td>
-                </tr>
-            `).join('');
-        }
-
-        function renderLogs(logs) {
-            const tbody = document.getElementById('logs-table');
-            tbody.innerHTML = logs.map(log => `
-                <tr>
-                    <td style="font-size: 0.85rem; color: var(--text-dim);">${log.email}</td>
-                    <td><span class="badge badge-none">${log.category_id}</span></td>
-                    <td style="max-width: 400px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${log.body}</td>
-                    <td class="timestamp">${new Date(log.timestamp).toLocaleString()}</td>
-                </tr>
-            `).join('');
-        }
-
-        async function trashAccount(id, email) {
-            if (!confirm(`⚠️ CRITICAL ACTION: Are you sure you want to PERMANENTLY TRASH the account for ${email}? \n\nThis will delete ALL logs, habits, documents, and login access forever.`)) return;
-            
-            try {
-                const res = await fetch('/api/users/delete', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id, email })
-                });
-                if (res.ok) {
-                    showToast(`Successfully removed ${email}`);
-                    loadData();
-                }
-            } catch (err) {
-                showToast('Trash failed', true);
-            }
-        }
-
-        async function toggleAdmin(email, isAdmin) {
-            try {
-                const res = await fetch('/api/users/toggle-admin', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, isAdmin })
-                });
-                if (res.ok) {
-                    showToast(`${email} is now ${isAdmin ? 'an Admin' : 'a User'}`);
-                    loadData();
-                }
-            } catch (err) {
-                showToast('Action failed', true);
-            }
-        }
-
-        function showToast(msg, isError = false) {
-            const toast = document.getElementById('toast');
-            toast.textContent = msg;
-            toast.style.background = isError ? 'var(--error)' : 'var(--primary)';
-            toast.classList.add('show');
-            setTimeout(() => toast.classList.remove('show'), 3000);
-        }
-
-        // Initial Load
-        loadData();
-        // Auto-refresh every 60 seconds
-        setInterval(loadData, 60000);
-    </script>
+    <script src="/dashboard.js"></script>
 </body>
 </html>

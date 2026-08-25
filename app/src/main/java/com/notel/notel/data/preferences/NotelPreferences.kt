@@ -49,6 +49,9 @@ class NotelPreferences @Inject constructor(
         val AI_INSIGHTS = stringPreferencesKey("ai_insights")
         val FITBIT_TOKEN = stringPreferencesKey("fitbit_token")
         val FITBIT_REFRESH_TOKEN = stringPreferencesKey("fitbit_refresh_token")
+        val FITBIT_CODE_VERIFIER = stringPreferencesKey("fitbit_code_verifier")
+        val FITBIT_OAUTH_STATE = stringPreferencesKey("fitbit_oauth_state")
+        val FITBIT_OAUTH_TIME = longPreferencesKey("fitbit_oauth_time")
         
         val API_SPENDING_LIMIT = floatPreferencesKey("api_spending_limit")
         val CURRENT_MONTH_COST = floatPreferencesKey("current_month_cost")
@@ -364,6 +367,10 @@ class NotelPreferences @Inject constructor(
         }
     }
 
+    val fitbitCodeVerifier: Flow<String> = context.dataStore.data.map { it[FITBIT_CODE_VERIFIER] ?: "" }
+    val fitbitOauthState: Flow<String> = context.dataStore.data.map { it[FITBIT_OAUTH_STATE] ?: "" }
+    val fitbitOauthTime: Flow<Long> = context.dataStore.data.map { it[FITBIT_OAUTH_TIME] ?: 0L }
+
     val apiSpendingLimit: Flow<Float> = context.dataStore.data.map { prefs ->
         prefs[API_SPENDING_LIMIT] ?: 0f
     }
@@ -595,6 +602,22 @@ class NotelPreferences @Inject constructor(
     suspend fun setFitbitRefreshToken(token: String) {
         val encrypted = NotelCrypto.encrypt(token)
         context.dataStore.edit { it[FITBIT_REFRESH_TOKEN] = encrypted }
+    }
+
+    suspend fun setFitbitOauthPending(verifier: String, state: String, timestamp: Long) {
+        context.dataStore.edit {
+            it[FITBIT_CODE_VERIFIER] = verifier
+            it[FITBIT_OAUTH_STATE] = state
+            it[FITBIT_OAUTH_TIME] = timestamp
+        }
+    }
+
+    suspend fun clearFitbitOauthPending() {
+        context.dataStore.edit {
+            it.remove(FITBIT_CODE_VERIFIER)
+            it.remove(FITBIT_OAUTH_STATE)
+            it.remove(FITBIT_OAUTH_TIME)
+        }
     }
 
     suspend fun setApiSpendingLimit(limit: Float) {
