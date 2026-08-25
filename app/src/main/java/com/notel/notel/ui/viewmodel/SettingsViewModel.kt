@@ -143,49 +143,24 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun connectGoogleAccount(email: String, onResult: (Boolean, String?) -> Unit) {
+    fun connectGoogleAccount(idToken: String, email: String, onResult: (Boolean, String?) -> Unit) {
         viewModelScope.launch {
             try {
-                val currentEmail = preferences.userEmail.first()
-                val currentGoogleEmail = preferences.googleAccountEmail.first()
-
-                // Case 1: Active session where userEmail wasn't cached yet, or first-time connection
-                if (currentEmail.isBlank() && currentGoogleEmail.isBlank()) {
-                    preferences.setUserEmail(email)
-                    preferences.setGoogleAccountConnected(true)
-                    preferences.setGoogleAccountEmail(email)
-                    onResult(true, null)
-                    return@launch
-                }
-
-                // Case 2: Connecting the same email as current account email or current linked google email
-                if ((currentEmail.isNotBlank() && currentEmail.equals(email, ignoreCase = true)) ||
-                    (currentGoogleEmail.isNotBlank() && currentGoogleEmail.equals(email, ignoreCase = true))) {
-                    preferences.setUserEmail(email)
-                    preferences.setGoogleAccountConnected(true)
-                    preferences.setGoogleAccountEmail(email)
-                    onResult(true, null)
-                    return@launch
-                }
-
-                // Case 3: Trying to connect a DIFFERENT Google email. Check if that email is used by another account on server.
-                val response = tabsApi.login(com.notel.notel.data.remote.AuthRequest(email, "DummyAuthCheckPass!2026"))
+                val response = tabsApi.linkGoogle(
+                    com.notel.notel.data.remote.LinkGoogleRequest(idToken)
+                )
                 val body = response.body()
-                
-                if (response.code() == 401 || (body != null && body.error?.contains("password", ignoreCase = true) == true)) {
-                    // Account already exists under a DIFFERENT user
-                    onResult(false, "An account already uses that Google account.")
-                } else {
-                    preferences.setUserEmail(email)
+                if (response.isSuccessful && body?.success == true) {
                     preferences.setGoogleAccountConnected(true)
                     preferences.setGoogleAccountEmail(email)
-                    onResult(true, null)
+                    onResult(true, body.message)
+                } else {
+                    onResult(false, body?.error ?: "Unable to connect Google account")
                 }
             } catch (e: Exception) {
-                preferences.setUserEmail(email)
-                preferences.setGoogleAccountConnected(true)
-                preferences.setGoogleAccountEmail(email)
-                onResult(true, null)
+                // Linking must fail closed. Never update local connection state
+                // unless the server verified and persisted the Google identity.
+                onResult(false, "Could not verify Google account. Check your connection and try again.")
             }
         }
     }
@@ -203,9 +178,8 @@ class SettingsViewModel @Inject constructor(
                     onResult(false, err)
                 }
             } catch (e: Exception) {
-                preferences.setGoogleAccountConnected(false)
-                preferences.setGoogleAccountEmail("")
-                onResult(true, "Google account disconnected.")
+                // Preserve local state when the server could not confirm disconnection.
+                onResult(false, "Could not disconnect Google account. Check your connection and try again.")
             }
         }
     }
