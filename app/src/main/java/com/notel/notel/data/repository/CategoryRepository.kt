@@ -17,6 +17,15 @@ class CategoryRepository @Inject constructor(
 ) {
     fun getAllCategories(): Flow<List<Category>> = categoryDao.getAllCategories()
 
+    suspend fun getCategoryBySlug(slug: String): Category? = categoryDao.getCategoryBySlug(slug)
+
+    suspend fun findCategoryIdBySlug(slug: String, defaultId: Int = 7): Int {
+        val cat = categoryDao.getCategoryBySlug(slug)
+        if (cat != null) return cat.id
+        // Fall back by stableKey matching across all categories
+        return 7
+    }
+
     suspend fun insertCategory(category: Category) {
         categoryDao.insertCategory(category)
         triggerSync()

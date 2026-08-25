@@ -965,7 +965,7 @@ class LogRepository @Inject constructor(
         }
     }
     
-    suspend fun saveAiInsight(text: String, type: String, timestamp: Long? = null) = insightsMutex.withLock {
+    suspend fun saveAiInsight(text: String, type: String, timestamp: Long? = null, entryId: Long? = null, requestId: String? = null) = insightsMutex.withLock {
         val insightsStr = preferences.aiInsights.first()
         val insights: MutableList<AiInsight> = try {
             if (insightsStr.isNotBlank()) Json.decodeFromString<MutableList<AiInsight>>(insightsStr) else mutableListOf()
@@ -978,9 +978,9 @@ class LogRepository @Inject constructor(
             val date = java.time.Instant.ofEpochMilli(ts).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
             "bodyload_$date"
         } else {
-            java.util.UUID.randomUUID().toString()
+            requestId ?: java.util.UUID.randomUUID().toString()
         }
-        val newInsight = AiInsight(insightId, text, ts, type)
+        val newInsight = AiInsight(id = insightId, text = text, timestamp = ts, type = type, entryId = entryId, requestId = requestId)
         insights.add(0, newInsight)
         preferences.setAiInsights(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(AiInsight.serializer()), insights.take(1000))) // Keep last 1000
         
@@ -1773,6 +1773,10 @@ class LogRepository @Inject constructor(
         val d1 = java.time.Instant.ofEpochMilli(t1).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
         val d2 = java.time.Instant.ofEpochMilli(t2).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
         return d1 == d2
+    }
+
+    fun getAllInsightsWithEntryAndCategory(): Flow<List<com.notel.notel.data.local.entity.AiInsightWithEntryAndCategory>> {
+        return db.aiInsightDao().getAllInsightsWithEntryAndCategory()
     }
 
     suspend fun deleteAccountData(): Result<Unit> {

@@ -30,9 +30,11 @@ import kotlinx.coroutines.launch
         UserList::class,
         UserListItem::class,
         com.notel.notel.data.local.entity.Medication::class,
-        com.notel.notel.data.local.entity.MedicationSideEffectCache::class
+        com.notel.notel.data.local.entity.MedicationSideEffectCache::class,
+        com.notel.notel.data.local.entity.AiInsight::class,
+        com.notel.notel.data.local.entity.PinnedTemplate::class
     ],
-    version = 22,
+    version = 24,
     exportSchema = false
 )
 abstract class NotelDatabase : RoomDatabase() {
@@ -44,9 +46,49 @@ abstract class NotelDatabase : RoomDatabase() {
     abstract fun coachMessageDao(): com.notel.notel.data.local.dao.CoachMessageDao
     abstract fun userListDao(): UserListDao
     abstract fun medicationDao(): com.notel.notel.data.local.dao.MedicationDao
+    abstract fun aiInsightDao(): com.notel.notel.data.local.dao.AiInsightDao
+    abstract fun pinnedTemplateDao(): com.notel.notel.data.local.dao.PinnedTemplateDao
 
     companion object {
         @Volatile private var INSTANCE: NotelDatabase? = null
+
+        val MIGRATION_23_24 = object : Migration(23, 24) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS pinned_templates (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        title TEXT NOT NULL,
+                        categorySlug TEXT NOT NULL,
+                        body TEXT NOT NULL,
+                        chipsJson TEXT NOT NULL DEFAULT '[]',
+                        sortOrder INTEGER NOT NULL DEFAULT 0,
+                        isMedication INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+            }
+        }
+
+        val MIGRATION_22_23 = object : Migration(22, 23) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                try {
+                    db.execSQL("ALTER TABLE categories ADD COLUMN slug TEXT")
+                } catch (e: Exception) { }
+
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS ai_insights (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        text TEXT NOT NULL,
+                        timestamp INTEGER NOT NULL,
+                        type TEXT NOT NULL,
+                        entryId INTEGER,
+                        requestId TEXT
+                    )
+                """.trimIndent())
+
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_ai_insights_entryId ON ai_insights(entryId)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_ai_insights_requestId ON ai_insights(requestId)")
+            }
+        }
 
         private val MIGRATION_11_12 = object : Migration(11, 12) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -226,7 +268,7 @@ abstract class NotelDatabase : RoomDatabase() {
                     "notel_db"
                 )
                     .fallbackToDestructiveMigration()
-                    .addMigrations(MIGRATION_1_2, MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24)
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)

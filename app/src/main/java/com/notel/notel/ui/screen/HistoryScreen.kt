@@ -170,37 +170,113 @@ fun HistoryScreen(
                 }
             }
 
-            // ── Entry Count ──────────────────────────────────────────────
-            Text(
-                "${entries.size} ${if (entries.size == 1) "entry" else "entries"}",
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
-                color = TileAccentPurple.copy(alpha = 0.6f),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                letterSpacing = 0.5.sp
-            )
+            var selectedTab by remember { mutableStateOf(0) } // 0 = Entries, 1 = AI Insights History
+            val aiInsightsWithDetails by viewModel.aiInsightsWithDetails.collectAsState()
 
-            // ── Entry List ────────────────────────────────────────────────
-            if (entries.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.NoteAlt, null, tint = NotelSurfaceHigh, modifier = Modifier.size(64.dp))
-                        Spacer(Modifier.height(12.dp))
-                        Text("No entries yet", color = NotelTextSecondary)
+            TabRow(
+                selectedTabIndex = selectedTab,
+                containerColor = TileBackground,
+                contentColor = TileAccentPurple,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            ) {
+                Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }) {
+                    Text("LOGS (${entries.size})", modifier = Modifier.padding(vertical = 10.dp), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
+                Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }) {
+                    Text("AI INSIGHTS (${aiInsightsWithDetails.size})", modifier = Modifier.padding(vertical = 10.dp), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
+            }
+
+            if (selectedTab == 0) {
+                if (entries.isEmpty()) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.NoteAlt, null, tint = NotelSurfaceHigh, modifier = Modifier.size(64.dp))
+                            Spacer(Modifier.height(12.dp))
+                            Text("No entries yet", color = NotelTextSecondary)
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 100.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(entries, key = { it.id }) { entry ->
+                            EntryCard(
+                                entry = entry,
+                                category = categories.find { it.id == entry.categoryId },
+                                onClick = { onEntryClick(entry.id) },
+                                onDelete = { viewModel.deleteEntry(entry) }
+                            )
+                        }
                     }
                 }
             } else {
-                LazyColumn(
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 100.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(entries, key = { it.id }) { entry ->
-                        EntryCard(
-                            entry = entry,
-                            category = categories.find { it.id == entry.categoryId },
-                            onClick = { onEntryClick(entry.id) },
-                            onDelete = { viewModel.deleteEntry(entry) }
-                        )
+                if (aiInsightsWithDetails.isEmpty()) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.AutoAwesome, null, tint = NotelSurfaceHigh, modifier = Modifier.size(64.dp))
+                            Spacer(Modifier.height(12.dp))
+                            Text("No AI insights history", color = NotelTextSecondary)
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 100.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(aiInsightsWithDetails, key = { it.insight.id }) { item ->
+                            val sdf = remember { SimpleDateFormat("MMM d, yyyy · h:mm a", Locale.getDefault()) }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(TileBackground)
+                                    .border(1.dp, TileAccentPurple.copy(alpha = 0.25f), RoundedCornerShape(16.dp))
+                                    .padding(16.dp)
+                            ) {
+                                Column {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = item.insight.type.uppercase(),
+                                            color = TileAccentPurple,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp
+                                        )
+                                        Text(
+                                            text = item.category?.name?.uppercase() ?: (item.entry?.let { "CATEGORY ID ${it.categoryId}" } ?: "UNCATEGORIZED"),
+                                            color = NotelTextSecondary,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    Spacer(Modifier.height(8.dp))
+                                    Text(
+                                        text = item.insight.text,
+                                        color = NotelTextPrimary,
+                                        fontSize = 14.sp,
+                                        lineHeight = 20.sp
+                                    )
+                                    Spacer(Modifier.height(10.dp))
+                                    Text(
+                                        text = if (item.entry != null) "Original Entry: \"${item.entry.body.take(60)}...\"" else "Original entry unavailable",
+                                        color = if (item.entry != null) NotelTextSecondary else Color(0xFFFF6B6B),
+                                        fontSize = 11.sp,
+                                        fontStyle = if (item.entry == null) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal
+                                    )
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        text = sdf.format(Date(item.insight.timestamp)),
+                                        color = TileAccentPurple.copy(alpha = 0.5f),
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }

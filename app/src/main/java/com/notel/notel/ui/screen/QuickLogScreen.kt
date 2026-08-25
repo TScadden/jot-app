@@ -117,41 +117,54 @@ fun QuickLogScreen(
                 // ── Manual Text Field ─────────────────────────────
                 val context = androidx.compose.ui.platform.LocalContext.current
 
-                OutlinedTextField(
-                    value = state.manualText,
-                    onValueChange = viewModel::updateManualText,
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    placeholder = { Text("Add a custom note…", color = NotelTextSecondary, fontSize = 14.sp) },
-                    trailingIcon = {
-                        if (state.manualText.isNotBlank() || state.selectedChips.isNotEmpty()) {
-                            IconButton(onClick = viewModel::saveEntry) {
-                                if (state.isSaving) {
-                                    GlassySpinner(size = 20.dp)
-                                } else {
-                                    Icon(Icons.Default.AddCircle, null, tint = activeCatColor)
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = state.manualText,
+                        onValueChange = viewModel::updateManualText,
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("Universal Quick-Add (e.g. 200mg Advil, 6/10 headache)…", color = NotelTextSecondary, fontSize = 13.sp) },
+                        trailingIcon = {
+                            if (state.manualText.isNotBlank()) {
+                                IconButton(onClick = { viewModel.parseAndShowProposals() }) {
+                                    Icon(Icons.Default.AutoAwesome, "Parse Input", tint = activeCatColor)
+                                }
+                            } else {
+                                IconButton(onClick = {
+                                    context.startActivity(Intent(context, com.notel.notel.VoiceLogActivity::class.java))
+                                }) {
+                                    Icon(Icons.Default.Mic, null, tint = activeCatColor)
                                 }
                             }
-                        } else {
-                            IconButton(onClick = {
-                                context.startActivity(Intent(context, com.notel.notel.VoiceLogActivity::class.java))
-                            }) {
-                                Icon(Icons.Default.Mic, null, tint = activeCatColor)
-                            }
-                        }
-                    },
-                    shape = RoundedCornerShape(16.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = activeCatColor,
-                        unfocusedBorderColor = activeCatColor.copy(alpha = 0.25f),
-                        focusedTextColor = NotelTextPrimary,
-                        unfocusedTextColor = NotelTextPrimary,
-                        cursorColor = activeCatColor,
-                        unfocusedContainerColor = NotelSurface,
-                        focusedContainerColor = NotelSurface
+                        },
+                        shape = RoundedCornerShape(16.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = activeCatColor,
+                            unfocusedBorderColor = activeCatColor.copy(alpha = 0.25f),
+                            focusedTextColor = NotelTextPrimary,
+                            unfocusedTextColor = NotelTextPrimary,
+                            cursorColor = activeCatColor,
+                            unfocusedContainerColor = NotelSurface,
+                            focusedContainerColor = NotelSurface
+                        )
                     )
-                )
+
+                    IconButton(
+                        onClick = { viewModel.repeatLastEntry() },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(NotelSurface)
+                            .border(1.dp, NotelPrimary.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+                    ) {
+                        Icon(Icons.Default.Replay, contentDescription = "Repeat Last Entry", tint = NotelPrimary)
+                    }
+                }
 
                 // ── All Categories ──────────────────────────────────────────────
                 Text(
@@ -170,7 +183,7 @@ fun QuickLogScreen(
                             category = cat,
                             isSelected = cat.id == state.selectedCategory?.id,
                             onClick = { viewModel.selectCategory(cat) },
-                            onLongClick = if (cat.id != 7 && !cat.isDefault) { { viewModel.requestDeleteCategory(cat) } } else null
+                            onLongClick = if (cat.stableKey != "general" && !cat.isDefault) { { viewModel.requestDeleteCategory(cat) } } else null
                         )
                     }
                     item {
@@ -196,6 +209,72 @@ fun QuickLogScreen(
                                     fontWeight = FontWeight.Bold,
                                     letterSpacing = 0.5.sp
                                 )
+                            }
+                        }
+                    }
+                }
+
+                // ── Pinned Templates Drawer ─────────────────────────────────────────
+                if (state.pinnedTemplates.isNotEmpty()) {
+                    Text(
+                        "PINNED TEMPLATES",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NotelPrimary,
+                        modifier = Modifier.padding(start = 16.dp, top = 10.dp, bottom = 4.dp),
+                        letterSpacing = 0.5.sp
+                    )
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(state.pinnedTemplates) { t ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(NotelSurface)
+                                    .border(1.dp, NotelPrimary.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                                    .clickable { viewModel.logFromTemplate(t) }
+                                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.PushPin, null, tint = NotelPrimary, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(t.title, color = NotelTextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── Recent Suggestions Drawer ───────────────────────────────────────
+                if (state.recentSuggestions.isNotEmpty()) {
+                    Text(
+                        "RECENT SUGGESTIONS",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NotelTextSecondary,
+                        modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp),
+                        letterSpacing = 0.5.sp
+                    )
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(state.recentSuggestions) { entry ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(NotelSurfaceHigh)
+                                    .border(1.dp, NotelSurfaceHigh.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                    .clickable { viewModel.logFromRecent(entry) }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.History, null, tint = NotelTextSecondary, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(entry.body.take(25), color = NotelTextPrimary, fontSize = 12.sp)
+                                }
                             }
                         }
                     }
@@ -641,6 +720,87 @@ fun QuickLogScreen(
             }
         }
 
+        // Proposal Confirmation Dialog
+        if (state.showProposalConfirmation) {
+            Dialog(onDismissRequest = { viewModel.dismissProposals() }) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(NotelSurface)
+                        .border(1.dp, NotelPrimary.copy(alpha = 0.2f), RoundedCornerShape(22.dp))
+                        .padding(20.dp)
+                ) {
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = NotelPrimary, modifier = Modifier.size(22.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Confirm Parsed Proposals", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = NotelTextPrimary)
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "Review and adjust the extracted entry items before saving:",
+                            color = NotelTextSecondary,
+                            fontSize = 13.sp
+                        )
+                        Spacer(Modifier.height(16.dp))
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 300.dp)
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            state.proposals.forEachIndexed { index, proposal ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(NotelSurfaceHigh)
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = proposal.intent.name,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp,
+                                            color = NotelPrimary
+                                        )
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(
+                                            text = proposal.summaryText,
+                                            fontSize = 14.sp,
+                                            color = NotelTextPrimary
+                                        )
+                                    }
+                                    IconButton(onClick = { viewModel.removeProposal(index) }) {
+                                        Icon(Icons.Default.Close, contentDescription = "Remove item", tint = NotelTextSecondary, modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(20.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            GlassyButton(
+                                onClick = { viewModel.dismissProposals() },
+                                modifier = Modifier.weight(1f),
+                                containerColor = NotelSurfaceHigh
+                            ) { Text("Cancel", color = NotelTextPrimary) }
+
+                            GlassyButton(
+                                onClick = { viewModel.confirmProposals() },
+                                modifier = Modifier.weight(1f),
+                                containerColor = NotelPrimary
+                            ) { Text("Confirm & Save", color = Color.White, fontWeight = FontWeight.Bold) }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -67,7 +67,14 @@ data class QuickLogUiState(
     val customCategoryName: String = "",
     val isValidatingCategory: Boolean = false,
     val categoryToDelete: Category? = null,
-    val isOffline: Boolean = false
+    val isOffline: Boolean = false,
+    // Universal Add Proposal Confirmation State
+    val quickAddInput: String = "",
+    val proposals: List<com.notel.notel.util.ParsedProposal> = emptyList(),
+    val showProposalConfirmation: Boolean = false,
+    val recentSuggestions: List<com.notel.notel.data.local.entity.LogEntry> = emptyList(),
+    val pinnedTemplates: List<com.notel.notel.data.local.entity.PinnedTemplate> = emptyList(),
+    val historicalDefaultText: String? = null
 )
 
 @HiltViewModel
@@ -77,6 +84,7 @@ class QuickLogViewModel @Inject constructor(
     private val preferences: NotelPreferences,
     private val habitRepository: HabitRepository,
     private val syncManager: SyncManager,
+    private val templateRepository: com.notel.notel.data.repository.TemplateAndDefaultsRepository,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: Context
 ) : ViewModel() {
     
@@ -128,6 +136,15 @@ class QuickLogViewModel @Inject constructor(
                     calculateSmartRanking()
                 }
             }
+        }
+        viewModelScope.launch {
+            templateRepository.getAllPinnedTemplates().collect { templates ->
+                _uiState.update { it.copy(pinnedTemplates = templates) }
+            }
+        }
+        viewModelScope.launch {
+            val recents = templateRepository.getDeduplicatedRecentSuggestions(10)
+            _uiState.update { it.copy(recentSuggestions = recents) }
         }
         viewModelScope.launch {
             preferences.onboardingComplete.collect { complete ->
@@ -308,8 +325,10 @@ class QuickLogViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true) }
             
-            // User requested: if no tiles/chips added, default to General (ID 7)
-            val finalCategoryId = if (state.selectedChips.isEmpty()) 7 else category.id
+            // Default to General category if no tiles/chips added
+            val finalCategoryId = if (state.selectedChips.isEmpty()) {
+                categoryRepository.findCategoryIdBySlug("general", defaultId = 7)
+            } else category.id
             
             // Mark today as logged
             val todayStr = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
@@ -693,5 +712,178 @@ class QuickLogViewModel @Inject constructor(
             .filter { it.isNotBlank() }
             .filterNot { medicationCategory && prohibitedMedicationTerms.containsMatchIn(it) }
             .distinctBy { it.lowercase() }
+    }
+
+    // ── Universal Quick-Add & Proposals ─────────────────────────────────────
+    fun updateQuickAddInput(input: String) {
+        _uiState.update { it.copy(quickAddInput = input) }
+    }
+
+    fun parseAndShowProposals(input: String? = null) {
+        val raw = input ?: _uiState.value.manualText.ifBlank { _uiState.value.quickAddInput }
+        if (raw.isBlank()) return
+
+        viewModelScope.launch {
+            val parsed = com.notel.notel.util.QuickAddParser.parse(raw)
+            val updated = parsed.map { proposal ->
+                var dosage = proposal.dosage
+                var intensity = proposal.intensity
+                var catSlug = proposal.intent.name.lowercase()
+
+                if (proposal.intent.name == "MEDICATION" && dosage.isNullOrBlank()) {
+                    dosage = templateRepository.getHistoricalDosageForMedication(proposal.summaryText)
+                }
+                if (proposal.intent.name == "SYMPTOM" && intensity.isNullOrBlank()) {
+                    intensity = templateRepository.getHistoricalIntensityForSymptom(proposal.summaryText)
+                }
+                val historicalCatSlug = templateRepository.getLastCategorySlugForEntryType(proposal.summaryText)
+                if (historicalCatSlug != null) {
+                    catSlug = historicalCatSlug
+                }
+
+                proposal.copy(
+                    dosage = dosage,
+                    intensity = intensity
+                )
+            }
+
+            _uiState.update {
+                it.copy(
+                    proposals = updated,
+                    showProposalConfirmation = true
+                )
+            }
+        }
+    }
+
+    fun pinTemplate(title: String, categorySlug: String, body: String) {
+        viewModelScope.launch {
+            templateRepository.saveTemplate(
+                com.notel.notel.data.local.entity.PinnedTemplate(
+                    title = title,
+                    categorySlug = categorySlug,
+                    body = body
+                )
+            )
+        }
+    }
+
+    fun deleteTemplate(template: com.notel.notel.data.local.entity.PinnedTemplate) {
+        viewModelScope.launch {
+            templateRepository.deleteTemplate(template)
+        }
+    }
+
+    fun logFromTemplate(template: com.notel.notel.data.local.entity.PinnedTemplate) {
+        viewModelScope.launch {
+            val catId = categoryRepository.findCategoryIdBySlug(template.categorySlug, defaultId = 7)
+            logRepository.insertEntry(
+                LogEntry(
+                    id = 0L,
+                    categoryId = catId,
+                    body = template.body,
+                    chips = template.chipsJson,
+                    manualText = "",
+                    source = "Pinned Template"
+                )
+            )
+        }
+    }
+
+    fun logFromRecent(entry: LogEntry) {
+        viewModelScope.launch {
+            logRepository.insertEntry(
+                LogEntry(
+                    id = 0L,
+                    categoryId = entry.categoryId,
+                    body = entry.body,
+                    chips = entry.chips,
+                    manualText = entry.manualText,
+                    source = "Recent Suggestion"
+                )
+            )
+        }
+    }
+
+    fun updateProposal(index: Int, updated: com.notel.notel.util.ParsedProposal) {
+        val current = _uiState.value.proposals.toMutableList()
+        if (index in current.indices) {
+            current[index] = updated
+            _uiState.update { it.copy(proposals = current) }
+        }
+    }
+
+    fun removeProposal(index: Int) {
+        val current = _uiState.value.proposals.toMutableList()
+        if (index in current.indices) {
+            current.removeAt(index)
+            _uiState.update { it.copy(proposals = current) }
+        }
+    }
+
+    fun dismissProposals() {
+        _uiState.update { it.copy(showProposalConfirmation = false, proposals = emptyList()) }
+    }
+
+    fun confirmProposals() {
+        val state = _uiState.value
+        val proposalsToSave = state.proposals
+        if (proposalsToSave.isEmpty()) {
+            dismissProposals()
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSaving = true) }
+            for (proposal in proposalsToSave) {
+                val catSlug = proposal.intent.name.lowercase()
+                val catId = categoryRepository.findCategoryIdBySlug(catSlug, defaultId = 7)
+                logRepository.insertEntry(
+                    LogEntry(
+                        categoryId = catId,
+                        body = proposal.summaryText,
+                        chips = "[]",
+                        manualText = "",
+                        source = "Universal Quick-Add"
+                    )
+                )
+            }
+
+            val todayStr = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
+            val updatedDays = (state.loggedDays + todayStr).distinct()
+            preferences.setLoggedDays(Json.encodeToString(updatedDays))
+            preferences.updateStreak()
+
+            _uiState.update {
+                it.copy(
+                    isSaving = false,
+                    saveSuccess = true,
+                    showProposalConfirmation = false,
+                    proposals = emptyList(),
+                    quickAddInput = "",
+                    manualText = ""
+                )
+            }
+            syncManager.pushEntries()
+            syncManager.pushProfileData()
+        }
+    }
+
+    fun repeatLastEntry() {
+        viewModelScope.launch {
+            val recent = logRepository.getRecentEntriesAll(1)
+            val last = recent.firstOrNull() ?: return@launch
+            logRepository.insertEntry(
+                LogEntry(
+                    categoryId = last.categoryId,
+                    body = last.body,
+                    chips = last.chips,
+                    manualText = last.manualText,
+                    source = "Repeat Last Entry"
+                )
+            )
+            _uiState.update { it.copy(saveSuccess = true) }
+            syncManager.pushEntries()
+        }
     }
 }

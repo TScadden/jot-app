@@ -40,6 +40,10 @@ class HistoryViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val aiInsightsWithDetails: StateFlow<List<com.notel.notel.data.local.entity.AiInsightWithEntryAndCategory>> = 
+        logRepository.getAllInsightsWithEntryAndCategory()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val searchQuery: StateFlow<String> = _searchQuery
     val categoryFilter: StateFlow<Int?> = _categoryFilter
 

@@ -22,10 +22,13 @@ interface CategoryDao {
     @Query("SELECT * FROM categories ORDER BY sortOrder ASC")
     fun getAllCategories(): Flow<List<Category>>
 
-    @Query("SELECT * FROM categories WHERE id = :id")
+    @Query("SELECT * FROM categories WHERE slug = :slug LIMIT 1")
+    suspend fun getCategoryBySlug(slug: String): Category?
+
+    @Query("SELECT * FROM categories WHERE id = :id LIMIT 1")
     suspend fun getCategoryById(id: Int): Category?
 
-    @Query("DELETE FROM categories WHERE id != 7")
+    @Query("DELETE FROM categories WHERE slug IS NULL OR (slug != 'general' AND id != 7)")
     suspend fun clearCustomCategories()
 
     @Query("SELECT MAX(id) FROM categories")

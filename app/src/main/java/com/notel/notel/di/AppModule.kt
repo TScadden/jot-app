@@ -70,6 +70,11 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun providePinnedTemplateDao(db: NotelDatabase): com.notel.notel.data.local.dao.PinnedTemplateDao =
+        db.pinnedTemplateDao()
+
+    @Provides
+    @Singleton
     fun provideOkHttpClient(authInterceptor: AuthInterceptor): OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(120, TimeUnit.SECONDS)
