@@ -87,25 +87,28 @@ class AuthInterceptor @Inject constructor(
             val baseUrl = "${originalUrl.scheme}://${originalUrl.host}${if (originalUrl.port != -1 && originalUrl.port != 80 && originalUrl.port != 443) ":${originalUrl.port}" else ""}/"
             val refreshUrl = "${baseUrl}${refreshPath}"
 
-            val json = """{"refreshToken":"$refreshToken"}"""
+            val json = Json.encodeToString(
+                RefreshTokenRequest.serializer(),
+                RefreshTokenRequest(refreshToken)
+            )
             val body = json.toRequestBody("application/json".toMediaType())
             val request = Request.Builder()
                 .url(refreshUrl)
                 .post(body)
                 .build()
 
-            val client = OkHttpClient()
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) return null
+            OkHttpClient().newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return null
 
-            val responseBody = response.body?.string() ?: return null
-            val parsed = Json { ignoreUnknownKeys = true }
-                .decodeFromString(RefreshTokenResponse.serializer(), responseBody)
+                val responseBody = response.body?.string() ?: return null
+                val parsed = Json { ignoreUnknownKeys = true }
+                    .decodeFromString(RefreshTokenResponse.serializer(), responseBody)
 
-            val newAccess = parsed.token
-            val newRefresh = parsed.refreshToken
-            if (newAccess.isNullOrBlank() || newRefresh.isNullOrBlank()) null
-            else Pair(newAccess, newRefresh)
+                val newAccess = parsed.token
+                val newRefresh = parsed.refreshToken
+                if (newAccess.isNullOrBlank() || newRefresh.isNullOrBlank()) null
+                else Pair(newAccess, newRefresh)
+            }
         } catch (e: Exception) {
             null
         }

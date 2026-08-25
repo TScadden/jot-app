@@ -177,12 +177,19 @@ fun SettingsScreen(
             try {
                 val account = task.getResult(ApiException::class.java)
                 val email = account.email
-                if (email != null) {
-                    viewModel.connectGoogleAccount(email) { success, errorMsg ->
+                val idToken = account.idToken
+                if (email != null && !idToken.isNullOrBlank()) {
+                    viewModel.connectGoogleAccount(idToken, email) { success, errorMsg ->
                         if (!success && errorMsg != null) {
                             android.widget.Toast.makeText(context, errorMsg, android.widget.Toast.LENGTH_LONG).show()
                         }
                     }
+                } else {
+                    android.widget.Toast.makeText(
+                        context,
+                        "Google did not return a verifiable sign-in token.",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -2376,7 +2383,8 @@ fun SettingsScreen(
 
                             Spacer(Modifier.height(14.dp))
 
-                            val showOnlyConfirm = userEmail.isNotBlank()
+                            // The server is authoritative and refuses disconnecting the last login method.
+                            val showOnlyConfirm = true
 
                             Text(
                                 text = if (showOnlyConfirm) "Disconnect Google Account" else "Set Password to Disconnect",
@@ -2390,7 +2398,7 @@ fun SettingsScreen(
 
                             Text(
                                 text = if (showOnlyConfirm) 
-                                    "Are you sure you want to disconnect this Google account? You will still be able to sign in using your email and password." 
+                                    "Are you sure you want to disconnect this Google account? Tabs will refuse if you do not have another usable sign-in method."
                                     else "Set a password to safely disconnect your Google account. If you close this, your Google account stays connected.",
                                 fontSize = 13.sp,
                                 color = NotelTextSecondary,
