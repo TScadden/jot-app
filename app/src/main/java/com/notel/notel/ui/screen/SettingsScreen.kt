@@ -143,10 +143,17 @@ fun SettingsScreen(
     val googleAccountChooserLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val accountName = result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
-            if (accountName != null) {
-                viewModel.connectGoogleCalendar(accountName)
+        val data = result.data
+        if (data != null) {
+            val task = GoogleSignIn.getSignedInAccountFromIntent(data)
+            try {
+                val account = task.getResult(ApiException::class.java)
+                val email = account.email
+                if (email != null) {
+                    viewModel.connectGoogleCalendar(email)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }
@@ -2214,28 +2221,40 @@ fun SettingsScreen(
                         }
                     }
                     Spacer(Modifier.height(16.dp))
-                    GlassyButton(
+                    Button(
                         onClick = {
                             try {
-                                val intent = AccountManager.newChooseAccountIntent(
-                                    null,
-                                    null,
-                                    arrayOf("com.google"),
-                                    false,
-                                    null,
-                                    null,
-                                    null,
-                                    null
-                                )
-                                googleAccountChooserLauncher.launch(intent)
+                                googleSignInClient.signOut().addOnCompleteListener {
+                                    val signInIntent = googleSignInClient.signInIntent
+                                    googleAccountChooserLauncher.launch(signInIntent)
+                                }
                             } catch (e: Exception) {
                                 e.printStackTrace()
                             }
                         },
-                        modifier = Modifier.fillMaxWidth(),
-                        containerColor = NotelPrimary.copy(alpha = 0.8f)
+                        colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp)
                     ) {
-                        Text("Connect Google Calendar", color = Color.White, fontWeight = FontWeight.Bold)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Image(
+                                painter = painterResource(id = com.notel.notel.R.drawable.ic_google_logo),
+                                contentDescription = "Google Logo",
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                "Connect Google Calendar",
+                                color = NotelTextPrimary,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 15.sp
+                            )
+                        }
                     }
                 }
             }
