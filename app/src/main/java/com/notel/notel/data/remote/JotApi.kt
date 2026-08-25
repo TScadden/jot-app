@@ -150,6 +150,9 @@ data class GoogleAuthRequest(
 )
 
 @Serializable
+data class LinkGoogleRequest(val idToken: String)
+
+@Serializable
 data class ForgotPasswordRequest(
     val email: String
 )
@@ -592,6 +595,9 @@ interface TabsApi {
 
     @POST("api/auth/logout")
     suspend fun logout(@Body request: LogoutRequest): Response<GenericResponse>
+
+    @POST("api/auth/link-google")
+    suspend fun linkGoogle(@Body request: LinkGoogleRequest): Response<GenericResponse>
 
     @POST("api/auth/disconnect-google")
     suspend fun disconnectGoogle(): Response<GenericResponse>
