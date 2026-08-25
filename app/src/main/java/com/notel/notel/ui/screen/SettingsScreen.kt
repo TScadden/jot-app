@@ -2326,8 +2326,7 @@ fun SettingsScreen(
 
                             Spacer(Modifier.height(14.dp))
 
-                            val userEmailConnected = userEmail.equals(googleAccountEmail, ignoreCase = true)
-                            val showOnlyConfirm = !userEmailConnected && userEmail.isNotBlank()
+                            val showOnlyConfirm = userEmail.isNotBlank()
 
                             Text(
                                 text = if (showOnlyConfirm) "Disconnect Google Account" else "Set Password to Disconnect",
