@@ -53,6 +53,9 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.blur
@@ -148,17 +151,34 @@ fun SettingsScreen(
         }
     }
 
+    val googleSignInOptions = remember {
+        GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestIdToken(context.getString(com.notel.notel.R.string.google_web_client_id))
+            .requestEmail()
+            .build()
+    }
+    val googleSignInClient = remember {
+        GoogleSignIn.getClient(context, googleSignInOptions)
+    }
+
     val googleAccountLinkLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val accountName = result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
-            if (accountName != null) {
-                viewModel.connectGoogleAccount(accountName) { success, errorMsg ->
-                    if (!success && errorMsg != null) {
-                        android.widget.Toast.makeText(context, errorMsg, android.widget.Toast.LENGTH_LONG).show()
+        val data = result.data
+        if (data != null) {
+            val task = GoogleSignIn.getSignedInAccountFromIntent(data)
+            try {
+                val account = task.getResult(ApiException::class.java)
+                val email = account.email
+                if (email != null) {
+                    viewModel.connectGoogleAccount(email) { success, errorMsg ->
+                        if (!success && errorMsg != null) {
+                            android.widget.Toast.makeText(context, errorMsg, android.widget.Toast.LENGTH_LONG).show()
+                        }
                     }
                 }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }
@@ -2270,17 +2290,10 @@ fun SettingsScreen(
                     Button(
                         onClick = {
                             try {
-                                val intent = AccountManager.newChooseAccountIntent(
-                                    null,
-                                    null,
-                                    arrayOf("com.google"),
-                                    false,
-                                    null,
-                                    null,
-                                    null,
-                                    null
-                                )
-                                googleAccountLinkLauncher.launch(intent)
+                                googleSignInClient.signOut().addOnCompleteListener {
+                                    val signInIntent = googleSignInClient.signInIntent
+                                    googleAccountLinkLauncher.launch(signInIntent)
+                                }
                             } catch (e: Exception) {
                                 e.printStackTrace()
                             }
