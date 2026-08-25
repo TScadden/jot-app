@@ -66,6 +66,9 @@ class SettingsViewModel @Inject constructor(
     val userContext = preferences.userContext
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
+    val userEmail = preferences.userEmail
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+
     val lastSyncTime = preferences.lastSyncTime
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
 

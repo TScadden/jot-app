@@ -105,6 +105,7 @@ fun SettingsScreen(
     val googleCalendarEmail by viewModel.googleCalendarEmail.collectAsState()
     val googleAccountConnected by viewModel.googleAccountConnected.collectAsState()
     val googleAccountEmail by viewModel.googleAccountEmail.collectAsState()
+    val userEmail by viewModel.userEmail.collectAsState()
     
     val userAge by viewModel.userAge.collectAsState()
     val userHeight by viewModel.userHeight.collectAsState()
