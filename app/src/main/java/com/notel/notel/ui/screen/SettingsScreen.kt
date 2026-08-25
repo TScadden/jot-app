@@ -2398,7 +2398,7 @@ fun SettingsScreen(
 
                             Text(
                                 text = if (showOnlyConfirm) 
-                                    "Are you sure you want to disconnect this Google account? Tabs will refuse if you do not have another usable sign-in method." 
+                                    "Are you sure you want to disconnect this Google account? Tabs will refuse if you do not have another usable sign-in method."
                                     else "Set a password to safely disconnect your Google account. If you close this, your Google account stays connected.",
                                 fontSize = 13.sp,
                                 color = NotelTextSecondary,
