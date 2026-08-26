@@ -32,9 +32,10 @@ import kotlinx.coroutines.launch
         com.notel.notel.data.local.entity.Medication::class,
         com.notel.notel.data.local.entity.MedicationSideEffectCache::class,
         com.notel.notel.data.local.entity.AiInsight::class,
-        com.notel.notel.data.local.entity.PinnedTemplate::class
+        com.notel.notel.data.local.entity.PinnedTemplate::class,
+        com.notel.notel.data.local.entity.ScheduledDoseOccurrence::class
     ],
-    version = 24,
+    version = 25,
     exportSchema = false
 )
 abstract class NotelDatabase : RoomDatabase() {
@@ -48,9 +49,30 @@ abstract class NotelDatabase : RoomDatabase() {
     abstract fun medicationDao(): com.notel.notel.data.local.dao.MedicationDao
     abstract fun aiInsightDao(): com.notel.notel.data.local.dao.AiInsightDao
     abstract fun pinnedTemplateDao(): com.notel.notel.data.local.dao.PinnedTemplateDao
+    abstract fun scheduledDoseOccurrenceDao(): com.notel.notel.data.local.dao.ScheduledDoseOccurrenceDao
 
     companion object {
         @Volatile private var INSTANCE: NotelDatabase? = null
+
+        val MIGRATION_24_25 = object : Migration(24, 25) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS scheduled_dose_occurrences (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        occurrenceKey TEXT NOT NULL,
+                        medicationId INTEGER NOT NULL,
+                        scheduledDate TEXT NOT NULL,
+                        scheduledTime TEXT,
+                        status TEXT NOT NULL,
+                        actionTimestamp INTEGER NOT NULL,
+                        snoozedUntilTimestamp INTEGER,
+                        associatedLogEntryId INTEGER,
+                        syncState TEXT NOT NULL DEFAULT 'SAVED_LOCALLY'
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_scheduled_dose_occurrences_medicationId_scheduledDate ON scheduled_dose_occurrences(medicationId, scheduledDate)")
+            }
+        }
 
         val MIGRATION_23_24 = object : Migration(23, 24) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -268,7 +290,7 @@ abstract class NotelDatabase : RoomDatabase() {
                     "notel_db"
                 )
                     .fallbackToDestructiveMigration()
-                    .addMigrations(MIGRATION_1_2, MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25)
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)

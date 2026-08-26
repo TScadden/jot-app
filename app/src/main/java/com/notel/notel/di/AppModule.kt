@@ -75,6 +75,11 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideScheduledDoseOccurrenceDao(db: NotelDatabase): com.notel.notel.data.local.dao.ScheduledDoseOccurrenceDao =
+        db.scheduledDoseOccurrenceDao()
+
+    @Provides
+    @Singleton
     fun provideOkHttpClient(authInterceptor: AuthInterceptor): OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(120, TimeUnit.SECONDS)
