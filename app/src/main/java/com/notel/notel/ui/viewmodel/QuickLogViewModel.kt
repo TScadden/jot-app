@@ -27,6 +27,13 @@ data class SmartAction(
     val metadata: String = ""
 )
 
+sealed class QuickLogEvent {
+    data class EntryLogged(val entryId: Long, val message: String = "Entry logged") : QuickLogEvent()
+    data class EntryRepeated(val entryId: Long, val message: String = "Last entry repeated") : QuickLogEvent()
+    data class EntryUndone(val message: String = "Entry removed") : QuickLogEvent()
+    data class SaveFailed(val message: String = "Save failed") : QuickLogEvent()
+}
+
 data class QuickLogUiState(
     val categories: List<Category> = emptyList(),
     val selectedCategory: Category? = null,
@@ -93,6 +100,9 @@ class QuickLogViewModel @Inject constructor(
     private val templateRepository: com.notel.notel.data.repository.TemplateAndDefaultsRepository,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: Context
 ) : ViewModel() {
+
+    private val _eventFlow = MutableSharedFlow<QuickLogEvent>(extraBufferCapacity = 64)
+    val eventFlow: SharedFlow<QuickLogEvent> = _eventFlow.asSharedFlow()
     
     private val dismissedActions = mutableSetOf<String>()
 
@@ -366,6 +376,7 @@ class QuickLogViewModel @Inject constructor(
                     manualText = ""
                 )
             }
+            _eventFlow.emit(QuickLogEvent.EntryLogged(entryId = savedId, message = "Entry logged"))
             calculateSmartRanking()
             
             // Final push to ensure profile data (logged days, counters) is updated
@@ -897,6 +908,7 @@ class QuickLogViewModel @Inject constructor(
                     lastLoggedEntryId = newId
                 ) 
             }
+            _eventFlow.emit(QuickLogEvent.EntryLogged(entryId = newId, message = if (template.isMedication) "Medication logged" else "Entry logged"))
         }
     }
 
@@ -918,19 +930,21 @@ class QuickLogViewModel @Inject constructor(
                     lastLoggedEntryId = newId
                 ) 
             }
+            _eventFlow.emit(QuickLogEvent.EntryLogged(entryId = newId, message = "Entry logged"))
         }
     }
 
-    fun undoLastLog() {
-        val targetId = _uiState.value.lastLoggedEntryId ?: return
+    fun undoLastLog(targetId: Long? = _uiState.value.lastLoggedEntryId) {
+        val idToDelete = targetId ?: _uiState.value.lastLoggedEntryId ?: return
         viewModelScope.launch {
-            logRepository.deleteEntry(targetId)
+            logRepository.deleteEntry(idToDelete)
             _uiState.update { 
                 it.copy(
                     lastLoggedEntryId = null,
                     saveSuccess = false
                 ) 
             }
+            _eventFlow.emit(QuickLogEvent.EntryUndone(message = "Entry removed"))
         }
     }
 
@@ -964,10 +978,11 @@ class QuickLogViewModel @Inject constructor(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true) }
+            var lastCreatedId: Long = 0L
             for (proposal in proposalsToSave) {
                 val catSlug = proposal.intent.name.lowercase()
                 val catId = categoryRepository.findCategoryIdBySlug(catSlug, defaultId = 7)
-                logRepository.insertEntry(
+                lastCreatedId = logRepository.insertEntry(
                     LogEntry(
                         categoryId = catId,
                         body = proposal.summaryText,
@@ -987,11 +1002,15 @@ class QuickLogViewModel @Inject constructor(
                 it.copy(
                     isSaving = false,
                     saveSuccess = true,
+                    lastLoggedEntryId = lastCreatedId,
                     showProposalConfirmation = false,
                     proposals = emptyList(),
                     quickAddInput = "",
                     manualText = ""
                 )
+            }
+            if (lastCreatedId != 0L) {
+                _eventFlow.emit(QuickLogEvent.EntryLogged(entryId = lastCreatedId, message = "Entry logged"))
             }
             syncManager.pushEntries()
             syncManager.pushProfileData()
@@ -1002,7 +1021,7 @@ class QuickLogViewModel @Inject constructor(
         viewModelScope.launch {
             val recent = logRepository.getRecentEntriesAll(1)
             val last = recent.firstOrNull() ?: return@launch
-            logRepository.insertEntry(
+            val newId = logRepository.insertEntry(
                 LogEntry(
                     categoryId = last.categoryId,
                     body = last.body,
@@ -1011,7 +1030,13 @@ class QuickLogViewModel @Inject constructor(
                     source = "Repeat Last Entry"
                 )
             )
-            _uiState.update { it.copy(saveSuccess = true) }
+            _uiState.update { 
+                it.copy(
+                    saveSuccess = true,
+                    lastLoggedEntryId = newId
+                ) 
+            }
+            _eventFlow.emit(QuickLogEvent.EntryRepeated(entryId = newId, message = "Last entry repeated"))
             syncManager.pushEntries()
         }
     }

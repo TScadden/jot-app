@@ -57,12 +57,13 @@ class MedicationsViewModel @Inject constructor(
         if (name.isBlank() || dose.isBlank()) return
         viewModelScope.launch {
             val med = Medication(
+                id = 0L, // 0L forces Room autoGenerate to assign a fresh unique ID
                 name = name.trim(),
                 dose = dose.trim(),
                 frequency = frequency.trim().ifEmpty { "Once daily" },
                 startedDate = startedDate.trim().ifEmpty { null }
             )
-            medicationDao.insertMedication(med)
+            val newId = medicationDao.insertMedication(med)
             _statusMessage.value = "Added ${med.name} (${med.dose})"
             syncMedicationsToPreferencesAndCloud()
         }

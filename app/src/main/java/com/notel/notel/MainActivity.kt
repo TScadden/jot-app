@@ -211,6 +211,44 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                // Banner State for one-time events
+                data class TopBannerState(
+                    val message: String,
+                    val entryId: Long? = null,
+                    val isError: Boolean = false,
+                    val canUndo: Boolean = false
+                )
+                var activeBanner by remember { mutableStateOf<TopBannerState?>(null) }
+
+                LaunchedEffect(Unit) {
+                    quickLogViewModel.eventFlow.collect { event ->
+                        when (event) {
+                            is com.notel.notel.ui.viewmodel.QuickLogEvent.EntryLogged -> {
+                                activeBanner = TopBannerState(message = event.message, entryId = event.entryId, canUndo = true)
+                            }
+                            is com.notel.notel.ui.viewmodel.QuickLogEvent.EntryRepeated -> {
+                                activeBanner = TopBannerState(message = event.message, entryId = event.entryId, canUndo = true)
+                            }
+                            is com.notel.notel.ui.viewmodel.QuickLogEvent.EntryUndone -> {
+                                activeBanner = TopBannerState(message = event.message, canUndo = false)
+                            }
+                            is com.notel.notel.ui.viewmodel.QuickLogEvent.SaveFailed -> {
+                                activeBanner = TopBannerState(message = event.message, isError = true, canUndo = false)
+                            }
+                        }
+                    }
+                }
+
+                LaunchedEffect(activeBanner) {
+                    val current = activeBanner
+                    if (current != null) {
+                        kotlinx.coroutines.delay(3500)
+                        if (activeBanner == current) {
+                            activeBanner = null
+                        }
+                    }
+                }
+
                 LaunchedEffect(Unit) {
                     reportViewModel.aiInsightReadyEvent.collect { insight ->
                         if (insight.type != "BodyLoad") {
@@ -669,9 +707,75 @@ class MainActivity : ComponentActivity() {
 
 
 
+                    // Global Action Notification Banner (Slide-in top banner)
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = activeBanner != null,
+                        enter = androidx.compose.animation.slideInVertically(initialOffsetY = { -it }) + androidx.compose.animation.fadeIn(),
+                        exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { -it }) + androidx.compose.animation.fadeOut(),
+                        modifier = Modifier.align(Alignment.TopCenter).padding(horizontal = 16.dp, vertical = 8.dp).statusBarsPadding()
+                    ) {
+                        val banner = activeBanner
+                        if (banner != null) {
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = NotelSurface,
+                                tonalElevation = 8.dp,
+                                shadowElevation = 8.dp,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .liquidGlass(shape = RoundedCornerShape(16.dp), color = NotelSurface, alpha = 0.95f)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = banner.message,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (banner.isError) Color(0xFFFF6B6B) else NotelTextPrimary,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        if (banner.canUndo && banner.entryId != null) {
+                                            TextButton(
+                                                onClick = {
+                                                    quickLogViewModel.undoLastLog(banner.entryId)
+                                                    activeBanner = null
+                                                },
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    "Undo",
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = NotelPrimary,
+                                                    fontSize = 13.sp
+                                                )
+                                            }
+                                        }
+                                        IconButton(
+                                            onClick = { activeBanner = null },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Close,
+                                                contentDescription = "Dismiss notification banner",
+                                                tint = NotelTextSecondary
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Global Top Banner Overlay (AI Insight Notification)
                     androidx.compose.animation.AnimatedVisibility(
-                        visible = aiInsight != null,
+                        visible = aiInsight != null && activeBanner == null,
                         enter = androidx.compose.animation.slideInVertically(initialOffsetY = { -it }) + androidx.compose.animation.fadeIn(),
                         exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { -it }) + androidx.compose.animation.fadeOut(),
                         modifier = Modifier.align(Alignment.TopCenter).padding(16.dp).statusBarsPadding()

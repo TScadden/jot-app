@@ -582,11 +582,13 @@ class SyncManager @Inject constructor(
                                     }
                                 }
 
-                                // Upsert server meds into Room SQLite database
+                                // Upsert server meds into Room SQLite database safely
                                 for (med in serverMeds) {
-                                    val existingMatch = existingMeds.find { it.name.trim().lowercase() == med.name.trim().lowercase() }
+                                    val serverId = med.id.toLongOrNull()
+                                    val existingMatch = existingMeds.find { (serverId != null && it.id == serverId) || it.name.trim().lowercase() == med.name.trim().lowercase() }
+                                    
                                     val dbMed = com.notel.notel.data.local.entity.Medication(
-                                        id = existingMatch?.id ?: 0,
+                                        id = existingMatch?.id ?: (serverId ?: 0L),
                                         name = med.name.trim(),
                                         dose = if (existingMatch != null && existingMatch.dose.isNotBlank()) existingMatch.dose else "As prescribed",
                                         frequency = if (existingMatch != null && existingMatch.frequency.isNotBlank()) existingMatch.frequency else "Daily",

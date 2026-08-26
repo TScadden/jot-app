@@ -167,72 +167,7 @@ class TodayViewModel @Inject constructor(
 
         val occurrenceMap = occurrencesList.associateBy { it.occurrenceKey }
 
-        val attentionList = mutableListOf<NeedsAttentionItem>()
-
-        // 1. Scheduled medications
-        activeMeds.forEach { med ->
-            val times = if (med.timesPerDay > 1) listOf("Morning", "Evening") else listOf("Daily")
-            times.forEach { timeLabel ->
-                val key = "med_${med.id}_${currentDateStr}_${timeLabel}"
-                val occ = occurrenceMap[key]
-                val status = when (occ?.status) {
-                    "TAKEN" -> ActionStatus.TAKEN
-                    "SKIPPED" -> ActionStatus.SKIPPED
-                    "SNOOZED" -> ActionStatus.SNOOZED
-                    else -> ActionStatus.PENDING
-                }
-
-                if (status == ActionStatus.PENDING) {
-                    attentionList.add(
-                        NeedsAttentionItem(
-                            id = key,
-                            title = med.name,
-                            typeText = "Medication ($timeLabel)",
-                            detailText = if (med.dose.isNotBlank()) "Dose: ${med.dose} • ${med.frequency}" else med.frequency,
-                            itemType = NeedsAttentionItem.ItemType.MEDICATION,
-                            medication = med,
-                            scheduledTime = timeLabel,
-                            currentStatus = status
-                        )
-                    )
-                }
-            }
-        }
-
-        // 2. Reminders
-        enabledReminders.forEach { rem ->
-            if (!completedReminders.contains(rem.id)) {
-                attentionList.add(
-                    NeedsAttentionItem(
-                        id = "rem_${rem.id}",
-                        title = rem.title,
-                        typeText = "Reminder",
-                        detailText = String.format("Due %02d:%02d", rem.fixedHour, rem.fixedMinute),
-                        itemType = NeedsAttentionItem.ItemType.REMINDER,
-                        reminder = rem
-                    )
-                )
-            }
-        }
-
-        // 3. Habits
-        habitsList.forEach { habit ->
-            val isCheckedToday = habit.logs.contains(currentDateStr)
-            if (!isCheckedToday) {
-                attentionList.add(
-                    NeedsAttentionItem(
-                        id = "habit_${habit.id}",
-                        title = habit.title,
-                        typeText = "Habit",
-                        detailText = "Target: ${habit.target_time ?: "Anytime"}",
-                        itemType = NeedsAttentionItem.ItemType.HABIT,
-                        habit = habit
-                    )
-                )
-            }
-        }
-
-        // Today's Plan
+        // Consolidated Today's Plan
         val planList = mutableListOf<TodayPlanItem>()
 
         activeMeds.forEach { med ->
@@ -284,32 +219,28 @@ class TodayViewModel @Inject constructor(
                 .thenBy { it.timeDisplay }
         )
 
-        val medCount = activeMeds.size
-        val remCount = enabledReminders.size
-        val habitCount = habitsList.size
-        val summaryStr = buildString {
-            if (medCount == 0 && remCount == 0 && habitCount == 0) {
-                append("Your schedule for today is clear.")
-            } else {
-                append("Today you have ")
-                val parts = mutableListOf<String>()
-                if (medCount > 0) parts.add("$medCount scheduled medication${if (medCount > 1) "s" else ""}")
-                if (remCount > 0) parts.add("$remCount reminder${if (remCount > 1) "s" else ""}")
-                if (habitCount > 0) parts.add("$habitCount habit${if (habitCount > 1) "s" else ""}")
-                append(parts.joinToString(", "))
-                append(".")
-            }
+        val remainingCount = planList.count { !it.isCompleted }
+        val summaryStr = if (remainingCount == 0 && planList.isNotEmpty()) {
+            "Everything planned for today is complete."
+        } else if (planList.isEmpty()) {
+            "Your schedule for today is clear."
+        } else {
+            "You have $remainingCount item${if (remainingCount > 1) "s" else ""} remaining today."
         }
+
+        // Clean out legacy NEEDS_ATTENTION section identifier from user settings if present
+        val cleanHiddenSections = hiddenSections.filter { it != "NEEDS_ATTENTION" }.toSet()
+        val cleanSectionOrder = sectionOrder.filter { it != "NEEDS_ATTENTION" }
 
         TodayUiState(
             mode = todayMode,
             summaryText = summaryStr,
-            needsAttentionItems = attentionList,
+            needsAttentionItems = emptyList(),
             todayPlanItems = sortedPlan,
             whatChangedItems = whatChangedItems,
             primaryInsight = primaryInsight,
-            hiddenSections = hiddenSections,
-            sectionOrder = sectionOrder,
+            hiddenSections = cleanHiddenSections,
+            sectionOrder = if (cleanSectionOrder.isEmpty()) listOf("TODAY_PLAN", "HOW_IM_DOING", "WHAT_CHANGED", "AI_INSIGHT", "QUICK_ACTIONS") else cleanSectionOrder,
             isOffline = false,
             isSyncFailed = false
         )

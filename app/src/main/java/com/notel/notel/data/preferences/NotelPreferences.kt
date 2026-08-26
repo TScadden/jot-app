@@ -501,71 +501,42 @@ class NotelPreferences @Inject constructor(
         }
     }
 
-    suspend fun updateStreak() {
-        val today = java.time.LocalDate.now()
+    suspend fun updateStreak(clockDate: java.time.LocalDate = java.time.LocalDate.now()) {
+        val today = clockDate
         context.dataStore.edit { prefs ->
             val lastOpenStr = prefs[LAST_OPEN_DATE] ?: ""
             var current = prefs[CURRENT_STREAK] ?: 0
             var best = prefs[BEST_STREAK] ?: 0
 
-            // One-time port from legacy `LOGGED_DAYS` memory state
-            if (lastOpenStr.isBlank()) {
-                val loggedDaysStr = prefs[LOGGED_DAYS] ?: "[]"
-                try {
-                    val daysList = kotlinx.serialization.json.Json.decodeFromString<List<String>>(loggedDaysStr)
-                    val sortedDates = daysList.mapNotNull { 
-                        try { java.time.LocalDate.parse(it) } catch(e:Exception){ null } 
-                    }.sorted().distinct()
-                    
-                    var tempBest = 0
-                    var tempCurrent = 0
-                    var prevDate: java.time.LocalDate? = null
-                    
-                    for (d in sortedDates) {
-                        if (prevDate == null) {
-                            tempCurrent = 1
-                        } else if (d == prevDate.plusDays(1)) {
-                            tempCurrent++
-                        } else {
-                            tempCurrent = 1
-                        }
-                        if (tempCurrent > tempBest) tempBest = tempCurrent
-                        prevDate = d
-                    }
-                    
-                    var calcCurrent = 0
-                    if (sortedDates.contains(today)) {
-                        var temp = today
-                        while(sortedDates.contains(temp)) { calcCurrent++; temp = temp.minusDays(1) }
-                    } else {
-                        var temp = today.minusDays(1)
-                        while(sortedDates.contains(temp)) { calcCurrent++; temp = temp.minusDays(1) }
-                    }
-                    
-                    current = maxOf(current, calcCurrent)
-                    best = maxOf(best, tempBest)
-                } catch(e: Exception) {}
+            val lastOpenDate = try {
+                if (lastOpenStr.isNotBlank()) java.time.LocalDate.parse(lastOpenStr) else null
+            } catch (e: Exception) {
+                null
             }
 
-            if (lastOpenStr == today.toString()) {
-                // Already checked in today, do nothing
-            } else if (lastOpenStr == today.minusDays(1).toString()) {
-                // Continuation
-                current += 1
-                prefs[CURRENT_STREAK] = current
+            if (lastOpenDate == null) {
+                // First open or no valid stored date
+                current = 1
                 prefs[LAST_OPEN_DATE] = today.toString()
+                prefs[CURRENT_STREAK] = current
+            } else if (lastOpenDate == today) {
+                // Same day open - do not alter streak
+                if (current < 1) current = 1
+                prefs[CURRENT_STREAK] = current
+            } else if (lastOpenDate == today.minusDays(1)) {
+                // Consecutive local day open
+                current = if (current >= 1) current + 1 else 1
+                prefs[LAST_OPEN_DATE] = today.toString()
+                prefs[CURRENT_STREAK] = current
+            } else if (lastOpenDate.isAfter(today)) {
+                // Stored future date (e.g. clock change) - recover conservatively without incrementing
+                if (current < 1) current = 1
+                prefs[CURRENT_STREAK] = current
             } else {
-                // Streak broken or starting fresh (or migrating from above algorithm)
-                if (lastOpenStr.isBlank() && current > 0) {
-                     // Since we migrated, don't reset to 1 if we actually have data, but +1 for today!
-                     if (!sortedDatesConstContainsToday(prefs, today)) {
-                         current += 1 
-                     }
-                } else {
-                    current = 1
-                }
-                prefs[CURRENT_STREAK] = current
+                // Missed one or more calendar days - reset streak to 1
+                current = 1
                 prefs[LAST_OPEN_DATE] = today.toString()
+                prefs[CURRENT_STREAK] = current
             }
 
             if (current > best) {

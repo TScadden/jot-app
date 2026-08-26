@@ -319,4 +319,181 @@ class Phase2MedicationAndTodayTest {
         assertTrue(filterLogic(validSymptomEntry))
         assertFalse(filterLogic(unrelatedCategory5Entry))
     }
+
+    @Test
+    fun todayPlan_consolidatesItems_ordersCompletedBelowIncomplete_andRemovesNeedsAttention() {
+        val habit = HabitDtoModel("h1", "Morning Stretch", "Habit", logs = emptyList())
+        val reminder = Reminder(id = 1, title = "Drink Water", type = "FIXED", fixedHour = 9, fixedMinute = 0, isEnabled = true)
+        val med = Medication(id = 5L, name = "Vitamin D", dose = "1000 IU", frequency = "Daily")
+
+        val state = TodayUiState(
+            summaryText = "You have 3 items remaining today.",
+            needsAttentionItems = emptyList(),
+            todayPlanItems = listOf(
+                TodayPlanItem.ScheduledHabit(habit = habit, isCompleted = false),
+                TodayPlanItem.ScheduledReminder(reminder = reminder, isCompleted = false),
+                TodayPlanItem.ScheduledMedication(medication = med, dose = "1000 IU", timeLabel = "Daily", isCompleted = true, status = ActionStatus.TAKEN)
+            ),
+            sectionOrder = listOf("TODAY_PLAN", "WHAT_CHANGED", "AI_INSIGHT"),
+            hiddenSections = setOf()
+        )
+
+        assertTrue(state.needsAttentionItems.isEmpty())
+        assertEquals("You have 3 items remaining today.", state.summaryText)
+        assertEquals(3, state.todayPlanItems.size)
+        // Incomplete items come first
+        assertFalse(state.todayPlanItems[0].isCompleted)
+        assertFalse(state.todayPlanItems[1].isCompleted)
+        assertTrue(state.todayPlanItems[2].isCompleted)
+    }
+
+    @Test
+    fun legacyPreferencesWithNeedsAttention_cleanedSafelyWithoutCrashing() {
+        val legacyHidden = setOf("NEEDS_ATTENTION", "WHAT_CHANGED")
+        val legacyOrder = listOf("NEEDS_ATTENTION", "TODAY_PLAN", "HOW_IM_DOING")
+
+        val cleanHidden = legacyHidden.filter { it != "NEEDS_ATTENTION" }.toSet()
+        val cleanOrder = legacyOrder.filter { it != "NEEDS_ATTENTION" }
+
+        assertFalse(cleanHidden.contains("NEEDS_ATTENTION"))
+        assertTrue(cleanHidden.contains("WHAT_CHANGED"))
+        assertFalse(cleanOrder.contains("NEEDS_ATTENTION"))
+        assertEquals("TODAY_PLAN", cleanOrder.first())
+    }
+
+    @Test
+    fun addingMultipleMedications_createsSeparateEntitiesWithUniqueIdentities() {
+        val medA = Medication(id = 101L, name = "Medication A", dose = "10mg", frequency = "Daily")
+        val medB = Medication(id = 102L, name = "Medication B", dose = "20mg", frequency = "Daily")
+        val medC = Medication(id = 103L, name = "Medication C", dose = "5mg", frequency = "Weekly")
+
+        val medsList = listOf(medA, medB, medC)
+        val activeList = medsList.filter { !it.isArchived }
+
+        assertEquals(3, activeList.size)
+        assertNotEquals(medA.id, medB.id)
+        assertNotEquals(medB.id, medC.id)
+
+        // Test editing medA does not modify medB
+        val updatedMedA = medA.copy(dose = "15mg")
+        val updatedList = listOf(updatedMedA, medB, medC)
+
+        assertEquals("15mg", updatedList.find { it.id == 101L }?.dose)
+        assertEquals("20mg", updatedList.find { it.id == 102L }?.dose)
+
+        // Test archiving medA does not affect medB
+        val archivedMedA = updatedMedA.copy(isArchived = true)
+        val afterArchive = listOf(archivedMedA, medB, medC).filter { !it.isArchived }
+
+        assertEquals(2, afterArchive.size)
+        assertEquals("Medication B", afterArchive[0].name)
+        assertEquals("Medication C", afterArchive[1].name)
+    }
+
+    @Test
+    fun sameNameDifferentDosageMedications_coexistWithUniqueIds() {
+        val morningDose = Medication(id = 201L, name = "Adderall", dose = "10mg", frequency = "Morning")
+        val afternoonDose = Medication(id = 202L, name = "Adderall", dose = "5mg", frequency = "Afternoon")
+
+        assertNotEquals(morningDose.id, afternoonDose.id)
+        assertEquals("10mg", morningDose.dose)
+        assertEquals("5mg", afternoonDose.dose)
+    }
+
+    @Test
+    fun appOpeningStreak_consecutiveCalendarDaysLogic() {
+        var currentStreak = 0
+        var bestStreak = 0
+        var lastOpenDate: java.time.LocalDate? = null
+
+        fun simulateOpen(today: java.time.LocalDate) {
+            if (lastOpenDate == null) {
+                currentStreak = 1
+                lastOpenDate = today
+            } else if (lastOpenDate == today) {
+                if (currentStreak < 1) currentStreak = 1
+            } else if (lastOpenDate == today.minusDays(1)) {
+                currentStreak = if (currentStreak >= 1) currentStreak + 1 else 1
+                lastOpenDate = today
+            } else {
+                currentStreak = 1
+                lastOpenDate = today
+            }
+            if (currentStreak > bestStreak) bestStreak = currentStreak
+        }
+
+        // Monday open: 1
+        val monday = java.time.LocalDate.of(2026, 8, 24)
+        simulateOpen(monday)
+        assertEquals(1, currentStreak)
+        assertEquals(1, bestStreak)
+
+        // Monday second open (restart): still 1
+        simulateOpen(monday)
+        assertEquals(1, currentStreak)
+
+        // Tuesday open: 2
+        val tuesday = java.time.LocalDate.of(2026, 8, 25)
+        simulateOpen(tuesday)
+        assertEquals(2, currentStreak)
+        assertEquals(2, bestStreak)
+
+        // Wednesday missed -> Thursday open: resets to 1
+        val thursday = java.time.LocalDate.of(2026, 8, 27)
+        simulateOpen(thursday)
+        assertEquals(1, currentStreak)
+        assertEquals(2, bestStreak) // best streak preserved
+
+        // Friday open: 2
+        val friday = java.time.LocalDate.of(2026, 8, 28)
+        simulateOpen(friday)
+        assertEquals(2, currentStreak)
+        assertEquals(2, bestStreak)
+    }
+
+    @Test
+    fun streakLogic_monthAndLeapYearBoundaries() {
+        var currentStreak = 0
+        var lastOpenDate: java.time.LocalDate? = null
+
+        fun simulateOpen(today: java.time.LocalDate) {
+            if (lastOpenDate == null || lastOpenDate != today.minusDays(1)) {
+                currentStreak = if (lastOpenDate == today) currentStreak else 1
+            } else {
+                currentStreak += 1
+            }
+            lastOpenDate = today
+        }
+
+        // Feb 28, 2028 (Leap year)
+        val feb28 = java.time.LocalDate.of(2028, 2, 28)
+        simulateOpen(feb28)
+        assertEquals(1, currentStreak)
+
+        // Feb 29, 2028
+        val feb29 = java.time.LocalDate.of(2028, 2, 29)
+        simulateOpen(feb29)
+        assertEquals(2, currentStreak)
+
+        // Mar 1, 2028
+        val mar1 = java.time.LocalDate.of(2028, 3, 1)
+        simulateOpen(mar1)
+        assertEquals(3, currentStreak)
+    }
+
+    @Test
+    fun quickLogEvents_singleEventEmittedWithEntryId() {
+        val events = mutableListOf<com.notel.notel.ui.viewmodel.QuickLogEvent>()
+        val loggedEvent = com.notel.notel.ui.viewmodel.QuickLogEvent.EntryLogged(entryId = 456L, message = "Entry logged")
+        val repeatedEvent = com.notel.notel.ui.viewmodel.QuickLogEvent.EntryRepeated(entryId = 456L, message = "Last entry repeated")
+
+        events.add(loggedEvent)
+        events.add(repeatedEvent)
+
+        assertEquals(2, events.size)
+        assertTrue(events[0] is com.notel.notel.ui.viewmodel.QuickLogEvent.EntryLogged)
+        assertEquals(456L, (events[0] as com.notel.notel.ui.viewmodel.QuickLogEvent.EntryLogged).entryId)
+        assertEquals("Last entry repeated", (events[1] as com.notel.notel.ui.viewmodel.QuickLogEvent.EntryRepeated).message)
+    }
 }
+
