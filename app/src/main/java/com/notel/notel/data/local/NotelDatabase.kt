@@ -33,9 +33,10 @@ import kotlinx.coroutines.launch
         com.notel.notel.data.local.entity.MedicationSideEffectCache::class,
         com.notel.notel.data.local.entity.AiInsight::class,
         com.notel.notel.data.local.entity.PinnedTemplate::class,
-        com.notel.notel.data.local.entity.ScheduledDoseOccurrence::class
+        com.notel.notel.data.local.entity.ScheduledDoseOccurrence::class,
+        com.notel.notel.data.local.entity.InsightEntryCrossRef::class
     ],
-    version = 26,
+    version = 27,
     exportSchema = false
 )
 abstract class NotelDatabase : RoomDatabase() {
@@ -53,6 +54,27 @@ abstract class NotelDatabase : RoomDatabase() {
 
     companion object {
         @Volatile private var INSTANCE: NotelDatabase? = null
+
+        val MIGRATION_26_27 = object : Migration(26, 27) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE ai_insights ADD COLUMN classification TEXT NOT NULL DEFAULT 'OBSERVATION'")
+                db.execSQL("ALTER TABLE ai_insights ADD COLUMN dataUsed TEXT NOT NULL DEFAULT 'Symptom logs, medication records'")
+                db.execSQL("ALTER TABLE ai_insights ADD COLUMN dateRangeText TEXT NOT NULL DEFAULT 'Past 7 days'")
+                db.execSQL("ALTER TABLE ai_insights ADD COLUMN plainLanguageReason TEXT NOT NULL DEFAULT 'Observed consistency in daily tracking records.'")
+                db.execSQL("ALTER TABLE ai_insights ADD COLUMN confidence REAL NOT NULL DEFAULT 0.85")
+                db.execSQL("ALTER TABLE ai_insights ADD COLUMN feedbackState TEXT NOT NULL DEFAULT 'NONE'")
+                db.execSQL("ALTER TABLE ai_insights ADD COLUMN isDismissed INTEGER NOT NULL DEFAULT 0")
+
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS insight_entry_cross_ref (
+                        insightId TEXT NOT NULL,
+                        entryId INTEGER NOT NULL,
+                        PRIMARY KEY(insightId, entryId)
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_insight_entry_cross_ref_entryId ON insight_entry_cross_ref(entryId)")
+            }
+        }
 
         val MIGRATION_25_26 = object : Migration(25, 26) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -297,7 +319,7 @@ abstract class NotelDatabase : RoomDatabase() {
                     "notel_db"
                 )
                     .fallbackToDestructiveMigration()
-                    .addMigrations(MIGRATION_1_2, MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27)
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)

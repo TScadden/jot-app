@@ -135,6 +135,31 @@ class NotelPreferences @Inject constructor(
         val ROUTINE_CLICK_COUNTS = stringPreferencesKey("routine_click_counts")
         val INFO_TILE_ORDER = stringPreferencesKey("info_tile_order")
         val SHOW_NAV_LABELS = booleanPreferencesKey("show_nav_labels")
+        val TODAY_MODE = stringPreferencesKey("today_mode") // "SIMPLE" or "DETAILED"
+        val TODAY_HIDDEN_SECTIONS = stringPreferencesKey("today_hidden_sections") // comma separated list
+        val TODAY_SECTION_ORDER = stringPreferencesKey("today_section_order") // comma separated list
+    }
+
+    val todayMode: Flow<String> = context.dataStore.data.map { it[TODAY_MODE] ?: "SIMPLE" }
+    val todayHiddenSections: Flow<Set<String>> = context.dataStore.data.map {
+        val str = it[TODAY_HIDDEN_SECTIONS] ?: ""
+        if (str.isBlank()) emptySet() else str.split(",").toSet()
+    }
+    val todaySectionOrder: Flow<List<String>> = context.dataStore.data.map {
+        val str = it[TODAY_SECTION_ORDER] ?: "TODAY_PLAN,HOW_IM_DOING,WHAT_CHANGED,AI_INSIGHT,QUICK_ACTIONS"
+        str.split(",").filter { s -> s.isNotBlank() }
+    }
+
+    suspend fun setTodayMode(mode: String) {
+        context.dataStore.edit { it[TODAY_MODE] = mode }
+    }
+
+    suspend fun setTodayHiddenSections(hidden: Set<String>) {
+        context.dataStore.edit { it[TODAY_HIDDEN_SECTIONS] = hidden.joinToString(",") }
+    }
+
+    suspend fun setTodaySectionOrder(order: List<String>) {
+        context.dataStore.edit { it[TODAY_SECTION_ORDER] = order.joinToString(",") }
     }
 
     val showNavLabels: Flow<Boolean> = context.dataStore.data.map { it[SHOW_NAV_LABELS] ?: true }

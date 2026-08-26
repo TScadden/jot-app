@@ -2,14 +2,20 @@ package com.notel.notel.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.notel.notel.data.healthconnect.HealthConnectManager
+import com.notel.notel.data.local.dao.AiInsightDao
 import com.notel.notel.data.local.dao.MedicationDao
 import com.notel.notel.data.local.dao.ReminderDao
 import com.notel.notel.data.local.dao.ScheduledDoseOccurrenceDao
+import com.notel.notel.data.local.entity.AiInsight
+import com.notel.notel.data.local.entity.LogEntry
 import com.notel.notel.data.local.entity.Medication
 import com.notel.notel.data.local.entity.Reminder
 import com.notel.notel.data.local.entity.ScheduledDoseOccurrence
 import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.repository.HabitRepository
+import com.notel.notel.data.repository.HealthComparisonItem
+import com.notel.notel.data.repository.HealthComparisonRepository
 import com.notel.notel.data.repository.ScheduledDoseRepository
 import com.notel.notel.data.remote.HabitDtoModel
 import com.notel.notel.data.sync.SyncManager
@@ -80,9 +86,15 @@ data class NeedsAttentionItem(
 }
 
 data class TodayUiState(
+    val mode: String = "SIMPLE", // "SIMPLE" or "DETAILED"
     val summaryText: String = "",
     val needsAttentionItems: List<NeedsAttentionItem> = emptyList(),
     val todayPlanItems: List<TodayPlanItem> = emptyList(),
+    val whatChangedItems: List<HealthComparisonItem> = emptyList(),
+    val primaryInsight: AiInsight? = null,
+    val supportingEntries: List<LogEntry> = emptyList(),
+    val hiddenSections: Set<String> = emptySet(),
+    val sectionOrder: List<String> = listOf("TODAY_PLAN", "HOW_IM_DOING", "WHAT_CHANGED", "AI_INSIGHT", "QUICK_ACTIONS"),
     val isOffline: Boolean = false,
     val isSyncFailed: Boolean = false
 )
@@ -94,23 +106,60 @@ class TodayViewModel @Inject constructor(
     private val habitRepository: HabitRepository,
     private val scheduledDoseOccurrenceDao: ScheduledDoseOccurrenceDao,
     private val scheduledDoseRepository: ScheduledDoseRepository,
+    private val healthComparisonRepository: HealthComparisonRepository,
+    private val aiInsightDao: AiInsightDao,
     private val syncManager: SyncManager,
     private val preferences: NotelPreferences
 ) : ViewModel() {
 
     private val _completedReminders = MutableStateFlow<Set<Int>>(emptySet())
     private val _isRetryingSync = MutableStateFlow(false)
+    private val _whatChanged = MutableStateFlow<List<HealthComparisonItem>>(emptyList())
 
     private val todayStr: String
         get() = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
+
+    init {
+        loadHealthComparisons()
+    }
+
+    private fun loadHealthComparisons() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val items = healthComparisonRepository.getWhatChangedComparisons(todayStr)
+            _whatChanged.value = items
+        }
+    }
 
     val uiState: StateFlow<TodayUiState> = combine(
         medicationDao.getAllMedications(),
         reminderDao.getAllReminders(),
         habitRepository.habits,
         scheduledDoseOccurrenceDao.getOccurrencesForDate(todayStr),
-        _completedReminders
-    ) { medsList, remindersList, habitsList, occurrencesList, completedReminders ->
+        _completedReminders,
+        _whatChanged,
+        aiInsightDao.getPrimaryActiveInsight(),
+        preferences.todayMode,
+        preferences.todayHiddenSections,
+        preferences.todaySectionOrder
+    ) { args ->
+        @Suppress("UNCHECKED_CAST")
+        val medsList = args[0] as List<Medication>
+        @Suppress("UNCHECKED_CAST")
+        val remindersList = args[1] as List<Reminder>
+        @Suppress("UNCHECKED_CAST")
+        val habitsList = args[2] as List<HabitDtoModel>
+        @Suppress("UNCHECKED_CAST")
+        val occurrencesList = args[3] as List<ScheduledDoseOccurrence>
+        @Suppress("UNCHECKED_CAST")
+        val completedReminders = args[4] as Set<Int>
+        @Suppress("UNCHECKED_CAST")
+        val whatChangedItems = args[5] as List<HealthComparisonItem>
+        val primaryInsight = args[6] as? AiInsight
+        val todayMode = args[7] as String
+        @Suppress("UNCHECKED_CAST")
+        val hiddenSections = args[8] as Set<String>
+        @Suppress("UNCHECKED_CAST")
+        val sectionOrder = args[9] as List<String>
 
         val activeMeds = medsList.filter { !it.isArchived }
         val enabledReminders = remindersList.filter { it.isEnabled }
@@ -120,7 +169,7 @@ class TodayViewModel @Inject constructor(
 
         val attentionList = mutableListOf<NeedsAttentionItem>()
 
-        // 1. Scheduled medications (supporting multiple doses per day: Morning and Evening)
+        // 1. Scheduled medications
         activeMeds.forEach { med ->
             val times = if (med.timesPerDay > 1) listOf("Morning", "Evening") else listOf("Daily")
             times.forEach { timeLabel ->
@@ -253,9 +302,14 @@ class TodayViewModel @Inject constructor(
         }
 
         TodayUiState(
+            mode = todayMode,
             summaryText = summaryStr,
             needsAttentionItems = attentionList,
             todayPlanItems = sortedPlan,
+            whatChangedItems = whatChangedItems,
+            primaryInsight = primaryInsight,
+            hiddenSections = hiddenSections,
+            sectionOrder = sectionOrder,
             isOffline = false,
             isSyncFailed = false
         )
@@ -294,6 +348,37 @@ class TodayViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             habitRepository.toggleHabitLog(habitId, today, isCompleted)
             habitRepository.fetchHabits()
+        }
+    }
+
+    fun submitInsightFeedback(insightId: String, isHelpful: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val feedbackStr = if (isHelpful) "HELPFUL" else "NOT_HELPFUL"
+            aiInsightDao.updateFeedback(insightId, feedbackStr)
+        }
+    }
+
+    fun dismissInsight(insightId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            aiInsightDao.updateDismissed(insightId, true)
+        }
+    }
+
+    fun setMode(mode: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            preferences.setTodayMode(mode)
+        }
+    }
+
+    fun updateHiddenSections(hidden: Set<String>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            preferences.setTodayHiddenSections(hidden)
+        }
+    }
+
+    fun updateSectionOrder(order: List<String>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            preferences.setTodaySectionOrder(order)
         }
     }
 

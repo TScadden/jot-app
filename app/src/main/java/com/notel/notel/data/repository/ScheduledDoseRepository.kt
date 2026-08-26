@@ -41,9 +41,15 @@ class ScheduledDoseRepository @Inject constructor(
                 logId = logRepository.insertEntry(log)
             }
         } else if (action == ActionStatus.SKIPPED) {
-            // Taken-to-Skipped correction strategy: delete associated log if it was previously logged as TAKEN
+            // Soft-delete/correct strategy: update log body to reflect correction without deleting audit entry
             if (logId != null) {
-                logRepository.deleteEntry(logId)
+                val existingLog = db.logEntryDao().getEntryById(logId)
+                if (existingLog != null) {
+                    val updatedLog = existingLog.copy(
+                        body = "[Corrected to Skipped] ${existingLog.body}"
+                    )
+                    db.logEntryDao().updateEntry(updatedLog)
+                }
                 logId = null
             }
         }

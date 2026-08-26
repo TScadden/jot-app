@@ -80,6 +80,11 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideAiInsightDao(db: NotelDatabase): com.notel.notel.data.local.dao.AiInsightDao =
+        db.aiInsightDao()
+
+    @Provides
+    @Singleton
     fun provideOkHttpClient(authInterceptor: AuthInterceptor): OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(120, TimeUnit.SECONDS)

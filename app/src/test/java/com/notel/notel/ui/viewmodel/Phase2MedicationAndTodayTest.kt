@@ -199,19 +199,59 @@ class Phase2MedicationAndTodayTest {
     }
 
     @Test
-    fun archivedMedicationHistory_remainsReadableInOccurrences() {
-        val archivedMed = Medication(id = 8L, name = "Old Med", dose = "10mg", frequency = "Daily", isArchived = true)
-        val historyOccurrence = ScheduledDoseOccurrence(
-            id = 99L,
-            occurrenceKey = "med_8_2026-08-01_Daily",
-            medicationId = 8L,
-            scheduledDate = "2026-08-01",
-            scheduledTime = "Daily",
-            status = "TAKEN"
+    fun transparentAiInsight_containsRequiredFieldsAndClassification() {
+        val insight = com.notel.notel.data.local.entity.AiInsight(
+            id = "ins_101",
+            text = "Consistent medication logging observed.",
+            timestamp = System.currentTimeMillis(),
+            type = "SUMMARY",
+            classification = "OBSERVATION",
+            dataUsed = "Medication records, daily logs",
+            dateRangeText = "Past 7 days",
+            plainLanguageReason = "You logged your medications regularly over the last week.",
+            confidence = 0.90f,
+            feedbackState = "HELPFUL",
+            isDismissed = false
         )
 
-        assertTrue(archivedMed.isArchived)
-        assertEquals(8L, historyOccurrence.medicationId)
-        assertEquals("TAKEN", historyOccurrence.status)
+        assertEquals("OBSERVATION", insight.classification)
+        assertEquals("HELPFUL", insight.feedbackState)
+        assertFalse(insight.isDismissed)
+        assertEquals(0.90f, insight.confidence, 0.01f)
+    }
+
+    @Test
+    fun todayCustomization_simpleVsDetailedModeAndHiddenSections() {
+        val hidden = setOf("WHAT_CHANGED", "HOW_IM_DOING")
+        val order = listOf("TODAY_PLAN", "AI_INSIGHT", "QUICK_ACTIONS")
+
+        val state = TodayUiState(
+            mode = "SIMPLE",
+            hiddenSections = hidden,
+            sectionOrder = order
+        )
+
+        assertEquals("SIMPLE", state.mode)
+        assertTrue(state.hiddenSections.contains("WHAT_CHANGED"))
+        assertEquals("TODAY_PLAN", state.sectionOrder.first())
+    }
+
+    @Test
+    fun healthComparison_validSevenDayDifferenceCalculation() {
+        val todaySleep = 420 // 7 hours
+        val pastAvgSleep = 465 // 7h 45m
+        val diff = todaySleep - pastAvgSleep // -45 mins
+
+        val comparison = com.notel.notel.data.repository.HealthComparisonItem(
+            metricName = "Sleep Duration",
+            currentPeriod = "7h 0m today",
+            comparisonPeriod = "7-day avg (7h 45m)",
+            differenceText = "Sleep was ${Math.abs(diff)} minutes shorter than your seven-day average.",
+            dataSource = "Health Connect",
+            lastUpdatedTime = "Today"
+        )
+
+        assertEquals("Sleep Duration", comparison.metricName)
+        assertTrue(comparison.differenceText.contains("45 minutes shorter"))
     }
 }

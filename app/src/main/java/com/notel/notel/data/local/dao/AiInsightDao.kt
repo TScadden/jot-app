@@ -38,6 +38,26 @@ interface AiInsightDao {
     """)
     fun getAllInsightsWithEntryAndCategory(): Flow<List<com.notel.notel.data.local.entity.AiInsightWithEntryAndCategory>>
 
+    @Query("UPDATE ai_insights SET feedbackState = :feedback WHERE id = :insightId")
+    suspend fun updateFeedback(insightId: String, feedback: String)
+
+    @Query("UPDATE ai_insights SET isDismissed = :isDismissed WHERE id = :insightId")
+    suspend fun updateDismissed(insightId: String, isDismissed: Boolean)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertInsightEntryCrossRef(crossRef: com.notel.notel.data.local.entity.InsightEntryCrossRef)
+
+    @Query("""
+        SELECT e.* FROM log_entries e
+        INNER JOIN insight_entry_cross_ref xref ON e.id = xref.entryId
+        WHERE xref.insightId = :insightId
+        ORDER BY e.timestamp DESC
+    """)
+    fun getSupportingEntriesForInsight(insightId: String): Flow<List<com.notel.notel.data.local.entity.LogEntry>>
+
+    @Query("SELECT * FROM ai_insights WHERE isDismissed = 0 ORDER BY timestamp DESC LIMIT 1")
+    fun getPrimaryActiveInsight(): Flow<AiInsight?>
+
     @Query("DELETE FROM ai_insights")
     suspend fun deleteAll()
 }
