@@ -229,6 +229,11 @@ class LogRepository @Inject constructor(
         triggerSync()
     }
 
+    suspend fun deleteEntry(entryId: Long) {
+        val entry = getEntryById(entryId) ?: return
+        deleteEntry(entry)
+    }
+
     suspend fun deleteEntry(entry: LogEntry) {
         try {
             // 1. Local Delete

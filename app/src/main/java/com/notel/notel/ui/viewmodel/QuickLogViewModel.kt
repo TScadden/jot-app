@@ -79,7 +79,8 @@ data class QuickLogUiState(
     val showTemplateManagementDialog: Boolean = false,
     val showTemplateEditDialog: Boolean = false,
     val templateToEdit: com.notel.notel.data.local.entity.PinnedTemplate? = null,
-    val templateToDelete: com.notel.notel.data.local.entity.PinnedTemplate? = null
+    val templateToDelete: com.notel.notel.data.local.entity.PinnedTemplate? = null,
+    val lastLoggedEntryId: Long? = null
 )
 
 @HiltViewModel
@@ -343,7 +344,7 @@ class QuickLogViewModel @Inject constructor(
             // Immediately recalculate streak so UI updates
             preferences.updateStreak()
 
-            logRepository.insertEntry(
+            val savedId = logRepository.insertEntry(
                 LogEntry(
                     categoryId = finalCategoryId,
                     body = body,
@@ -359,6 +360,7 @@ class QuickLogViewModel @Inject constructor(
                 it.copy(
                     isSaving = false,
                     saveSuccess = true,
+                    lastLoggedEntryId = savedId,
                     selectedChips = emptyList(),
                     composedText = "",
                     manualText = ""
@@ -735,9 +737,6 @@ class QuickLogViewModel @Inject constructor(
                 var intensity = proposal.intensity
                 var catSlug = proposal.intent.name.lowercase()
 
-                if (proposal.intent.name == "MEDICATION" && dosage.isNullOrBlank()) {
-                    dosage = templateRepository.getHistoricalDosageForMedication(proposal.summaryText)
-                }
                 if (proposal.intent.name == "SYMPTOM" && intensity.isNullOrBlank()) {
                     intensity = templateRepository.getHistoricalIntensityForSymptom(proposal.summaryText)
                 }
@@ -880,14 +879,9 @@ class QuickLogViewModel @Inject constructor(
     }
 
     fun logFromTemplate(template: com.notel.notel.data.local.entity.PinnedTemplate) {
-        if (template.isMedication) {
-            // Medication templates MUST open proposal confirmation before logging
-            parseAndShowProposals(template.body)
-            return
-        }
         viewModelScope.launch {
             val catId = categoryRepository.findCategoryIdBySlug(template.categorySlug, defaultId = 7)
-            logRepository.insertEntry(
+            val newId = logRepository.insertEntry(
                 LogEntry(
                     id = 0L,
                     categoryId = catId,
@@ -897,13 +891,18 @@ class QuickLogViewModel @Inject constructor(
                     source = "Pinned Template"
                 )
             )
-            _uiState.update { it.copy(saveSuccess = true) }
+            _uiState.update { 
+                it.copy(
+                    saveSuccess = true,
+                    lastLoggedEntryId = newId
+                ) 
+            }
         }
     }
 
     fun logFromRecent(entry: LogEntry) {
         viewModelScope.launch {
-            logRepository.insertEntry(
+            val newId = logRepository.insertEntry(
                 LogEntry(
                     id = 0L,
                     categoryId = entry.categoryId,
@@ -913,6 +912,25 @@ class QuickLogViewModel @Inject constructor(
                     source = "Recent Suggestion"
                 )
             )
+            _uiState.update { 
+                it.copy(
+                    saveSuccess = true,
+                    lastLoggedEntryId = newId
+                ) 
+            }
+        }
+    }
+
+    fun undoLastLog() {
+        val targetId = _uiState.value.lastLoggedEntryId ?: return
+        viewModelScope.launch {
+            logRepository.deleteEntry(targetId)
+            _uiState.update { 
+                it.copy(
+                    lastLoggedEntryId = null,
+                    saveSuccess = false
+                ) 
+            }
         }
     }
 

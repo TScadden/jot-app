@@ -58,19 +58,31 @@ fun BodyLoadScreen(
     habitViewModel: HabitViewModel = hiltViewModel(),
     reminderViewModel: ReminderViewModel = hiltViewModel(),
     notesViewModel: NotesViewModel = hiltViewModel(),
-    listsViewModel: ListsViewModel = hiltViewModel()
+    listsViewModel: ListsViewModel = hiltViewModel(),
+    todayViewModel: com.notel.notel.ui.viewmodel.TodayViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
     val quickLogState by quickLogViewModel.uiState.collectAsState()
+    val todayState by todayViewModel.uiState.collectAsState()
     val habits by habitViewModel.habits.collectAsState()
     val reminders by reminderViewModel.reminders.collectAsState()
     val notes: List<com.notel.notel.data.local.entity.UserListItem> by notesViewModel.notes.collectAsState()
     val lists: List<com.notel.notel.data.local.entity.UserList> by listsViewModel.lists.collectAsState()
 
-    // Auto-hide success message
+    // Auto-hide success message with Undo option
+    var snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+
     LaunchedEffect(quickLogState.saveSuccess) {
         if (quickLogState.saveSuccess) {
-            kotlinx.coroutines.delay(3000)
+            val result = snackbarHostState.showSnackbar(
+                message = "Entry logged",
+                actionLabel = "Undo",
+                duration = SnackbarDuration.Short
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                quickLogViewModel.undoLastLog()
+            }
             quickLogViewModel.resetSaveSuccess()
         }
     }
@@ -114,11 +126,12 @@ fun BodyLoadScreen(
 
     Scaffold(
         containerColor = NotelBackground,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
                     Text(
-                        text = "Home",
+                        text = "Today",
                         fontWeight = FontWeight.Black,
                         color = NotelTextPrimary,
                         fontSize = 22.sp
@@ -174,6 +187,265 @@ fun BodyLoadScreen(
             ),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // ── 1. Today Summary Section ─────────────────────────────────────
+            item {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    color = NotelSurface,
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, GlassBorder)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Today,
+                                contentDescription = null,
+                                tint = NotelPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = "Today's Summary",
+                                fontWeight = FontWeight.Bold,
+                                color = NotelTextPrimary,
+                                fontSize = 16.sp
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = todayState.summaryText,
+                            color = NotelTextSecondary,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+            }
+
+            // ── 2. Needs Attention Section ───────────────────────────────────
+            if (todayState.needsAttentionItems.isNotEmpty()) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = "Needs Attention",
+                            fontWeight = FontWeight.Bold,
+                            color = NotelPrimary,
+                            fontSize = 15.sp,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        todayState.needsAttentionItems.forEach { item ->
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                color = NotelSurface,
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, GlassBorder)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = item.title,
+                                            fontWeight = FontWeight.Bold,
+                                            color = NotelTextPrimary,
+                                            fontSize = 14.sp
+                                        )
+                                        Text(
+                                            text = "${item.typeText} • ${item.detailText}",
+                                            color = NotelTextSecondary,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        when (item.itemType) {
+                                            com.notel.notel.ui.viewmodel.NeedsAttentionItem.ItemType.MEDICATION -> {
+                                                val medId = item.medication?.id ?: 0L
+                                                Button(
+                                                    onClick = { todayViewModel.markMedicationAction(medId, com.notel.notel.ui.viewmodel.ActionStatus.TAKEN) },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
+                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                    shape = RoundedCornerShape(8.dp)
+                                                ) {
+                                                    Text("Taken", fontSize = 11.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+                                                }
+                                                OutlinedButton(
+                                                    onClick = { todayViewModel.markMedicationAction(medId, com.notel.notel.ui.viewmodel.ActionStatus.SKIPPED) },
+                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                                    shape = RoundedCornerShape(8.dp)
+                                                ) {
+                                                    Text("Skip", fontSize = 11.sp, color = NotelTextSecondary)
+                                                }
+                                            }
+                                            com.notel.notel.ui.viewmodel.NeedsAttentionItem.ItemType.REMINDER -> {
+                                                Button(
+                                                    onClick = { todayViewModel.completeReminder(item.reminder?.id ?: 0) },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
+                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                    shape = RoundedCornerShape(8.dp)
+                                                ) {
+                                                    Text("Complete", fontSize = 11.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                            com.notel.notel.ui.viewmodel.NeedsAttentionItem.ItemType.HABIT -> {
+                                                Button(
+                                                    onClick = { todayViewModel.toggleHabit(item.habit?.id ?: "", true) },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
+                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                    shape = RoundedCornerShape(8.dp)
+                                                ) {
+                                                    Text("Done", fontSize = 11.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                            com.notel.notel.ui.viewmodel.NeedsAttentionItem.ItemType.SYNC_FAILED -> {
+                                                Button(
+                                                    onClick = { todayViewModel.retrySync() },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
+                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                    shape = RoundedCornerShape(8.dp)
+                                                ) {
+                                                    Text("Retry", fontSize = 11.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── 3. Today's Plan Section ─────────────────────────────────────
+            if (todayState.todayPlanItems.isNotEmpty()) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = "Today's Plan",
+                            fontWeight = FontWeight.Bold,
+                            color = NotelTextPrimary,
+                            fontSize = 15.sp,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        todayState.todayPlanItems.forEach { planItem ->
+                            val alpha = if (planItem.isCompleted) 0.5f else 1.0f
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 3.dp),
+                                color = NotelSurface.copy(alpha = alpha),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = if (planItem.isCompleted) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                        contentDescription = null,
+                                        tint = if (planItem.isCompleted) NotelPrimary else NotelTextSecondary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(
+                                        text = planItem.title,
+                                        fontWeight = if (planItem.isCompleted) FontWeight.Normal else FontWeight.Medium,
+                                        color = NotelTextPrimary.copy(alpha = alpha),
+                                        fontSize = 13.sp,
+                                        textDecoration = if (planItem.isCompleted) TextDecoration.LineThrough else TextDecoration.None,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Text(
+                                        text = planItem.timeDisplay,
+                                        color = NotelTextSecondary.copy(alpha = alpha),
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── 4. Quick Actions Section ────────────────────────────────────
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        onClick = { quickLogViewModel.saveEntry() },
+                        modifier = Modifier.weight(1f),
+                        color = NotelPrimary.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.4f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, tint = NotelPrimary, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Log Entry", fontSize = 12.sp, color = NotelPrimary, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Surface(
+                        onClick = {
+                            val last = quickLogState.recentSuggestions.firstOrNull()
+                            if (last != null) quickLogViewModel.logFromRecent(last)
+                        },
+                        modifier = Modifier.weight(1f),
+                        color = NotelSurface,
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, GlassBorder)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(Icons.Default.Repeat, contentDescription = null, tint = NotelTextSecondary, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Repeat Last", fontSize = 12.sp, color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                        }
+                    }
+
+                    Surface(
+                        onClick = { },
+                        modifier = Modifier.weight(1f),
+                        color = NotelSurface,
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, GlassBorder)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(Icons.Default.Bookmark, contentDescription = null, tint = NotelTextSecondary, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Templates", fontSize = 12.sp, color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                        }
+                    }
+                }
+            }
+
             item {
                 BodyLoadCard(
                     state = state,
