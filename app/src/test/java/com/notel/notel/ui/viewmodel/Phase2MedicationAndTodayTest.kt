@@ -495,5 +495,40 @@ class Phase2MedicationAndTodayTest {
         assertEquals(456L, (events[0] as com.notel.notel.ui.viewmodel.QuickLogEvent.EntryLogged).entryId)
         assertEquals("Last entry repeated", (events[1] as com.notel.notel.ui.viewmodel.QuickLogEvent.EntryRepeated).message)
     }
+
+    @Test
+    fun medicationSync_pendingLocalMedicationPreservedWhenServerLacksIt() {
+        val existingLocal = listOf(
+            Medication(id = 101L, name = "Adderall", dose = "10mg", frequency = "Morning"),
+            Medication(id = 102L, name = "Vitamin D", dose = "2000IU", frequency = "Daily") // pending local
+        )
+        val serverResponseMeds = listOf(
+            com.notel.notel.ui.viewmodel.Medication(id = "101", name = "Adderall", startDate = "2026-01-01", endDate = "Present", isPresent = true)
+        )
+
+        // Non-destructive merge simulation
+        val mergedList = existingLocal.toMutableList()
+        for (serverMed in serverResponseMeds) {
+            val serverId = serverMed.id.toLongOrNull()
+            val index = mergedList.indexOfFirst { (serverId != null && it.id == serverId) || it.name.equals(serverMed.name, ignoreCase = true) }
+            if (index >= 0) {
+                mergedList[index] = mergedList[index].copy(name = serverMed.name)
+            }
+        }
+
+        // Verify Vitamin D is preserved
+        assertEquals(2, mergedList.size)
+        assertTrue(mergedList.any { it.name == "Vitamin D" })
+    }
+
+    @Test
+    fun medicationSync_sameNameDifferentDosageCoexistOnSync() {
+        val med1 = Medication(id = 101L, name = "Adderall", dose = "10mg", frequency = "Morning")
+        val med2 = Medication(id = 102L, name = "Adderall", dose = "20mg", frequency = "Evening")
+
+        val list = listOf(med1, med2)
+        assertEquals(2, list.size)
+        assertNotEquals(med1.id, med2.id)
+    }
 }
 

@@ -69,23 +69,7 @@ fun BodyLoadScreen(
     val notes: List<com.notel.notel.data.local.entity.UserListItem> by notesViewModel.notes.collectAsState()
     val lists: List<com.notel.notel.data.local.entity.UserList> by listsViewModel.lists.collectAsState()
 
-    // Auto-hide success message with Undo option
-    var snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
-
-    LaunchedEffect(quickLogState.saveSuccess) {
-        if (quickLogState.saveSuccess) {
-            val result = snackbarHostState.showSnackbar(
-                message = "Entry logged",
-                actionLabel = "Undo",
-                duration = SnackbarDuration.Short
-            )
-            if (result == SnackbarResult.ActionPerformed) {
-                quickLogViewModel.undoLastLog()
-            }
-            quickLogViewModel.resetSaveSuccess()
-        }
-    }
 
     // Refresh data on entry (respects 1-hour auto-limit unless forced)
     LaunchedEffect(Unit) {
@@ -127,7 +111,6 @@ fun BodyLoadScreen(
 
     Scaffold(
         containerColor = NotelBackground,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {

@@ -569,26 +569,17 @@ class SyncManager @Inject constructor(
                     Log.d(tag, "RESTORE_MEDS: Server medications raw value = '${profile.medications}'")
                     profile.medications?.let { medsJson ->
                         if (medsJson.isNotBlank()) {
-                            preferences.setMedications(medsJson)
                             try {
                                 val serverMeds = Json.decodeFromString<List<com.notel.notel.ui.viewmodel.Medication>>(medsJson)
                                 val existingMeds = medicationDao.getAllMedications().first()
-                                val serverNames = serverMeds.map { it.name.trim().lowercase() }.toSet()
 
-                                // Delete local meds that are no longer on the server
-                                for (existing in existingMeds) {
-                                    if (!serverNames.contains(existing.name.trim().lowercase())) {
-                                        medicationDao.deleteMedication(existing)
-                                    }
-                                }
-
-                                // Upsert server meds into Room SQLite database safely
+                                // Upsert server meds into Room SQLite database safely without destructively deleting unsynced local meds
                                 for (med in serverMeds) {
                                     val serverId = med.id.toLongOrNull()
-                                    val existingMatch = existingMeds.find { (serverId != null && it.id == serverId) || it.name.trim().lowercase() == med.name.trim().lowercase() }
+                                    val existingMatch = existingMeds.find { (serverId != null && serverId != 0L && it.id == serverId) || (it.name.trim().equals(med.name.trim(), ignoreCase = true) && it.startedDate == med.startDate.trim().ifEmpty { null }) }
                                     
                                     val dbMed = com.notel.notel.data.local.entity.Medication(
-                                        id = existingMatch?.id ?: (serverId ?: 0L),
+                                        id = existingMatch?.id ?: (if (serverId != null && serverId != 0L) serverId else 0L),
                                         name = med.name.trim(),
                                         dose = if (existingMatch != null && existingMatch.dose.isNotBlank()) existingMatch.dose else "As prescribed",
                                         frequency = if (existingMatch != null && existingMatch.frequency.isNotBlank()) existingMatch.frequency else "Daily",
@@ -598,6 +589,19 @@ class SyncManager @Inject constructor(
                                     )
                                     medicationDao.insertMedication(dbMed)
                                 }
+
+                                // Update preferences with the merged current set
+                                val allMedsAfterMerge = medicationDao.getAllMedications().first()
+                                val mergedList = allMedsAfterMerge.map { med ->
+                                    com.notel.notel.ui.viewmodel.Medication(
+                                        id = med.id.toString(),
+                                        name = med.name,
+                                        startDate = med.startedDate ?: "",
+                                        endDate = if (!med.isArchived) "Present" else (med.endedDate ?: ""),
+                                        isPresent = !med.isArchived
+                                    )
+                                }
+                                preferences.setMedications(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(com.notel.notel.ui.viewmodel.Medication.serializer()), mergedList))
                             } catch (e: Exception) {
                                 Log.e(tag, "Failed to parse/sync medications to Room DB in pullAllData: ${e.message}")
                             }
