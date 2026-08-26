@@ -535,57 +535,7 @@ fun BodyLoadScreen(
                 }
             }
 
-            // ── 2. Tools Section ─────────────────────────────
-            item {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
-                ) {
-                    Text(
-                        text = "Tools",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = NotelTextPrimary,
-                        modifier = Modifier.padding(bottom = 10.dp)
-                    )
 
-                    DEFAULT_INFO_TILES.chunked(2).forEach { rowTiles ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 10.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            rowTiles.forEach { tile ->
-                                Box(modifier = Modifier.weight(1f)) {
-                                    InfoTileCard(
-                                        tile = tile,
-                                        isUnlimited = quickLogState.isUnlimited,
-                                        onNavigateToMembership = onNavigateToMembership,
-                                        onSleepClick = onNavigateToHeart,
-                                        onBodyInfoClick = onNavigateToHeart,
-                                        onMedicationsClick = onNavigateToHeart,
-                                        onKeyMetricsClick = onNavigateToHeart,
-                                        onCoachClick = {},
-                                        onTipsAndTricksClick = {},
-                                        onFoodClick = {},
-                                        onCommunityClick = {},
-                                        onHabitsClick = onNavigateToHabits,
-                                        onRemindersClick = onNavigateToReminders,
-                                        onListsClick = onNavigateToLists,
-                                        onNotesClick = onNavigateToNotes,
-                                        onProjectFocusClick = onNavigateToProjectFocus
-                                    )
-                                }
-                            }
-                            if (rowTiles.size < 2) {
-                                Spacer(modifier = Modifier.weight(1f))
-                            }
-                        }
-                    }
-                }
-            }
 
             // ── 3C. Active AI Insight Section ──────────────────────────────
             if (!todayState.hiddenSections.contains("AI_INSIGHT") && todayState.primaryInsight != null) {
