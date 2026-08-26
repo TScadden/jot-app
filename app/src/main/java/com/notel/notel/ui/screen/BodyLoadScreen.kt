@@ -42,6 +42,8 @@ import com.notel.notel.data.local.entity.UserList
 import com.notel.notel.data.remote.HabitDtoModel
 import com.notel.notel.ui.viewmodel.EventCounterDto
 import com.notel.notel.data.local.entity.Category
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -95,12 +97,7 @@ fun BodyLoadScreen(
         }
     }
 
-    // Auto-fetch suggestions if category is selected and auto is on
-    LaunchedEffect(quickLogState.selectedCategory, quickLogState.autoAiSuggestions, quickLogState.isUnlimited) {
-        if (quickLogState.isUnlimited && quickLogState.autoAiSuggestions && quickLogState.selectedCategory != null && quickLogState.chips.isEmpty()) {
-            quickLogViewModel.fetchSuggestions()
-        }
-    }
+
 
     val sheetState = rememberModalBottomSheetState()
     var showTheorySheet by remember { mutableStateOf(false) }
@@ -263,11 +260,36 @@ fun BodyLoadScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            MetricChip("🔥", "${state.currentStreak} day${if (state.currentStreak != 1) "s" else ""}")
-                            MetricChip("❤️", if (state.avgHeartRate > 0) "${state.avgHeartRate} bpm" else "—")
-                            MetricChip("🔥", if (state.activeCalories > 0) "${state.activeCalories} kcal" else "—")
-                            MetricChip("✏️", "${state.jotCountDaily} logs")
-                            MetricChip("🌙", if (state.sleepMinutes > 0) "${state.sleepMinutes / 60}h ${state.sleepMinutes % 60}m" else "—")
+                            UnifiedMetricTile(
+                                iconEmoji = "🔥",
+                                valueText = if (state.currentStreak > 0) "${state.currentStreak}" else "0",
+                                labelText = "days",
+                                tileDescription = "Streak, ${state.currentStreak} days."
+                            )
+                            UnifiedMetricTile(
+                                iconEmoji = "❤️",
+                                valueText = if (state.avgHeartRate > 0) "${state.avgHeartRate}" else "—",
+                                labelText = "bpm",
+                                tileDescription = "Heart rate, ${if (state.avgHeartRate > 0) "${state.avgHeartRate} beats per minute" else "unavailable"}."
+                            )
+                            UnifiedMetricTile(
+                                iconEmoji = "🔥",
+                                valueText = if (state.activeCalories > 0) "${state.activeCalories}" else "—",
+                                labelText = "kcal",
+                                tileDescription = "Calories, ${if (state.activeCalories > 0) "${state.activeCalories} calories" else "unavailable"}."
+                            )
+                            UnifiedMetricTile(
+                                iconEmoji = "✏️",
+                                valueText = "${state.jotCountDaily}",
+                                labelText = "logs",
+                                tileDescription = "Logs, ${state.jotCountDaily} logs today."
+                            )
+                            UnifiedMetricTile(
+                                iconEmoji = "🌙",
+                                valueText = if (state.sleepMinutes > 0) "${state.sleepMinutes / 60}h ${state.sleepMinutes % 60}m" else "—",
+                                labelText = "sleep",
+                                tileDescription = "Sleep, ${if (state.sleepMinutes > 0) "${state.sleepMinutes / 60} hours ${state.sleepMinutes % 60} minutes" else "unavailable"}."
+                            )
                         }
 
                         // Expanded Content: Today's Plan & Trends
@@ -605,631 +627,77 @@ fun BodyLoadScreen(
                 }
             }
 
-            // ── 4. Quick Actions Section ────────────────────────────────────
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Surface(
-                        onClick = { quickLogViewModel.saveEntry() },
-                        modifier = Modifier.weight(1f),
-                        color = NotelPrimary.copy(alpha = 0.15f),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.4f))
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = null, tint = NotelPrimary, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Log Entry", fontSize = 12.sp, color = NotelPrimary, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    Surface(
-                        onClick = {
-                            val last = quickLogState.recentSuggestions.firstOrNull()
-                            if (last != null) quickLogViewModel.logFromRecent(last)
-                        },
-                        modifier = Modifier.weight(1f),
-                        color = NotelSurface,
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, GlassBorder)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Icon(Icons.Default.Repeat, contentDescription = null, tint = NotelTextSecondary, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Repeat Last", fontSize = 12.sp, color = NotelTextPrimary, fontWeight = FontWeight.Medium)
-                        }
-                    }
-
-                    Surface(
-                        onClick = { },
-                        modifier = Modifier.weight(1f),
-                        color = NotelSurface,
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, GlassBorder)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Icon(Icons.Default.Bookmark, contentDescription = null, tint = NotelTextSecondary, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Templates", fontSize = 12.sp, color = NotelTextPrimary, fontWeight = FontWeight.Medium)
-                        }
-                    }
-                }
-            }
-
-            item {
-                BodyLoadCard(
-                    state = state,
-                    counters = quickLogState.eventCounters,
-                    onDaySelected = { viewModel.selectDay(it) },
-                    onDayDoubleClicked = { viewModel.selectDayAndForceRefresh(it) },
-                    onFactorSelected = { factor ->
-                        if (factor == "Heart") onNavigateToHeart()
-                        else viewModel.selectFactor(factor)
-                    },
-                    onResetSelection = { viewModel.selectFactor(null) },
-                    onShowTheory = { 
-                        viewModel.markTheorySeen()
-                        showTheorySheet = true 
-                    },
-                    onRefresh = { viewModel.refresh(force = true) },
-                    onBackToToday = { viewModel.selectDay(todayStr) },
-                    onLocationUpdate = { lat, lon, city ->
-                        viewModel.updateLocation(lat, lon, city)
-                    }
-                )
-            }
-
-            // Divider under streak area
-            item {
-                HorizontalDivider(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    color = Color.White.copy(alpha = 0.05f)
-                )
-                
-                Spacer(Modifier.height(16.dp))
-            }
-
-            // ── Recommended for You Layer ─────────────────────────────
-            if (quickLogState.smartCategories.isNotEmpty()) {
+            // ── 2. Upcoming Events Section ────────────────────────────────────
+            if (todayState.upcomingEvents.isNotEmpty()) {
                 item {
-                    Box(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(top = 8.dp),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        Text(
-                            "Recommended for You",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = NotelPrimary
-                        )
-
-                        // Compact Inline Log Button - Fade only to prevent shifts
-                        androidx.compose.animation.AnimatedVisibility(
-                            visible = quickLogState.selectedChips.isNotEmpty(),
-                            enter = fadeIn(animationSpec = tween(400)),
-                            exit = fadeOut(animationSpec = tween(400)),
-                            modifier = Modifier.align(Alignment.CenterEnd)
-                        ) {
-                            Surface(
-                                onClick = { quickLogViewModel.saveEntry() },
-                                color = NotelPrimary.copy(alpha = 0.15f),
-                                shape = RoundedCornerShape(8.dp),
-                                border = BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.3f))
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(Icons.Default.Check, "Log", tint = NotelPrimary, modifier = Modifier.size(12.dp))
-                                    Spacer(Modifier.width(6.dp))
-                                    Text("LOG ENTRY", color = NotelPrimary, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
-                                }
-                            }
-                        }
-                    }
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(quickLogState.smartCategories) { cat ->
-                            CategoryChipSmall(
-                                category = cat,
-                                isSelected = cat.id == quickLogState.selectedCategory?.id,
-                                onClick = { quickLogViewModel.selectCategory(cat) }
-                            )
-                        }
-                    }
-                }
-            }
-            
-            item { Spacer(Modifier.height(8.dp)) }
-            
-            // ── AI Suggestions Grid ─────────────────────────────
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp)
-                        .heightIn(min = 100.dp)
-                ) {
-                    when {
-                        !quickLogState.isUnlimited -> Column(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text("You do not have a membership", color = NotelTextSecondary, fontSize = 12.sp)
-                            Spacer(Modifier.height(8.dp))
-                            TextButton(onClick = onNavigateToMembership) {
-                                Text("Go to Settings to start Free Trial", color = NotelTextSecondary.copy(alpha = 0.5f), fontWeight = FontWeight.Bold)
-                            }
-                        }
-                        quickLogState.isLoadingChips -> Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = NotelPrimary, modifier = Modifier.size(24.dp))
-                        }
-                        quickLogState.chipsError != null -> Column(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(quickLogState.chipsError!!, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                            Spacer(Modifier.height(12.dp))
-                            TextButton(onClick = { quickLogViewModel.fetchSuggestions(forceRefresh = true) }) {
-                                Text("Retry", color = NotelPrimary, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                        quickLogState.isOffline && quickLogState.chips.isEmpty() -> {
-                            Column(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text("Connection Error: You are offline.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                Spacer(Modifier.height(4.dp))
-                                Text("Load Suggestions is unavailable.", color = NotelTextSecondary, fontSize = 11.sp)
-                                Spacer(Modifier.height(12.dp))
-                                TextButton(onClick = { quickLogViewModel.fetchSuggestions(forceRefresh = true) }) {
-                                    Text("Retry Connection", color = NotelPrimary, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                        quickLogState.chips.isEmpty() -> {
-                            Column(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text("No suggestions loaded", color = NotelTextSecondary, fontSize = 12.sp)
-                                Spacer(Modifier.height(8.dp))
-                                TextButton(onClick = { quickLogViewModel.fetchSuggestions(forceRefresh = true) }) {
-                                    Text("Load Suggestions", color = NotelPrimary, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                        else -> {
-                            val activeCatColor = remember(quickLogState.selectedCategory) {
-                                quickLogState.selectedCategory?.let { cat ->
-                                    try { Color(android.graphics.Color.parseColor(cat.colorHex)) } catch (e: Exception) { NotelPrimary }
-                                } ?: NotelPrimary
-                            }
-                            Column {
-                                FlowRow(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                                    maxItemsInEachRow = 2
-                                ) {
-                                    quickLogState.chips.forEach { chip ->
-                                        val isSelected = chip in quickLogState.selectedChips
-                                        val chipBg = if (isSelected) activeCatColor else NotelSurface
-                                        val chipBorder = if (isSelected) activeCatColor else activeCatColor.copy(alpha = 0.25f)
-                                        Surface(
-                                            onClick = { quickLogViewModel.toggleChip(chip) },
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .animateContentSize()
-                                                .clip(RoundedCornerShape(14.dp))
-                                                .background(chipBg)
-                                                .border(
-                                                    width = 1.dp,
-                                                    color = chipBorder,
-                                                    shape = RoundedCornerShape(14.dp)
-                                                ),
-                                            color = Color.Transparent
-                                        ) {
-                                            Text(
-                                                text = chip,
-                                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                                color = if (isSelected) Color.White else NotelTextPrimary,
-                                                fontSize = 13.sp,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-                                    }
-                                    
-                                    // Spacer if odd number of chips to maintain grid alignment
-                                    if (quickLogState.chips.size % 2 != 0) {
-                                        Spacer(Modifier.weight(1f))
-                                    }
-                                }
-
-                                Text(
-                                    text = "Quick notes are generated with AI using your data, so they may not always represent exactly what you are looking for.",
-                                    color = NotelTextSecondary.copy(alpha = 0.6f),
-                                    fontSize = 10.sp,
-                                    lineHeight = 14.sp,
-                                    modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ── Daily Routine Section ─────────────────────────────
-            item {
-                var isRoutineExpanded by remember { mutableStateOf(false) }
-                val context = androidx.compose.ui.platform.LocalContext.current
-                val prefs = remember { com.notel.notel.data.preferences.NotelPreferences(context) }
-                val savedOrderJson by prefs.infoTileOrder.collectAsState(initial = "")
-
-                val sortedRoutineTabs = remember(savedOrderJson) {
-                    val allRoutineKeys = listOf("habits", "reminders", "lists", "notes", "project_focus")
-                    if (savedOrderJson.isNotBlank()) {
-                        val parsedIds = try {
-                            kotlinx.serialization.json.Json.decodeFromString<List<String>>(savedOrderJson)
-                        } catch (e: Exception) {
-                            emptyList()
-                        }
-                        val userOrdered = parsedIds.filter { it in allRoutineKeys }
-                        val missing = allRoutineKeys.filter { it !in userOrdered }
-                        (userOrdered + missing).take(4)
-                    } else {
-                        listOf("habits", "project_focus")
-                    }
-                }
-
-                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
-                    Row(
+                    Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { isRoutineExpanded = !isRoutineExpanded }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        color = NotelSurface,
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, GlassBorder)
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                "Daily Routine",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = NotelTextPrimary
-                            )
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Upcoming",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = NotelTextPrimary
+                                )
+                                if (todayState.upcomingEvents.size > 1) {
+                                    TextButton(
+                                        onClick = onNavigateToReminders,
+                                        contentPadding = PaddingValues(0.dp)
+                                    ) {
+                                        Text(
+                                            text = "View all",
+                                            color = NotelPrimary,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
                             }
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                "Manage your habits, reminders, lists, notes & project experiments.",
-                                color = NotelTextSecondary,
-                                fontSize = 12.sp
-                            )
-                        }
-                        IconButton(onClick = { isRoutineExpanded = !isRoutineExpanded }) {
-                            Icon(
-                                imageVector = if (isRoutineExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                contentDescription = if (isRoutineExpanded) "Collapse Daily Routine" else "Expand Daily Routine",
-                                tint = NotelPrimary,
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                    }
-
-                    AnimatedVisibility(
-                        visible = isRoutineExpanded,
-                        enter = fadeIn() + expandVertically(),
-                        exit = fadeOut() + shrinkVertically()
-                    ) {
-                        Column {
-                            Spacer(Modifier.height(12.dp))
-
-                            sortedRoutineTabs.forEach { tabKey ->
-                                when (tabKey) {
-                                    "habits" -> {
-                                        // ── Habits Tile ───────────────────────────────────
-                                        val checkedCount = habits.count { habitViewModel.isCheckedToday(it) }
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(76.dp)
-                                                .border(
-                                                    width = 3.dp,
-                                                    color = NotelPrimary.copy(alpha = 0.12f),
-                                                    shape = RoundedCornerShape(22.dp)
-                                                )
-                                                .border(
-                                                    width = 6.dp,
-                                                    color = NotelPrimary.copy(alpha = 0.04f),
-                                                    shape = RoundedCornerShape(24.dp)
-                                                )
-                                                .liquidGlass(
-                                                    shape = RoundedCornerShape(20.dp),
-                                                    color = NotelSurface,
-                                                    alpha = 0.8f,
-                                                    showBorder = true
-                                                )
-                                                .clickable { onNavigateToHabits() }
-                                                .padding(horizontal = 20.dp, vertical = 12.dp)
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.fillMaxSize(),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.Start
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.CheckCircle,
-                                                    contentDescription = null,
-                                                    tint = NotelPrimary,
-                                                    modifier = Modifier.size(28.dp)
-                                                )
-                                                Spacer(Modifier.width(14.dp))
-                                                Column {
-                                                    Text(
-                                                        text = "Habits",
-                                                        color = NotelTextPrimary,
-                                                        fontSize = 16.sp,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                    Text(
-                                                        text = if (habits.isEmpty()) "No habits yet"
-                                                               else "$checkedCount/${habits.size} done today",
-                                                        color = NotelTextSecondary,
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Medium
-                                                    )
-                                                }
-                                            }
-                                        }
-                                        Spacer(Modifier.height(12.dp))
-                                    }
-
-                                    "reminders" -> {
-                                        // ── Reminders Tile ──────────────────────
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(76.dp)
-                                                .border(
-                                                    width = 3.dp,
-                                                    color = NotelPrimary.copy(alpha = 0.12f),
-                                                    shape = RoundedCornerShape(22.dp)
-                                                )
-                                                .border(
-                                                    width = 6.dp,
-                                                    color = NotelPrimary.copy(alpha = 0.04f),
-                                                    shape = RoundedCornerShape(24.dp)
-                                                )
-                                                .liquidGlass(
-                                                    shape = RoundedCornerShape(20.dp),
-                                                    color = NotelSurface,
-                                                    alpha = 0.8f,
-                                                    showBorder = true
-                                                )
-                                                .clickable { onNavigateToReminders() }
-                                                .padding(horizontal = 20.dp, vertical = 12.dp)
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.fillMaxSize(),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.Start
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Notifications,
-                                                    contentDescription = null,
-                                                    tint = NotelPrimary,
-                                                    modifier = Modifier.size(28.dp)
-                                                )
-                                                Spacer(Modifier.width(14.dp))
-                                                Column {
-                                                    Text(
-                                                        text = "Reminders",
-                                                        color = NotelTextPrimary,
-                                                        fontSize = 16.sp,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                    Text(
-                                                        text = if (reminders.isEmpty()) "No reminders yet" 
-                                                               else "${reminders.size} Reminders",
-                                                        color = NotelTextSecondary,
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Medium
-                                                    )
-                                                }
-                                            }
-                                        }
-                                        Spacer(Modifier.height(12.dp))
-                                    }
-
-                                    "lists" -> {
-                                        // ── Lists Tile ───────────────────────────────────────────────
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(76.dp)
-                                                .border(
-                                                    width = 3.dp,
-                                                    color = NotelPrimary.copy(alpha = 0.12f),
-                                                    shape = RoundedCornerShape(22.dp)
-                                                )
-                                                .border(
-                                                    width = 6.dp,
-                                                    color = NotelPrimary.copy(alpha = 0.04f),
-                                                    shape = RoundedCornerShape(24.dp)
-                                                )
-                                                .liquidGlass(
-                                                    shape = RoundedCornerShape(20.dp),
-                                                    color = NotelSurface,
-                                                    alpha = 0.8f,
-                                                    showBorder = true
-                                                )
-                                                .clickable { onNavigateToLists() }
-                                                .padding(horizontal = 20.dp, vertical = 12.dp)
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.fillMaxSize(),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.Start
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.List,
-                                                    contentDescription = null,
-                                                    tint = NotelPrimary,
-                                                    modifier = Modifier.size(28.dp)
-                                                )
-                                                Spacer(Modifier.width(14.dp))
-                                                Column {
-                                                    Text(
-                                                        text = "Lists",
-                                                        color = NotelTextPrimary,
-                                                        fontSize = 16.sp,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                    val userLists = lists.filter { list -> list.name != "__user_notes__" }
-                                                    Text(
-                                                        text = if (userLists.isEmpty()) "No lists yet"
-                                                               else "${userLists.size} ${if (userLists.size == 1) "List" else "Lists"}",
-                                                        color = NotelTextSecondary,
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Medium
-                                                    )
-                                                }
-                                            }
-                                        }
-                                        Spacer(Modifier.height(12.dp))
-                                    }
-
-                                    "notes" -> {
-                                        // ── Notes Tile ───────────────────────────────────────────────
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(76.dp)
-                                                .border(
-                                                    width = 3.dp,
-                                                    color = NotelPrimary.copy(alpha = 0.12f),
-                                                    shape = RoundedCornerShape(22.dp)
-                                                )
-                                                .border(
-                                                    width = 6.dp,
-                                                    color = NotelPrimary.copy(alpha = 0.04f),
-                                                    shape = RoundedCornerShape(24.dp)
-                                                )
-                                                .liquidGlass(
-                                                    shape = RoundedCornerShape(20.dp),
-                                                    color = NotelSurface,
-                                                    alpha = 0.8f,
-                                                    showBorder = true
-                                                )
-                                                .clickable { onNavigateToNotes() }
-                                                .padding(horizontal = 20.dp, vertical = 12.dp)
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.fillMaxSize(),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.Start
-                                            ) {
-                                                Icon(
-                                                    imageVector = androidx.compose.material.icons.Icons.Default.Edit,
-                                                    contentDescription = null,
-                                                    tint = NotelPrimary,
-                                                    modifier = Modifier.size(28.dp)
-                                                )
-                                                Spacer(Modifier.width(14.dp))
-                                                Column {
-                                                    Text(
-                                                        text = "Notes",
-                                                        color = NotelTextPrimary,
-                                                        fontSize = 16.sp,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                    Text(
-                                                        text = if (notes.isEmpty()) "No notes yet"
-                                                               else "${notes.size} ${if (notes.size == 1) "Note" else "Notes"}",
-                                                        color = NotelTextSecondary,
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Medium
-                                                    )
-                                                }
-                                            }
-                                        }
-                                        Spacer(Modifier.height(12.dp))
-                                    }
-
-                                    "project_focus" -> {
-                                        // ── Project Focus Tile ────────────────────────────────────
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(76.dp)
-                                                .border(
-                                                    width = 3.dp,
-                                                    color = NotelPrimary.copy(alpha = 0.12f),
-                                                    shape = RoundedCornerShape(22.dp)
-                                                )
-                                                .border(
-                                                    width = 6.dp,
-                                                    color = NotelPrimary.copy(alpha = 0.04f),
-                                                    shape = RoundedCornerShape(24.dp)
-                                                )
-                                                .liquidGlass(
-                                                    shape = RoundedCornerShape(20.dp),
-                                                    color = NotelSurface,
-                                                    alpha = 0.8f,
-                                                    showBorder = true
-                                                )
-                                                .clickable { onNavigateToProjectFocus() }
-                                                .padding(horizontal = 20.dp, vertical = 12.dp)
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.fillMaxSize(),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.Start
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Science,
-                                                    contentDescription = null,
-                                                    tint = NotelPrimary,
-                                                    modifier = Modifier.size(28.dp)
-                                                )
-                                                Spacer(Modifier.width(14.dp))
-                                                Column {
-                                                    Text(
-                                                        text = "Project Focus",
-                                                        color = NotelTextPrimary,
-                                                        fontSize = 16.sp,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                    Text(
-                                                        text = "Track your experiments",
-                                                        color = NotelTextSecondary,
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Medium
-                                                    )
-                                                }
-                                            }
+                            Spacer(Modifier.height(8.dp))
+                            todayState.upcomingEvents.forEach { event ->
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 3.dp)
+                                        .clickable { onNavigateToReminders() },
+                                    color = NotelSurfaceHigh,
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(1.dp, GlassBorder)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Notifications,
+                                            contentDescription = null,
+                                            tint = NotelPrimary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(Modifier.width(10.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = event.title,
+                                                fontWeight = FontWeight.Medium,
+                                                color = NotelTextPrimary,
+                                                fontSize = 13.sp
+                                            )
+                                            Text(
+                                                text = event.dateOrCountdownText,
+                                                color = NotelTextSecondary,
+                                                fontSize = 11.sp
+                                            )
                                         }
                                     }
                                 }
@@ -2248,6 +1716,52 @@ fun isReducedMotionEnabled(): Boolean {
             1.0f
         )
         animatorScale == 0.0f
+    }
+}
+
+@Composable
+private fun UnifiedMetricTile(
+    iconEmoji: String,
+    valueText: String,
+    labelText: String,
+    tileDescription: String,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .width(104.dp)
+            .height(72.dp)
+            .semantics { contentDescription = tileDescription },
+        color = Color(0xFF141416),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, GlassBorder)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = iconEmoji, fontSize = 14.sp)
+                Text(
+                    text = labelText,
+                    fontSize = 10.sp,
+                    color = NotelTextSecondary,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+            Text(
+                text = valueText,
+                fontSize = 15.sp,
+                color = NotelTextPrimary,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 

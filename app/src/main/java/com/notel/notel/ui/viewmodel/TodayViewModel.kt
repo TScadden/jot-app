@@ -92,6 +92,15 @@ sealed class TodayTrendsState {
     data class Error(val message: String) : TodayTrendsState()
 }
 
+data class UpcomingEventItem(
+    val id: String,
+    val title: String,
+    val dateOrCountdownText: String,
+    val timestamp: Long,
+    val iconName: String = "event",
+    val destination: String = "REMINDERS"
+)
+
 data class TodayUiState(
     val mode: String = "SIMPLE", // "SIMPLE" or "DETAILED"
     val summaryText: String = "",
@@ -99,6 +108,7 @@ data class TodayUiState(
     val overdueCount: Int = 0,
     val needsAttentionItems: List<NeedsAttentionItem> = emptyList(),
     val todayPlanItems: List<TodayPlanItem> = emptyList(),
+    val upcomingEvents: List<UpcomingEventItem> = emptyList(),
     val trendsState: TodayTrendsState = TodayTrendsState.Loading,
     val trendsItems: List<HealthComparisonItem> = emptyList(),
     val primaryInsight: AiInsight? = null,
@@ -273,6 +283,36 @@ class TodayViewModel @Inject constructor(
             }
         }
 
+        val nowCal = java.util.Calendar.getInstance()
+        val calHour = nowCal.get(java.util.Calendar.HOUR_OF_DAY)
+        val currentMinute = nowCal.get(java.util.Calendar.MINUTE)
+        val currentTotalMinutes = calHour * 60 + currentMinute
+
+        val upcomingList = mutableListOf<UpcomingEventItem>()
+        enabledReminders.forEach { rem ->
+            val isDone = completedReminderIds.contains(rem.id)
+            val remTotalMinutes = rem.fixedHour * 60 + rem.fixedMinute
+            if (!isDone && remTotalMinutes > currentTotalMinutes) {
+                val minsUntil = remTotalMinutes - currentTotalMinutes
+                val countdownText = when {
+                    minsUntil < 60 -> "In ${minsUntil}m"
+                    minsUntil % 60 == 0 -> "In ${minsUntil / 60}h"
+                    else -> "In ${minsUntil / 60}h ${minsUntil % 60}m"
+                }
+                upcomingList.add(
+                    UpcomingEventItem(
+                        id = "event_rem_${rem.id}",
+                        title = rem.title,
+                        dateOrCountdownText = countdownText,
+                        timestamp = System.currentTimeMillis() + (minsUntil * 60 * 1000L),
+                        iconName = "alarm",
+                        destination = "REMINDERS"
+                    )
+                )
+            }
+        }
+        val sortedUpcomingEvents = upcomingList.sortedBy { it.timestamp }.take(3)
+
         val summaryStr = when {
             remainingCount > 0 -> {
                 "$remainingCount item${if (remainingCount > 1) "s" else ""} remaining${if (overdueCount > 0) " · $overdueCount overdue" else ""}"
@@ -292,6 +332,7 @@ class TodayViewModel @Inject constructor(
             overdueCount = overdueCount,
             needsAttentionItems = emptyList(),
             todayPlanItems = sortedPlan,
+            upcomingEvents = sortedUpcomingEvents,
             trendsState = trendsState,
             trendsItems = trendsItems,
             primaryInsight = primaryInsight,

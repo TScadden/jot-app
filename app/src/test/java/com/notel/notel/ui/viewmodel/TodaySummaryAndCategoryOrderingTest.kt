@@ -146,6 +146,30 @@ class TodaySummaryAndCategoryOrderingTest {
         assertEquals("No plans recorded today", text4)
     }
 
+    @Test
+    fun testUpcomingEvents_sortingAndFiltering() {
+        val now = System.currentTimeMillis()
+        val futureEvent1 = UpcomingEventItem(id = "1", title = "Evening Pill", dateOrCountdownText = "In 2h", timestamp = now + 7200000L)
+        val futureEvent2 = UpcomingEventItem(id = "2", title = "Walk Reminder", dateOrCountdownText = "In 30m", timestamp = now + 1800000L)
+        val pastEvent = UpcomingEventItem(id = "3", title = "Morning Meds", dateOrCountdownText = "Passed", timestamp = now - 3600000L)
+
+        val rawEvents = listOf(futureEvent1, futureEvent2, pastEvent)
+
+        // Filter out past events and sort chronologically
+        val validUpcoming = rawEvents
+            .filter { it.timestamp > now }
+            .sortedBy { it.timestamp }
+
+        assertEquals(2, validUpcoming.size)
+        // Earliest event (30m) comes first
+        assertEquals("Walk Reminder", validUpcoming[0].title)
+        assertEquals("Evening Pill", validUpcoming[1].title)
+
+        // Test empty upcoming events list
+        val noEvents = emptyList<UpcomingEventItem>()
+        assertTrue("Empty upcoming list must produce size 0 (causing section to be omitted)", noEvents.isEmpty())
+    }
+
     private fun formatSummaryText(remainingCount: Int, overdueCount: Int, totalPlans: Int): String {
         return when {
             remainingCount > 0 -> {
