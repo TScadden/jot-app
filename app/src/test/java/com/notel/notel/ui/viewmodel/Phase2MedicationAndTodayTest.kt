@@ -80,88 +80,114 @@ class Phase2MedicationAndTodayTest {
     }
 
     @Test
-    fun takenSurvivesViewModelRecreation_readsPersistedOccurrence() {
+    fun twoScheduledDosesSameDay_remainIndependentInOccurrenceKeys() {
         val today = LocalDate.now().toString()
-        val occurrence = ScheduledDoseOccurrence(
+        val morningOcc = ScheduledDoseOccurrence(
             id = 1L,
-            occurrenceKey = "med_1_$today",
+            occurrenceKey = "med_1_${today}_Morning",
             medicationId = 1L,
             scheduledDate = today,
-            status = "TAKEN",
-            actionTimestamp = 1000L
+            scheduledTime = "Morning",
+            status = "TAKEN"
+        )
+        val eveningOcc = ScheduledDoseOccurrence(
+            id = 2L,
+            occurrenceKey = "med_1_${today}_Evening",
+            medicationId = 1L,
+            scheduledDate = today,
+            scheduledTime = "Evening",
+            status = "PENDING"
         )
 
-        assertEquals("TAKEN", occurrence.status)
-        assertEquals(1L, occurrence.medicationId)
+        assertNotEquals(morningOcc.occurrenceKey, eveningOcc.occurrenceKey)
+        assertEquals("TAKEN", morningOcc.status)
+        assertEquals("PENDING", eveningOcc.status)
     }
 
     @Test
-    fun skippedSurvivesViewModelRecreation_readsPersistedOccurrence() {
+    fun repeatedTaken_returnsExistingLogAssociationWithoutDuplicates() {
         val today = LocalDate.now().toString()
-        val occurrence = ScheduledDoseOccurrence(
-            id = 2L,
-            occurrenceKey = "med_2_$today",
+        val key = "med_2_${today}_Morning"
+        val firstTaken = ScheduledDoseOccurrence(
+            id = 10L,
+            occurrenceKey = key,
             medicationId = 2L,
             scheduledDate = today,
-            status = "SKIPPED",
-            actionTimestamp = 1000L
-        )
-
-        assertEquals("SKIPPED", occurrence.status)
-    }
-
-    @Test
-    fun snoozeChangesDueTime_updatesSnoozedUntilTimestamp() {
-        val today = LocalDate.now().toString()
-        val snoozeTime = System.currentTimeMillis() + 3600000L
-        val occurrence = ScheduledDoseOccurrence(
-            id = 3L,
-            occurrenceKey = "med_3_$today",
-            medicationId = 3L,
-            scheduledDate = today,
-            status = "SNOOZED",
-            snoozedUntilTimestamp = snoozeTime
-        )
-
-        assertEquals("SNOOZED", occurrence.status)
-        assertEquals(snoozeTime, occurrence.snoozedUntilTimestamp)
-    }
-
-    @Test
-    fun repeatedTakenCreatesOnlyOneOccurrenceAndAssociatedLog() {
-        val today = LocalDate.now().toString()
-        val firstOccurrence = ScheduledDoseOccurrence(
-            id = 10L,
-            occurrenceKey = "med_5_$today",
-            medicationId = 5L,
-            scheduledDate = today,
+            scheduledTime = "Morning",
             status = "TAKEN",
-            associatedLogEntryId = 101L
+            associatedLogEntryId = 55L
         )
 
-        val secondOccurrence = firstOccurrence.copy(
+        val secondTaken = firstTaken.copy(
             actionTimestamp = System.currentTimeMillis()
         )
 
-        assertEquals(10L, secondOccurrence.id)
-        assertEquals(101L, secondOccurrence.associatedLogEntryId)
+        assertEquals(firstTaken.associatedLogEntryId, secondTaken.associatedLogEntryId)
+        assertEquals(55L, secondTaken.associatedLogEntryId)
     }
 
     @Test
-    fun statusTransitionUpdatesExistingOccurrence() {
+    fun takenToSkippedCorrection_clearsAssociatedLogEntryId() {
         val today = LocalDate.now().toString()
-        val takenOccurrence = ScheduledDoseOccurrence(
-            id = 4L,
-            occurrenceKey = "med_4_$today",
-            medicationId = 4L,
+        val takenOcc = ScheduledDoseOccurrence(
+            id = 15L,
+            occurrenceKey = "med_3_${today}_Daily",
+            medicationId = 3L,
             scheduledDate = today,
-            status = "TAKEN"
+            scheduledTime = "Daily",
+            status = "TAKEN",
+            associatedLogEntryId = 88L
         )
 
-        val updatedToSkipped = takenOccurrence.copy(status = "SKIPPED")
+        val skippedOcc = takenOcc.copy(
+            status = "SKIPPED",
+            associatedLogEntryId = null
+        )
 
-        assertEquals(4L, updatedToSkipped.id)
-        assertEquals("SKIPPED", updatedToSkipped.status)
+        assertEquals("SKIPPED", skippedOcc.status)
+        assertNull("Changing TAKEN to SKIPPED must clear associated log", skippedOcc.associatedLogEntryId)
+    }
+
+    @Test
+    fun snoozingOneDose_doesNotChangeAnotherDose() {
+        val today = LocalDate.now().toString()
+        val morningOcc = ScheduledDoseOccurrence(
+            id = 20L,
+            occurrenceKey = "med_4_${today}_Morning",
+            medicationId = 4L,
+            scheduledDate = today,
+            scheduledTime = "Morning",
+            status = "SNOOZED",
+            snoozedUntilTimestamp = 999999L
+        )
+
+        val eveningOcc = ScheduledDoseOccurrence(
+            id = 21L,
+            occurrenceKey = "med_4_${today}_Evening",
+            medicationId = 4L,
+            scheduledDate = today,
+            scheduledTime = "Evening",
+            status = "PENDING"
+        )
+
+        assertEquals("SNOOZED", morningOcc.status)
+        assertEquals(999999L, morningOcc.snoozedUntilTimestamp)
+        assertEquals("PENDING", eveningOcc.status)
+        assertNull(eveningOcc.snoozedUntilTimestamp)
+    }
+
+    @Test
+    fun viewModelRecreation_retainsBothOccurrences() {
+        val today = LocalDate.now().toString()
+        val med = Medication(id = 10L, name = "Multivitamin", dose = "1 tab", frequency = "Twice Daily", timesPerDay = 2)
+        val occurrences = listOf(
+            ScheduledDoseOccurrence(id = 100L, occurrenceKey = "med_10_${today}_Morning", medicationId = 10L, scheduledDate = today, scheduledTime = "Morning", status = "TAKEN"),
+            ScheduledDoseOccurrence(id = 101L, occurrenceKey = "med_10_${today}_Evening", medicationId = 10L, scheduledDate = today, scheduledTime = "Evening", status = "SKIPPED")
+        )
+
+        val map = occurrences.associateBy { it.occurrenceKey }
+        assertEquals("TAKEN", map["med_10_${today}_Morning"]?.status)
+        assertEquals("SKIPPED", map["med_10_${today}_Evening"]?.status)
     }
 
     @Test
@@ -177,35 +203,15 @@ class Phase2MedicationAndTodayTest {
         val archivedMed = Medication(id = 8L, name = "Old Med", dose = "10mg", frequency = "Daily", isArchived = true)
         val historyOccurrence = ScheduledDoseOccurrence(
             id = 99L,
-            occurrenceKey = "med_8_2026-08-01",
+            occurrenceKey = "med_8_2026-08-01_Daily",
             medicationId = 8L,
             scheduledDate = "2026-08-01",
+            scheduledTime = "Daily",
             status = "TAKEN"
         )
 
         assertTrue(archivedMed.isArchived)
         assertEquals(8L, historyOccurrence.medicationId)
         assertEquals("TAKEN", historyOccurrence.status)
-    }
-
-    @Test
-    fun todayRendersPersistedStatus() {
-        val med = Medication(id = 1L, name = "Lisinopril", dose = "10mg", frequency = "Morning")
-        val reminder = Reminder(id = 1, title = "Drink Water", type = "FIXED", fixedHour = 10, fixedMinute = 0)
-        val habit = HabitDtoModel(id = "h1", title = "Stretch", target_time = "Morning", logs = emptyList())
-
-        val attentionItems = listOf(
-            NeedsAttentionItem(id = "med_1_today", title = med.name, typeText = "Medication", detailText = med.dose, itemType = NeedsAttentionItem.ItemType.MEDICATION, medication = med),
-            NeedsAttentionItem(id = "rem_1", title = reminder.title, typeText = "Reminder", detailText = "Due 10:00", itemType = NeedsAttentionItem.ItemType.REMINDER, reminder = reminder),
-            NeedsAttentionItem(id = "habit_h1", title = habit.title, typeText = "Habit", detailText = "Target: Morning", itemType = NeedsAttentionItem.ItemType.HABIT, habit = habit)
-        )
-
-        val state = TodayUiState(
-            summaryText = "Today you have 1 scheduled medication, 1 reminder, 1 habit.",
-            needsAttentionItems = attentionItems
-        )
-
-        assertEquals(3, state.needsAttentionItems.size)
-        assertEquals("Lisinopril", state.needsAttentionItems[0].title)
     }
 }

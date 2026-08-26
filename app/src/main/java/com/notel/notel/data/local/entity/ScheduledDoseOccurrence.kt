@@ -7,15 +7,15 @@ import androidx.room.PrimaryKey
 @Entity(
     tableName = "scheduled_dose_occurrences",
     indices = [
-        Index(value = ["medicationId", "scheduledDate"], unique = true)
+        Index(value = ["occurrenceKey"], unique = true)
     ]
 )
 data class ScheduledDoseOccurrence(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val occurrenceKey: String, // e.g. "med_1_2026-08-25"
+    val occurrenceKey: String, // e.g. "med_1_2026-08-25_08:00"
     val medicationId: Long,
     val scheduledDate: String, // e.g. "2026-08-25"
-    val scheduledTime: String? = null,
+    val scheduledTime: String? = null, // e.g. "08:00" or "Daily"
     val status: String, // "PENDING", "TAKEN", "SKIPPED", "SNOOZED"
     val actionTimestamp: Long = System.currentTimeMillis(),
     val snoozedUntilTimestamp: Long? = null,

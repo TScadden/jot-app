@@ -35,7 +35,7 @@ import kotlinx.coroutines.launch
         com.notel.notel.data.local.entity.PinnedTemplate::class,
         com.notel.notel.data.local.entity.ScheduledDoseOccurrence::class
     ],
-    version = 25,
+    version = 26,
     exportSchema = false
 )
 abstract class NotelDatabase : RoomDatabase() {
@@ -53,6 +53,13 @@ abstract class NotelDatabase : RoomDatabase() {
 
     companion object {
         @Volatile private var INSTANCE: NotelDatabase? = null
+
+        val MIGRATION_25_26 = object : Migration(25, 26) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP INDEX IF EXISTS index_scheduled_dose_occurrences_medicationId_scheduledDate")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_scheduled_dose_occurrences_occurrenceKey ON scheduled_dose_occurrences(occurrenceKey)")
+            }
+        }
 
         val MIGRATION_24_25 = object : Migration(24, 25) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -290,7 +297,7 @@ abstract class NotelDatabase : RoomDatabase() {
                     "notel_db"
                 )
                     .fallbackToDestructiveMigration()
-                    .addMigrations(MIGRATION_1_2, MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26)
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)

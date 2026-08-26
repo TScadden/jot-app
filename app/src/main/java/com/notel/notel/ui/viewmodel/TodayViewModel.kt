@@ -5,13 +5,12 @@ import androidx.lifecycle.viewModelScope
 import com.notel.notel.data.local.dao.MedicationDao
 import com.notel.notel.data.local.dao.ReminderDao
 import com.notel.notel.data.local.dao.ScheduledDoseOccurrenceDao
-import com.notel.notel.data.local.entity.LogEntry
 import com.notel.notel.data.local.entity.Medication
 import com.notel.notel.data.local.entity.Reminder
 import com.notel.notel.data.local.entity.ScheduledDoseOccurrence
 import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.repository.HabitRepository
-import com.notel.notel.data.repository.LogRepository
+import com.notel.notel.data.repository.ScheduledDoseRepository
 import com.notel.notel.data.remote.HabitDtoModel
 import com.notel.notel.data.sync.SyncManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -72,6 +71,7 @@ data class NeedsAttentionItem(
     val medication: Medication? = null,
     val reminder: Reminder? = null,
     val habit: HabitDtoModel? = null,
+    val scheduledTime: String = "Daily",
     val currentStatus: ActionStatus = ActionStatus.PENDING
 ) {
     enum class ItemType {
@@ -93,7 +93,7 @@ class TodayViewModel @Inject constructor(
     private val reminderDao: ReminderDao,
     private val habitRepository: HabitRepository,
     private val scheduledDoseOccurrenceDao: ScheduledDoseOccurrenceDao,
-    private val logRepository: LogRepository,
+    private val scheduledDoseRepository: ScheduledDoseRepository,
     private val syncManager: SyncManager,
     private val preferences: NotelPreferences
 ) : ViewModel() {
@@ -116,32 +116,37 @@ class TodayViewModel @Inject constructor(
         val enabledReminders = remindersList.filter { it.isEnabled }
         val currentDateStr = todayStr
 
-        val occurrenceMap = occurrencesList.associateBy { it.medicationId }
+        val occurrenceMap = occurrencesList.associateBy { it.occurrenceKey }
 
         val attentionList = mutableListOf<NeedsAttentionItem>()
 
-        // 1. Scheduled medications
+        // 1. Scheduled medications (supporting multiple doses per day: Morning and Evening)
         activeMeds.forEach { med ->
-            val occ = occurrenceMap[med.id]
-            val status = when (occ?.status) {
-                "TAKEN" -> ActionStatus.TAKEN
-                "SKIPPED" -> ActionStatus.SKIPPED
-                "SNOOZED" -> ActionStatus.SNOOZED
-                else -> ActionStatus.PENDING
-            }
+            val times = if (med.timesPerDay > 1) listOf("Morning", "Evening") else listOf("Daily")
+            times.forEach { timeLabel ->
+                val key = "med_${med.id}_${currentDateStr}_${timeLabel}"
+                val occ = occurrenceMap[key]
+                val status = when (occ?.status) {
+                    "TAKEN" -> ActionStatus.TAKEN
+                    "SKIPPED" -> ActionStatus.SKIPPED
+                    "SNOOZED" -> ActionStatus.SNOOZED
+                    else -> ActionStatus.PENDING
+                }
 
-            if (status == ActionStatus.PENDING) {
-                attentionList.add(
-                    NeedsAttentionItem(
-                        id = "med_${med.id}_today",
-                        title = med.name,
-                        typeText = "Medication",
-                        detailText = if (med.dose.isNotBlank()) "Dose: ${med.dose} • ${med.frequency}" else med.frequency,
-                        itemType = NeedsAttentionItem.ItemType.MEDICATION,
-                        medication = med,
-                        currentStatus = status
+                if (status == ActionStatus.PENDING) {
+                    attentionList.add(
+                        NeedsAttentionItem(
+                            id = key,
+                            title = med.name,
+                            typeText = "Medication ($timeLabel)",
+                            detailText = if (med.dose.isNotBlank()) "Dose: ${med.dose} • ${med.frequency}" else med.frequency,
+                            itemType = NeedsAttentionItem.ItemType.MEDICATION,
+                            medication = med,
+                            scheduledTime = timeLabel,
+                            currentStatus = status
+                        )
                     )
-                )
+                }
             }
         }
 
@@ -182,23 +187,27 @@ class TodayViewModel @Inject constructor(
         val planList = mutableListOf<TodayPlanItem>()
 
         activeMeds.forEach { med ->
-            val occ = occurrenceMap[med.id]
-            val status = when (occ?.status) {
-                "TAKEN" -> ActionStatus.TAKEN
-                "SKIPPED" -> ActionStatus.SKIPPED
-                "SNOOZED" -> ActionStatus.SNOOZED
-                else -> ActionStatus.PENDING
-            }
-            val isTaken = status == ActionStatus.TAKEN
-            planList.add(
-                TodayPlanItem.ScheduledMedication(
-                    medication = med,
-                    dose = med.dose,
-                    timeLabel = "Daily",
-                    isCompleted = isTaken,
-                    status = status
+            val times = if (med.timesPerDay > 1) listOf("Morning", "Evening") else listOf("Daily")
+            times.forEach { timeLabel ->
+                val key = "med_${med.id}_${currentDateStr}_${timeLabel}"
+                val occ = occurrenceMap[key]
+                val status = when (occ?.status) {
+                    "TAKEN" -> ActionStatus.TAKEN
+                    "SKIPPED" -> ActionStatus.SKIPPED
+                    "SNOOZED" -> ActionStatus.SNOOZED
+                    else -> ActionStatus.PENDING
+                }
+                val isTaken = status == ActionStatus.TAKEN
+                planList.add(
+                    TodayPlanItem.ScheduledMedication(
+                        medication = med,
+                        dose = med.dose,
+                        timeLabel = timeLabel,
+                        isCompleted = isTaken,
+                        status = status
+                    )
                 )
-            )
+            }
         }
 
         enabledReminders.forEach { rem ->
@@ -256,43 +265,21 @@ class TodayViewModel @Inject constructor(
         initialValue = TodayUiState()
     )
 
-    fun markMedicationAction(medicationId: Long, action: ActionStatus, snoozedUntilMs: Long? = null) {
+    fun markMedicationAction(medicationId: Long, action: ActionStatus, scheduledTime: String = "Daily", snoozedUntilMs: Long? = null) {
         viewModelScope.launch(Dispatchers.IO) {
             val dateStr = todayStr
-            val existing = scheduledDoseOccurrenceDao.getOccurrence(medicationId, dateStr)
+            val allMeds = medicationDao.getAllMedications().firstOrNull() ?: emptyList()
+            val med = allMeds.firstOrNull { it.id == medicationId } ?: return@launch
 
-            var logId: Long? = existing?.associatedLogEntryId
-
-            if (action == ActionStatus.TAKEN && logId == null) {
-                // Find medication name for logging
-                val allMeds = medicationDao.getAllMedications().firstOrNull() ?: emptyList()
-                val med = allMeds.firstOrNull { it.id == medicationId }
-                if (med != null) {
-                    val log = LogEntry(
-                        categoryId = 8, // Medication category
-                        body = "Took ${med.name}${if (med.dose.isNotBlank()) " ${med.dose}" else ""}",
-                        chips = "[]",
-                        manualText = "",
-                        timestamp = System.currentTimeMillis()
-                    )
-                    logId = logRepository.insertEntry(log)
-                }
-            }
-
-            val occurrenceKey = "med_${medicationId}_$dateStr"
-            val occurrence = ScheduledDoseOccurrence(
-                id = existing?.id ?: 0L,
-                occurrenceKey = occurrenceKey,
+            scheduledDoseRepository.recordDoseAction(
                 medicationId = medicationId,
+                medicationName = med.name,
+                medicationDose = med.dose,
                 scheduledDate = dateStr,
-                status = action.name,
-                actionTimestamp = System.currentTimeMillis(),
-                snoozedUntilTimestamp = snoozedUntilMs ?: existing?.snoozedUntilTimestamp,
-                associatedLogEntryId = logId,
-                syncState = "SAVED_LOCALLY"
+                scheduledTime = scheduledTime,
+                action = action,
+                snoozedUntilMs = snoozedUntilMs
             )
-
-            scheduledDoseOccurrenceDao.insertOrUpdateOccurrence(occurrence)
         }
     }
 

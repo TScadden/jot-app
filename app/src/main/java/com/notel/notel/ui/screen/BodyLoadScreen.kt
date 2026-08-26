@@ -269,8 +269,9 @@ fun BodyLoadScreen(
                                         when (item.itemType) {
                                             com.notel.notel.ui.viewmodel.NeedsAttentionItem.ItemType.MEDICATION -> {
                                                 val medId = item.medication?.id ?: 0L
+                                                val timeLabel = item.scheduledTime
                                                 Button(
-                                                    onClick = { todayViewModel.markMedicationAction(medId, com.notel.notel.ui.viewmodel.ActionStatus.TAKEN) },
+                                                    onClick = { todayViewModel.markMedicationAction(medId, com.notel.notel.ui.viewmodel.ActionStatus.TAKEN, timeLabel) },
                                                     colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
                                                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                                                     shape = RoundedCornerShape(8.dp)
@@ -278,7 +279,7 @@ fun BodyLoadScreen(
                                                     Text("Taken", fontSize = 11.sp, color = Color.Black, fontWeight = FontWeight.Bold)
                                                 }
                                                 OutlinedButton(
-                                                    onClick = { todayViewModel.markMedicationAction(medId, com.notel.notel.ui.viewmodel.ActionStatus.SKIPPED) },
+                                                    onClick = { todayViewModel.markMedicationAction(medId, com.notel.notel.ui.viewmodel.ActionStatus.SKIPPED, timeLabel) },
                                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                                                     shape = RoundedCornerShape(8.dp)
                                                 ) {
