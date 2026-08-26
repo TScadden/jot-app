@@ -1025,8 +1025,14 @@ fun QuickLogScreen(
                         Spacer(Modifier.height(8.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = isMed, onCheckedChange = { isMed = it })
-                            Text("Requires Medication Confirmation", color = NotelTextPrimary, fontSize = 12.sp)
+                            Text("Requires Medication Confirmation", color = NotelTextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                         }
+                        Text(
+                            "When enabled, tapping this template opens a confirmation dialog to verify dosage before saving instead of logging instantly.",
+                            color = NotelTextSecondary,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(start = 32.dp, top = 2.dp)
+                        )
                         Spacer(Modifier.height(16.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             GlassyButton(
