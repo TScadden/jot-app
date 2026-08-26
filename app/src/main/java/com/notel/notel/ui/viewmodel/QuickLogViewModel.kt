@@ -764,22 +764,46 @@ class QuickLogViewModel @Inject constructor(
     fun openTemplateManager() = _uiState.update { it.copy(showTemplateManagementDialog = true) }
     fun closeTemplateManager() = _uiState.update { it.copy(showTemplateManagementDialog = false, showTemplateEditDialog = false, templateToEdit = null, templateToDelete = null) }
 
+    fun openCreateTemplateDialog() {
+        val defaultSlug = _uiState.value.selectedCategory?.slug ?: "general"
+        _uiState.update {
+            it.copy(
+                showTemplateEditDialog = true,
+                templateToEdit = com.notel.notel.data.local.entity.PinnedTemplate(
+                    id = 0L,
+                    title = "",
+                    categorySlug = defaultSlug,
+                    body = "",
+                    sortOrder = 0,
+                    isMedication = false
+                )
+            )
+        }
+    }
+
     fun openEditTemplate(template: com.notel.notel.data.local.entity.PinnedTemplate) {
         _uiState.update { it.copy(showTemplateEditDialog = true, templateToEdit = template) }
     }
 
     fun saveEditedTemplate(updatedTitle: String, updatedBody: String, updatedSlug: String, isMedication: Boolean) {
         val current = _uiState.value.templateToEdit ?: return
-        viewModelScope.launch {
-            templateRepository.updateTemplate(
-                current.copy(
-                    title = updatedTitle.ifBlank { current.title },
-                    body = updatedBody.ifBlank { current.body },
-                    categorySlug = updatedSlug,
-                    isMedication = isMedication
-                )
-            )
+        if (current.id == 0L) {
+            val title = updatedTitle.ifBlank { "New Template" }
+            val body = updatedBody.ifBlank { title }
+            pinTemplate(title = title, categorySlug = updatedSlug, body = body, isMedication = isMedication)
             _uiState.update { it.copy(showTemplateEditDialog = false, templateToEdit = null) }
+        } else {
+            viewModelScope.launch {
+                templateRepository.updateTemplate(
+                    current.copy(
+                        title = updatedTitle.ifBlank { current.title },
+                        body = updatedBody.ifBlank { current.body },
+                        categorySlug = updatedSlug,
+                        isMedication = isMedication
+                    )
+                )
+                _uiState.update { it.copy(showTemplateEditDialog = false, templateToEdit = null) }
+            }
         }
     }
 

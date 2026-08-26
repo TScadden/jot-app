@@ -215,28 +215,33 @@ fun QuickLogScreen(
                 }
 
                 // ── Pinned Templates Drawer ─────────────────────────────────────────
-                if (state.pinnedTemplates.isNotEmpty()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "PINNED TEMPLATES",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NotelPrimary,
+                        letterSpacing = 0.5.sp
+                    )
+                    IconButton(
+                        onClick = { viewModel.openTemplateManager() },
+                        modifier = Modifier.size(24.dp)
                     ) {
-                        Text(
-                            "PINNED TEMPLATES",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = NotelPrimary,
-                            letterSpacing = 0.5.sp
+                        Icon(
+                            if (state.pinnedTemplates.isEmpty()) Icons.Default.Add else Icons.Default.Tune,
+                            contentDescription = if (state.pinnedTemplates.isEmpty()) "Create Template" else "Manage Templates",
+                            tint = NotelPrimary,
+                            modifier = Modifier.size(16.dp)
                         )
-                        IconButton(
-                            onClick = { viewModel.openTemplateManager() },
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            Icon(Icons.Default.Tune, contentDescription = "Manage Templates", tint = NotelPrimary, modifier = Modifier.size(16.dp))
-                        }
                     }
+                }
+                if (state.pinnedTemplates.isNotEmpty()) {
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -260,6 +265,44 @@ fun QuickLogScreen(
                                     Spacer(Modifier.width(6.dp))
                                     Text(t.title, color = NotelTextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                 }
+                            }
+                        }
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(NotelSurface)
+                            .border(1.dp, NotelPrimary.copy(alpha = 0.15f), RoundedCornerShape(14.dp))
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Save common entries for one-tap logging.",
+                            color = NotelTextSecondary,
+                            fontSize = 12.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(NotelPrimary.copy(alpha = 0.15f))
+                                .clickable { viewModel.openCreateTemplateDialog() }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Add, null, tint = NotelPrimary, modifier = Modifier.size(12.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    "Create template",
+                                    color = NotelPrimary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
                         }
                     }
@@ -850,12 +893,22 @@ fun QuickLogScreen(
                         Spacer(Modifier.height(16.dp))
 
                         if (state.pinnedTemplates.isEmpty()) {
-                            Text("No templates found.", color = NotelTextSecondary, fontSize = 14.sp)
+                            Text("Save common entries for one-tap logging.", color = NotelTextSecondary, fontSize = 14.sp)
+                            Spacer(Modifier.height(12.dp))
+                            GlassyButton(
+                                onClick = { viewModel.openCreateTemplateDialog() },
+                                modifier = Modifier.fillMaxWidth(),
+                                containerColor = NotelPrimary.copy(alpha = 0.2f)
+                            ) {
+                                Icon(Icons.Default.Add, null, tint = NotelPrimary, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Create Template", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
+                            }
                         } else {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .heightIn(max = 350.dp)
+                                    .heightIn(max = 300.dp)
                                     .verticalScroll(rememberScrollState()),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
@@ -894,6 +947,16 @@ fun QuickLogScreen(
                                     }
                                 }
                             }
+                            Spacer(Modifier.height(12.dp))
+                            GlassyButton(
+                                onClick = { viewModel.openCreateTemplateDialog() },
+                                modifier = Modifier.fillMaxWidth(),
+                                containerColor = NotelPrimary.copy(alpha = 0.2f)
+                            ) {
+                                Icon(Icons.Default.Add, null, tint = NotelPrimary, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Add New Template", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
+                            }
                         }
 
                         Spacer(Modifier.height(20.dp))
@@ -907,9 +970,10 @@ fun QuickLogScreen(
             }
         }
 
-        // ── Template Edit Dialog ────────────────────────────────────────────
+        // ── Template Edit / Create Dialog ──────────────────────────────────
         if (state.showTemplateEditDialog && state.templateToEdit != null) {
             val template = state.templateToEdit!!
+            val isNew = template.id == 0L
             var titleText by remember(template) { mutableStateOf(template.title) }
             var bodyText by remember(template) { mutableStateOf(template.body) }
             var isMed by remember(template) { mutableStateOf(template.isMedication) }
@@ -925,7 +989,7 @@ fun QuickLogScreen(
                         .padding(20.dp)
                 ) {
                     Column {
-                        Text("Edit Template", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = NotelTextPrimary)
+                        Text(if (isNew) "Create Template" else "Edit Template", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = NotelTextPrimary)
                         Spacer(Modifier.height(12.dp))
                         OutlinedTextField(
                             value = titleText,
@@ -958,7 +1022,7 @@ fun QuickLogScreen(
                                 onClick = { viewModel.saveEditedTemplate(titleText, bodyText, template.categorySlug, isMed) },
                                 modifier = Modifier.weight(1f),
                                 containerColor = NotelPrimary
-                            ) { Text("Save Changes", color = Color.White, fontWeight = FontWeight.Bold) }
+                            ) { Text(if (isNew) "Create" else "Save Changes", color = Color.White, fontWeight = FontWeight.Bold) }
                         }
                     }
                 }

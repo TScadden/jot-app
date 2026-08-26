@@ -89,4 +89,29 @@ class TemplateManagementAndSyncRetryTest {
         // 4. Synced (entry timestamp <= last sync time)
         assertEquals(EntrySyncStatus.SYNCED, evalSyncStatus(entryTime, 3000L, false, null))
     }
+
+    @Test
+    fun zeroTemplatesState_andFirstTemplateCreationAndDeletionTransitions() {
+        // Initial state with zero templates
+        var state = QuickLogUiState(pinnedTemplates = emptyList())
+        assertTrue("State should have empty pinnedTemplates list", state.pinnedTemplates.isEmpty())
+
+        // Creating first template
+        val firstTemplate = PinnedTemplate(
+            id = 1L,
+            title = "Morning Coffee",
+            categorySlug = "general",
+            body = "Coffee with oat milk",
+            sortOrder = 1
+        )
+        state = state.copy(pinnedTemplates = listOf(firstTemplate))
+
+        assertFalse("State should no longer be empty after adding first template", state.pinnedTemplates.isEmpty())
+        assertEquals(1, state.pinnedTemplates.size)
+        assertEquals("Morning Coffee", state.pinnedTemplates.first().title)
+
+        // Deleting final template
+        state = state.copy(pinnedTemplates = emptyList())
+        assertTrue("State should return to empty state after deleting final template", state.pinnedTemplates.isEmpty())
+    }
 }
