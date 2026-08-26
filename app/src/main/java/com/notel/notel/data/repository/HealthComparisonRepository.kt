@@ -1,6 +1,7 @@
 package com.notel.notel.data.repository
 
 import com.notel.notel.data.healthconnect.HealthConnectManager
+import com.notel.notel.data.local.dao.CategoryDao
 import com.notel.notel.data.local.dao.LogEntryDao
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -21,6 +22,7 @@ data class HealthComparisonItem(
 class HealthComparisonRepository @Inject constructor(
     private val healthConnectManager: HealthConnectManager,
     private val logEntryDao: LogEntryDao,
+    private val categoryDao: CategoryDao,
     private val habitRepository: HabitRepository
 ) {
     suspend fun getWhatChangedComparisons(todayStr: String = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)): List<HealthComparisonItem> {
@@ -85,11 +87,23 @@ class HealthComparisonRepository @Inject constructor(
             // Fail safely
         }
 
-        // 3. Symptom Frequency (Symptom Category ID = 5 or log body contains symptom keywords)
+        // 3. Symptom Frequency (Resolved via category slug 'symptoms', with legacy body-text fallback)
         try {
+            val symptomCategory = categoryDao.getCategoryBySlug("symptoms")
+            val symptomCategoryId = symptomCategory?.id
+
             val startTs = today.minusDays(7).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
             val logs = logEntryDao.getEntriesInDateRangeDirect(startTs, System.currentTimeMillis())
-            val symptomLogs = logs.filter { it.categoryId.toLong() == 5L || it.body.contains("headache", ignoreCase = true) || it.body.contains("nausea", ignoreCase = true) || it.body.contains("fatigue", ignoreCase = true) }
+            
+            val symptomLogs = logs.filter { entry ->
+                val matchesCategory = symptomCategoryId != null && entry.categoryId == symptomCategoryId
+                val matchesLegacyTextFallback = entry.categoryId == 0 && (
+                    entry.body.contains("headache", ignoreCase = true) ||
+                    entry.body.contains("nausea", ignoreCase = true) ||
+                    entry.body.contains("fatigue", ignoreCase = true)
+                )
+                matchesCategory || matchesLegacyTextFallback
+            }
 
             if (symptomLogs.isNotEmpty()) {
                 val count = symptomLogs.size

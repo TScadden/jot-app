@@ -63,4 +63,41 @@ class RoomMigrationTest {
         }
         assertEquals(true, uniqueViolation)
     }
+
+    @Test
+    @Throws(IOException::class)
+    fun migrate26To27_verifiesNewInsightColumnsAndCrossRefTable() {
+        var db = helper.createDatabase(TEST_DB, 26).apply {
+            // Insert legacy insight in v26
+            execSQL("INSERT INTO ai_insights (id, text, timestamp, type, entryId, requestId) VALUES ('ins_v26_99', 'Existing v26 insight', 1700000000000, 'SUMMARY', 101, 'req_26_99')")
+            close()
+        }
+
+        // Migrate from 26 to 27 and validate schema
+        db = helper.runMigrationsAndValidate(TEST_DB, 27, true, NotelDatabase.MIGRATION_26_27)
+
+        // Verify preserved data and new column defaults
+        val cursorInsight = db.query("SELECT id, text, classification, dataUsed, dateRangeText, plainLanguageReason, confidence, feedbackState, isDismissed FROM ai_insights WHERE id = 'ins_v26_99'")
+        assertNotNull(cursorInsight)
+        cursorInsight.moveToFirst()
+        assertEquals("ins_v26_99", cursorInsight.getString(0))
+        assertEquals("Existing v26 insight", cursorInsight.getString(1))
+        assertEquals("OBSERVATION", cursorInsight.getString(2))
+        assertEquals("Symptom logs, medication records", cursorInsight.getString(3))
+        assertEquals("Past 7 days", cursorInsight.getString(4))
+        assertEquals("Observed consistency in daily tracking records.", cursorInsight.getString(5))
+        assertEquals(0.85f, cursorInsight.getFloat(6), 0.01f)
+        assertEquals("NONE", cursorInsight.getString(7))
+        assertEquals(0, cursorInsight.getInt(8)) // false as 0
+        cursorInsight.close()
+
+        // Verify insight_entry_cross_ref table creation and insertion
+        db.execSQL("INSERT INTO insight_entry_cross_ref (insightId, entryId) VALUES ('ins_v26_99', 101)")
+        val cursorRef = db.query("SELECT insightId, entryId FROM insight_entry_cross_ref WHERE insightId = 'ins_v26_99'")
+        assertNotNull(cursorRef)
+        cursorRef.moveToFirst()
+        assertEquals("ins_v26_99", cursorRef.getString(0))
+        assertEquals(101L, cursorRef.getLong(1))
+        cursorRef.close()
+    }
 }

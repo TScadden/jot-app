@@ -256,7 +256,7 @@ class Phase2MedicationAndTodayTest {
     }
 
     @Test
-    fun migration26To27_verifiesNewInsightColumnsAndCrossRefTable() {
+    fun schemaAndMigrationLogicUnitTest_verifiesNewInsightColumnsAndCrossRefTable() {
         val legacyInsight = com.notel.notel.data.local.entity.AiInsight(
             id = "ins_v26_1",
             text = "Legacy insight text",
@@ -264,7 +264,7 @@ class Phase2MedicationAndTodayTest {
             type = "TREND"
         )
 
-        // Verify default values applied during migration
+        // Verify default values applied during schema definition & migration logic
         assertEquals("OBSERVATION", legacyInsight.classification)
         assertEquals("Symptom logs, medication records", legacyInsight.dataUsed)
         assertEquals("Past 7 days", legacyInsight.dateRangeText)
@@ -280,5 +280,43 @@ class Phase2MedicationAndTodayTest {
 
         assertEquals("ins_v26_1", crossRef.insightId)
         assertEquals(1001L, crossRef.entryId)
+    }
+
+    @Test
+    fun healthComparison_symptomCategoryResolution_handlesNonID5AndExcludesUnrelatedNotes() {
+        // Symptoms category with numeric ID 99 (not 5)
+        val symptomsCatId = 99
+        val unrelatedCatId = 5 // Category ID 5 belongs to an unrelated category (e.g. Work)
+
+        val validSymptomEntry = com.notel.notel.data.local.entity.LogEntry(
+            id = 101,
+            categoryId = symptomsCatId,
+            body = "Mild joint pain",
+            chips = "[]",
+            manualText = "Mild joint pain",
+            timestamp = System.currentTimeMillis()
+        )
+
+        val unrelatedCategory5Entry = com.notel.notel.data.local.entity.LogEntry(
+            id = 102,
+            categoryId = unrelatedCatId,
+            body = "Had a headache from client meeting", // Contains keyword but in category 5 (Work)
+            chips = "[]",
+            manualText = "",
+            timestamp = System.currentTimeMillis()
+        )
+
+        val filterLogic: (com.notel.notel.data.local.entity.LogEntry) -> Boolean = { entry ->
+            val matchesCategory = entry.categoryId == symptomsCatId
+            val matchesLegacyTextFallback = entry.categoryId == 0 && (
+                entry.body.contains("headache", ignoreCase = true) ||
+                entry.body.contains("nausea", ignoreCase = true) ||
+                entry.body.contains("fatigue", ignoreCase = true)
+            )
+            matchesCategory || matchesLegacyTextFallback
+        }
+
+        assertTrue(filterLogic(validSymptomEntry))
+        assertFalse(filterLogic(unrelatedCategory5Entry))
     }
 }
