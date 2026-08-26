@@ -26,6 +26,7 @@ import com.notel.notel.data.local.entity.Category
 import com.notel.notel.data.local.entity.LogEntry
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.HistoryViewModel
+import com.notel.notel.ui.viewmodel.EntrySyncStatus
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -46,6 +47,7 @@ fun HistoryScreen(
     val categoryFilter by viewModel.categoryFilter.collectAsState()
     val lastSyncTime by viewModel.lastSyncTime.collectAsState()
     val isSyncing by viewModel.isSyncing.collectAsState()
+    val lastSyncError by viewModel.lastSyncError.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val syncSdf = remember { SimpleDateFormat("MMM d · h:mm a", Locale.getDefault()) }
 
@@ -223,11 +225,14 @@ fun HistoryScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         items(entries, key = { it.id }) { entry ->
+                            val status = viewModel.getSyncStatus(entry, lastSyncTime, isSyncing, lastSyncError)
                             EntryCard(
                                 entry = entry,
                                 category = categories.find { it.id == entry.categoryId },
+                                syncStatus = status,
                                 onClick = { onEntryClick(entry.id) },
-                                onDelete = { viewModel.deleteEntry(entry) }
+                                onDelete = { viewModel.deleteEntry(entry) },
+                                onRetrySync = { viewModel.retrySync() }
                             )
                         }
                     }
@@ -309,8 +314,10 @@ fun HistoryScreen(
 private fun EntryCard(
     entry: LogEntry,
     category: Category?,
+    syncStatus: EntrySyncStatus = EntrySyncStatus.SYNCED,
     onClick: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onRetrySync: () -> Unit = {}
 ) {
     var showDeleteConfirm by remember { mutableStateOf(false) }
     val sdf = remember { SimpleDateFormat("MMM d, yyyy · h:mm a", Locale.getDefault()) }
@@ -445,19 +452,83 @@ private fun EntryCard(
                     letterSpacing = 0.3.sp
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.CloudDone,
-                        contentDescription = "Synced",
-                        tint = TileAccentPurple.copy(alpha = 0.5f),
-                        modifier = Modifier.size(12.dp)
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        "Synced",
-                        color = TileAccentPurple.copy(alpha = 0.5f),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    when (syncStatus) {
+                        EntrySyncStatus.SYNCED -> {
+                            Icon(
+                                Icons.Default.CloudDone,
+                                contentDescription = "Synced",
+                                tint = TileAccentPurple.copy(alpha = 0.6f),
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                "Synced",
+                                color = TileAccentPurple.copy(alpha = 0.6f),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        EntrySyncStatus.SYNC_PENDING -> {
+                            Icon(
+                                Icons.Default.Sync,
+                                contentDescription = "Sync pending",
+                                tint = Color(0xFFFFB74D),
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                "Sync pending",
+                                color = Color(0xFFFFB74D),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        EntrySyncStatus.SYNC_FAILED -> {
+                            Icon(
+                                Icons.Default.CloudOff,
+                                contentDescription = "Sync failed",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                "Sync failed",
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(MaterialTheme.colorScheme.error.copy(alpha = 0.15f))
+                                    .clickable { onRetrySync() }
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    "Retry",
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                        EntrySyncStatus.SAVED_LOCALLY -> {
+                            Icon(
+                                Icons.Default.Storage,
+                                contentDescription = "Saved locally",
+                                tint = NotelTextSecondary.copy(alpha = 0.6f),
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                "Saved locally",
+                                color = NotelTextSecondary.copy(alpha = 0.6f),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
                 }
             }
         }

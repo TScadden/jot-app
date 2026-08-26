@@ -19,6 +19,13 @@ data class HistoryUiState(
     val selectedCategoryFilter: Int? = null  // null = all
 )
 
+enum class EntrySyncStatus {
+    SAVED_LOCALLY,
+    SYNC_PENDING,
+    SYNCED,
+    SYNC_FAILED
+}
+
 @HiltViewModel
 class HistoryViewModel @Inject constructor(
     private val logRepository: LogRepository,
@@ -30,11 +37,13 @@ class HistoryViewModel @Inject constructor(
     private val _searchQuery = MutableStateFlow("")
     private val _categoryFilter = MutableStateFlow<Int?>(null)
     private val _isSyncing = MutableStateFlow(false)
+    private val _lastSyncError = MutableStateFlow<String?>(null)
 
     val lastSyncTime: StateFlow<Long> = preferences.lastSyncTime
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
 
     val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
+    val lastSyncError: StateFlow<String?> = _lastSyncError.asStateFlow()
 
     val categories = categoryRepository.getAllCategories()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -64,11 +73,23 @@ class HistoryViewModel @Inject constructor(
         viewModelScope.launch { logRepository.deleteEntry(entry) }
     }
 
+    fun getSyncStatus(entry: LogEntry, lastSyncTime: Long, isSyncing: Boolean, lastError: String?): EntrySyncStatus {
+        return when {
+            lastSyncTime > 0L && entry.timestamp <= lastSyncTime -> EntrySyncStatus.SYNCED
+            isSyncing -> EntrySyncStatus.SYNC_PENDING
+            lastError != null -> EntrySyncStatus.SYNC_FAILED
+            else -> EntrySyncStatus.SAVED_LOCALLY
+        }
+    }
+
     fun retrySync() {
         viewModelScope.launch {
             _isSyncing.value = true
+            _lastSyncError.value = null
             try {
                 syncManager.syncAllData()
+            } catch (e: Exception) {
+                _lastSyncError.value = e.message ?: "Sync failed"
             } finally {
                 _isSyncing.value = false
             }
