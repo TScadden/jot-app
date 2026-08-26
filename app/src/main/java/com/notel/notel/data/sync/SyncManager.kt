@@ -134,7 +134,19 @@ class SyncManager @Inject constructor(
 
                     if (localInsights.isNotEmpty()) {
                         val insightDtos = localInsights.map {
-                            InsightDtoModel(it.id, it.text, it.type, it.timestamp)
+                            InsightDtoModel(
+                                id = it.id,
+                                text = it.text,
+                                type = it.type,
+                                timestamp = it.timestamp,
+                                classification = it.classification,
+                                dataUsed = it.dataUsed,
+                                dateRangeText = it.dateRangeText,
+                                plainLanguageReason = it.plainLanguageReason,
+                                confidence = it.confidence,
+                                feedbackState = it.feedbackState,
+                                isDismissed = it.isDismissed
+                            )
                         }
                         val insightRes = tabsApi.syncInsights(SyncInsightsRequest(insightDtos))
                         if (insightRes.isSuccessful) {

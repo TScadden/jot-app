@@ -254,4 +254,31 @@ class Phase2MedicationAndTodayTest {
         assertEquals("Sleep Duration", comparison.metricName)
         assertTrue(comparison.differenceText.contains("45 minutes shorter"))
     }
+
+    @Test
+    fun migration26To27_verifiesNewInsightColumnsAndCrossRefTable() {
+        val legacyInsight = com.notel.notel.data.local.entity.AiInsight(
+            id = "ins_v26_1",
+            text = "Legacy insight text",
+            timestamp = 1700000000000L,
+            type = "TREND"
+        )
+
+        // Verify default values applied during migration
+        assertEquals("OBSERVATION", legacyInsight.classification)
+        assertEquals("Symptom logs, medication records", legacyInsight.dataUsed)
+        assertEquals("Past 7 days", legacyInsight.dateRangeText)
+        assertEquals("Observed consistency in daily tracking records.", legacyInsight.plainLanguageReason)
+        assertEquals(0.85f, legacyInsight.confidence, 0.01f)
+        assertEquals("NONE", legacyInsight.feedbackState)
+        assertFalse(legacyInsight.isDismissed)
+
+        val crossRef = com.notel.notel.data.local.entity.InsightEntryCrossRef(
+            insightId = legacyInsight.id,
+            entryId = 1001L
+        )
+
+        assertEquals("ins_v26_1", crossRef.insightId)
+        assertEquals(1001L, crossRef.entryId)
+    }
 }

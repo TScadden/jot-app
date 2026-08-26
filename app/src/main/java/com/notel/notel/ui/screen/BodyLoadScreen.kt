@@ -121,6 +121,7 @@ fun BodyLoadScreen(
     var showHumidityInfo by remember { mutableStateOf(false) }
     var showWindInfo by remember { mutableStateOf(false) }
     var showPressureInfo by remember { mutableStateOf(false) }
+    var showTodayCustomization by remember { mutableStateOf(false) }
     val todayStr = java.time.LocalDate.now().toString()
     val isToday = state.selectedDate == todayStr
 
@@ -162,6 +163,14 @@ fun BodyLoadScreen(
                                 modifier = Modifier.size(20.dp)
                             )
                         }
+                    }
+                    IconButton(onClick = { showTodayCustomization = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Tune,
+                            contentDescription = "Customize Today",
+                            tint = NotelTextSecondary,
+                            modifier = Modifier.size(22.dp)
+                        )
                     }
                     IconButton(onClick = onNavigateToConnections) {
                         Icon(
@@ -372,6 +381,118 @@ fun BodyLoadScreen(
                                         text = planItem.timeDisplay,
                                         color = NotelTextSecondary.copy(alpha = alpha),
                                         fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── 3B. What Changed Section (Health Comparisons) ───────────────
+            if (!todayState.hiddenSections.contains("WHAT_CHANGED") && todayState.whatChangedItems.isNotEmpty()) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = "What Changed",
+                            fontWeight = FontWeight.Bold,
+                            color = NotelTextPrimary,
+                            fontSize = 15.sp,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        todayState.whatChangedItems.forEach { comp ->
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                color = NotelSurface,
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, GlassBorder)
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(comp.metricName, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = NotelTextPrimary)
+                                        Text(comp.dataSource, fontSize = 11.sp, color = NotelTextSecondary)
+                                    }
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(comp.differenceText, fontSize = 13.sp, color = NotelPrimary, fontWeight = FontWeight.SemiBold)
+                                    Spacer(Modifier.height(2.dp))
+                                    Text("${comp.currentPeriod} vs ${comp.comparisonPeriod}", fontSize = 12.sp, color = NotelTextSecondary)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── 3C. Active AI Insight Section ──────────────────────────────
+            if (!todayState.hiddenSections.contains("AI_INSIGHT") && todayState.primaryInsight != null) {
+                val insight = todayState.primaryInsight!!
+                item {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        color = NotelSurface,
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.3f))
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    color = NotelPrimary.copy(alpha = 0.15f),
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text(
+                                        text = insight.classification,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                        color = NotelPrimary,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { todayViewModel.dismissInsight(insight.id) },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(Icons.Default.Close, contentDescription = "Dismiss Insight", tint = NotelTextSecondary, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Text(text = insight.text, fontWeight = FontWeight.Medium, fontSize = 14.sp, color = NotelTextPrimary)
+                            Spacer(Modifier.height(6.dp))
+                            Text(text = "Based on: ${insight.dataUsed} (${insight.dateRangeText})", fontSize = 12.sp, color = NotelTextSecondary)
+                            Spacer(Modifier.height(4.dp))
+                            Text(text = insight.plainLanguageReason, fontSize = 12.sp, color = NotelTextSecondary.copy(alpha = 0.8f))
+                            Spacer(Modifier.height(10.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = "Confidence: ${(insight.confidence * 100).toInt()}%", fontSize = 11.sp, color = NotelTextSecondary)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    FilterChip(
+                                        selected = insight.feedbackState == "HELPFUL",
+                                        onClick = { todayViewModel.submitInsightFeedback(insight.id, true) },
+                                        label = { Text("Helpful", fontSize = 11.sp) }
+                                    )
+                                    FilterChip(
+                                        selected = insight.feedbackState == "NOT_HELPFUL",
+                                        onClick = { todayViewModel.submitInsightFeedback(insight.id, false) },
+                                        label = { Text("Not Helpful", fontSize = 11.sp) }
                                     )
                                 }
                             }
@@ -1928,7 +2049,12 @@ fun BodyLoadScreen(
         }
     }
 
-
+    if (showTodayCustomization) {
+        TodayCustomizationBottomSheet(
+            viewModel = todayViewModel,
+            onDismiss = { showTodayCustomization = false }
+        )
+    }
 }
 
 @Composable

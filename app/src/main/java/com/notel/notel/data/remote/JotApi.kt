@@ -283,7 +283,14 @@ data class InsightDtoModel(
     val id: String,
     val text: String,
     val type: String,
-    val timestamp: Long
+    val timestamp: Long,
+    val classification: String = "OBSERVATION",
+    val dataUsed: String = "",
+    val dateRangeText: String = "",
+    val plainLanguageReason: String = "",
+    val confidence: Float = 0.8f,
+    val feedbackState: String = "NONE",
+    val isDismissed: Boolean = false
 )
 
 @Serializable
