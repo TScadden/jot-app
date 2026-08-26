@@ -74,7 +74,12 @@ data class QuickLogUiState(
     val showProposalConfirmation: Boolean = false,
     val recentSuggestions: List<com.notel.notel.data.local.entity.LogEntry> = emptyList(),
     val pinnedTemplates: List<com.notel.notel.data.local.entity.PinnedTemplate> = emptyList(),
-    val historicalDefaultText: String? = null
+    val historicalDefaultText: String? = null,
+    // Template Management Dialog State
+    val showTemplateManagementDialog: Boolean = false,
+    val showTemplateEditDialog: Boolean = false,
+    val templateToEdit: com.notel.notel.data.local.entity.PinnedTemplate? = null,
+    val templateToDelete: com.notel.notel.data.local.entity.PinnedTemplate? = null
 )
 
 @HiltViewModel
@@ -756,15 +761,74 @@ class QuickLogViewModel @Inject constructor(
         }
     }
 
-    fun pinTemplate(title: String, categorySlug: String, body: String) {
+    fun openTemplateManager() = _uiState.update { it.copy(showTemplateManagementDialog = true) }
+    fun closeTemplateManager() = _uiState.update { it.copy(showTemplateManagementDialog = false, showTemplateEditDialog = false, templateToEdit = null, templateToDelete = null) }
+
+    fun openEditTemplate(template: com.notel.notel.data.local.entity.PinnedTemplate) {
+        _uiState.update { it.copy(showTemplateEditDialog = true, templateToEdit = template) }
+    }
+
+    fun saveEditedTemplate(updatedTitle: String, updatedBody: String, updatedSlug: String, isMedication: Boolean) {
+        val current = _uiState.value.templateToEdit ?: return
         viewModelScope.launch {
+            templateRepository.updateTemplate(
+                current.copy(
+                    title = updatedTitle.ifBlank { current.title },
+                    body = updatedBody.ifBlank { current.body },
+                    categorySlug = updatedSlug,
+                    isMedication = isMedication
+                )
+            )
+            _uiState.update { it.copy(showTemplateEditDialog = false, templateToEdit = null) }
+        }
+    }
+
+    fun requestDeleteTemplate(template: com.notel.notel.data.local.entity.PinnedTemplate) {
+        _uiState.update { it.copy(templateToDelete = template) }
+    }
+
+    fun confirmDeleteTemplate() {
+        val template = _uiState.value.templateToDelete ?: return
+        viewModelScope.launch {
+            templateRepository.deleteTemplate(template)
+            _uiState.update { it.copy(templateToDelete = null) }
+        }
+    }
+
+    fun dismissDeleteTemplate() {
+        _uiState.update { it.copy(templateToDelete = null) }
+    }
+
+    fun pinTemplate(title: String, categorySlug: String, body: String, isMedication: Boolean = false) {
+        viewModelScope.launch {
+            val maxSort = _uiState.value.pinnedTemplates.maxOfOrNull { it.sortOrder } ?: 0
             templateRepository.saveTemplate(
                 com.notel.notel.data.local.entity.PinnedTemplate(
                     title = title,
                     categorySlug = categorySlug,
-                    body = body
+                    body = body,
+                    sortOrder = maxSort + 1,
+                    isMedication = isMedication
                 )
             )
+        }
+    }
+
+    fun saveProposalsAsTemplates() {
+        val state = _uiState.value
+        viewModelScope.launch {
+            state.proposals.forEach { proposal ->
+                val catSlug = proposal.intent.name.lowercase()
+                val isMed = proposal.intent.name == "MEDICATION"
+                templateRepository.saveTemplate(
+                    com.notel.notel.data.local.entity.PinnedTemplate(
+                        title = proposal.summaryText.take(20),
+                        categorySlug = catSlug,
+                        body = proposal.summaryText,
+                        isMedication = isMed
+                    )
+                )
+            }
         }
     }
 
@@ -774,7 +838,29 @@ class QuickLogViewModel @Inject constructor(
         }
     }
 
+    fun reorderTemplate(template: com.notel.notel.data.local.entity.PinnedTemplate, moveUp: Boolean) {
+        viewModelScope.launch {
+            val list = _uiState.value.pinnedTemplates.sortedBy { it.sortOrder }.toMutableList()
+            val index = list.indexOfFirst { it.id == template.id }
+            if (index == -1) return@launch
+            val targetIndex = if (moveUp) index - 1 else index + 1
+            if (targetIndex in list.indices) {
+                val temp = list[index]
+                list[index] = list[targetIndex]
+                list[targetIndex] = temp
+                // Re-assign sort orders
+                val updatedList = list.mapIndexed { idx, item -> item.copy(sortOrder = idx) }
+                templateRepository.reorderTemplates(updatedList)
+            }
+        }
+    }
+
     fun logFromTemplate(template: com.notel.notel.data.local.entity.PinnedTemplate) {
+        if (template.isMedication) {
+            // Medication templates MUST open proposal confirmation before logging
+            parseAndShowProposals(template.body)
+            return
+        }
         viewModelScope.launch {
             val catId = categoryRepository.findCategoryIdBySlug(template.categorySlug, defaultId = 7)
             logRepository.insertEntry(
@@ -787,6 +873,7 @@ class QuickLogViewModel @Inject constructor(
                     source = "Pinned Template"
                 )
             )
+            _uiState.update { it.copy(saveSuccess = true) }
         }
     }
 

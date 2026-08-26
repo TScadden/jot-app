@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.notel.notel.data.local.entity.LogEntry
 import com.notel.notel.data.repository.CategoryRepository
 import com.notel.notel.data.repository.LogRepository
+import com.notel.notel.data.sync.SyncManager
+import com.notel.notel.data.preferences.NotelPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
@@ -20,11 +22,19 @@ data class HistoryUiState(
 @HiltViewModel
 class HistoryViewModel @Inject constructor(
     private val logRepository: LogRepository,
-    private val categoryRepository: CategoryRepository
+    private val categoryRepository: CategoryRepository,
+    private val syncManager: SyncManager,
+    private val preferences: NotelPreferences
 ) : ViewModel() {
 
     private val _searchQuery = MutableStateFlow("")
     private val _categoryFilter = MutableStateFlow<Int?>(null)
+    private val _isSyncing = MutableStateFlow(false)
+
+    val lastSyncTime: StateFlow<Long> = preferences.lastSyncTime
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
+
+    val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
 
     val categories = categoryRepository.getAllCategories()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -52,5 +62,16 @@ class HistoryViewModel @Inject constructor(
 
     fun deleteEntry(entry: LogEntry) {
         viewModelScope.launch { logRepository.deleteEntry(entry) }
+    }
+
+    fun retrySync() {
+        viewModelScope.launch {
+            _isSyncing.value = true
+            try {
+                syncManager.syncAllData()
+            } finally {
+                _isSyncing.value = false
+            }
+        }
     }
 }

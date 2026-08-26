@@ -216,14 +216,27 @@ fun QuickLogScreen(
 
                 // ── Pinned Templates Drawer ─────────────────────────────────────────
                 if (state.pinnedTemplates.isNotEmpty()) {
-                    Text(
-                        "PINNED TEMPLATES",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = NotelPrimary,
-                        modifier = Modifier.padding(start = 16.dp, top = 10.dp, bottom = 4.dp),
-                        letterSpacing = 0.5.sp
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "PINNED TEMPLATES",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NotelPrimary,
+                            letterSpacing = 0.5.sp
+                        )
+                        IconButton(
+                            onClick = { viewModel.openTemplateManager() },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(Icons.Default.Tune, contentDescription = "Manage Templates", tint = NotelPrimary, modifier = Modifier.size(16.dp))
+                        }
+                    }
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -238,7 +251,12 @@ fun QuickLogScreen(
                                     .padding(horizontal = 14.dp, vertical = 8.dp)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.PushPin, null, tint = NotelPrimary, modifier = Modifier.size(14.dp))
+                                    Icon(
+                                        if (t.isMedication) Icons.Default.Medication else Icons.Default.PushPin,
+                                        null,
+                                        tint = NotelPrimary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
                                     Spacer(Modifier.width(6.dp))
                                     Text(t.title, color = NotelTextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                 }
@@ -784,22 +802,188 @@ fun QuickLogScreen(
                         }
 
                         Spacer(Modifier.height(20.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             GlassyButton(
                                 onClick = { viewModel.dismissProposals() },
+                                modifier = Modifier.weight(1f),
+                                containerColor = NotelSurfaceHigh
+                            ) { Text("Cancel", color = NotelTextPrimary, fontSize = 12.sp) }
+
+                            GlassyButton(
+                                onClick = {
+                                    viewModel.saveProposalsAsTemplates()
+                                    viewModel.confirmProposals()
+                                },
+                                modifier = Modifier.weight(1.3f),
+                                containerColor = NotelSurfaceHigh
+                            ) { Text("Save + Template", color = NotelPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+
+                            GlassyButton(
+                                onClick = { viewModel.confirmProposals() },
+                                modifier = Modifier.weight(1.3f),
+                                containerColor = NotelPrimary
+                            ) { Text("Confirm & Save", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Template Management Dialog ──────────────────────────────────────
+        if (state.showTemplateManagementDialog) {
+            Dialog(onDismissRequest = { viewModel.closeTemplateManager() }) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(NotelSurface)
+                        .border(1.dp, NotelPrimary.copy(alpha = 0.2f), RoundedCornerShape(22.dp))
+                        .padding(20.dp)
+                ) {
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Tune, contentDescription = null, tint = NotelPrimary, modifier = Modifier.size(22.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Manage Pinned Templates", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = NotelTextPrimary)
+                        }
+                        Spacer(Modifier.height(16.dp))
+
+                        if (state.pinnedTemplates.isEmpty()) {
+                            Text("No templates found.", color = NotelTextSecondary, fontSize = 14.sp)
+                        } else {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 350.dp)
+                                    .verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                state.pinnedTemplates.forEach { t ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(NotelSurfaceHigh)
+                                            .padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            if (t.isMedication) Icons.Default.Medication else Icons.Default.PushPin,
+                                            null,
+                                            tint = NotelPrimary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(t.title, color = NotelTextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                            Text(t.body, color = NotelTextSecondary, fontSize = 11.sp, maxLines = 1)
+                                        }
+                                        IconButton(onClick = { viewModel.reorderTemplate(t, moveUp = true) }, modifier = Modifier.size(24.dp)) {
+                                            Icon(Icons.Default.KeyboardArrowUp, "Move Up", tint = NotelTextSecondary, modifier = Modifier.size(16.dp))
+                                        }
+                                        IconButton(onClick = { viewModel.reorderTemplate(t, moveUp = false) }, modifier = Modifier.size(24.dp)) {
+                                            Icon(Icons.Default.KeyboardArrowDown, "Move Down", tint = NotelTextSecondary, modifier = Modifier.size(16.dp))
+                                        }
+                                        IconButton(onClick = { viewModel.openEditTemplate(t) }, modifier = Modifier.size(24.dp)) {
+                                            Icon(Icons.Default.Edit, "Edit", tint = NotelPrimary, modifier = Modifier.size(16.dp))
+                                        }
+                                        IconButton(onClick = { viewModel.requestDeleteTemplate(t) }, modifier = Modifier.size(24.dp)) {
+                                            Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(20.dp))
+                        GlassyButton(
+                            onClick = { viewModel.closeTemplateManager() },
+                            modifier = Modifier.fillMaxWidth(),
+                            containerColor = NotelSurfaceHigh
+                        ) { Text("Close", color = NotelTextPrimary) }
+                    }
+                }
+            }
+        }
+
+        // ── Template Edit Dialog ────────────────────────────────────────────
+        if (state.showTemplateEditDialog && state.templateToEdit != null) {
+            val template = state.templateToEdit!!
+            var titleText by remember(template) { mutableStateOf(template.title) }
+            var bodyText by remember(template) { mutableStateOf(template.body) }
+            var isMed by remember(template) { mutableStateOf(template.isMedication) }
+
+            Dialog(onDismissRequest = { viewModel.closeTemplateManager() }) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(NotelSurface)
+                        .border(1.dp, NotelPrimary.copy(alpha = 0.2f), RoundedCornerShape(22.dp))
+                        .padding(20.dp)
+                ) {
+                    Column {
+                        Text("Edit Template", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = NotelTextPrimary)
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = titleText,
+                            onValueChange = { titleText = it },
+                            label = { Text("Title", color = NotelTextSecondary) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = bodyText,
+                            onValueChange = { bodyText = it },
+                            label = { Text("Body Text", color = NotelTextSecondary) },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = isMed, onCheckedChange = { isMed = it })
+                            Text("Requires Medication Confirmation", color = NotelTextPrimary, fontSize = 12.sp)
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            GlassyButton(
+                                onClick = { viewModel.closeTemplateManager() },
                                 modifier = Modifier.weight(1f),
                                 containerColor = NotelSurfaceHigh
                             ) { Text("Cancel", color = NotelTextPrimary) }
 
                             GlassyButton(
-                                onClick = { viewModel.confirmProposals() },
+                                onClick = { viewModel.saveEditedTemplate(titleText, bodyText, template.categorySlug, isMed) },
                                 modifier = Modifier.weight(1f),
                                 containerColor = NotelPrimary
-                            ) { Text("Confirm & Save", color = Color.White, fontWeight = FontWeight.Bold) }
+                            ) { Text("Save Changes", color = Color.White, fontWeight = FontWeight.Bold) }
                         }
                     }
                 }
             }
+        }
+
+        // ── Delete Template Confirmation Dialog ─────────────────────────────
+        state.templateToDelete?.let { template ->
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissDeleteTemplate() },
+                title = { Text("Delete Template?", color = NotelTextPrimary) },
+                text = { Text("Are you sure you want to delete template '${template.title}'? This will not delete historical log entries.", color = NotelTextSecondary) },
+                confirmButton = {
+                    TextButton(onClick = { viewModel.confirmDeleteTemplate() }) {
+                        Text("Delete", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.dismissDeleteTemplate() }) {
+                        Text("Cancel", color = NotelTextPrimary)
+                    }
+                },
+                containerColor = NotelSurface,
+                shape = RoundedCornerShape(16.dp)
+            )
         }
     }
 }

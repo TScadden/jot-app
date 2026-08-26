@@ -44,7 +44,10 @@ fun HistoryScreen(
     val categories by viewModel.categories.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val categoryFilter by viewModel.categoryFilter.collectAsState()
+    val lastSyncTime by viewModel.lastSyncTime.collectAsState()
+    val isSyncing by viewModel.isSyncing.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val syncSdf = remember { SimpleDateFormat("MMM d · h:mm a", Locale.getDefault()) }
 
     Scaffold(
         containerColor = NotelBackground,
@@ -69,10 +72,28 @@ fun HistoryScreen(
         },
         topBar = {
             TopAppBar(
-                title = { Text("History", fontWeight = FontWeight.Bold, color = NotelTextPrimary) },
+                title = {
+                    Column {
+                        Text("History", fontWeight = FontWeight.Bold, color = NotelTextPrimary)
+                        Text(
+                            text = if (lastSyncTime > 0) "Last synced: ${syncSdf.format(Date(lastSyncTime))}" else "Saved locally",
+                            fontSize = 11.sp,
+                            color = NotelTextSecondary
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, "Back", tint = NotelTextSecondary)
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { viewModel.retrySync() }) {
+                        Icon(
+                            Icons.Default.Sync,
+                            contentDescription = "Sync Now / Retry",
+                            tint = if (isSyncing) TileAccentPurple else NotelTextSecondary
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = NotelBackground)
@@ -410,14 +431,35 @@ private fun EntryCard(
 
             Spacer(Modifier.height(10.dp))
 
-            // ── Timestamp ────────────────────────────────────────────────
-            Text(
-                text = sdf.format(Date(entry.timestamp)),
-                color = TileAccentPurple.copy(alpha = 0.55f),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                letterSpacing = 0.3.sp
-            )
+            // ── Timestamp & Sync Badge ─────────────────────────────────────
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = sdf.format(Date(entry.timestamp)),
+                    color = TileAccentPurple.copy(alpha = 0.55f),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = 0.3.sp
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.CloudDone,
+                        contentDescription = "Synced",
+                        tint = TileAccentPurple.copy(alpha = 0.5f),
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        "Synced",
+                        color = TileAccentPurple.copy(alpha = 0.5f),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
         }
     }
 
