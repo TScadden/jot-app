@@ -78,6 +78,56 @@ class TodaySummaryAndCategoryOrderingTest {
     }
 
     @Test
+    fun testTrendsStateStability_retainsPreviousItemsDuringRefresh() {
+        val initialItems = listOf(
+            HealthComparisonItem("Sleep Duration", "7h 30m today", "7-day avg", "Sleep normal", "Health Connect", "Today"),
+            HealthComparisonItem("Resting Heart Rate", "60 bpm today", "7-day avg", "RHR lower", "Health Connect", "Today")
+        )
+
+        var repositoryReturnsEmpty = false
+        var currentState: TodayTrendsState = TodayTrendsState.Loading
+        var currentItems: List<HealthComparisonItem> = emptyList()
+
+        fun updateTrends(newItems: List<HealthComparisonItem>) {
+            if (newItems.isNotEmpty()) {
+                currentItems = newItems
+                currentState = TodayTrendsState.Ready(newItems)
+            } else if (currentItems.isNotEmpty()) {
+                val staleItems = currentItems.map { it.copy(isStaleOrOffline = true) }
+                currentItems = staleItems
+                currentState = TodayTrendsState.Ready(staleItems)
+            } else {
+                currentItems = emptyList()
+                currentState = TodayTrendsState.Empty
+            }
+        }
+
+        fun fetchComparisons(): List<HealthComparisonItem> {
+            return if (repositoryReturnsEmpty) emptyList() else initialItems
+        }
+
+        // 1. Initial calculation emits Ready(2 items)
+        updateTrends(fetchComparisons())
+        assertTrue("Initial state must be Ready", currentState is TodayTrendsState.Ready)
+        assertEquals(2, (currentState as TodayTrendsState.Ready).items.size)
+        assertEquals(2, currentItems.size)
+
+        // 2. Refresh begins with partial/empty source: must remain Ready(2 items)
+        repositoryReturnsEmpty = true
+        updateTrends(fetchComparisons())
+        assertTrue("Visible state must NEVER become Empty or show zero during refresh with partial empty source", currentState is TodayTrendsState.Ready)
+        assertEquals("Visible items count must remain 2", 2, (currentState as TodayTrendsState.Ready).items.size)
+        assertTrue("Items retained during partial empty refresh should be marked stale/offline", (currentState as TodayTrendsState.Ready).items.all { it.isStaleOrOffline })
+
+        // 3. Complete calculation finishes: emits Ready(2 items) with updated freshness
+        repositoryReturnsEmpty = false
+        updateTrends(fetchComparisons())
+        assertTrue("Final state must be Ready", currentState is TodayTrendsState.Ready)
+        assertEquals(2, (currentState as TodayTrendsState.Ready).items.size)
+        assertTrue("Items must not be stale after full calculation finishes", (currentState as TodayTrendsState.Ready).items.none { it.isStaleOrOffline })
+    }
+
+    @Test
     fun testSummaryTextFormatting() {
         // Remaining > 0 without overdue
         val text1 = formatSummaryText(remainingCount = 3, overdueCount = 0, totalPlans = 3)

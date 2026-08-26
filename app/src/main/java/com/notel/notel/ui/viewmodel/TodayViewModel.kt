@@ -141,15 +141,27 @@ class TodayViewModel @Inject constructor(
     fun loadHealthComparisons() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val items = healthComparisonRepository.getWhatChangedComparisons(todayStr)
-                _trendsItems.value = items
-                if (items.isEmpty()) {
-                    _trendsState.value = TodayTrendsState.Empty
+                val newItems = healthComparisonRepository.getWhatChangedComparisons(todayStr)
+                val currentItems = _trendsItems.value
+
+                if (newItems.isNotEmpty()) {
+                    _trendsItems.value = newItems
+                    _trendsState.value = TodayTrendsState.Ready(newItems)
+                } else if (currentItems.isNotEmpty()) {
+                    val staleItems = currentItems.map { it.copy(isStaleOrOffline = true) }
+                    _trendsItems.value = staleItems
+                    _trendsState.value = TodayTrendsState.Ready(staleItems)
                 } else {
-                    _trendsState.value = TodayTrendsState.Ready(items)
+                    _trendsItems.value = emptyList()
+                    _trendsState.value = TodayTrendsState.Empty
                 }
             } catch (e: Exception) {
-                if (_trendsItems.value.isEmpty()) {
+                val currentItems = _trendsItems.value
+                if (currentItems.isNotEmpty()) {
+                    val staleItems = currentItems.map { it.copy(isStaleOrOffline = true) }
+                    _trendsItems.value = staleItems
+                    _trendsState.value = TodayTrendsState.Ready(staleItems)
+                } else {
                     _trendsState.value = TodayTrendsState.Error(e.message ?: "Failed to calculate trends")
                 }
             }
@@ -289,7 +301,7 @@ class TodayViewModel @Inject constructor(
             isSyncFailed = false,
             errorBannerMessage = errorMsg
         )
-    }.stateIn(
+    }.distinctUntilChanged().stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = TodayUiState()
