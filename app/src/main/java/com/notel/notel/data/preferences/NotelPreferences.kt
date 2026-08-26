@@ -138,6 +138,18 @@ class NotelPreferences @Inject constructor(
         val TODAY_MODE = stringPreferencesKey("today_mode") // "SIMPLE" or "DETAILED"
         val TODAY_HIDDEN_SECTIONS = stringPreferencesKey("today_hidden_sections") // comma separated list
         val TODAY_SECTION_ORDER = stringPreferencesKey("today_section_order") // comma separated list
+        val TODAY_PLAN_EXPANDED = booleanPreferencesKey("today_plan_expanded")
+        val WHAT_CHANGED_EXPANDED = booleanPreferencesKey("what_changed_expanded")
+    }
+
+    val todayPlanExpanded: Flow<Boolean> = context.dataStore.data.map { it[TODAY_PLAN_EXPANDED] ?: true }
+    suspend fun setTodayPlanExpanded(expanded: Boolean) {
+        context.dataStore.edit { it[TODAY_PLAN_EXPANDED] = expanded }
+    }
+
+    val whatChangedExpanded: Flow<Boolean> = context.dataStore.data.map { it[WHAT_CHANGED_EXPANDED] ?: false }
+    suspend fun setWhatChangedExpanded(expanded: Boolean) {
+        context.dataStore.edit { it[WHAT_CHANGED_EXPANDED] = expanded }
     }
 
     val todayMode: Flow<String> = context.dataStore.data.map { it[TODAY_MODE] ?: "SIMPLE" }

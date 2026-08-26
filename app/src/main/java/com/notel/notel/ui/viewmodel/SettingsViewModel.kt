@@ -1586,10 +1586,14 @@ data class SystemLog(
 
 @kotlinx.serialization.Serializable
 data class Medication(
-    val id: String,
+    val id: String = java.util.UUID.randomUUID().toString(),
     val name: String,
-    val startDate: String,
-    val endDate: String,
-    val isPresent: Boolean = false
+    val startDate: String = "",
+    val endDate: String = "",
+    val isPresent: Boolean = false,
+    val dose: String = "As prescribed",
+    val frequency: String = "Daily",
+    val updatedAt: Long = System.currentTimeMillis(),
+    val isDeleted: Boolean = false
 )
 

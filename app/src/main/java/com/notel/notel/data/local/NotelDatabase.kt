@@ -36,7 +36,7 @@ import kotlinx.coroutines.launch
         com.notel.notel.data.local.entity.ScheduledDoseOccurrence::class,
         com.notel.notel.data.local.entity.InsightEntryCrossRef::class
     ],
-    version = 27,
+    version = 28,
     exportSchema = false
 )
 abstract class NotelDatabase : RoomDatabase() {
@@ -54,6 +54,14 @@ abstract class NotelDatabase : RoomDatabase() {
 
     companion object {
         @Volatile private var INSTANCE: NotelDatabase? = null
+
+        val MIGRATION_27_28 = object : Migration(27, 28) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                try { db.execSQL("ALTER TABLE medications ADD COLUMN uuid TEXT NOT NULL DEFAULT ''") } catch (e: Exception) {}
+                try { db.execSQL("ALTER TABLE medications ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
+                try { db.execSQL("ALTER TABLE medications ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
+            }
+        }
 
         val MIGRATION_26_27 = object : Migration(26, 27) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -319,7 +327,7 @@ abstract class NotelDatabase : RoomDatabase() {
                     "notel_db"
                 )
                     .fallbackToDestructiveMigration()
-                    .addMigrations(MIGRATION_1_2, MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28)
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)

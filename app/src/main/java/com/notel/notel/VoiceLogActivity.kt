@@ -90,10 +90,16 @@ class VoiceLogActivity : ComponentActivity() {
                     scope.launch {
                         try {
                             logRepository.handleVoiceNote(text, useAI = useAI)
+                            setResult(RESULT_OK, Intent().apply {
+                                putExtra("VOICE_LOG_SUCCESS", true)
+                                putExtra("VOICE_LOG_MESSAGE", "Voice entry logged")
+                            })
                             finish()
                         } catch (e: Exception) {
                             isProcessing = false
-                            Toast.makeText(this@VoiceLogActivity, "Note logging failed.", Toast.LENGTH_LONG).show()
+                            setResult(RESULT_CANCELED, Intent().apply {
+                                putExtra("VOICE_LOG_ERROR", "Note logging failed.")
+                            })
                             finish()
                         }
                     }

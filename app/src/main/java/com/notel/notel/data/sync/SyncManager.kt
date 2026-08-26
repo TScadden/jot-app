@@ -573,32 +573,70 @@ class SyncManager @Inject constructor(
                                 val serverMeds = Json.decodeFromString<List<com.notel.notel.ui.viewmodel.Medication>>(medsJson)
                                 val existingMeds = medicationDao.getAllMedications().first()
 
-                                // Upsert server meds into Room SQLite database safely without destructively deleting unsynced local meds
                                 for (med in serverMeds) {
-                                    val serverId = med.id.toLongOrNull()
-                                    val existingMatch = existingMeds.find { (serverId != null && serverId != 0L && it.id == serverId) || (it.name.trim().equals(med.name.trim(), ignoreCase = true) && it.startedDate == med.startDate.trim().ifEmpty { null }) }
-                                    
+                                    val serverUuid = med.id
+                                    val existingMatch = existingMeds.find { 
+                                        if (serverUuid.isNotBlank() && it.uuid.isNotBlank()) {
+                                            it.uuid == serverUuid
+                                        } else {
+                                            it.name.trim().equals(med.name.trim(), ignoreCase = true) && 
+                                            it.startedDate == med.startDate.trim().ifEmpty { null }
+                                        }
+                                    }
+
+                                    if (existingMatch != null) {
+                                        // Do not resurrect explicitly deleted local medications
+                                        if (existingMatch.isDeleted && existingMatch.updatedAt >= med.updatedAt) {
+                                            continue
+                                        }
+                                        // Do not overwrite a newer local edit with a stale snapshot
+                                        if (existingMatch.updatedAt > med.updatedAt) {
+                                            continue
+                                        }
+                                    }
+
+                                    if (med.isDeleted) {
+                                        if (existingMatch != null) {
+                                            medicationDao.insertMedication(
+                                                existingMatch.copy(
+                                                    isDeleted = true,
+                                                    updatedAt = maxOf(med.updatedAt, existingMatch.updatedAt)
+                                                )
+                                            )
+                                        }
+                                        continue
+                                    }
+
                                     val dbMed = com.notel.notel.data.local.entity.Medication(
-                                        id = existingMatch?.id ?: (if (serverId != null && serverId != 0L) serverId else 0L),
+                                        id = existingMatch?.id ?: 0L,
+                                        uuid = if (serverUuid.isNotBlank()) serverUuid else (existingMatch?.uuid?.ifBlank { null } ?: java.util.UUID.randomUUID().toString()),
                                         name = med.name.trim(),
-                                        dose = if (existingMatch != null && existingMatch.dose.isNotBlank()) existingMatch.dose else "As prescribed",
-                                        frequency = if (existingMatch != null && existingMatch.frequency.isNotBlank()) existingMatch.frequency else "Daily",
+                                        dose = if (med.dose.isNotBlank()) med.dose else (existingMatch?.dose ?: "As prescribed"),
+                                        frequency = if (med.frequency.isNotBlank()) med.frequency else (existingMatch?.frequency ?: "Daily"),
+                                        timesPerDay = existingMatch?.timesPerDay ?: 1,
+                                        notes = existingMatch?.notes ?: "",
                                         isArchived = !med.isPresent,
                                         startedDate = med.startDate.trim().ifEmpty { null },
-                                        endedDate = if (!med.isPresent) med.endDate.trim().ifEmpty { null } else null
+                                        endedDate = if (!med.isPresent) med.endDate.trim().ifEmpty { null } else null,
+                                        updatedAt = maxOf(med.updatedAt, existingMatch?.updatedAt ?: 0L),
+                                        isDeleted = false
                                     )
                                     medicationDao.insertMedication(dbMed)
                                 }
 
                                 // Update preferences with the merged current set
-                                val allMedsAfterMerge = medicationDao.getAllMedications().first()
+                                val allMedsAfterMerge = medicationDao.getAllMedications().first().filter { !it.isDeleted }
                                 val mergedList = allMedsAfterMerge.map { med ->
                                     com.notel.notel.ui.viewmodel.Medication(
-                                        id = med.id.toString(),
+                                        id = if (med.uuid.isNotBlank()) med.uuid else med.id.toString(),
                                         name = med.name,
                                         startDate = med.startedDate ?: "",
                                         endDate = if (!med.isArchived) "Present" else (med.endedDate ?: ""),
-                                        isPresent = !med.isArchived
+                                        isPresent = !med.isArchived,
+                                        dose = med.dose,
+                                        frequency = med.frequency,
+                                        updatedAt = med.updatedAt,
+                                        isDeleted = med.isDeleted
                                     )
                                 }
                                 preferences.setMedications(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(com.notel.notel.ui.viewmodel.Medication.serializer()), mergedList))
@@ -641,8 +679,19 @@ class SyncManager @Inject constructor(
                             preferences.setCounterHistory(Json.encodeToString(merged))
                         }
                     }
-                    profile.currentStreak?.let { preferences.setCurrentStreak(it) }
-                    profile.bestStreak?.let { preferences.setBestStreak(it) }
+                    profile.currentStreak?.let { serverStreak ->
+                        val localStreak = preferences.currentStreak.first()
+                        if (localStreak == 0) {
+                            preferences.setCurrentStreak(serverStreak)
+                        }
+                    }
+                    profile.bestStreak?.let { serverBest ->
+                        val localBest = preferences.bestStreak.first()
+                        if (serverBest > localBest) {
+                            preferences.setBestStreak(serverBest)
+                        }
+                    }
+                    preferences.updateStreak()
                     profile.weeklyScore?.let { preferences.setWeeklyScore(it) }
                     profile.todaySleepMins?.let { preferences.setTodaySleepMins(it) }
                     profile.todayAvgHr?.let { preferences.setTodayAvgHrShared(it) }

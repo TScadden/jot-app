@@ -8,6 +8,7 @@ import kotlinx.serialization.Serializable
 @Entity(tableName = "medications")
 data class Medication(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val uuid: String = java.util.UUID.randomUUID().toString(),
     val name: String,
     val dose: String,
     val frequency: String,
@@ -15,5 +16,7 @@ data class Medication(
     val notes: String = "",
     val isArchived: Boolean = false,
     val startedDate: String? = null,
-    val endedDate: String? = null
+    val endedDate: String? = null,
+    val updatedAt: Long = System.currentTimeMillis(),
+    val isDeleted: Boolean = false
 )

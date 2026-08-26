@@ -1040,4 +1040,10 @@ class QuickLogViewModel @Inject constructor(
             syncManager.pushEntries()
         }
     }
+
+    fun onVoiceEntryLogged(message: String = "Voice entry logged") {
+        viewModelScope.launch {
+            _eventFlow.emit(QuickLogEvent.EntryLogged(entryId = 0L, message = message))
+        }
+    }
 }

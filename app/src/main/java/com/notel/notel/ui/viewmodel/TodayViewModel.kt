@@ -301,6 +301,21 @@ class TodayViewModel @Inject constructor(
         }
     }
 
+    val todayPlanExpanded: Flow<Boolean> = preferences.todayPlanExpanded
+    val whatChangedExpanded: Flow<Boolean> = preferences.whatChangedExpanded
+
+    fun setTodayPlanExpanded(expanded: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            preferences.setTodayPlanExpanded(expanded)
+        }
+    }
+
+    fun setWhatChangedExpanded(expanded: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            preferences.setWhatChangedExpanded(expanded)
+        }
+    }
+
     fun updateHiddenSections(hidden: Set<String>) {
         viewModelScope.launch(Dispatchers.IO) {
             preferences.setTodayHiddenSections(hidden)
@@ -322,6 +337,40 @@ class TodayViewModel @Inject constructor(
             } finally {
                 _isRetryingSync.value = false
             }
+        }
+    }
+}
+
+fun TodayPlanItem.isOverdue(): Boolean {
+    if (isCompleted) return false
+    val now = java.time.LocalTime.now()
+    return when (this) {
+        is TodayPlanItem.ScheduledMedication -> {
+            when (timeLabel) {
+                "Morning" -> now.hour >= 12
+                "Evening" -> now.hour >= 20
+                "Daily" -> now.hour >= 18
+                else -> false
+            }
+        }
+        is TodayPlanItem.ScheduledReminder -> {
+            val remHour = reminder.fixedHour
+            val remMin = reminder.fixedMinute
+            now.hour > remHour || (now.hour == remHour && now.minute > remMin)
+        }
+        is TodayPlanItem.ScheduledHabit -> {
+            val target = habit.target_time
+            if (target != null && target != "Anytime") {
+                val parts = target.split(":")
+                if (parts.size == 2) {
+                    val hour = parts[0].toIntOrNull()
+                    val min = parts[1].toIntOrNull()
+                    if (hour != null && min != null) {
+                        return now.hour > hour || (now.hour == hour && now.minute > min)
+                    }
+                }
+            }
+            false
         }
     }
 }

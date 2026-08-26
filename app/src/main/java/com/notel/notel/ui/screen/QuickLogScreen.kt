@@ -60,7 +60,14 @@ fun QuickLogScreen(
         } ?: NotelPrimary
     }
 
-    // Auto-fetch chips for the currently selected card (first card by default)
+    val voiceLogLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val msg = result.data?.getStringExtra("VOICE_LOG_MESSAGE") ?: "Voice entry logged"
+            viewModel.onVoiceEntryLogged(msg)
+        }
+    }
     // if the "Auto Ping" (autoAiSuggestions) setting is turned ON.
     LaunchedEffect(state.selectedCategory, state.isUnlimited, state.autoAiSuggestions) {
         val hasAccess = state.isUnlimited
@@ -136,7 +143,7 @@ fun QuickLogScreen(
                                 }
                             } else {
                                 IconButton(onClick = {
-                                    context.startActivity(Intent(context, com.notel.notel.VoiceLogActivity::class.java))
+                                    voiceLogLauncher.launch(Intent(context, com.notel.notel.VoiceLogActivity::class.java))
                                 }) {
                                     Icon(Icons.Default.Mic, null, tint = activeCatColor)
                                 }

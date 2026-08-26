@@ -530,5 +530,75 @@ class Phase2MedicationAndTodayTest {
         assertEquals(2, list.size)
         assertNotEquals(med1.id, med2.id)
     }
+
+    @Test
+    fun isOverdue_scheduledReminder_identifiesCorrectly() {
+        val now = java.time.LocalTime.now()
+        val overdueReminder = Reminder(
+            id = 1,
+            title = "Drink Water",
+            type = "FIXED",
+            fixedHour = if (now.hour > 0) now.hour - 1 else 0,
+            fixedMinute = now.minute,
+            isEnabled = true
+        )
+        val futureReminder = Reminder(
+            id = 2,
+            title = "Call Friend",
+            type = "FIXED",
+            fixedHour = if (now.hour < 23) now.hour + 1 else 23,
+            fixedMinute = now.minute,
+            isEnabled = true
+        )
+
+        val overdueItem = TodayPlanItem.ScheduledReminder(reminder = overdueReminder, isCompleted = false)
+        val futureItem = TodayPlanItem.ScheduledReminder(reminder = futureReminder, isCompleted = false)
+        val completedOverdueItem = TodayPlanItem.ScheduledReminder(reminder = overdueReminder, isCompleted = true)
+
+        if (now.hour > 0) {
+            assertTrue(overdueItem.isOverdue())
+        }
+        if (now.hour < 23) {
+            assertFalse(futureItem.isOverdue())
+        }
+        assertFalse(completedOverdueItem.isOverdue())
+    }
+
+    @Test
+    fun isOverdue_scheduledHabit_identifiesCorrectly() {
+        val now = java.time.LocalTime.now()
+        val pastHour = if (now.hour > 0) now.hour - 1 else 0
+        val futureHour = if (now.hour < 23) now.hour + 1 else 23
+
+        val overdueHabit = HabitDtoModel(id = "h1", title = "Stretch", target_time = String.format("%02d:%02d", pastHour, now.minute), logs = emptyList())
+        val futureHabit = HabitDtoModel(id = "h2", title = "Read", target_time = String.format("%02d:%02d", futureHour, now.minute), logs = emptyList())
+        val anytimeHabit = HabitDtoModel(id = "h3", title = "Walk", target_time = "Anytime", logs = emptyList())
+
+        val overdueItem = TodayPlanItem.ScheduledHabit(habit = overdueHabit, isCompleted = false)
+        val futureItem = TodayPlanItem.ScheduledHabit(habit = futureHabit, isCompleted = false)
+        val anytimeItem = TodayPlanItem.ScheduledHabit(habit = anytimeHabit, isCompleted = false)
+
+        if (now.hour > 0) {
+            assertTrue(overdueItem.isOverdue())
+        }
+        if (now.hour < 23) {
+            assertFalse(futureItem.isOverdue())
+        }
+        assertFalse(anytimeItem.isOverdue())
+    }
+
+    @Test
+    fun isOverdue_scheduledMedication_identifiesCorrectly() {
+        val med = Medication(id = 5L, name = "Vitamin D", dose = "1000 IU", frequency = "Daily")
+        
+        val morningItem = TodayPlanItem.ScheduledMedication(medication = med, dose = "1000 IU", timeLabel = "Morning", isCompleted = false)
+        val eveningItem = TodayPlanItem.ScheduledMedication(medication = med, dose = "1000 IU", timeLabel = "Evening", isCompleted = false)
+        val dailyItem = TodayPlanItem.ScheduledMedication(medication = med, dose = "1000 IU", timeLabel = "Daily", isCompleted = false)
+
+        val hour = java.time.LocalTime.now().hour
+        assertEquals(hour >= 12, morningItem.isOverdue())
+        assertEquals(hour >= 20, eveningItem.isOverdue())
+        assertEquals(hour >= 18, dailyItem.isOverdue())
+    }
 }
 

@@ -57,11 +57,13 @@ class MedicationsViewModel @Inject constructor(
         if (name.isBlank() || dose.isBlank()) return
         viewModelScope.launch {
             val med = Medication(
-                id = 0L, // 0L forces Room autoGenerate to assign a fresh unique ID
+                id = 0L,
+                uuid = java.util.UUID.randomUUID().toString(),
                 name = name.trim(),
                 dose = dose.trim(),
                 frequency = frequency.trim().ifEmpty { "Once daily" },
-                startedDate = startedDate.trim().ifEmpty { null }
+                startedDate = startedDate.trim().ifEmpty { null },
+                updatedAt = System.currentTimeMillis()
             )
             val newId = medicationDao.insertMedication(med)
             _statusMessage.value = "Added ${med.name} (${med.dose})"
@@ -77,7 +79,8 @@ class MedicationsViewModel @Inject constructor(
                 dose = dose.trim(),
                 frequency = frequency.trim().ifEmpty { "Once daily" },
                 startedDate = startedDate.trim().ifEmpty { null },
-                endedDate = endedDate?.trim()?.ifEmpty { null }
+                endedDate = endedDate?.trim()?.ifEmpty { null },
+                updatedAt = System.currentTimeMillis()
             )
             medicationDao.insertMedication(updated)
             // Clear side effect cache for this med so AI generates fresh evaluation
@@ -90,7 +93,7 @@ class MedicationsViewModel @Inject constructor(
     fun archiveMedication(medication: Medication) {
         viewModelScope.launch {
             val todayStr = java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.getDefault()).format(java.util.Date())
-            val updated = medication.copy(isArchived = true, endedDate = todayStr)
+            val updated = medication.copy(isArchived = true, endedDate = todayStr, updatedAt = System.currentTimeMillis())
             medicationDao.insertMedication(updated)
             _statusMessage.value = "Archived ${medication.name} (Ended $todayStr)"
             syncMedicationsToPreferencesAndCloud()
@@ -99,7 +102,7 @@ class MedicationsViewModel @Inject constructor(
 
     fun unarchiveMedication(medication: Medication) {
         viewModelScope.launch {
-            val updated = medication.copy(isArchived = false, endedDate = null)
+            val updated = medication.copy(isArchived = false, endedDate = null, updatedAt = System.currentTimeMillis())
             medicationDao.insertMedication(updated)
             _statusMessage.value = "Re-activated ${medication.name}"
             syncMedicationsToPreferencesAndCloud()
@@ -108,7 +111,9 @@ class MedicationsViewModel @Inject constructor(
 
     fun deleteMedication(medication: Medication) {
         viewModelScope.launch {
-            medicationDao.deleteMedication(medication)
+            // Soft delete with tombstone to prevent resurrection during sync
+            val deleted = medication.copy(isDeleted = true, updatedAt = System.currentTimeMillis())
+            medicationDao.insertMedication(deleted)
             _statusMessage.value = "Permanently deleted ${medication.name}"
             syncMedicationsToPreferencesAndCloud()
         }
@@ -116,14 +121,18 @@ class MedicationsViewModel @Inject constructor(
 
     private suspend fun syncMedicationsToPreferencesAndCloud() {
         try {
-            val allMeds = medicationDao.getAllMedications().first()
+            val allMeds = medicationDao.getAllMedications().first().filter { !it.isDeleted }
             val mappedList = allMeds.map { med ->
                 com.notel.notel.ui.viewmodel.Medication(
-                    id = med.id.toString(),
+                    id = if (med.uuid.isNotBlank()) med.uuid else med.id.toString(),
                     name = med.name,
                     startDate = med.startedDate ?: "",
                     endDate = if (!med.isArchived) "Present" else (med.endedDate ?: ""),
-                    isPresent = !med.isArchived
+                    isPresent = !med.isArchived,
+                    dose = med.dose,
+                    frequency = med.frequency,
+                    updatedAt = med.updatedAt,
+                    isDeleted = med.isDeleted
                 )
             }
             preferences.setMedications(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(com.notel.notel.ui.viewmodel.Medication.serializer()), mappedList))
