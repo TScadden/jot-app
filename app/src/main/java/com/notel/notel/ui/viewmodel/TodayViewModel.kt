@@ -85,20 +85,33 @@ data class NeedsAttentionItem(
     }
 }
 
+sealed class TodayTrendsState {
+    object Loading : TodayTrendsState()
+    data class Ready(val items: List<HealthComparisonItem>) : TodayTrendsState()
+    object Empty : TodayTrendsState()
+    data class Error(val message: String) : TodayTrendsState()
+}
+
 data class TodayUiState(
     val mode: String = "SIMPLE", // "SIMPLE" or "DETAILED"
     val summaryText: String = "",
+    val remainingCount: Int = 0,
+    val overdueCount: Int = 0,
     val needsAttentionItems: List<NeedsAttentionItem> = emptyList(),
     val todayPlanItems: List<TodayPlanItem> = emptyList(),
-    val whatChangedItems: List<HealthComparisonItem> = emptyList(),
+    val trendsState: TodayTrendsState = TodayTrendsState.Loading,
+    val trendsItems: List<HealthComparisonItem> = emptyList(),
     val primaryInsight: AiInsight? = null,
     val supportingEntries: List<LogEntry> = emptyList(),
     val hiddenSections: Set<String> = emptySet(),
-    val sectionOrder: List<String> = listOf("TODAY_PLAN", "HOW_IM_DOING", "WHAT_CHANGED", "AI_INSIGHT", "QUICK_ACTIONS"),
+    val sectionOrder: List<String> = listOf("TODAY_PLAN", "HOW_IM_DOING", "TRENDS", "AI_INSIGHT", "QUICK_ACTIONS"),
     val isOffline: Boolean = false,
     val isSyncFailed: Boolean = false,
     val errorBannerMessage: String? = null
-)
+) {
+    val whatChangedItems: List<HealthComparisonItem>
+        get() = trendsItems
+}
 
 @HiltViewModel
 class TodayViewModel @Inject constructor(
@@ -114,7 +127,8 @@ class TodayViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val _isRetryingSync = MutableStateFlow(false)
-    private val _whatChanged = MutableStateFlow<List<HealthComparisonItem>>(emptyList())
+    private val _trendsState = MutableStateFlow<TodayTrendsState>(TodayTrendsState.Loading)
+    private val _trendsItems = MutableStateFlow<List<HealthComparisonItem>>(emptyList())
     private val _errorBanner = MutableStateFlow<String?>(null)
 
     private val todayStr: String
@@ -124,10 +138,21 @@ class TodayViewModel @Inject constructor(
         loadHealthComparisons()
     }
 
-    private fun loadHealthComparisons() {
+    fun loadHealthComparisons() {
         viewModelScope.launch(Dispatchers.IO) {
-            val items = healthComparisonRepository.getWhatChangedComparisons(todayStr)
-            _whatChanged.value = items
+            try {
+                val items = healthComparisonRepository.getWhatChangedComparisons(todayStr)
+                _trendsItems.value = items
+                if (items.isEmpty()) {
+                    _trendsState.value = TodayTrendsState.Empty
+                } else {
+                    _trendsState.value = TodayTrendsState.Ready(items)
+                }
+            } catch (e: Exception) {
+                if (_trendsItems.value.isEmpty()) {
+                    _trendsState.value = TodayTrendsState.Error(e.message ?: "Failed to calculate trends")
+                }
+            }
         }
     }
 
@@ -137,7 +162,8 @@ class TodayViewModel @Inject constructor(
         habitRepository.habits,
         scheduledDoseOccurrenceDao.getOccurrencesForDate(todayStr),
         preferences.getCompletedReminders(todayStr),
-        _whatChanged,
+        _trendsItems,
+        _trendsState,
         aiInsightDao.getPrimaryActiveInsight(),
         preferences.todayMode,
         preferences.todayHiddenSections,
@@ -155,14 +181,15 @@ class TodayViewModel @Inject constructor(
         @Suppress("UNCHECKED_CAST")
         val completedReminderIds = args[4] as Set<Int>
         @Suppress("UNCHECKED_CAST")
-        val whatChangedItems = args[5] as List<HealthComparisonItem>
-        val primaryInsight = args[6] as? AiInsight
-        val todayMode = args[7] as String
+        val trendsItems = args[5] as List<HealthComparisonItem>
+        val trendsState = args[6] as TodayTrendsState
+        val primaryInsight = args[7] as? AiInsight
+        val todayMode = args[8] as String
         @Suppress("UNCHECKED_CAST")
-        val hiddenSections = args[8] as Set<String>
+        val hiddenSections = args[9] as Set<String>
         @Suppress("UNCHECKED_CAST")
-        val sectionOrder = args[9] as List<String>
-        val errorMsg = args[10] as? String
+        val sectionOrder = args[10] as List<String>
+        val errorMsg = args[11] as? String
 
         val activeMeds = medsList.filter { !it.isArchived }
         val enabledReminders = remindersList.filter { it.isEnabled }
@@ -225,12 +252,21 @@ class TodayViewModel @Inject constructor(
         )
 
         val remainingCount = planList.count { !it.isCompleted }
-        val summaryStr = if (remainingCount == 0 && planList.isNotEmpty()) {
-            "Everything planned for today is complete."
-        } else if (planList.isEmpty()) {
-            "Your schedule for today is clear."
-        } else {
-            "You have $remainingCount item${if (remainingCount > 1) "s" else ""} remaining today."
+        val currentHour = java.time.LocalTime.now().hour
+        val overdueCount = planList.count { item ->
+            !item.isCompleted && when (item) {
+                is TodayPlanItem.ScheduledMedication -> item.timeLabel == "Morning" && currentHour >= 12
+                is TodayPlanItem.ScheduledReminder -> item.reminder.fixedHour < currentHour
+                is TodayPlanItem.ScheduledHabit -> false
+            }
+        }
+
+        val summaryStr = when {
+            remainingCount > 0 -> {
+                "$remainingCount item${if (remainingCount > 1) "s" else ""} remaining${if (overdueCount > 0) " · $overdueCount overdue" else ""}"
+            }
+            planList.isNotEmpty() -> "Everything planned for today is complete"
+            else -> "No plans recorded today"
         }
 
         // Clean out legacy NEEDS_ATTENTION section identifier from user settings if present
@@ -240,12 +276,15 @@ class TodayViewModel @Inject constructor(
         TodayUiState(
             mode = todayMode,
             summaryText = summaryStr,
+            remainingCount = remainingCount,
+            overdueCount = overdueCount,
             needsAttentionItems = emptyList(),
             todayPlanItems = sortedPlan,
-            whatChangedItems = whatChangedItems,
+            trendsState = trendsState,
+            trendsItems = trendsItems,
             primaryInsight = primaryInsight,
             hiddenSections = cleanHiddenSections,
-            sectionOrder = if (cleanSectionOrder.isEmpty()) listOf("TODAY_PLAN", "HOW_IM_DOING", "WHAT_CHANGED", "AI_INSIGHT", "QUICK_ACTIONS") else cleanSectionOrder,
+            sectionOrder = if (cleanSectionOrder.isEmpty()) listOf("TODAY_PLAN", "HOW_IM_DOING", "TRENDS", "AI_INSIGHT", "QUICK_ACTIONS") else cleanSectionOrder,
             isOffline = false,
             isSyncFailed = false,
             errorBannerMessage = errorMsg
@@ -318,8 +357,15 @@ class TodayViewModel @Inject constructor(
         }
     }
 
+    val todaySummaryExpanded: Flow<Boolean> = preferences.todaySummaryExpanded
     val todayPlanExpanded: Flow<Boolean> = preferences.todayPlanExpanded
     val whatChangedExpanded: Flow<Boolean> = preferences.whatChangedExpanded
+
+    fun setTodaySummaryExpanded(expanded: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            preferences.setTodaySummaryExpanded(expanded)
+        }
+    }
 
     fun setTodayPlanExpanded(expanded: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {

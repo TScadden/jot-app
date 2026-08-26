@@ -388,59 +388,31 @@ class QuickLogViewModel @Inject constructor(
 
     private fun calculateSmartRanking() {
         viewModelScope.launch {
-            val recentEntries = logRepository.getRecentEntriesAll(50)
-            val categories = _uiState.value.categories
-            if (categories.isEmpty()) return@launch
-
-            // 1. Scoring Map
-            val scores = mutableMapOf<Int, Int>()
-
-            // 2. Frequency Weighting (Recent activity)
-            recentEntries.forEach { entry ->
-                scores[entry.categoryId] = (scores[entry.categoryId] ?: 0) + 2
+            if (_uiState.value.manualText.isNotBlank()) {
+                // Do not reorder category chips while the user is actively typing
+                return@launch
             }
+            val recentEntries = logRepository.getRecentEntriesAll(100)
+            val rawCategories = _uiState.value.categories
+            if (rawCategories.isEmpty()) return@launch
 
-            // 3. Contextual Awareness (Time of Day Weighting)
             val hour = java.time.LocalTime.now().hour
-            when (hour) {
-                in 5..10 -> { // Morning: Sleep, Heart Rate, Symptoms
-                    scores[3] = (scores[3] ?: 0) + 10 // Sleep
-                    scores[1] = (scores[1] ?: 0) + 5  // Heart Rate
-                    scores[5] = (scores[5] ?: 0) + 5  // Symptoms
-                }
-                in 11..16 -> { // Afternoon: Calories, General
-                    scores[2] = (scores[2] ?: 0) + 10 // Calories
-                    scores[7] = (scores[7] ?: 0) + 5  // General
-                }
-                in 17..23 -> { // Evening: Mood, Personal, Medication
-                    scores[4] = (scores[4] ?: 0) + 10 // Mood
-                    scores[6] = (scores[6] ?: 0) + 8  // Personal
-                    scores[8] = (scores[8] ?: 0) + 10 // Medication
-                }
+            val timeBasedRecommendedKeys = when (hour) {
+                in 5..10 -> setOf("sleep", "heart_rate", "symptoms", "3", "1", "5")
+                in 11..16 -> setOf("calories", "general", "2", "7")
+                in 17..23 -> setOf("mood", "personal", "medication", "4", "6", "8")
+                else -> emptySet()
             }
 
-            val finalSmart = categories
-                .filter { it.id != 7 } // Exclude General from smart list (it's always available)
-                .sortedByDescending { scores[it.id] ?: 0 }
-                .take(5) // Only top 5
+            val rankedCategories = rankCategories(rawCategories, recentEntries, timeBasedRecommendedKeys)
 
             _uiState.update { state ->
-                // Always default to the first recommended tile if the user hasn't manually clicked one yet
-                val newlySelected = if (finalSmart.isNotEmpty() && !hasUserManuallySelectedCategory) {
-                    finalSmart.first()
-                } else {
-                    state.selectedCategory ?: categories.firstOrNull()
-                }
-                
-                state.copy(smartCategories = finalSmart, selectedCategory = newlySelected)
+                val newlySelected = state.selectedCategory?.let { sel ->
+                    rankedCategories.find { it.stableKey == sel.stableKey }
+                } ?: rankedCategories.firstOrNull()
+
+                state.copy(categories = rankedCategories, selectedCategory = newlySelected)
             }
-            
-            val finalSelected = _uiState.value.selectedCategory
-            val state = _uiState.value
-            // Auto-fetch on rank recalculation is disabled per user request.
-            // It will only fetch when explicitly clicked.
-            
-            checkForSmartActions(recentEntries)
         }
     }
 
@@ -1044,6 +1016,51 @@ class QuickLogViewModel @Inject constructor(
     fun onVoiceEntryLogged(message: String = "Voice entry logged") {
         viewModelScope.launch {
             _eventFlow.emit(QuickLogEvent.EntryLogged(entryId = 0L, message = message))
+        }
+    }
+
+    companion object {
+        fun rankCategories(
+            categories: List<Category>,
+            recentEntries: List<com.notel.notel.data.local.entity.LogEntry>,
+            aiRecommendedKeys: Set<String> = emptySet()
+        ): List<Category> {
+            val distinct = categories.distinctBy { it.stableKey }
+            val categoryIdToKey = distinct.associateBy({ it.id }, { it.stableKey })
+
+            val frequencyMap = mutableMapOf<String, Int>()
+            val lastUsedMap = mutableMapOf<String, Long>()
+
+            recentEntries.forEach { entry ->
+                val key = categoryIdToKey[entry.categoryId] ?: entry.categoryId.toString()
+                frequencyMap[key] = (frequencyMap[key] ?: 0) + 1
+                if (entry.timestamp > (lastUsedMap[key] ?: 0L)) {
+                    lastUsedMap[key] = entry.timestamp
+                }
+            }
+
+            return distinct.sortedWith(
+                Comparator { c1, c2 ->
+                    val k1 = c1.stableKey
+                    val k2 = c2.stableKey
+
+                    val f1 = frequencyMap[k1] ?: 0
+                    val f2 = frequencyMap[k2] ?: 0
+                    if (f1 != f2) return@Comparator f2.compareTo(f1)
+
+                    if (f1 > 0) {
+                        val r1 = lastUsedMap[k1] ?: 0L
+                        val r2 = lastUsedMap[k2] ?: 0L
+                        if (r1 != r2) return@Comparator r2.compareTo(r1)
+                    }
+
+                    val ai1 = if (aiRecommendedKeys.contains(k1) || aiRecommendedKeys.contains(c1.id.toString())) 1 else 0
+                    val ai2 = if (aiRecommendedKeys.contains(k2) || aiRecommendedKeys.contains(c2.id.toString())) 1 else 0
+                    if (ai1 != ai2) return@Comparator ai2.compareTo(ai1)
+
+                    c1.sortOrder.compareTo(c2.sortOrder)
+                }
+            )
         }
     }
 }

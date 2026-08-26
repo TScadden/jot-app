@@ -185,7 +185,7 @@ fun QuickLogScreen(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(state.categories) { cat ->
+                    items(state.categories, key = { it.stableKey }) { cat ->
                         CategoryChip(
                             category = cat,
                             isSelected = cat.id == state.selectedCategory?.id,

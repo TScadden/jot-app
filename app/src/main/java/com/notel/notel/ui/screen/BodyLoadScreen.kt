@@ -35,6 +35,7 @@ import com.notel.notel.ui.viewmodel.NotesViewModel
 import com.notel.notel.ui.viewmodel.ListsViewModel
 import com.notel.notel.ui.viewmodel.TodayPlanItem
 import com.notel.notel.ui.viewmodel.ActionStatus
+import com.notel.notel.ui.viewmodel.TodayTrendsState
 import com.notel.notel.ui.viewmodel.isOverdue
 import com.notel.notel.data.local.entity.UserListItem
 import com.notel.notel.data.local.entity.UserList
@@ -183,437 +184,403 @@ fun BodyLoadScreen(
             ),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // ── 1. Today Summary Section ─────────────────────────────────────
+            // ── 1. Consolidated Today Summary Section ─────────────────────────────
             item {
+                val savedTodaySummaryExpanded by todayViewModel.todaySummaryExpanded.collectAsState(initial = true)
+                var localExpanded by remember { mutableStateOf<Boolean?>(null) }
+                val isSummaryExpanded = localExpanded ?: savedTodaySummaryExpanded
+
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     color = NotelSurface,
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(18.dp),
                     border = BorderStroke(1.dp, GlassBorder)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Today,
-                                contentDescription = null,
-                                tint = NotelPrimary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                text = "Today's Summary",
-                                fontWeight = FontWeight.Bold,
-                                color = NotelTextPrimary,
-                                fontSize = 16.sp
-                            )
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = todayState.summaryText,
-                            color = NotelTextSecondary,
-                            fontSize = 14.sp
-                        )
-                    }
-                }
-            }
-
-
-
-            // ── 3. Today's Plan Section ─────────────────────────────────────
-            item {
-                val savedPlanExpanded by todayViewModel.todayPlanExpanded.collectAsState(initial = null)
-                val hasOverdueItem = remember(todayState.todayPlanItems) {
-                    todayState.todayPlanItems.any { it.isOverdue() }
-                }
-                var isPlanExpandedLocal by remember { mutableStateOf<Boolean?>(null) }
-                val finalPlanExpanded = isPlanExpandedLocal ?: (hasOverdueItem || (savedPlanExpanded ?: true))
-
-                val remainingCount = remember(todayState.todayPlanItems) {
-                    todayState.todayPlanItems.count { !it.isCompleted }
-                }
-                val overdueCount = remember(todayState.todayPlanItems) {
-                    todayState.todayPlanItems.count { it.isOverdue() }
-                }
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                ) {
-                    // Compact accordion header
-                    val isReducedMotion = isReducedMotionEnabled()
-                    val planRotation by animateFloatAsState(
-                        targetValue = if (finalPlanExpanded) 180f else 0f,
-                        animationSpec = if (isReducedMotion) snap() else tween(300),
-                        label = "PlanChevronRotation"
-                    )
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 48.dp) // at least 48dp touch target
-                            .clickable(enabled = todayState.todayPlanItems.isNotEmpty()) {
-                                val newExpandedState = !finalPlanExpanded
-                                isPlanExpandedLocal = newExpandedState
-                                todayViewModel.setTodayPlanExpanded(newExpandedState)
-                            }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Today's Plan",
-                                fontWeight = FontWeight.Bold,
-                                color = NotelTextPrimary,
-                                fontSize = 15.sp
-                            )
-                            Spacer(Modifier.height(2.dp))
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                if (todayState.todayPlanItems.isEmpty()) {
-                                    Text(
-                                        text = "No plans today",
-                                        color = NotelTextSecondary,
-                                        fontSize = 12.sp
-                                    )
-                                } else if (remainingCount == 0) {
-                                    Text(
-                                        text = "Everything complete",
-                                        color = NotelTextSecondary,
-                                        fontSize = 12.sp
-                                    )
-                                } else {
-                                    Text(
-                                        text = "$remainingCount remaining",
-                                        color = NotelTextSecondary,
-                                        fontSize = 12.sp
-                                    )
-                                    if (overdueCount > 0) {
-                                        Text(
-                                            text = " · ",
-                                            color = NotelTextSecondary,
-                                            fontSize = 12.sp
-                                        )
-                                        Text(
-                                            text = "$overdueCount overdue",
-                                            color = MaterialTheme.colorScheme.error,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 12.sp
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        if (todayState.todayPlanItems.isNotEmpty()) {
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowDown,
-                                contentDescription = if (finalPlanExpanded) "Collapse Today's Plan" else "Expand Today's Plan",
-                                tint = NotelPrimary,
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .rotate(planRotation)
-                            )
-                        }
-                    }
-
-                    if (todayState.todayPlanItems.isNotEmpty()) {
-                        val animationSpec: androidx.compose.animation.core.FiniteAnimationSpec<androidx.compose.ui.unit.IntSize> = remember(isReducedMotion) {
-                            if (isReducedMotion) snap() else spring(stiffness = Spring.StiffnessMediumLow)
-                        }
-                        val fadeSpec: androidx.compose.animation.core.FiniteAnimationSpec<Float> = remember(isReducedMotion) {
-                            if (isReducedMotion) snap() else tween(300)
-                        }
-
-                        AnimatedVisibility(
-                            visible = finalPlanExpanded,
-                            enter = expandVertically(animationSpec = animationSpec) + fadeIn(animationSpec = fadeSpec),
-                            exit = shrinkVertically(animationSpec = animationSpec) + fadeOut(animationSpec = fadeSpec)
-                        ) {
-                            Column(modifier = Modifier.padding(top = 4.dp)) {
-                                todayState.todayPlanItems.forEach { planItem ->
-                                    val isOverdue = planItem.isOverdue()
-                                    val alpha = if (planItem.isCompleted) 0.5f else 1.0f
-                                    val itemBorder = if (isOverdue) BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)) else null
-                                    Surface(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 3.dp),
-                                        color = NotelSurface.copy(alpha = alpha),
-                                        shape = RoundedCornerShape(10.dp),
-                                        border = itemBorder
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(10.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            // Checkbox / Icon based on item type
-                                            when (planItem) {
-                                                is TodayPlanItem.ScheduledReminder -> {
-                                                    IconButton(
-                                                        onClick = { todayViewModel.completeReminder(planItem.reminder.id) },
-                                                        modifier = Modifier.size(32.dp)
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = if (planItem.isCompleted) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-                                                            contentDescription = if (planItem.isCompleted) "Completed" else "Mark complete",
-                                                            tint = if (planItem.isCompleted) NotelPrimary else NotelTextSecondary,
-                                                            modifier = Modifier.size(18.dp)
-                                                        )
-                                                    }
-                                                    Spacer(Modifier.width(6.dp))
-                                                }
-                                                is TodayPlanItem.ScheduledHabit -> {
-                                                    IconButton(
-                                                        onClick = { todayViewModel.toggleHabit(planItem.habit.id, !planItem.isCompleted) },
-                                                        modifier = Modifier.size(32.dp)
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = if (planItem.isCompleted) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-                                                            contentDescription = if (planItem.isCompleted) "Completed" else "Toggle habit",
-                                                            tint = if (planItem.isCompleted) NotelPrimary else NotelTextSecondary,
-                                                            modifier = Modifier.size(18.dp)
-                                                        )
-                                                    }
-                                                    Spacer(Modifier.width(6.dp))
-                                                }
-                                                is TodayPlanItem.ScheduledMedication -> {
-                                                    Icon(
-                                                        imageVector = when (planItem.status) {
-                                                            ActionStatus.TAKEN -> Icons.Default.CheckCircle
-                                                            ActionStatus.SKIPPED -> Icons.Default.Block
-                                                            ActionStatus.SNOOZED -> Icons.Default.AccessTime
-                                                            else -> Icons.Default.RadioButtonUnchecked
-                                                        },
-                                                        contentDescription = null,
-                                                        tint = when (planItem.status) {
-                                                            ActionStatus.TAKEN -> NotelPrimary
-                                                            ActionStatus.SKIPPED -> NotelTextSecondary
-                                                            ActionStatus.SNOOZED -> Color(0xFFFFA500)
-                                                            else -> if (isOverdue) MaterialTheme.colorScheme.error else NotelTextSecondary
-                                                        },
-                                                        modifier = Modifier.size(18.dp)
-                                                    )
-                                                    Spacer(Modifier.width(10.dp))
-                                                }
-                                            }
-
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Text(
-                                                        text = planItem.title,
-                                                        fontWeight = if (planItem.isCompleted) FontWeight.Normal else FontWeight.Medium,
-                                                        color = NotelTextPrimary.copy(alpha = alpha),
-                                                        fontSize = 13.sp,
-                                                        textDecoration = if (planItem.isCompleted) TextDecoration.LineThrough else TextDecoration.None,
-                                                        modifier = Modifier.weight(1f)
-                                                    )
-                                                    if (isOverdue) {
-                                                        Text(
-                                                            text = "Overdue",
-                                                            color = MaterialTheme.colorScheme.error,
-                                                            fontWeight = FontWeight.Bold,
-                                                            fontSize = 11.sp,
-                                                            modifier = Modifier.padding(end = 8.dp)
-                                                        )
-                                                    }
-                                                }
-                                                if (planItem is TodayPlanItem.ScheduledMedication) {
-                                                    Text(
-                                                        text = "${planItem.dose} · ${planItem.timeDisplay}",
-                                                        color = NotelTextSecondary.copy(alpha = alpha),
-                                                        fontSize = 11.sp
-                                                    )
-                                                } else {
-                                                    Text(
-                                                        text = planItem.timeDisplay,
-                                                        color = NotelTextSecondary.copy(alpha = alpha),
-                                                        fontSize = 11.sp
-                                                    )
-                                                }
-                                            }
-
-                                            if (planItem is TodayPlanItem.ScheduledMedication) {
-                                                Spacer(Modifier.width(8.dp))
-                                                if (planItem.status == ActionStatus.PENDING || planItem.status == ActionStatus.SNOOZED) {
-                                                    Row(
-                                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                                        verticalAlignment = Alignment.CenterVertically
-                                                    ) {
-                                                        FilledTonalIconButton(
-                                                            onClick = { todayViewModel.markMedicationAction(planItem.medication.id, ActionStatus.TAKEN, planItem.timeLabel) },
-                                                            modifier = Modifier.size(32.dp),
-                                                            colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                                                containerColor = NotelPrimary.copy(alpha = 0.15f),
-                                                                contentColor = NotelPrimary
-                                                            )
-                                                        ) {
-                                                            Icon(Icons.Default.Check, contentDescription = "Take Medication", modifier = Modifier.size(16.dp))
-                                                        }
-                                                        IconButton(
-                                                            onClick = { todayViewModel.markMedicationAction(planItem.medication.id, ActionStatus.SKIPPED, planItem.timeLabel) },
-                                                            modifier = Modifier.size(32.dp)
-                                                        ) {
-                                                            Icon(Icons.Default.Block, contentDescription = "Skip Medication", tint = NotelTextSecondary, modifier = Modifier.size(16.dp))
-                                                        }
-                                                        IconButton(
-                                                            onClick = { todayViewModel.markMedicationAction(planItem.medication.id, ActionStatus.SNOOZED, planItem.timeLabel) },
-                                                            modifier = Modifier.size(32.dp)
-                                                        ) {
-                                                            Icon(Icons.Default.AccessTime, contentDescription = "Snooze Medication", tint = NotelTextSecondary, modifier = Modifier.size(16.dp))
-                                                        }
-                                                    }
-                                                } else {
-                                                    Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                                    ) {
-                                                        Text(
-                                                            text = when (planItem.status) {
-                                                                ActionStatus.TAKEN -> "Taken"
-                                                                ActionStatus.SKIPPED -> "Skipped"
-                                                                else -> ""
-                                                            },
-                                                            color = when (planItem.status) {
-                                                                ActionStatus.TAKEN -> NotelPrimary
-                                                                ActionStatus.SKIPPED -> NotelTextSecondary
-                                                                else -> NotelTextPrimary
-                                                            },
-                                                            fontSize = 12.sp,
-                                                            fontWeight = FontWeight.Bold
-                                                        )
-                                                        IconButton(
-                                                            onClick = { todayViewModel.markMedicationAction(planItem.medication.id, ActionStatus.PENDING, planItem.timeLabel) },
-                                                            modifier = Modifier.size(28.dp)
-                                                        ) {
-                                                            Icon(Icons.Default.Undo, contentDescription = "Undo action", tint = NotelTextSecondary, modifier = Modifier.size(14.dp))
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ── 3B. What Changed Section (Health Comparisons) ───────────────
-            if (!todayState.hiddenSections.contains("WHAT_CHANGED")) {
-                item {
-                    val savedWhatChangedExpanded by todayViewModel.whatChangedExpanded.collectAsState(initial = null)
-                    var isWhatChangedExpandedLocal by remember { mutableStateOf<Boolean?>(null) }
-                    val finalWhatChangedExpanded = isWhatChangedExpandedLocal ?: (savedWhatChangedExpanded ?: false)
-
-                    val whatChangedPreview = remember(todayState.whatChangedItems) {
-                        val items = todayState.whatChangedItems
-                        when {
-                            items.isEmpty() -> "Not enough data yet"
-                            items.size == 1 -> {
-                                val item = items[0]
-                                "${item.metricName}: ${item.differenceText}"
-                            }
-                            else -> "${items.size} changes detected"
-                        }
-                    }
-
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                    ) {
-                        // Compact accordion header
-                        val isReducedMotion = isReducedMotionEnabled()
-                        val whatChangedRotation by animateFloatAsState(
-                            targetValue = if (finalWhatChangedExpanded) 180f else 0f,
-                            animationSpec = if (isReducedMotion) snap() else tween(300),
-                            label = "WhatChangedChevronRotation"
-                        )
-
+                        // Header Row (Clickable, 48dp+ target)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(min = 48.dp) // at least 48dp touch target
-                                .clickable(enabled = todayState.whatChangedItems.isNotEmpty()) {
-                                    val newExpandedState = !finalWhatChangedExpanded
-                                    isWhatChangedExpandedLocal = newExpandedState
-                                    todayViewModel.setWhatChangedExpanded(newExpandedState)
-                                }
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .heightIn(min = 48.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    val nextState = !isSummaryExpanded
+                                    localExpanded = nextState
+                                    todayViewModel.setTodaySummaryExpanded(nextState)
+                                },
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Today,
+                                        contentDescription = null,
+                                        tint = NotelPrimary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        text = "Today Summary",
+                                        fontWeight = FontWeight.Bold,
+                                        color = NotelTextPrimary,
+                                        fontSize = 16.sp
+                                    )
+                                }
+                                Spacer(Modifier.height(4.dp))
                                 Text(
-                                    text = "What Changed",
-                                    fontWeight = FontWeight.Bold,
-                                    color = NotelTextPrimary,
-                                    fontSize = 15.sp
-                                )
-                                Spacer(Modifier.height(2.dp))
-                                Text(
-                                    text = whatChangedPreview,
+                                    text = todayState.summaryText,
                                     color = NotelTextSecondary,
-                                    fontSize = 12.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
                                 )
                             }
-                            if (todayState.whatChangedItems.isNotEmpty()) {
+
+                            IconButton(
+                                onClick = {
+                                    val nextState = !isSummaryExpanded
+                                    localExpanded = nextState
+                                    todayViewModel.setTodaySummaryExpanded(nextState)
+                                }
+                            ) {
                                 Icon(
-                                    imageVector = Icons.Default.KeyboardArrowDown,
-                                    contentDescription = if (finalWhatChangedExpanded) "Collapse What Changed" else "Expand What Changed",
+                                    imageVector = if (isSummaryExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                    contentDescription = if (isSummaryExpanded) "Collapse Today Summary" else "Expand Today Summary",
                                     tint = NotelPrimary,
-                                    modifier = Modifier
-                                        .size(24.dp)
-                                        .rotate(whatChangedRotation)
+                                    modifier = Modifier.size(26.dp)
                                 )
                             }
                         }
 
-                        if (todayState.whatChangedItems.isNotEmpty()) {
-                            val animationSpec: androidx.compose.animation.core.FiniteAnimationSpec<androidx.compose.ui.unit.IntSize> = remember(isReducedMotion) {
-                                if (isReducedMotion) snap() else spring(stiffness = Spring.StiffnessMediumLow)
-                            }
-                            val fadeSpec: androidx.compose.animation.core.FiniteAnimationSpec<Float> = remember(isReducedMotion) {
-                                if (isReducedMotion) snap() else tween(300)
-                            }
+                        // Metrics Bar (Directly beneath summary sentence inside card)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(top = 10.dp, bottom = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            MetricChip("🔥", "${state.currentStreak} day${if (state.currentStreak != 1) "s" else ""}")
+                            MetricChip("❤️", if (state.avgHeartRate > 0) "${state.avgHeartRate} bpm" else "—")
+                            MetricChip("🔥", if (state.activeCalories > 0) "${state.activeCalories} kcal" else "—")
+                            MetricChip("✏️", "${state.jotCountDaily} logs")
+                            MetricChip("🌙", if (state.sleepMinutes > 0) "${state.sleepMinutes / 60}h ${state.sleepMinutes % 60}m" else "—")
+                        }
 
-                            AnimatedVisibility(
-                                visible = finalWhatChangedExpanded,
-                                enter = expandVertically(animationSpec = animationSpec) + fadeIn(animationSpec = fadeSpec),
-                                exit = shrinkVertically(animationSpec = animationSpec) + fadeOut(animationSpec = fadeSpec)
-                            ) {
-                                Column(modifier = Modifier.padding(top = 4.dp)) {
-                                    todayState.whatChangedItems.forEach { comp ->
+                        // Expanded Content: Today's Plan & Trends
+                        AnimatedVisibility(
+                            visible = isSummaryExpanded,
+                            enter = expandVertically() + fadeIn(),
+                            exit = shrinkVertically() + fadeOut()
+                        ) {
+                            Column(modifier = Modifier.padding(top = 12.dp)) {
+                                HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+                                Spacer(Modifier.height(12.dp))
+
+                                // Sub-section 1: Today's Plan
+                                Text(
+                                    text = "Today's Plan",
+                                    fontWeight = FontWeight.Bold,
+                                    color = NotelTextPrimary,
+                                    fontSize = 14.sp
+                                )
+                                Spacer(Modifier.height(6.dp))
+
+                                if (todayState.todayPlanItems.isEmpty()) {
+                                    Text(
+                                        text = "No plans recorded today",
+                                        color = NotelTextSecondary,
+                                        fontSize = 12.sp,
+                                        modifier = Modifier.padding(vertical = 6.dp)
+                                    )
+                                } else {
+                                    // Actionable Plan Items
+                                    todayState.todayPlanItems.forEach { planItem ->
+                                        val isOverdue = planItem.isOverdue()
+                                        val alpha = if (planItem.isCompleted) 0.5f else 1.0f
                                         Surface(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .padding(vertical = 4.dp),
-                                            color = NotelSurface,
-                                            shape = RoundedCornerShape(12.dp),
-                                            border = BorderStroke(1.dp, GlassBorder)
+                                                .padding(vertical = 3.dp),
+                                            color = NotelSurfaceHigh.copy(alpha = alpha),
+                                            shape = RoundedCornerShape(10.dp),
+                                            border = if (isOverdue) BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)) else null
                                         ) {
-                                            Column(modifier = Modifier.padding(12.dp)) {
-                                                Row(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Text(comp.metricName, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = NotelTextPrimary)
-                                                    Text(comp.dataSource, fontSize = 11.sp, color = NotelTextSecondary)
+                                            Row(
+                                                modifier = Modifier.padding(10.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                // Checkbox / Icon based on item type
+                                                when (planItem) {
+                                                    is TodayPlanItem.ScheduledReminder -> {
+                                                        IconButton(
+                                                            onClick = { todayViewModel.completeReminder(planItem.reminder.id) },
+                                                            modifier = Modifier.size(32.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = if (planItem.isCompleted) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                                                contentDescription = if (planItem.isCompleted) "Completed" else "Mark complete",
+                                                                tint = if (planItem.isCompleted) NotelPrimary else NotelTextSecondary,
+                                                                modifier = Modifier.size(18.dp)
+                                                            )
+                                                        }
+                                                        Spacer(Modifier.width(6.dp))
+                                                    }
+                                                    is TodayPlanItem.ScheduledHabit -> {
+                                                        IconButton(
+                                                            onClick = { todayViewModel.toggleHabit(planItem.habit.id, !planItem.isCompleted) },
+                                                            modifier = Modifier.size(32.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = if (planItem.isCompleted) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                                                contentDescription = if (planItem.isCompleted) "Completed" else "Toggle habit",
+                                                                tint = if (planItem.isCompleted) NotelPrimary else NotelTextSecondary,
+                                                                modifier = Modifier.size(18.dp)
+                                                            )
+                                                        }
+                                                        Spacer(Modifier.width(6.dp))
+                                                    }
+                                                    is TodayPlanItem.ScheduledMedication -> {
+                                                        Icon(
+                                                            imageVector = when (planItem.status) {
+                                                                ActionStatus.TAKEN -> Icons.Default.CheckCircle
+                                                                ActionStatus.SKIPPED -> Icons.Default.Block
+                                                                ActionStatus.SNOOZED -> Icons.Default.AccessTime
+                                                                else -> Icons.Default.RadioButtonUnchecked
+                                                            },
+                                                            contentDescription = null,
+                                                            tint = when (planItem.status) {
+                                                                ActionStatus.TAKEN -> NotelPrimary
+                                                                ActionStatus.SKIPPED -> NotelTextSecondary
+                                                                ActionStatus.SNOOZED -> Color(0xFFFFA500)
+                                                                else -> if (isOverdue) MaterialTheme.colorScheme.error else NotelTextSecondary
+                                                            },
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                        Spacer(Modifier.width(10.dp))
+                                                    }
                                                 }
-                                                Spacer(Modifier.height(4.dp))
-                                                Text(comp.differenceText, fontSize = 13.sp, color = NotelPrimary, fontWeight = FontWeight.SemiBold)
-                                                Spacer(Modifier.height(2.dp))
-                                                Text("${comp.currentPeriod} vs ${comp.comparisonPeriod}", fontSize = 12.sp, color = NotelTextSecondary)
+
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Text(
+                                                            text = planItem.title,
+                                                            fontWeight = if (planItem.isCompleted) FontWeight.Normal else FontWeight.Medium,
+                                                            color = NotelTextPrimary.copy(alpha = alpha),
+                                                            fontSize = 13.sp,
+                                                            textDecoration = if (planItem.isCompleted) TextDecoration.LineThrough else TextDecoration.None,
+                                                            modifier = Modifier.weight(1f)
+                                                        )
+                                                        if (isOverdue) {
+                                                            Text(
+                                                                text = "Overdue",
+                                                                color = MaterialTheme.colorScheme.error,
+                                                                fontWeight = FontWeight.Bold,
+                                                                fontSize = 11.sp,
+                                                                modifier = Modifier.padding(end = 8.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                    if (planItem is TodayPlanItem.ScheduledMedication) {
+                                                        Text(
+                                                            text = "${planItem.dose} · ${planItem.timeDisplay}",
+                                                            color = NotelTextSecondary.copy(alpha = alpha),
+                                                            fontSize = 11.sp
+                                                        )
+                                                    } else {
+                                                        Text(
+                                                            text = planItem.timeDisplay,
+                                                            color = NotelTextSecondary.copy(alpha = alpha),
+                                                            fontSize = 11.sp
+                                                        )
+                                                    }
+                                                }
+
+                                                if (planItem is TodayPlanItem.ScheduledMedication) {
+                                                    Spacer(Modifier.width(8.dp))
+                                                    if (planItem.status == ActionStatus.PENDING || planItem.status == ActionStatus.SNOOZED) {
+                                                        Row(
+                                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            FilledTonalIconButton(
+                                                                onClick = { todayViewModel.markMedicationAction(planItem.medication.id, ActionStatus.TAKEN, planItem.timeLabel) },
+                                                                modifier = Modifier.size(32.dp),
+                                                                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                                                    containerColor = NotelPrimary.copy(alpha = 0.15f),
+                                                                    contentColor = NotelPrimary
+                                                                )
+                                                            ) {
+                                                                Icon(Icons.Default.Check, contentDescription = "Take Medication", modifier = Modifier.size(16.dp))
+                                                            }
+                                                            IconButton(
+                                                                onClick = { todayViewModel.markMedicationAction(planItem.medication.id, ActionStatus.SKIPPED, planItem.timeLabel) },
+                                                                modifier = Modifier.size(32.dp)
+                                                            ) {
+                                                                Icon(Icons.Default.Block, contentDescription = "Skip Medication", tint = NotelTextSecondary, modifier = Modifier.size(16.dp))
+                                                            }
+                                                        }
+                                                    } else {
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                        ) {
+                                                            Text(
+                                                                text = when (planItem.status) {
+                                                                    ActionStatus.TAKEN -> "Taken"
+                                                                    ActionStatus.SKIPPED -> "Skipped"
+                                                                    else -> ""
+                                                                },
+                                                                color = when (planItem.status) {
+                                                                    ActionStatus.TAKEN -> NotelPrimary
+                                                                    ActionStatus.SKIPPED -> NotelTextSecondary
+                                                                    else -> NotelTextPrimary
+                                                                },
+                                                                fontSize = 12.sp,
+                                                                fontWeight = FontWeight.Bold
+                                                            )
+                                                            IconButton(
+                                                                onClick = { todayViewModel.markMedicationAction(planItem.medication.id, ActionStatus.PENDING, planItem.timeLabel) },
+                                                                modifier = Modifier.size(28.dp)
+                                                            ) {
+                                                                Icon(Icons.Default.Undo, contentDescription = "Undo action", tint = NotelTextSecondary, modifier = Modifier.size(14.dp))
+                                                            }
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
                                 }
+
+                                Spacer(Modifier.height(14.dp))
+                                HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+                                Spacer(Modifier.height(12.dp))
+
+                                // Sub-section 2: Trends (formerly What Changed)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Trends",
+                                        fontWeight = FontWeight.Bold,
+                                        color = NotelTextPrimary,
+                                        fontSize = 14.sp
+                                    )
+                                    IconButton(
+                                        onClick = { todayViewModel.loadHealthComparisons() },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(Icons.Default.Refresh, contentDescription = "Refresh Trends", tint = NotelTextSecondary, modifier = Modifier.size(14.dp))
+                                    }
+                                }
+                                Spacer(Modifier.height(6.dp))
+
+                                when (val ts = todayState.trendsState) {
+                                    is TodayTrendsState.Loading -> {
+                                        Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+                                            CircularProgressIndicator(color = NotelPrimary, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                        }
+                                    }
+                                    is TodayTrendsState.Empty -> {
+                                        Text(
+                                            text = "No significant trend shifts recorded yet",
+                                            color = NotelTextSecondary,
+                                            fontSize = 12.sp,
+                                            modifier = Modifier.padding(vertical = 4.dp)
+                                        )
+                                    }
+                                    is TodayTrendsState.Error -> {
+                                        Text(
+                                            text = ts.message,
+                                            color = MaterialTheme.colorScheme.error,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                    is TodayTrendsState.Ready -> {
+                                        val items: List<com.notel.notel.data.repository.HealthComparisonItem> = ts.items
+                                        items.forEach { comp ->
+                                            Surface(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(vertical = 4.dp),
+                                                color = NotelSurfaceHigh,
+                                                shape = RoundedCornerShape(10.dp),
+                                                border = BorderStroke(1.dp, GlassBorder)
+                                            ) {
+                                                Column(modifier = Modifier.padding(10.dp)) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(comp.metricName, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = NotelTextPrimary)
+                                                        Text(comp.dataSource, fontSize = 10.sp, color = NotelTextSecondary)
+                                                    }
+                                                    Spacer(Modifier.height(3.dp))
+                                                    Text(comp.differenceText, fontSize = 12.sp, color = NotelPrimary, fontWeight = FontWeight.SemiBold)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── 2. Tools Section ─────────────────────────────
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
+                    Text(
+                        text = "Tools",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = NotelTextPrimary,
+                        modifier = Modifier.padding(bottom = 10.dp)
+                    )
+
+                    DEFAULT_INFO_TILES.chunked(2).forEach { rowTiles ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            rowTiles.forEach { tile ->
+                                Box(modifier = Modifier.weight(1f)) {
+                                    InfoTileCard(
+                                        tile = tile,
+                                        isUnlimited = quickLogState.isUnlimited,
+                                        onNavigateToMembership = onNavigateToMembership,
+                                        onSleepClick = onNavigateToHeart,
+                                        onBodyInfoClick = onNavigateToHeart,
+                                        onMedicationsClick = onNavigateToHeart,
+                                        onKeyMetricsClick = onNavigateToHeart,
+                                        onCoachClick = {},
+                                        onTipsAndTricksClick = {},
+                                        onFoodClick = {},
+                                        onCommunityClick = {},
+                                        onHabitsClick = onNavigateToHabits,
+                                        onRemindersClick = onNavigateToReminders,
+                                        onListsClick = onNavigateToLists,
+                                        onNotesClick = onNavigateToNotes,
+                                        onProjectFocusClick = onNavigateToProjectFocus
+                                    )
+                                }
+                            }
+                            if (rowTiles.size < 2) {
+                                Spacer(modifier = Modifier.weight(1f))
                             }
                         }
                     }
@@ -2331,5 +2298,23 @@ fun isReducedMotionEnabled(): Boolean {
             1.0f
         )
         animatorScale == 0.0f
+    }
+}
+
+@Composable
+private fun MetricChip(icon: String, value: String) {
+    Surface(
+        color = NotelSurfaceHigh.copy(alpha = 0.6f),
+        shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.15f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(icon, fontSize = 12.sp)
+            Spacer(Modifier.width(4.dp))
+            Text(value, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = NotelTextPrimary)
+        }
     }
 }

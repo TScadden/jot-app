@@ -98,6 +98,7 @@ class NotelPreferences @Inject constructor(
         val LAST_OPEN_DATE = stringPreferencesKey("last_open_date")
         val CUP_THEORY_SEEN = booleanPreferencesKey("cup_theory_seen")
         val LAST_DYNAMIC_NOTIFICATION_DATE = stringPreferencesKey("last_dynamic_notification_date")
+        val TODAY_SUMMARY_EXPANDED = booleanPreferencesKey("today_summary_expanded")
         val LAST_KNOWN_STATS = stringPreferencesKey("last_known_stats")
         val LAST_KNOWN_LAT = doublePreferencesKey("last_known_lat")
         val LAST_KNOWN_LON = doublePreferencesKey("last_known_lon")
@@ -265,6 +266,15 @@ class NotelPreferences @Inject constructor(
     val googleAccountEmail: Flow<String> = context.dataStore.data.map { it[GOOGLE_ACCOUNT_EMAIL] ?: "" }
     suspend fun setGoogleAccountEmail(email: String) {
         context.dataStore.edit { it[GOOGLE_ACCOUNT_EMAIL] = email }
+    }
+
+    val todaySummaryExpanded: Flow<Boolean> = context.dataStore.data
+        .map { preferences -> preferences[TODAY_SUMMARY_EXPANDED] ?: true }
+
+    suspend fun setTodaySummaryExpanded(expanded: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[TODAY_SUMMARY_EXPANDED] = expanded
+        }
     }
 
 
