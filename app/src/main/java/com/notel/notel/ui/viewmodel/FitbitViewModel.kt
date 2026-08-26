@@ -82,6 +82,7 @@ class FitbitViewModel @Inject constructor(
     private val preferences: NotelPreferences,
     val healthConnectManager: HealthConnectManager,
     private val lifecycleTracker: com.notel.notel.util.AppLifecycleTracker,
+    private val tabsApi: com.notel.notel.data.remote.TabsApi,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
 
@@ -1231,37 +1232,18 @@ class FitbitViewModel @Inject constructor(
                 // Validation succeeded. Consume matching transaction immediately (single-use)
                 preferences.clearFitbitOauthPending()
 
-                val clientId = "23TRPL"
-                // Construct Basic Auth header for public client: client_id with no secret
-                val authHeader = android.util.Base64.encodeToString(
-                    "$clientId:".toByteArray(),
-                    android.util.Base64.NO_WRAP
-                )
-
-                val requestBody = okhttp3.FormBody.Builder()
-                    .add("client_id", clientId)
-                    .add("grant_type", "authorization_code")
-                    .add("redirect_uri", "com.notel.notel.fitbit://callback")
-                    .add("code", code)
-                    .add("code_verifier", pendingVerifier)
-                    .build()
-
-                val request = okhttp3.Request.Builder()
-                    .url("https://api.fitbit.com/oauth2/token")
-                    .header("Authorization", "Basic $authHeader")
-                    .post(requestBody)
-                    .build()
-
                 withContext(Dispatchers.IO) {
-                    val client = okhttp3.OkHttpClient()
-                    client.newCall(request).execute().use { response ->
-                        if (response.isSuccessful) {
-                            val body = response.body?.string() ?: ""
-                            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-                            val element = json.parseToJsonElement(body).jsonObject
-                            val token = element["access_token"]?.jsonPrimitive?.content ?: ""
-                            val refresh = element["refresh_token"]?.jsonPrimitive?.content ?: ""
-                            
+                    try {
+                        val proxyReq = com.notel.notel.data.remote.FitbitTokenProxyRequest(
+                            code = code,
+                            codeVerifier = pendingVerifier,
+                            redirectUri = "com.notel.notel.fitbit://callback"
+                        )
+                        val apiResponse = tabsApi.exchangeFitbitToken(proxyReq)
+                        if (apiResponse.isSuccessful && apiResponse.body()?.access_token != null) {
+                            val res = apiResponse.body()!!
+                            val token = res.access_token ?: ""
+                            val refresh = res.refresh_token ?: ""
                             if (token.isNotBlank()) {
                                 viewModelScope.launch {
                                     preferences.setFitbitToken(token)
@@ -1269,10 +1251,22 @@ class FitbitViewModel @Inject constructor(
                                     _state.update { it.copy(isFitbitConnected = true, isLoading = false, errorMessage = null) }
                                     sync()
                                 }
+                            } else {
+                                _state.update { it.copy(isLoading = false, errorMessage = "Received empty token from Fitbit proxy.") }
                             }
                         } else {
-                            _state.update { it.copy(isLoading = false, errorMessage = "Fitbit Auth Failed: ${response.message}") }
+                            val errBody = apiResponse.errorBody()?.string() ?: ""
+                            val errMessage = if (errBody.contains("FITBIT_CLIENT_SECRET")) {
+                                "FITBIT_CLIENT_SECRET environment variable is not configured on the server."
+                            } else {
+                                apiResponse.body()?.error ?: "Fitbit Auth Failed: HTTP ${apiResponse.code()}"
+                            }
+                            android.util.Log.e("FitbitViewModel", "Fitbit token proxy error: $errMessage")
+                            _state.update { it.copy(isLoading = false, errorMessage = errMessage) }
                         }
+                    } catch (proxyEx: Exception) {
+                        android.util.Log.e("FitbitViewModel", "Token exchange failed: ${proxyEx.message}", proxyEx)
+                        _state.update { it.copy(isLoading = false, errorMessage = "Fitbit token exchange failed: ${proxyEx.message}") }
                     }
                 }
             } catch (e: Exception) {
