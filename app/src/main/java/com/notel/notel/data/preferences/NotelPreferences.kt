@@ -153,28 +153,6 @@ class NotelPreferences @Inject constructor(
         context.dataStore.edit { it[WHAT_CHANGED_EXPANDED] = expanded }
     }
 
-    val todayMode: Flow<String> = context.dataStore.data.map { it[TODAY_MODE] ?: "SIMPLE" }
-    val todayHiddenSections: Flow<Set<String>> = context.dataStore.data.map {
-        val str = it[TODAY_HIDDEN_SECTIONS] ?: ""
-        if (str.isBlank()) emptySet() else str.split(",").toSet()
-    }
-    val todaySectionOrder: Flow<List<String>> = context.dataStore.data.map {
-        val str = it[TODAY_SECTION_ORDER] ?: "TODAY_PLAN,HOW_IM_DOING,WHAT_CHANGED,AI_INSIGHT,QUICK_ACTIONS"
-        str.split(",").filter { s -> s.isNotBlank() }
-    }
-
-    suspend fun setTodayMode(mode: String) {
-        context.dataStore.edit { it[TODAY_MODE] = mode }
-    }
-
-    suspend fun setTodayHiddenSections(hidden: Set<String>) {
-        context.dataStore.edit { it[TODAY_HIDDEN_SECTIONS] = hidden.joinToString(",") }
-    }
-
-    suspend fun setTodaySectionOrder(order: List<String>) {
-        context.dataStore.edit { it[TODAY_SECTION_ORDER] = order.joinToString(",") }
-    }
-
     fun getCompletedReminders(dateStr: String): Flow<Set<Int>> = context.dataStore.data.map { prefs ->
         val raw = prefs[stringPreferencesKey("completed_reminders_$dateStr")] ?: ""
         if (raw.isBlank()) emptySet()

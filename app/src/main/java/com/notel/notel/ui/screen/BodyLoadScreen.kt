@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import kotlinx.coroutines.flow.collectLatest
 import androidx.compose.foundation.shape.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
@@ -99,15 +102,12 @@ fun BodyLoadScreen(
 
 
 
-    val sheetState = rememberModalBottomSheetState()
-    var showTheorySheet by remember { mutableStateOf(false) }
     var showWeatherSheet by remember { mutableStateOf(false) }
     var showUvInfo by remember { mutableStateOf(false) }
     var showTempInfo by remember { mutableStateOf(false) }
     var showHumidityInfo by remember { mutableStateOf(false) }
     var showWindInfo by remember { mutableStateOf(false) }
     var showPressureInfo by remember { mutableStateOf(false) }
-    var showTodayCustomization by remember { mutableStateOf(false) }
     val todayStr = java.time.LocalDate.now().toString()
     val isToday = state.selectedDate == todayStr
 
@@ -149,14 +149,6 @@ fun BodyLoadScreen(
                             )
                         }
                     }
-                    IconButton(onClick = { showTodayCustomization = true }) {
-                        Icon(
-                            imageVector = Icons.Default.Tune,
-                            contentDescription = "Customize Today",
-                            tint = NotelTextSecondary,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
                     IconButton(onClick = onNavigateToConnections) {
                         Icon(
                             imageVector = Icons.Default.Watch,
@@ -181,7 +173,281 @@ fun BodyLoadScreen(
             ),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // ── 1. Consolidated Today Summary Section ─────────────────────────────
+            // ── 1. Restored Black Health Metrics Box ─────────────────────────────
+            item {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color.Black.copy(alpha = 0.3f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+                ) {
+                    Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Heart Rate
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.clickable { onNavigateToHeart() }
+                            ) {
+                                Icon(Icons.Default.Favorite, contentDescription = "Heart Rate", tint = NotelPrimary, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    text = if (state.avgHeartRate > 0) "${state.avgHeartRate}" else "--",
+                                    color = Color.White,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            Spacer(Modifier.width(2.dp))
+                            VerticalDivider(modifier = Modifier.height(16.dp), color = Color.White.copy(alpha = 0.15f))
+                            Spacer(Modifier.width(2.dp))
+
+                            // Calories
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Whatshot, contentDescription = "Calories", tint = Color(0xFFFF5252), modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    text = if (state.activeCalories > 0) "${state.activeCalories}" else "--",
+                                    color = Color.White,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            Spacer(Modifier.width(2.dp))
+                            VerticalDivider(modifier = Modifier.height(16.dp), color = Color.White.copy(alpha = 0.15f))
+                            Spacer(Modifier.width(2.dp))
+
+                            // Logs
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Edit, contentDescription = "Logs", tint = Color(0xFF66BB6A), modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    text = "${state.jotCountDaily}",
+                                    color = Color.White,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            Spacer(Modifier.width(2.dp))
+                            VerticalDivider(modifier = Modifier.height(16.dp), color = Color.White.copy(alpha = 0.15f))
+                            Spacer(Modifier.width(2.dp))
+
+                            // Sleep
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Nightlight, contentDescription = "Sleep", tint = Color(0xFF42A5F5), modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                val sleepStr = if (state.sleepMinutes > 0) {
+                                    val h = state.sleepMinutes / 60
+                                    val m = state.sleepMinutes % 60
+                                    if (h > 0) "${h}h${m}m" else "${m}m"
+                                } else "--"
+                                Text(
+                                    text = sleepStr,
+                                    color = Color.White,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── 2. Compact Streak Boxes & Rotating Event Counters Row ─────────────────────
+            item {
+                val activeCounters = quickLogState.eventCounters.filter { !it.isArchived }
+                val infinitePageCount = if (activeCounters.size > 1) 10000 else activeCounters.size
+                val pagerState = rememberPagerState(
+                    initialPage = if (activeCounters.size > 1) 5000 else 0,
+                    pageCount = { infinitePageCount }
+                )
+
+                if (activeCounters.size > 1) {
+                    LaunchedEffect(activeCounters.size) {
+                        snapshotFlow { pagerState.settledPage }.collectLatest { settledIndex ->
+                            kotlinx.coroutines.delay(10000)
+                            pagerState.animateScrollToPage(settledIndex + 1)
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Left: Streak Boxes (Current Streak & Best/Record Streak)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // Current Streak Box
+                        Surface(
+                            modifier = Modifier.height(34.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            color = NotelSurfaceHigh.copy(alpha = 0.15f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("🔥", fontSize = 12.sp)
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    text = "${state.currentStreak}",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFFFB74D)
+                                )
+                            }
+                        }
+
+                        // Best Streak (Record) Box
+                        Surface(
+                            modifier = Modifier.height(34.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            color = NotelSurfaceHigh.copy(alpha = 0.15f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("🏆", fontSize = 12.sp)
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    text = "${state.bestStreak}",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFFFD700)
+                                )
+                            }
+                        }
+                    }
+
+                    // Right: Event Counters Rotating Pager
+                    if (activeCounters.isNotEmpty()) {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = 12.dp),
+                            horizontalAlignment = Alignment.End
+                        ) {
+                            HorizontalPager(
+                                state = pagerState,
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) { page ->
+                                val counterIndex = page % activeCounters.size
+                                val counter = activeCounters[counterIndex]
+
+                                val targetLocalDate = java.time.Instant.ofEpochMilli(counter.targetDate)
+                                    .atZone(java.time.ZoneId.systemDefault())
+                                    .toLocalDate()
+                                val today = java.time.LocalDate.now()
+
+                                val diffDays = java.time.temporal.ChronoUnit.DAYS.between(targetLocalDate, today)
+                                var isCalculatedUp = counter.isUp
+                                var finalDays = diffDays
+
+                                if (!isCalculatedUp && diffDays > 0 && counter.autoUp) {
+                                    isCalculatedUp = true
+                                    finalDays = diffDays
+                                } else if (isCalculatedUp) {
+                                    finalDays = diffDays
+                                } else {
+                                    finalDays = -diffDays
+                                }
+
+                                val daysCount = Math.max(0L, finalDays).toString()
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.End
+                                ) {
+                                    Text(
+                                        text = if (isCalculatedUp) "SINCE ${counter.name.uppercase()}" else "UNTIL ${counter.name.uppercase()}",
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = NotelPrimary.copy(alpha = 0.8f),
+                                        letterSpacing = 0.5.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f).padding(end = 6.dp),
+                                        textAlign = TextAlign.End
+                                    )
+
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = daysCount,
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = NotelTextPrimary,
+                                                modifier = Modifier.padding(end = 2.dp)
+                                            )
+                                            Text(
+                                                text = "DAYS",
+                                                fontSize = 8.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = NotelTextSecondary,
+                                                letterSpacing = 0.5.sp
+                                            )
+                                        }
+
+                                        if (activeCounters.size > 1) {
+                                            Row(
+                                                modifier = Modifier.padding(top = 2.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                repeat(activeCounters.size) { iteration ->
+                                                    val isCurrent = (pagerState.currentPage % activeCounters.size) == iteration
+                                                    val color = if (isCurrent) NotelPrimary else NotelSurfaceHigh.copy(alpha = 0.3f)
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(if (isCurrent) 4.dp else 3.dp)
+                                                            .background(color, CircleShape)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Fallback when no active event counters exist
+                        val upcomingText = if (todayState.upcomingEvents.isNotEmpty()) {
+                            val firstEvent = todayState.upcomingEvents.first()
+                            "📅 ${firstEvent.title} · ${firstEvent.dateOrCountdownText}"
+                        } else {
+                            "📅 No upcoming events"
+                        }
+                        Text(
+                            text = upcomingText,
+                            color = NotelTextSecondary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .padding(start = 8.dp)
+                        )
+                    }
+                }
+            }
+
+            // ── 3. Expandable Today Summary Section ─────────────────────────────
             item {
                 val savedTodaySummaryExpanded by todayViewModel.todaySummaryExpanded.collectAsState(initial = true)
                 var localExpanded by remember { mutableStateOf<Boolean?>(null) }
@@ -190,7 +456,7 @@ fun BodyLoadScreen(
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
                     color = NotelSurface,
                     shape = RoundedCornerShape(18.dp),
                     border = BorderStroke(1.dp, GlassBorder)
@@ -249,47 +515,6 @@ fun BodyLoadScreen(
                                     modifier = Modifier.size(26.dp)
                                 )
                             }
-                        }
-
-                        // Metrics Bar (Directly beneath summary sentence inside card)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                                .padding(top = 10.dp, bottom = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            UnifiedMetricTile(
-                                iconEmoji = "🔥",
-                                valueText = if (state.currentStreak > 0) "${state.currentStreak}" else "0",
-                                labelText = "days",
-                                tileDescription = "Streak, ${state.currentStreak} days."
-                            )
-                            UnifiedMetricTile(
-                                iconEmoji = "❤️",
-                                valueText = if (state.avgHeartRate > 0) "${state.avgHeartRate}" else "—",
-                                labelText = "bpm",
-                                tileDescription = "Heart rate, ${if (state.avgHeartRate > 0) "${state.avgHeartRate} beats per minute" else "unavailable"}."
-                            )
-                            UnifiedMetricTile(
-                                iconEmoji = "🔥",
-                                valueText = if (state.activeCalories > 0) "${state.activeCalories}" else "—",
-                                labelText = "kcal",
-                                tileDescription = "Calories, ${if (state.activeCalories > 0) "${state.activeCalories} calories" else "unavailable"}."
-                            )
-                            UnifiedMetricTile(
-                                iconEmoji = "✏️",
-                                valueText = "${state.jotCountDaily}",
-                                labelText = "logs",
-                                tileDescription = "Logs, ${state.jotCountDaily} logs today."
-                            )
-                            UnifiedMetricTile(
-                                iconEmoji = "🌙",
-                                valueText = if (state.sleepMinutes > 0) "${state.sleepMinutes / 60}h ${state.sleepMinutes % 60}m" else "—",
-                                labelText = "sleep",
-                                tileDescription = "Sleep, ${if (state.sleepMinutes > 0) "${state.sleepMinutes / 60} hours ${state.sleepMinutes % 60} minutes" else "unavailable"}."
-                            )
                         }
 
                         // Expanded Content: Today's Plan & Trends
@@ -560,7 +785,7 @@ fun BodyLoadScreen(
 
 
             // ── 3C. Active AI Insight Section ──────────────────────────────
-            if (!todayState.hiddenSections.contains("AI_INSIGHT") && todayState.primaryInsight != null) {
+            if (todayState.primaryInsight != null) {
                 val insight = todayState.primaryInsight!!
                 item {
                     Surface(
@@ -627,85 +852,6 @@ fun BodyLoadScreen(
                 }
             }
 
-            // ── 2. Upcoming Events Section ────────────────────────────────────
-            if (todayState.upcomingEvents.isNotEmpty()) {
-                item {
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        color = NotelSurface,
-                        shape = RoundedCornerShape(16.dp),
-                        border = BorderStroke(1.dp, GlassBorder)
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Upcoming",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = NotelTextPrimary
-                                )
-                                if (todayState.upcomingEvents.size > 1) {
-                                    TextButton(
-                                        onClick = onNavigateToReminders,
-                                        contentPadding = PaddingValues(0.dp)
-                                    ) {
-                                        Text(
-                                            text = "View all",
-                                            color = NotelPrimary,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                }
-                            }
-                            Spacer(Modifier.height(8.dp))
-                            todayState.upcomingEvents.forEach { event ->
-                                Surface(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 3.dp)
-                                        .clickable { onNavigateToReminders() },
-                                    color = NotelSurfaceHigh,
-                                    shape = RoundedCornerShape(10.dp),
-                                    border = BorderStroke(1.dp, GlassBorder)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(10.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Notifications,
-                                            contentDescription = null,
-                                            tint = NotelPrimary,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                        Spacer(Modifier.width(10.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = event.title,
-                                                fontWeight = FontWeight.Medium,
-                                                color = NotelTextPrimary,
-                                                fontSize = 13.sp
-                                            )
-                                            Text(
-                                                text = event.dateOrCountdownText,
-                                                color = NotelTextSecondary,
-                                                fontSize = 11.sp
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
             if (state.error != null) {
                 item {
                     Spacer(Modifier.height(16.dp))
@@ -715,54 +861,6 @@ fun BodyLoadScreen(
                         fontSize = 12.sp,
                         modifier = Modifier.padding(horizontal = 32.dp)
                     )
-                }
-            }
-        }
-    }
-
-    if (showTheorySheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showTheorySheet = false },
-            sheetState = sheetState,
-            containerColor = NotelSurface
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(24.dp)
-                    .padding(bottom = 40.dp)
-            ) {
-                Text(
-                    text = "The Cup Theory",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = NotelPrimary
-                )
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    text = "Think of your body's capacity as a 'Cup'. Every stressor—poor sleep, elevated heart rate, physical exertion, or subjective strain—adds 'water' to that cup.\n\n" +
-                           "Your Body Load score (0-100) represents how much of your cup is currently full:\n\n" +
-                           "• LOW (15-40): High Resilience. Your cup is mostly empty; you have plenty of room for activity.\n" +
-                           "• MODERATE (41-65): Managing Load. You have used a fair amount of your daily capacity.\n" +
-                           "• HIGH (66-90+): High Strain. Your cup is nearly full. Even small drops (stressors) could cause an 'overflow' (a flare or crash).\n\n" +
-                           "To give you an accurate forecast, **each day's score is computed statically from yesterday's total metrics**, letting you see exactly how yesterday's exertion and sleep impact your body today.\n\n" +
-                           "Your score is weighted dynamically using key biomarker markers (scaled when Tabs are logged):\n" +
-                           "• Subjective Tabs: 40% (if present; 0% otherwise)\n" +
-                           "• Sleep: 30% (if Tabs present; 40% otherwise)\n" +
-                           "• Heart Rate: 20% (if Tabs present; 40% otherwise)\n" +
-                           "• Active Calories: 10% (if Tabs present; 20% otherwise)",
-                    color = NotelTextPrimary,
-                    fontSize = 15.sp,
-                    lineHeight = 22.sp
-                )
-                Spacer(Modifier.height(24.dp))
-                Button(
-                    onClick = { showTheorySheet = false },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary)
-                ) {
-                    Text("Got it")
                 }
             }
         }
@@ -1619,13 +1717,6 @@ fun BodyLoadScreen(
                 }
             }
         }
-    }
-
-    if (showTodayCustomization) {
-        TodayCustomizationBottomSheet(
-            viewModel = todayViewModel,
-            onDismiss = { showTodayCustomization = false }
-        )
     }
 }
 

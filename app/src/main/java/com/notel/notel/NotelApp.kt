@@ -6,7 +6,6 @@ import androidx.work.*
 import dagger.hilt.android.HiltAndroidApp
 import com.notel.notel.worker.BodyLoadReminderWorker
 import com.notel.notel.worker.BiometricsSyncWorker
-import com.notel.notel.worker.CupReminderWorker
 import com.notel.notel.worker.HabitReminderWorker
 import com.notel.notel.worker.ProjectReminderWorker
 import com.notel.notel.service.HrSpikeMonitorService
@@ -41,7 +40,7 @@ class NotelApp : Application(), Configuration.Provider {
         super.onCreate()
         lifecycleTracker.startTracking()
         scheduleHabitReminder()
-        scheduleCupReminder()
+        WorkManager.getInstance(this).cancelUniqueWork("cup_reminder")
         scheduleProjectReminder()
         BiometricsSyncWorker.schedule(this)
         
@@ -79,31 +78,6 @@ class NotelApp : Application(), Configuration.Provider {
 
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
             "habit_reminder",
-            ExistingPeriodicWorkPolicy.UPDATE,
-            dailyWorkRequest
-        )
-    }
-
-    private fun scheduleCupReminder() {
-        val calendar = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 9) // 9:00 AM
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-        }
-        
-        if (calendar.timeInMillis <= System.currentTimeMillis()) {
-            calendar.add(Calendar.DAY_OF_YEAR, 1)
-        }
-
-        val delay = calendar.timeInMillis - System.currentTimeMillis()
-
-        val dailyWorkRequest = PeriodicWorkRequestBuilder<CupReminderWorker>(24, TimeUnit.HOURS)
-            .setInitialDelay(delay, TimeUnit.MILLISECONDS)
-            .addTag("cup_reminder")
-            .build()
-
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "cup_reminder",
             ExistingPeriodicWorkPolicy.UPDATE,
             dailyWorkRequest
         )

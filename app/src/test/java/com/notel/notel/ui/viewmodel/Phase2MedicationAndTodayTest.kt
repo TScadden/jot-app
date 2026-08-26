@@ -221,22 +221,6 @@ class Phase2MedicationAndTodayTest {
     }
 
     @Test
-    fun todayCustomization_simpleVsDetailedModeAndHiddenSections() {
-        val hidden = setOf("WHAT_CHANGED", "HOW_IM_DOING")
-        val order = listOf("TODAY_PLAN", "AI_INSIGHT", "QUICK_ACTIONS")
-
-        val state = TodayUiState(
-            mode = "SIMPLE",
-            hiddenSections = hidden,
-            sectionOrder = order
-        )
-
-        assertEquals("SIMPLE", state.mode)
-        assertTrue(state.hiddenSections.contains("WHAT_CHANGED"))
-        assertEquals("TODAY_PLAN", state.sectionOrder.first())
-    }
-
-    @Test
     fun healthComparison_validSevenDayDifferenceCalculation() {
         val todaySleep = 420 // 7 hours
         val pastAvgSleep = 465 // 7h 45m
@@ -333,9 +317,7 @@ class Phase2MedicationAndTodayTest {
                 TodayPlanItem.ScheduledHabit(habit = habit, isCompleted = false),
                 TodayPlanItem.ScheduledReminder(reminder = reminder, isCompleted = false),
                 TodayPlanItem.ScheduledMedication(medication = med, dose = "1000 IU", timeLabel = "Daily", isCompleted = true, status = ActionStatus.TAKEN)
-            ),
-            sectionOrder = listOf("TODAY_PLAN", "WHAT_CHANGED", "AI_INSIGHT"),
-            hiddenSections = setOf()
+            )
         )
 
         assertTrue(state.needsAttentionItems.isEmpty())
