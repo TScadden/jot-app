@@ -845,27 +845,44 @@ fun QuickLogScreen(
                         }
 
                         Spacer(Modifier.height(20.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            GlassyButton(
-                                onClick = { viewModel.dismissProposals() },
-                                modifier = Modifier.weight(1f),
-                                containerColor = NotelSurfaceHigh
-                            ) { Text("Cancel", color = NotelTextPrimary, fontSize = 12.sp) }
-
-                            GlassyButton(
-                                onClick = {
-                                    viewModel.saveProposalsAsTemplates()
-                                    viewModel.confirmProposals()
-                                },
-                                modifier = Modifier.weight(1.3f),
-                                containerColor = NotelSurfaceHigh
-                            ) { Text("Save + Template", color = NotelPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             GlassyButton(
                                 onClick = { viewModel.confirmProposals() },
-                                modifier = Modifier.weight(1.3f),
-                                containerColor = NotelPrimary
-                            ) { Text("Confirm & Save", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                                modifier = Modifier.fillMaxWidth(),
+                                containerColor = NotelPrimary,
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
+                            ) {
+                                Text("Confirm & Save", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            }
+                            
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                GlassyButton(
+                                    onClick = { viewModel.dismissProposals() },
+                                    modifier = Modifier.weight(1f),
+                                    containerColor = NotelSurfaceHigh,
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
+                                ) {
+                                    Text("Cancel", color = NotelTextPrimary, fontSize = 13.sp, maxLines = 1)
+                                }
+
+                                GlassyButton(
+                                    onClick = {
+                                        viewModel.saveProposalsAsTemplates()
+                                        viewModel.confirmProposals()
+                                    },
+                                    modifier = Modifier.weight(1.4f),
+                                    containerColor = NotelSurfaceHigh,
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
+                                ) {
+                                    Text("Save + Template", color = NotelPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                }
+                            }
                         }
                     }
                 }

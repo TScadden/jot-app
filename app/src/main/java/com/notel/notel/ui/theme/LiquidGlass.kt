@@ -55,6 +55,7 @@ fun GlassyButton(
     enabled: Boolean = true,
     containerColor: Color = NotelPrimary,
     shape: Shape = RoundedCornerShape(14.dp),
+    contentPadding: PaddingValues = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
     content: @Composable RowScope.() -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -84,7 +85,7 @@ fun GlassyButton(
         shape = shape
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+            modifier = Modifier.padding(contentPadding),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
             content = content
