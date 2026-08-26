@@ -1170,6 +1170,38 @@ class FitbitViewModel @Inject constructor(
         }
     }
 
+    fun handleFitbitCallback(uri: android.net.Uri?) {
+        if (uri == null || uri.scheme != "com.notel.notel.fitbit" || uri.host != "callback") {
+            return
+        }
+
+        val code = uri.getQueryParameter("code")
+        val state = uri.getQueryParameter("state")
+        val error = uri.getQueryParameter("error")
+        val errorDesc = uri.getQueryParameter("error_description")
+
+        // REDACT SECRETS FROM ADB LOGS: Log presence flags, never token/code/state values
+        android.util.Log.d("FitbitViewModel", "Fitbit callback received: hasCode=${!code.isNullOrBlank()}, hasState=${!state.isNullOrBlank()}, error=${error ?: "none"}")
+
+        if (!error.isNullOrBlank()) {
+            val msg = errorDesc?.ifBlank { null } ?: error
+            _state.update { it.copy(isLoading = false, errorMessage = "Fitbit connection error: $msg") }
+            return
+        }
+
+        if (code.isNullOrBlank()) {
+            _state.update { it.copy(isLoading = false, errorMessage = "Missing authorization code from Fitbit callback.") }
+            return
+        }
+
+        if (state.isNullOrBlank()) {
+            _state.update { it.copy(isLoading = false, errorMessage = "Missing state parameter from Fitbit callback.") }
+            return
+        }
+
+        exchangeCodeForToken(code, state)
+    }
+
     fun exchangeCodeForToken(code: String, receivedState: String) {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true) }

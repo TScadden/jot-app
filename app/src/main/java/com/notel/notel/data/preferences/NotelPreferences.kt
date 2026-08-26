@@ -174,6 +174,26 @@ class NotelPreferences @Inject constructor(
         context.dataStore.edit { it[TODAY_SECTION_ORDER] = order.joinToString(",") }
     }
 
+    fun getCompletedReminders(dateStr: String): Flow<Set<Int>> = context.dataStore.data.map { prefs ->
+        val raw = prefs[stringPreferencesKey("completed_reminders_$dateStr")] ?: ""
+        if (raw.isBlank()) emptySet()
+        else raw.split(",").mapNotNull { it.toIntOrNull() }.toSet()
+    }
+
+    suspend fun setCompletedReminder(dateStr: String, reminderId: Int, isCompleted: Boolean) {
+        context.dataStore.edit { prefs ->
+            val key = stringPreferencesKey("completed_reminders_$dateStr")
+            val raw = prefs[key] ?: ""
+            val current = if (raw.isBlank()) mutableSetOf<Int>() else raw.split(",").mapNotNull { it.toIntOrNull() }.toMutableSet()
+            if (isCompleted) {
+                current.add(reminderId)
+            } else {
+                current.remove(reminderId)
+            }
+            prefs[key] = current.joinToString(",")
+        }
+    }
+
     val showNavLabels: Flow<Boolean> = context.dataStore.data.map { it[SHOW_NAV_LABELS] ?: true }
     suspend fun setShowNavLabels(show: Boolean) {
         context.dataStore.edit { it[SHOW_NAV_LABELS] = show }

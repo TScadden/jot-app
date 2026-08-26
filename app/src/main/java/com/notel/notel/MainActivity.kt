@@ -97,6 +97,7 @@ class MainActivity : ComponentActivity() {
             intent?.removeExtra("EXTRA_SELECT_WIDGET_HABIT")
             intent?.removeExtra("EXTRA_APP_WIDGET_ID")
         }
+
         setContent {
             val context = LocalContext.current
             val activity = context as? ComponentActivity
@@ -147,26 +148,19 @@ class MainActivity : ComponentActivity() {
 
             DisposableEffect(activity) {
                 val listener = androidx.core.util.Consumer<android.content.Intent> { intent ->
-                    if (intent.data?.scheme == "com.notel.notel.fitbit" && intent.data?.host == "callback") {
-                        val code = intent.data?.getQueryParameter("code")
-                        val state = intent.data?.getQueryParameter("state") ?: ""
-                        if (code != null) {
-                            fitbitViewModel.exchangeCodeForToken(code, state)
-                            intent.data = null
-                        }
+                    activity?.intent = intent
+                    val data = intent.data
+                    if (data?.scheme == "com.notel.notel.fitbit" && data.host == "callback") {
+                        fitbitViewModel.handleFitbitCallback(data)
+                        intent.data = null
                     }
                 }
                 activity?.addOnNewIntentListener(listener)
                 
-                // Check initial intent in case the app was launched directly via link
                 val initialData = activity?.intent?.data
                 if (initialData?.scheme == "com.notel.notel.fitbit" && initialData.host == "callback") {
-                    val code = initialData.getQueryParameter("code")
-                    val state = initialData.getQueryParameter("state") ?: ""
-                    if (code != null) {
-                        fitbitViewModel.exchangeCodeForToken(code, state)
-                        activity?.intent?.data = null
-                    }
+                    fitbitViewModel.handleFitbitCallback(initialData)
+                    activity?.intent?.data = null
                 }
                 
                 onDispose {

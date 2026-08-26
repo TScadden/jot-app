@@ -16,6 +16,7 @@ class ScheduledDoseRepository @Inject constructor(
     private val scheduledDoseOccurrenceDao = db.scheduledDoseOccurrenceDao()
 
     suspend fun recordDoseAction(
+        medicationUuid: String = "",
         medicationId: Long,
         medicationName: String,
         medicationDose: String,
@@ -24,8 +25,15 @@ class ScheduledDoseRepository @Inject constructor(
         action: ActionStatus,
         snoozedUntilMs: Long? = null
     ): ScheduledDoseOccurrence = db.withTransaction {
-        val occurrenceKey = "med_${medicationId}_${scheduledDate}_${scheduledTime}"
+        val identifier = medicationUuid.trim().ifEmpty { medicationId.toString() }
+        val normalizedSlot = scheduledTime.trim().lowercase(java.util.Locale.US).replace("\\s+".toRegex(), "_")
+        val occurrenceKey = "med_${identifier}_${scheduledDate}_${normalizedSlot}"
         val existing = scheduledDoseOccurrenceDao.getOccurrenceByKey(occurrenceKey)
+
+        // Idempotency: repeated taps do not duplicate log entries or occurrences
+        if (existing?.status == action.name) {
+            return@withTransaction existing
+        }
 
         var logId: Long? = existing?.associatedLogEntryId
 
@@ -41,7 +49,6 @@ class ScheduledDoseRepository @Inject constructor(
                 logId = logRepository.insertEntry(log)
             }
         } else if (action == ActionStatus.SKIPPED) {
-            // Soft-delete/correct strategy: update log body to reflect correction without deleting audit entry
             if (logId != null) {
                 val existingLog = db.logEntryDao().getEntryById(logId)
                 if (existingLog != null) {

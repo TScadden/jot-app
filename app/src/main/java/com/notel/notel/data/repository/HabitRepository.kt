@@ -35,6 +35,23 @@ class HabitRepository @Inject constructor(
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
 
+    init {
+        loadCachedHabits()
+    }
+
+    private fun loadCachedHabits() {
+        try {
+            val cachedPrefs = context.getSharedPreferences("habit_widget_cache", Context.MODE_PRIVATE)
+            val json = cachedPrefs.getString("habits_json", "[]") ?: "[]"
+            if (json.isNotBlank() && json != "[]") {
+                val cachedHabits: List<HabitDtoModel> = Json { ignoreUnknownKeys = true }.decodeFromString(json)
+                if (cachedHabits.isNotEmpty()) {
+                    _habits.value = cachedHabits
+                }
+            }
+        } catch (e: Exception) { /* best effort */ }
+    }
+
     // Returns today's date string in YYYY-MM-DD format (UTC-safe for daily reset)
     fun todayDateString(): String =
         SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())

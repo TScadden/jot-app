@@ -96,7 +96,8 @@ data class TodayUiState(
     val hiddenSections: Set<String> = emptySet(),
     val sectionOrder: List<String> = listOf("TODAY_PLAN", "HOW_IM_DOING", "WHAT_CHANGED", "AI_INSIGHT", "QUICK_ACTIONS"),
     val isOffline: Boolean = false,
-    val isSyncFailed: Boolean = false
+    val isSyncFailed: Boolean = false,
+    val errorBannerMessage: String? = null
 )
 
 @HiltViewModel
@@ -112,9 +113,9 @@ class TodayViewModel @Inject constructor(
     private val preferences: NotelPreferences
 ) : ViewModel() {
 
-    private val _completedReminders = MutableStateFlow<Set<Int>>(emptySet())
     private val _isRetryingSync = MutableStateFlow(false)
     private val _whatChanged = MutableStateFlow<List<HealthComparisonItem>>(emptyList())
+    private val _errorBanner = MutableStateFlow<String?>(null)
 
     private val todayStr: String
         get() = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
@@ -135,12 +136,13 @@ class TodayViewModel @Inject constructor(
         reminderDao.getAllReminders(),
         habitRepository.habits,
         scheduledDoseOccurrenceDao.getOccurrencesForDate(todayStr),
-        _completedReminders,
+        preferences.getCompletedReminders(todayStr),
         _whatChanged,
         aiInsightDao.getPrimaryActiveInsight(),
         preferences.todayMode,
         preferences.todayHiddenSections,
-        preferences.todaySectionOrder
+        preferences.todaySectionOrder,
+        _errorBanner
     ) { args ->
         @Suppress("UNCHECKED_CAST")
         val medsList = args[0] as List<Medication>
@@ -151,7 +153,7 @@ class TodayViewModel @Inject constructor(
         @Suppress("UNCHECKED_CAST")
         val occurrencesList = args[3] as List<ScheduledDoseOccurrence>
         @Suppress("UNCHECKED_CAST")
-        val completedReminders = args[4] as Set<Int>
+        val completedReminderIds = args[4] as Set<Int>
         @Suppress("UNCHECKED_CAST")
         val whatChangedItems = args[5] as List<HealthComparisonItem>
         val primaryInsight = args[6] as? AiInsight
@@ -160,6 +162,7 @@ class TodayViewModel @Inject constructor(
         val hiddenSections = args[8] as Set<String>
         @Suppress("UNCHECKED_CAST")
         val sectionOrder = args[9] as List<String>
+        val errorMsg = args[10] as? String
 
         val activeMeds = medsList.filter { !it.isArchived }
         val enabledReminders = remindersList.filter { it.isEnabled }
@@ -173,7 +176,9 @@ class TodayViewModel @Inject constructor(
         activeMeds.forEach { med ->
             val times = if (med.timesPerDay > 1) listOf("Morning", "Evening") else listOf("Daily")
             times.forEach { timeLabel ->
-                val key = "med_${med.id}_${currentDateStr}_${timeLabel}"
+                val identifier = med.uuid.trim().ifEmpty { med.id.toString() }
+                val normalizedSlot = timeLabel.trim().lowercase(java.util.Locale.US).replace("\\s+".toRegex(), "_")
+                val key = "med_${identifier}_${currentDateStr}_${normalizedSlot}"
                 val occ = occurrenceMap[key]
                 val status = when (occ?.status) {
                     "TAKEN" -> ActionStatus.TAKEN
@@ -195,7 +200,7 @@ class TodayViewModel @Inject constructor(
         }
 
         enabledReminders.forEach { rem ->
-            val isDone = completedReminders.contains(rem.id)
+            val isDone = completedReminderIds.contains(rem.id)
             planList.add(
                 TodayPlanItem.ScheduledReminder(
                     reminder = rem,
@@ -242,7 +247,8 @@ class TodayViewModel @Inject constructor(
             hiddenSections = cleanHiddenSections,
             sectionOrder = if (cleanSectionOrder.isEmpty()) listOf("TODAY_PLAN", "HOW_IM_DOING", "WHAT_CHANGED", "AI_INSIGHT", "QUICK_ACTIONS") else cleanSectionOrder,
             isOffline = false,
-            isSyncFailed = false
+            isSyncFailed = false,
+            errorBannerMessage = errorMsg
         )
     }.stateIn(
         scope = viewModelScope,
@@ -252,33 +258,44 @@ class TodayViewModel @Inject constructor(
 
     fun markMedicationAction(medicationId: Long, action: ActionStatus, scheduledTime: String = "Daily", snoozedUntilMs: Long? = null) {
         viewModelScope.launch(Dispatchers.IO) {
-            val dateStr = todayStr
-            val allMeds = medicationDao.getAllMedications().firstOrNull() ?: emptyList()
-            val med = allMeds.firstOrNull { it.id == medicationId } ?: return@launch
+            try {
+                val dateStr = todayStr
+                val allMeds = medicationDao.getAllMedications().firstOrNull() ?: emptyList()
+                val med = allMeds.firstOrNull { it.id == medicationId } ?: return@launch
 
-            scheduledDoseRepository.recordDoseAction(
-                medicationId = medicationId,
-                medicationName = med.name,
-                medicationDose = med.dose,
-                scheduledDate = dateStr,
-                scheduledTime = scheduledTime,
-                action = action,
-                snoozedUntilMs = snoozedUntilMs
-            )
+                scheduledDoseRepository.recordDoseAction(
+                    medicationUuid = med.uuid,
+                    medicationId = medicationId,
+                    medicationName = med.name,
+                    medicationDose = med.dose,
+                    scheduledDate = dateStr,
+                    scheduledTime = scheduledTime,
+                    action = action,
+                    snoozedUntilMs = snoozedUntilMs
+                )
+            } catch (e: Exception) {
+                _errorBanner.value = "Failed to record medication action: ${e.message}"
+            }
         }
     }
 
-    fun completeReminder(reminderId: Int) {
-        _completedReminders.update { current ->
-            current + reminderId
+    fun completeReminder(reminderId: Int, isCompleted: Boolean = true) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                preferences.setCompletedReminder(todayStr, reminderId, isCompleted)
+            } catch (e: Exception) {
+                _errorBanner.value = "Failed to update reminder: ${e.message}"
+            }
         }
     }
 
     fun toggleHabit(habitId: String, isCompleted: Boolean) {
-        val today = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
+        val today = todayStr
         viewModelScope.launch(Dispatchers.IO) {
-            habitRepository.toggleHabitLog(habitId, today, isCompleted)
-            habitRepository.fetchHabits()
+            val res = habitRepository.toggleHabitLog(habitId, today, isCompleted)
+            if (res.isFailure) {
+                _errorBanner.value = "Failed to update habit: ${res.exceptionOrNull()?.message}"
+            }
         }
     }
 
