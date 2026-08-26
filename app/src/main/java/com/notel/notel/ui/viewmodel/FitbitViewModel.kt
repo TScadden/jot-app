@@ -1171,6 +1171,8 @@ class FitbitViewModel @Inject constructor(
         }
     }
 
+    private val processedCodes = java.util.Collections.synchronizedSet(HashSet<String>())
+
     fun handleFitbitCallback(uri: android.net.Uri?) {
         if (uri == null || uri.scheme != "com.notel.notel.fitbit" || uri.host != "callback") {
             return
@@ -1197,6 +1199,11 @@ class FitbitViewModel @Inject constructor(
 
         if (state.isNullOrBlank()) {
             _state.update { it.copy(isLoading = false, errorMessage = "Missing state parameter from Fitbit callback.") }
+            return
+        }
+
+        if (!processedCodes.add(code)) {
+            android.util.Log.d("FitbitViewModel", "Duplicate OAuth code callback ignored.")
             return
         }
 
@@ -1262,11 +1269,19 @@ class FitbitViewModel @Inject constructor(
                                 apiResponse.body()?.error ?: "Fitbit Auth Failed: HTTP ${apiResponse.code()}"
                             }
                             android.util.Log.e("FitbitViewModel", "Fitbit token proxy error: $errMessage")
-                            _state.update { it.copy(isLoading = false, errorMessage = errMessage) }
+                            if (!_state.value.isFitbitConnected) {
+                                _state.update { it.copy(isLoading = false, errorMessage = errMessage) }
+                            } else {
+                                _state.update { it.copy(isLoading = false) }
+                            }
                         }
                     } catch (proxyEx: Exception) {
                         android.util.Log.e("FitbitViewModel", "Token exchange failed: ${proxyEx.message}", proxyEx)
-                        _state.update { it.copy(isLoading = false, errorMessage = "Fitbit token exchange failed: ${proxyEx.message}") }
+                        if (!_state.value.isFitbitConnected) {
+                            _state.update { it.copy(isLoading = false, errorMessage = "Fitbit token exchange failed: ${proxyEx.message}") }
+                        } else {
+                            _state.update { it.copy(isLoading = false) }
+                        }
                     }
                 }
             } catch (e: Exception) {

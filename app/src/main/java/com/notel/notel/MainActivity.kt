@@ -146,19 +146,23 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            val processedIntents = remember { java.util.Collections.synchronizedSet(HashSet<Int>()) }
             DisposableEffect(activity) {
                 val listener = androidx.core.util.Consumer<android.content.Intent> { intent ->
                     activity?.intent = intent
                     val data = intent.data
-                    if (data?.scheme == "com.notel.notel.fitbit" && data.host == "callback") {
+                    val intentHash = System.identityHashCode(intent)
+                    if (data?.scheme == "com.notel.notel.fitbit" && data.host == "callback" && processedIntents.add(intentHash)) {
                         fitbitViewModel.handleFitbitCallback(data)
                         intent.data = null
                     }
                 }
                 activity?.addOnNewIntentListener(listener)
                 
-                val initialData = activity?.intent?.data
-                if (initialData?.scheme == "com.notel.notel.fitbit" && initialData.host == "callback") {
+                val initialIntent = activity?.intent
+                val initialData = initialIntent?.data
+                val initialHash = initialIntent?.let { System.identityHashCode(it) } ?: 0
+                if (initialData?.scheme == "com.notel.notel.fitbit" && initialData.host == "callback" && processedIntents.add(initialHash)) {
                     fitbitViewModel.handleFitbitCallback(initialData)
                     activity?.intent?.data = null
                 }

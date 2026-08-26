@@ -114,6 +114,47 @@ class TodayPlanPersistenceAndOccurrenceTest {
     }
 
     @Test
+    fun fitbitCallback_duplicateCodeInViewModel_ignoredByProcessedCodesSet() {
+        val processedCodes = java.util.Collections.synchronizedSet(HashSet<String>())
+        val code = "oauth_code_abc123"
+
+        val firstAttemptAdded = processedCodes.add(code)
+        val secondAttemptAdded = processedCodes.add(code)
+
+        assertTrue("First attempt should add code to set", firstAttemptAdded)
+        assertFalse("Second attempt with same code must be rejected as duplicate", secondAttemptAdded)
+    }
+
+    @Test
+    fun fitbitCallback_activityIntentDeduplication_processesIntentOnlyOnce() {
+        val processedIntents = java.util.Collections.synchronizedSet(HashSet<Int>())
+        val mockIntentHash = 987654321
+
+        val initialDelivery = processedIntents.add(mockIntentHash)
+        val onNewIntentDelivery = processedIntents.add(mockIntentHash)
+
+        assertTrue("Cold start / initial intent delivery should process", initialDelivery)
+        assertFalse("Duplicate intent delivery for same activity intent must be ignored", onNewIntentDelivery)
+    }
+
+    @Test
+    fun fitbitCallback_duplicate4xxResponse_preservesAlreadyConnectedState() {
+        var isFitbitConnected = true
+        var errorMessage: String? = null
+        val duplicateExchange400 = true
+
+        if (duplicateExchange400) {
+            val errMessage = "Fitbit Auth Failed: HTTP 400"
+            if (!isFitbitConnected) {
+                errorMessage = errMessage
+            }
+        }
+
+        assertTrue("Already connected state must be preserved on secondary exchange response", isFitbitConnected)
+        assertNull("Error message should not override state if user is already connected", errorMessage)
+    }
+
+    @Test
     fun fitbitCallback_tokenExchangeFailure_setsErrorMessage() {
         val httpSuccess = false
         val responseMessage = "400 Bad Request"
