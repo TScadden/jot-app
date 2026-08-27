@@ -83,6 +83,20 @@ fun WeeklySnapshotCard(
                 else -> false
             }
 
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val animatorDurationScale = remember(context) {
+                try {
+                    android.provider.Settings.Global.getFloat(
+                        context.contentResolver,
+                        android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
+                        1.0f
+                    )
+                } catch (_: Exception) {
+                    1.0f
+                }
+            }
+            val isAnimationEnabled = animatorDurationScale > 0f
+
             val infiniteTransition = rememberInfiniteTransition(label = "refreshRotation")
             val rotationAngle by infiniteTransition.animateFloat(
                 initialValue = 0f,
@@ -128,7 +142,7 @@ fun WeeklySnapshotCard(
                         modifier = Modifier
                             .size(16.dp)
                             .graphicsLayer {
-                                if (isRefreshing) {
+                                if (isRefreshing && isAnimationEnabled) {
                                     rotationZ = rotationAngle
                                 } else {
                                     rotationZ = 0f
@@ -339,10 +353,7 @@ private fun SnapshotDataContent(
                     )
 
                     IconButton(
-                        onClick = {
-                            // TODO: Implement "View details" navigation for selected snapshot item
-                            onSelectIndex(null)
-                        },
+                        onClick = { onSelectIndex(null) },
                         modifier = Modifier.size(24.dp)
                     ) {
                         Icon(
