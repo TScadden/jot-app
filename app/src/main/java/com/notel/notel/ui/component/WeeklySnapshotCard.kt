@@ -339,8 +339,11 @@ private fun SnapshotDataContent(
                     )
 
                     IconButton(
-                        onClick = { onSelectIndex(null) },
-                        modifier = Modifier.size(20.dp)
+                        onClick = {
+                            // TODO: Implement "View details" navigation for selected snapshot item
+                            onSelectIndex(null)
+                        },
+                        modifier = Modifier.size(24.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Close,
