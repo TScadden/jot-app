@@ -7,25 +7,32 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.notel.notel.data.repository.DailySnapshotPoint
@@ -40,6 +47,7 @@ fun WeeklySnapshotCard(
     availableMetrics: List<String>,
     onSelectMetric: (String) -> Unit,
     onRefresh: () -> Unit,
+    onViewDetails: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -51,9 +59,16 @@ fun WeeklySnapshotCard(
         border = BorderStroke(1.dp, GlassBorder)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            // Header Row: Title & Dropdown / Refresh
             var dropdownExpanded by remember { mutableStateOf(false) }
+            var selectedPointIndex by remember { mutableStateOf<Int?>(null) }
 
+            val currentMetric = when (state) {
+                is WeeklySnapshotState.Ready -> state.metricData.metricName
+                is WeeklySnapshotState.Error -> state.retainedData?.metricName ?: "Sleep Hours"
+                else -> "Sleep Hours"
+            }
+
+            // Header Row: Title, Dropdown, Refresh & View Details
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -76,6 +91,25 @@ fun WeeklySnapshotCard(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(
+                        onClick = { onViewDetails(currentMetric) },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                    ) {
+                        Text(
+                            text = "View details",
+                            fontSize = 12.sp,
+                            color = NotelPrimary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = "View Details for $currentMetric",
+                            tint = NotelPrimary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+
                     IconButton(
                         onClick = onRefresh,
                         modifier = Modifier.size(28.dp)
@@ -90,14 +124,9 @@ fun WeeklySnapshotCard(
                 }
             }
 
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
 
-            // Metric Selector Dropdown Box
-            val currentMetric = when (state) {
-                is WeeklySnapshotState.Ready -> state.metricData.metricName
-                else -> "Sleep Hours"
-            }
-
+            // Metric Selector Box
             Box(modifier = Modifier.fillMaxWidth()) {
                 Surface(
                     modifier = Modifier
@@ -145,6 +174,7 @@ fun WeeklySnapshotCard(
                             },
                             onClick = {
                                 dropdownExpanded = false
+                                selectedPointIndex = null
                                 onSelectMetric(metric)
                             }
                         )
@@ -154,7 +184,7 @@ fun WeeklySnapshotCard(
 
             Spacer(Modifier.height(12.dp))
 
-            // State Content Rendering
+            // Content States
             when (state) {
                 is WeeklySnapshotState.Loading -> {
                     Box(
@@ -171,53 +201,34 @@ fun WeeklySnapshotCard(
                     }
                 }
                 is WeeklySnapshotState.Error -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(120.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = state.message,
-                            color = MaterialTheme.colorScheme.error,
-                            fontSize = 12.sp,
-                            textAlign = TextAlign.Center
+                    if (state.retainedData != null) {
+                        SnapshotDataContent(
+                            metricData = state.retainedData,
+                            selectedIndex = selectedPointIndex,
+                            onSelectIndex = { selectedPointIndex = it }
                         )
-                    }
-                }
-                is WeeklySnapshotState.Ready -> {
-                    val metricData = state.metricData
-                    Text(
-                        text = metricData.averageOrTotalText,
-                        color = NotelTextSecondary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-
-                    Spacer(Modifier.height(12.dp))
-
-                    if (!metricData.isAvailable) {
+                    } else {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(140.dp),
+                                .height(120.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "Metric not available or permission missing",
-                                color = NotelTextSecondary,
-                                fontSize = 13.sp
+                                text = state.message,
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 12.sp,
+                                textAlign = TextAlign.Center
                             )
                         }
-                    } else {
-                        // Native Canvas Chart
-                        WeeklySnapshotChartCanvas(
-                            metricData = metricData,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(160.dp)
-                        )
                     }
+                }
+                is WeeklySnapshotState.Ready -> {
+                    SnapshotDataContent(
+                        metricData = state.metricData,
+                        selectedIndex = selectedPointIndex,
+                        onSelectIndex = { selectedPointIndex = it }
+                    )
                 }
             }
         }
@@ -225,12 +236,130 @@ fun WeeklySnapshotCard(
 }
 
 @Composable
-private fun WeeklySnapshotChartCanvas(
+private fun SnapshotDataContent(
     metricData: WeeklySnapshotMetricData,
+    selectedIndex: Int?,
+    onSelectIndex: (Int?) -> Unit
+) {
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = metricData.averageOrTotalText,
+                color = NotelTextSecondary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium
+            )
+
+            // Blood Pressure Legend
+            if (metricData.metricName == "Blood Pressure" && metricData.isAvailable) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(8.dp).background(Color(0xFFEF5350), CircleShape))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Sys", fontSize = 10.sp, color = NotelTextSecondary)
+                    Spacer(Modifier.width(8.dp))
+                    Box(Modifier.size(8.dp).background(Color(0xFF42A5F5), CircleShape))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Dia", fontSize = 10.sp, color = NotelTextSecondary)
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // Tooltip Banner for Selected Data Point
+        if (selectedIndex != null && selectedIndex in metricData.points.indices) {
+            val pt = metricData.points[selectedIndex]
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                color = NotelSurfaceHigh,
+                shape = RoundedCornerShape(8.dp),
+                border = BorderStroke(1.dp, GlassBorder)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val formattedVal = if (pt.secondaryValue != null) {
+                        "${pt.value?.toInt() ?: "--"}/${pt.secondaryValue.toInt()} ${metricData.unit}"
+                    } else if (pt.value != null) {
+                        if (metricData.unit == "h") {
+                            val h = pt.value.toInt()
+                            val m = ((pt.value - h) * 60).toInt()
+                            "${h}h ${m}m"
+                        } else if (metricData.unit == "%") {
+                            "${pt.value.toInt()}%"
+                        } else {
+                            "${pt.value.toInt()} ${metricData.unit}".trim()
+                        }
+                    } else "No data"
+
+                    Text(
+                        text = "${pt.dateStr} (${pt.dayLabel}): $formattedVal",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NotelPrimary
+                    )
+
+                    IconButton(
+                        onClick = { onSelectIndex(null) },
+                        modifier = Modifier.size(20.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Dismiss Tooltip",
+                            tint = NotelTextSecondary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        if (!metricData.isAvailable || metricData.emptyMessage != null && metricData.points.all { it.value == null }) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(140.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = metricData.emptyMessage ?: "No data available past 7 days",
+                    color = NotelTextSecondary,
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
+        } else {
+            WeeklySnapshotInteractiveCanvas(
+                metricData = metricData,
+                selectedIndex = selectedIndex,
+                onSelectIndex = onSelectIndex,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(160.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun WeeklySnapshotInteractiveCanvas(
+    metricData: WeeklySnapshotMetricData,
+    selectedIndex: Int?,
+    onSelectIndex: (Int?) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val points = metricData.points
-    val isBarChart = metricData.metricName in listOf("Logs", "Symptoms", "Medication Adherence", "Habit Completion")
+    val isBarChart = metricData.metricName in listOf("Calories", "Logs", "Symptoms", "Medication Adherence", "Habit Completion")
     val isBpChart = metricData.metricName == "Blood Pressure"
 
     val lineColor = when (metricData.metricName) {
@@ -245,7 +374,16 @@ private fun WeeklySnapshotChartCanvas(
         else -> NotelPrimary
     }
 
-    Box(modifier = modifier) {
+    Box(
+        modifier = modifier
+            .pointerInput(points) {
+                detectTapGestures { offset ->
+                    val stepX = size.width / points.size.coerceAtLeast(1)
+                    val clickedIdx = (offset.x / stepX).toInt().coerceIn(points.indices)
+                    onSelectIndex(clickedIdx)
+                }
+            }
+    ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val width = size.width
             val height = size.height
@@ -253,7 +391,7 @@ private fun WeeklySnapshotChartCanvas(
             val chartH = height - bottomPadding
             val stepX = width / (points.size.coerceAtLeast(1))
 
-            // Grid Lines (3 horizontal lines)
+            // Horizontal Grid Lines
             for (i in 0..2) {
                 val y = chartH * (i / 2f)
                 drawLine(
@@ -265,7 +403,6 @@ private fun WeeklySnapshotChartCanvas(
             }
 
             if (isBarChart) {
-                // Render Rounded Bar Chart
                 val maxVal = points.mapNotNull { it.value }.maxOrNull()?.coerceAtLeast(1f) ?: 100f
                 val barWidth = (stepX * 0.45f).coerceAtMost(28.dp.toPx())
 
@@ -276,22 +413,20 @@ private fun WeeklySnapshotChartCanvas(
                         val barH = (valF / maxVal) * (chartH * 0.85f)
                         val topY = chartH - barH
                         drawRoundRect(
-                            color = lineColor.copy(alpha = 0.85f),
+                            color = if (selectedIndex == index) lineColor else lineColor.copy(alpha = 0.75f),
                             topLeft = Offset(cx - barWidth / 2f, topY),
                             size = Size(barWidth, barH),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(4.dp.toPx())
+                            cornerRadius = CornerRadius(4.dp.toPx())
                         )
                     } else if (valF == 0f) {
-                        // Tiny dot for zero
                         drawCircle(
-                            color = lineColor.copy(alpha = 0.3f),
-                            radius = 2.dp.toPx(),
-                            center = Offset(cx, chartH - 2.dp.toPx())
+                            color = lineColor.copy(alpha = 0.4f),
+                            radius = 3.dp.toPx(),
+                            center = Offset(cx, chartH - 3.dp.toPx())
                         )
                     }
                 }
             } else if (isBpChart) {
-                // Dual Line Chart for Blood Pressure
                 val sysVals = points.mapNotNull { it.value }
                 val diaVals = points.mapNotNull { it.secondaryValue }
                 if (sysVals.isNotEmpty() || diaVals.isNotEmpty()) {
@@ -299,89 +434,87 @@ private fun WeeklySnapshotChartCanvas(
                     val minVal = (diaVals.minOrNull() ?: 60f).coerceAtMost(60f) - 10f
                     val valRange = (maxVal - minVal).coerceAtLeast(1f)
 
-                    val sysPath = Path()
-                    val diaPath = Path()
-                    var sysStarted = false
-                    var diaStarted = false
+                    // Draw segment paths without interpolating across missing null days
+                    var currentSysPath: Path? = null
+                    var currentDiaPath: Path? = null
 
                     points.forEachIndexed { index, pt ->
                         val cx = (index + 0.5f) * stepX
-                        pt.value?.let { sys ->
-                            val cy = chartH - ((sys - minVal) / valRange) * chartH
-                            if (!sysStarted) { sysPath.moveTo(cx, cy); sysStarted = true } else sysPath.lineTo(cx, cy)
-                            drawCircle(lineColor, radius = 3.dp.toPx(), center = Offset(cx, cy))
+
+                        if (pt.value != null) {
+                            val sysY = chartH - ((pt.value - minVal) / valRange) * chartH
+                            if (currentSysPath == null) {
+                                currentSysPath = Path().apply { moveTo(cx, sysY) }
+                            } else {
+                                currentSysPath?.lineTo(cx, sysY)
+                            }
+                            drawCircle(lineColor, radius = if (selectedIndex == index) 5.dp.toPx() else 3.dp.toPx(), center = Offset(cx, sysY))
+                        } else {
+                            currentSysPath?.let { drawPath(it, lineColor, style = Stroke(width = 2.dp.toPx())) }
+                            currentSysPath = null
                         }
-                        pt.secondaryValue?.let { dia ->
-                            val cy = chartH - ((dia - minVal) / valRange) * chartH
-                            if (!diaStarted) { diaPath.moveTo(cx, cy); diaStarted = true } else diaPath.lineTo(cx, cy)
-                            drawCircle(Color(0xFF42A5F5), radius = 3.dp.toPx(), center = Offset(cx, cy))
+
+                        if (pt.secondaryValue != null) {
+                            val diaY = chartH - ((pt.secondaryValue - minVal) / valRange) * chartH
+                            if (currentDiaPath == null) {
+                                currentDiaPath = Path().apply { moveTo(cx, diaY) }
+                            } else {
+                                currentDiaPath?.lineTo(cx, diaY)
+                            }
+                            drawCircle(Color(0xFF42A5F5), radius = if (selectedIndex == index) 5.dp.toPx() else 3.dp.toPx(), center = Offset(cx, diaY))
+                        } else {
+                            currentDiaPath?.let { drawPath(it, Color(0xFF42A5F5), style = Stroke(width = 2.dp.toPx())) }
+                            currentDiaPath = null
                         }
                     }
-
-                    if (sysStarted) drawPath(sysPath, lineColor, style = Stroke(width = 2.dp.toPx()))
-                    if (diaStarted) drawPath(diaPath, Color(0xFF42A5F5), style = Stroke(width = 2.dp.toPx()))
+                    currentSysPath?.let { drawPath(it, lineColor, style = Stroke(width = 2.dp.toPx())) }
+                    currentDiaPath?.let { drawPath(it, Color(0xFF42A5F5), style = Stroke(width = 2.dp.toPx())) }
                 }
             } else {
-                // Continuous Line Chart (Sleep, Heart Rate, Calories)
+                // Continuous Line Chart (Sleep & Heart Rate) with Gaps on missing null days
                 val validVals = points.mapNotNull { it.value }
-                if (validVals.size >= 2) {
+                if (validVals.isNotEmpty()) {
                     val minV = validVals.minOrNull() ?: 0f
                     val maxV = validVals.maxOrNull() ?: 1f
                     val range = (maxV - minV).let { if (it == 0f) 1f else it }
 
-                    val linePath = Path()
-                    val fillPath = Path()
+                    var currentSegmentPath: Path? = null
 
-                    val chartPoints = mutableListOf<Offset>()
                     points.forEachIndexed { index, pt ->
                         val cx = (index + 0.5f) * stepX
-                        pt.value?.let { v ->
-                            val cy = chartH - 12.dp.toPx() - (((v - minV) / range) * (chartH - 24.dp.toPx()))
-                            chartPoints.add(Offset(cx, cy))
+                        val valV = pt.value
+
+                        if (valV != null) {
+                            val cy = chartH - 12.dp.toPx() - (((valV - minV) / range) * (chartH - 24.dp.toPx()))
+                            val ptOffset = Offset(cx, cy)
+
+                            if (currentSegmentPath == null) {
+                                currentSegmentPath = Path().apply { moveTo(ptOffset.x, ptOffset.y) }
+                            } else {
+                                currentSegmentPath?.lineTo(ptOffset.x, ptOffset.y)
+                            }
+
+                            drawCircle(Color.White, radius = 3.5.dp.toPx(), center = ptOffset)
+                            drawCircle(
+                                color = if (selectedIndex == index) NotelPrimary else lineColor,
+                                radius = if (selectedIndex == index) 5.dp.toPx() else 2.dp.toPx(),
+                                center = ptOffset
+                            )
+                        } else {
+                            currentSegmentPath?.let {
+                                drawPath(it, lineColor, style = Stroke(width = 2.5.dp.toPx()))
+                            }
+                            currentSegmentPath = null
                         }
                     }
-
-                    if (chartPoints.isNotEmpty()) {
-                        linePath.moveTo(chartPoints[0].x, chartPoints[0].y)
-                        fillPath.moveTo(chartPoints[0].x, chartH)
-                        fillPath.lineTo(chartPoints[0].x, chartPoints[0].y)
-
-                        for (i in 1 until chartPoints.size) {
-                            linePath.lineTo(chartPoints[i].x, chartPoints[i].y)
-                            fillPath.lineTo(chartPoints[i].x, chartPoints[i].y)
-                        }
-
-                        fillPath.lineTo(chartPoints.last().x, chartH)
-                        fillPath.close()
-
-                        // Draw Gradient Fill
-                        drawPath(
-                            path = fillPath,
-                            brush = Brush.verticalGradient(
-                                colors = listOf(lineColor.copy(alpha = 0.35f), Color.Transparent),
-                                startY = 0f,
-                                endY = chartH
-                            )
-                        )
-
-                        // Draw Line
-                        drawPath(
-                            path = linePath,
-                            color = lineColor,
-                            style = Stroke(width = 2.5.dp.toPx())
-                        )
-
-                        // Draw Point Circles
-                        chartPoints.forEach { pt ->
-                            drawCircle(Color.White, radius = 3.5.dp.toPx(), center = pt)
-                            drawCircle(lineColor, radius = 2.dp.toPx(), center = pt)
-                        }
+                    currentSegmentPath?.let {
+                        drawPath(it, lineColor, style = Stroke(width = 2.5.dp.toPx()))
                     }
                 }
             }
         }
 
-        // X-Axis Labels Row below Canvas
+        // X-Axis Weekday Labels Row
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -390,13 +523,17 @@ private fun WeeklySnapshotChartCanvas(
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            points.forEach { pt ->
+            points.forEachIndexed { idx, pt ->
+                val isSelected = selectedIndex == idx
                 Text(
                     text = pt.dayLabel,
-                    color = NotelTextSecondary,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Medium,
-                    textAlign = TextAlign.Center
+                    color = if (isSelected) NotelPrimary else NotelTextSecondary,
+                    fontSize = 11.sp,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.semantics {
+                        contentDescription = "${pt.dayLabel}: ${pt.value ?: "No data"}"
+                    }
                 )
             }
         }

@@ -792,7 +792,20 @@ fun BodyLoadScreen(
                     state = snapshotState,
                     availableMetrics = availableMetrics,
                     onSelectMetric = { weeklySnapshotViewModel.selectMetric(it) },
-                    onRefresh = { weeklySnapshotViewModel.refresh() }
+                    onRefresh = { weeklySnapshotViewModel.refresh() },
+                    onViewDetails = { metric ->
+                        when (metric) {
+                            "Sleep Hours" -> onNavigateToConnections()
+                            "Resting Heart Rate" -> onNavigateToHeart()
+                            "Calories" -> onNavigateToConnections()
+                            "Logs" -> onNavigateToNotes()
+                            "Symptoms" -> onNavigateToNotes()
+                            "Medication Adherence" -> onNavigateToConnections()
+                            "Habit Completion" -> onNavigateToHabits()
+                            "Blood Pressure" -> onNavigateToConnections()
+                            else -> onNavigateToConnections()
+                        }
+                    }
                 )
             }
 

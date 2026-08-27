@@ -3,16 +3,15 @@ package com.notel.notel.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.notel.notel.data.healthconnect.HealthConnectManager
+import com.notel.notel.data.local.dao.LogEntryDao
+import com.notel.notel.data.local.dao.ScheduledDoseOccurrenceDao
 import com.notel.notel.data.preferences.NotelPreferences
-import com.notel.notel.data.repository.DailySnapshotPoint
+import com.notel.notel.data.repository.HabitRepository
 import com.notel.notel.data.repository.WeeklySnapshotMetricData
 import com.notel.notel.data.repository.WeeklySnapshotRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
@@ -24,14 +23,20 @@ sealed interface WeeklySnapshotState {
         val availableMetrics: List<String>,
         val isRefreshing: Boolean = false
     ) : WeeklySnapshotState
-    data class Error(val message: String) : WeeklySnapshotState
+    data class Error(
+        val message: String,
+        val retainedData: WeeklySnapshotMetricData? = null
+    ) : WeeklySnapshotState
 }
 
 @HiltViewModel
 class WeeklySnapshotViewModel @Inject constructor(
     private val weeklySnapshotRepository: WeeklySnapshotRepository,
     private val preferences: NotelPreferences,
-    private val healthConnectManager: HealthConnectManager
+    private val healthConnectManager: HealthConnectManager,
+    private val logEntryDao: LogEntryDao,
+    private val scheduledDoseOccurrenceDao: ScheduledDoseOccurrenceDao,
+    private val habitRepository: HabitRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<WeeklySnapshotState>(WeeklySnapshotState.Loading)
@@ -56,12 +61,11 @@ class WeeklySnapshotViewModel @Inject constructor(
     init {
         checkBloodPressureAvailability()
         observeSelectedMetric()
+        setupReactiveInvalidation()
     }
 
     fun checkBloodPressureAvailability() {
         viewModelScope.launch {
-            val hasBpPermission = healthConnectManager.hasBloodPressurePermission()
-            val bpRecords = if (hasBpPermission) healthConnectManager.readBloodPressureRecords(days = 10) else emptyList()
             val list = mutableListOf(
                 "Sleep Hours",
                 "Resting Heart Rate",
@@ -71,8 +75,16 @@ class WeeklySnapshotViewModel @Inject constructor(
                 "Medication Adherence",
                 "Habit Completion"
             )
-            if (hasBpPermission && bpRecords.isNotEmpty()) {
-                list.add("Blood Pressure")
+            try {
+                val hasBpPermission = healthConnectManager.hasBloodPressurePermission()
+                if (hasBpPermission) {
+                    val bpRecords = healthConnectManager.readBloodPressureRecords(days = 10)
+                    if (bpRecords.isNotEmpty()) {
+                        list.add("Blood Pressure")
+                    }
+                }
+            } catch (e: Exception) {
+                // Safeguard against Health Connect exceptions
             }
             availableMetrics.value = list
         }
@@ -87,6 +99,18 @@ class WeeklySnapshotViewModel @Inject constructor(
         }
     }
 
+    private fun setupReactiveInvalidation() {
+        viewModelScope.launch {
+            merge(
+                logEntryDao.getAllEntries(),
+                scheduledDoseOccurrenceDao.getOccurrencesForDate(""),
+                habitRepository.habits
+            ).collect {
+                loadMetricData(currentMetric)
+            }
+        }
+    }
+
     fun selectMetric(metric: String) {
         if (metric == currentMetric) return
         viewModelScope.launch {
@@ -95,6 +119,7 @@ class WeeklySnapshotViewModel @Inject constructor(
     }
 
     fun refresh() {
+        checkBloodPressureAvailability()
         loadMetricData(currentMetric, isExplicitRefresh = true)
     }
 
@@ -103,9 +128,15 @@ class WeeklySnapshotViewModel @Inject constructor(
         loadJob?.cancel()
 
         val currentState = _uiState.value
+        val retainedData = when (currentState) {
+            is WeeklySnapshotState.Ready -> currentState.metricData
+            is WeeklySnapshotState.Error -> currentState.retainedData
+            else -> null
+        }
+
         if (currentState is WeeklySnapshotState.Ready) {
             _uiState.value = currentState.copy(isRefreshing = true)
-        } else if (!isExplicitRefresh) {
+        } else if (!isExplicitRefresh && retainedData == null) {
             _uiState.value = WeeklySnapshotState.Loading
         }
 
@@ -121,11 +152,10 @@ class WeeklySnapshotViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 if (requestId == requestIdGenerator.get()) {
-                    if (currentState is WeeklySnapshotState.Ready) {
-                        _uiState.value = currentState.copy(isRefreshing = false)
-                    } else {
-                        _uiState.value = WeeklySnapshotState.Error(e.message ?: "Failed to load snapshot data")
-                    }
+                    _uiState.value = WeeklySnapshotState.Error(
+                        message = e.message ?: "Failed to load snapshot data",
+                        retainedData = retainedData
+                    )
                 }
             }
         }

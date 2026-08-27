@@ -5,16 +5,20 @@ import com.notel.notel.data.local.dao.CategoryDao
 import com.notel.notel.data.local.dao.LogEntryDao
 import com.notel.notel.data.local.dao.ScheduledDoseOccurrenceDao
 import com.notel.notel.data.remote.HabitDtoModel
+import com.notel.notel.util.TimeProvider
+import kotlinx.coroutines.flow.first
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
 data class DailySnapshotPoint(
     val dateStr: String, // "YYYY-MM-DD"
-    val dayLabel: String, // e.g. "Thu", "8/27"
+    val dayLabel: String, // e.g. "Thu"
     val value: Float?,   // null if missing / unrecorded
     val secondaryValue: Float? = null // for Blood Pressure (systolic/diastolic)
 )
@@ -24,7 +28,8 @@ data class WeeklySnapshotMetricData(
     val unit: String,
     val points: List<DailySnapshotPoint>,
     val averageOrTotalText: String,
-    val isAvailable: Boolean = true
+    val isAvailable: Boolean = true,
+    val emptyMessage: String? = null
 )
 
 @Singleton
@@ -33,16 +38,17 @@ class WeeklySnapshotRepository @Inject constructor(
     private val logEntryDao: LogEntryDao,
     private val categoryDao: CategoryDao,
     private val scheduledDoseOccurrenceDao: ScheduledDoseOccurrenceDao,
-    private val habitRepository: HabitRepository
+    private val habitRepository: HabitRepository,
+    private val timeProvider: TimeProvider
 ) {
     private val dateFormatter = DateTimeFormatter.ISO_LOCAL_DATE
-    private val labelFormatter = DateTimeFormatter.ofPattern("M/d")
+    private val dayOfWeekFormatter = DateTimeFormatter.ofPattern("EEE", Locale.ENGLISH)
 
-    suspend fun get7DaySnapshot(metricName: String, todayStr: String = LocalDate.now().toString()): WeeklySnapshotMetricData {
-        val endDate = try { LocalDate.parse(todayStr) } catch (e: Exception) { LocalDate.now() }
+    suspend fun get7DaySnapshot(metricName: String, targetToday: LocalDate? = null): WeeklySnapshotMetricData {
+        val endDate = targetToday ?: timeProvider.today()
         val dates = (6 downTo 0).map { endDate.minusDays(it.toLong()) }
         val dateStrs = dates.map { it.format(dateFormatter) }
-        val dayLabels = dates.map { it.format(labelFormatter) }
+        val dayLabels = dates.map { it.format(dayOfWeekFormatter) }
 
         return when (metricName) {
             "Sleep Hours" -> getSleepSnapshot(dateStrs, dayLabels)
@@ -50,7 +56,7 @@ class WeeklySnapshotRepository @Inject constructor(
             "Calories" -> getCaloriesSnapshot(dateStrs, dayLabels)
             "Logs" -> getLogsSnapshot(dates, dateStrs, dayLabels)
             "Symptoms" -> getSymptomsSnapshot(dates, dateStrs, dayLabels)
-            "Medication Adherence" -> getMedicationSnapshot(dateStrs, dayLabels)
+            "Medication Adherence" -> getMedicationSnapshot(dates, dateStrs, dayLabels)
             "Habit Completion" -> getHabitsSnapshot(dateStrs, dayLabels)
             "Blood Pressure" -> getBloodPressureSnapshot(dates, dateStrs, dayLabels)
             else -> getSleepSnapshot(dateStrs, dayLabels)
@@ -73,9 +79,10 @@ class WeeklySnapshotRepository @Inject constructor(
             val h = avg.toInt()
             val m = ((avg - h) * 60).toInt()
             "7-Day Avg: ${h}h ${m}m"
-        } else "No sleep data logged past 7 days"
+        } else "Not enough sleep data yet"
 
-        return WeeklySnapshotMetricData("Sleep Hours", "h", points, avgText)
+        val emptyMsg = if (validVals.isEmpty()) "Not enough sleep data yet" else null
+        return WeeklySnapshotMetricData("Sleep Hours", "h", points, avgText, emptyMessage = emptyMsg)
     }
 
     private suspend fun getRestingHrSnapshot(dateStrs: List<String>, dayLabels: List<String>): WeeklySnapshotMetricData {
@@ -93,7 +100,8 @@ class WeeklySnapshotRepository @Inject constructor(
             "7-Day Avg: ${validVals.average().toInt()} bpm"
         } else "No heart rate data logged past 7 days"
 
-        return WeeklySnapshotMetricData("Resting Heart Rate", "bpm", points, avgText)
+        val emptyMsg = if (validVals.isEmpty()) "No heart rate data logged past 7 days" else null
+        return WeeklySnapshotMetricData("Resting Heart Rate", "bpm", points, avgText, emptyMessage = emptyMsg)
     }
 
     private suspend fun getCaloriesSnapshot(dateStrs: List<String>, dayLabels: List<String>): WeeklySnapshotMetricData {
@@ -111,15 +119,16 @@ class WeeklySnapshotRepository @Inject constructor(
             "7-Day Total: ${validVals.sum().toInt()} kcal"
         } else "No calorie data logged past 7 days"
 
-        return WeeklySnapshotMetricData("Calories", "kcal", points, avgText)
+        val emptyMsg = if (validVals.isEmpty()) "No calorie data logged past 7 days" else null
+        return WeeklySnapshotMetricData("Calories", "kcal", points, avgText, emptyMessage = emptyMsg)
     }
 
     private suspend fun getLogsSnapshot(dates: List<LocalDate>, dateStrs: List<String>, dayLabels: List<String>): WeeklySnapshotMetricData {
-        val startTs = dates.first().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        val endTs = dates.last().plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val zoneId = timeProvider.zoneId()
+        val startTs = dates.first().atStartOfDay(zoneId).toInstant().toEpochMilli()
+        val endTs = dates.last().plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
         val entries = logEntryDao.getEntriesInDateRangeDirect(startTs, endTs)
 
-        val zoneId = ZoneId.systemDefault()
         val countsByDate = entries.groupBy {
             Instant.ofEpochMilli(it.timestamp).atZone(zoneId).toLocalDate().format(dateFormatter)
         }.mapValues { it.value.size }
@@ -137,8 +146,9 @@ class WeeklySnapshotRepository @Inject constructor(
         val symptomCategory = categoryDao.getCategoryBySlug("symptoms")
         val symptomCategoryId = symptomCategory?.id
 
-        val startTs = dates.first().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        val endTs = dates.last().plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val zoneId = timeProvider.zoneId()
+        val startTs = dates.first().atStartOfDay(zoneId).toInstant().toEpochMilli()
+        val endTs = dates.last().plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
         val entries = logEntryDao.getEntriesInDateRangeDirect(startTs, endTs)
 
         val symptomEntries = entries.filter { entry ->
@@ -151,7 +161,6 @@ class WeeklySnapshotRepository @Inject constructor(
             matchesCategory || matchesLegacyTextFallback
         }
 
-        val zoneId = ZoneId.systemDefault()
         val countsByDate = symptomEntries.groupBy {
             Instant.ofEpochMilli(it.timestamp).atZone(zoneId).toLocalDate().format(dateFormatter)
         }.mapValues { it.value.size }
@@ -165,15 +174,51 @@ class WeeklySnapshotRepository @Inject constructor(
         return WeeklySnapshotMetricData("Symptoms", "", points, "7-Day Total: $total symptoms logged")
     }
 
-    private suspend fun getMedicationSnapshot(dateStrs: List<String>, dayLabels: List<String>): WeeklySnapshotMetricData {
-        val points = dateStrs.zip(dayLabels).map { (dStr, label) ->
+    private suspend fun getMedicationSnapshot(dates: List<LocalDate>, dateStrs: List<String>, dayLabels: List<String>): WeeklySnapshotMetricData {
+        val today = timeProvider.today()
+        val currentTime = LocalTime.now(timeProvider.clock())
+
+        val points = dates.zip(dayLabels).map { (date, label) ->
+            val dStr = date.format(dateFormatter)
             val occurrences = scheduledDoseOccurrenceDao.getOccurrencesForDateDirect(dStr)
-            if (occurrences.isEmpty()) {
+
+            // Deduplicate by occurrenceKey if needed
+            val uniqueOccurrences = occurrences.distinctBy { it.occurrenceKey }
+
+            val evaluatedOccurrences = uniqueOccurrences.filter { occ ->
+                if (date.isBefore(today)) {
+                    // Past days: include all scheduled occurrences
+                    true
+                } else if (date == today) {
+                    // Today: include taken/skipped/snoozed or overdue pending doses
+                    if (occ.status == "TAKEN" || occ.status == "SKIPPED" || occ.status == "SNOOZED") {
+                        true
+                    } else if (occ.status == "PENDING") {
+                        val scheduledTime = try {
+                            if (!occ.scheduledTime.isNullOrBlank() && occ.scheduledTime.contains(":")) {
+                                LocalTime.parse(occ.scheduledTime)
+                            } else null
+                        } catch (e: Exception) { null }
+
+                        if (scheduledTime != null) {
+                            scheduledTime.isBefore(currentTime) || scheduledTime == currentTime
+                        } else {
+                            // If no explicit time, consider it due today
+                            true
+                        }
+                    } else false
+                } else {
+                    // Future days: exclude from denominator
+                    false
+                }
+            }
+
+            if (evaluatedOccurrences.isEmpty()) {
                 DailySnapshotPoint(dStr, label, null)
             } else {
-                val taken = occurrences.count { it.status == "TAKEN" }
-                val total = occurrences.size
-                val pct = (taken.toFloat() / total.toFloat()) * 100f
+                val takenCount = evaluatedOccurrences.count { it.status == "TAKEN" }
+                val totalCount = evaluatedOccurrences.size
+                val pct = (takenCount.toFloat() / totalCount.toFloat()) * 100f
                 DailySnapshotPoint(dStr, label, pct)
             }
         }
@@ -181,13 +226,15 @@ class WeeklySnapshotRepository @Inject constructor(
         val validVals = points.mapNotNull { it.value }
         val avgText = if (validVals.isNotEmpty()) {
             "7-Day Adherence: ${validVals.average().toInt()}%"
-        } else "No scheduled medication doses in past 7 days"
+        } else "No scheduled medication doses due in past 7 days"
 
-        return WeeklySnapshotMetricData("Medication Adherence", "%", points, avgText)
+        val emptyMsg = if (validVals.isEmpty()) "No scheduled medication doses due in past 7 days" else null
+        return WeeklySnapshotMetricData("Medication Adherence", "%", points, avgText, emptyMessage = emptyMsg)
     }
 
     private suspend fun getHabitsSnapshot(dateStrs: List<String>, dayLabels: List<String>): WeeklySnapshotMetricData {
-        val habits = habitRepository.habits.value
+        // Wait for habits flow state to avoid uninitialized empty reading
+        val habits = habitRepository.habits.first()
         val points = dateStrs.zip(dayLabels).map { (dStr, label) ->
             if (habits.isEmpty()) {
                 DailySnapshotPoint(dStr, label, null)
@@ -203,23 +250,24 @@ class WeeklySnapshotRepository @Inject constructor(
             "7-Day Completion: ${validVals.average().toInt()}%"
         } else "No habits configured"
 
-        return WeeklySnapshotMetricData("Habit Completion", "%", points, avgText)
+        val emptyMsg = if (habits.isEmpty()) "No habits configured" else if (validVals.isEmpty()) "No habit logs past 7 days" else null
+        return WeeklySnapshotMetricData("Habit Completion", "%", points, avgText, emptyMessage = emptyMsg)
     }
 
     private suspend fun getBloodPressureSnapshot(dates: List<LocalDate>, dateStrs: List<String>, dayLabels: List<String>): WeeklySnapshotMetricData {
-        val hasPermission = healthConnectManager.hasBloodPressurePermission()
+        val hasPermission = try { healthConnectManager.hasBloodPressurePermission() } catch (e: Exception) { false }
         if (!hasPermission) {
             val emptyPoints = dateStrs.zip(dayLabels).map { DailySnapshotPoint(it.first, it.second, null) }
-            return WeeklySnapshotMetricData("Blood Pressure", "mmHg", emptyPoints, "Blood Pressure permission not granted", isAvailable = false)
+            return WeeklySnapshotMetricData("Blood Pressure", "mmHg", emptyPoints, "Blood Pressure permission not granted", isAvailable = false, emptyMessage = "Blood Pressure permission not granted")
         }
 
-        val bpRecords = healthConnectManager.readBloodPressureRecords(days = 10)
+        val bpRecords = try { healthConnectManager.readBloodPressureRecords(days = 10) } catch (e: Exception) { emptyList() }
         if (bpRecords.isEmpty()) {
             val emptyPoints = dateStrs.zip(dayLabels).map { DailySnapshotPoint(it.first, it.second, null) }
-            return WeeklySnapshotMetricData("Blood Pressure", "mmHg", emptyPoints, "No blood pressure records found in Health Connect", isAvailable = false)
+            return WeeklySnapshotMetricData("Blood Pressure", "mmHg", emptyPoints, "No blood pressure records found", isAvailable = false, emptyMessage = "No blood pressure records found")
         }
 
-        val zoneId = ZoneId.systemDefault()
+        val zoneId = timeProvider.zoneId()
         val grouped = bpRecords.groupBy {
             Instant.ofEpochMilli(it.timeEpochMs).atZone(zoneId).toLocalDate().format(dateFormatter)
         }
@@ -242,6 +290,7 @@ class WeeklySnapshotRepository @Inject constructor(
             "7-Day Avg: ${validSys.average().toInt()}/${validDia.average().toInt()} mmHg"
         } else "No blood pressure data logged past 7 days"
 
-        return WeeklySnapshotMetricData("Blood Pressure", "mmHg", points, avgText, isAvailable = true)
+        val emptyMsg = if (validSys.isEmpty()) "No blood pressure data logged past 7 days" else null
+        return WeeklySnapshotMetricData("Blood Pressure", "mmHg", points, avgText, isAvailable = true, emptyMessage = emptyMsg)
     }
 }
