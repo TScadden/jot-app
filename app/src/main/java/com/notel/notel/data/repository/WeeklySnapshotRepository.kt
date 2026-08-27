@@ -1,17 +1,14 @@
 package com.notel.notel.data.repository
 
 import com.notel.notel.data.healthconnect.HealthConnectManager
-import com.notel.notel.data.local.dao.CategoryDao
 import com.notel.notel.data.local.dao.LogEntryDao
-import com.notel.notel.data.local.dao.ScheduledDoseOccurrenceDao
 import com.notel.notel.data.local.entity.LogEntry
-import com.notel.notel.data.local.entity.ScheduledDoseOccurrence
+import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.remote.HabitDtoModel
 import com.notel.notel.util.TimeProvider
 import kotlinx.coroutines.flow.first
 import java.time.Instant
 import java.time.LocalDate
-import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -117,90 +114,26 @@ class WeeklySnapshotAggregator(
         return WeeklySnapshotMetricData("Logs", "", points, "7-Day Total: $total logs")
     }
 
-    fun aggregateSymptoms(
+    fun aggregateHrSpikes(
+        dates: List<LocalDate>,
         dateStrs: List<String>,
         dayLabels: List<String>,
-        entries: List<LogEntry>,
-        symptomCategoryId: Int?
+        spikes: List<com.notel.notel.data.healthconnect.DailyHeartRateSummary>?
     ): WeeklySnapshotMetricData {
-        val zoneId = timeProvider.zoneId()
-
-        val symptomEntries = entries.filter { entry ->
-            val matchesCategory = symptomCategoryId != null && entry.categoryId == symptomCategoryId
-            val matchesLegacyTextFallback = entry.categoryId == 0 && (
-                entry.body.contains("headache", ignoreCase = true) ||
-                entry.body.contains("nausea", ignoreCase = true) ||
-                entry.body.contains("fatigue", ignoreCase = true)
-            )
-            matchesCategory || matchesLegacyTextFallback
+        if (spikes == null) {
+            val emptyPoints = dateStrs.zip(dayLabels).map { DailySnapshotPoint(it.first, it.second, null) }
+            return WeeklySnapshotMetricData("HR Spikes", "spikes", emptyPoints, "Could not load HR spike records", emptyMessage = "Could not load HR spike records")
         }
 
-        val countsByDate = symptomEntries.groupBy {
-            Instant.ofEpochMilli(it.timestamp).atZone(zoneId).toLocalDate().format(dateFormatter)
-        }.mapValues { it.value.size }
-
+        val spikesByDate = spikes.associate { it.date to it.spikeCount }
         val points = dateStrs.zip(dayLabels).map { (dStr, label) ->
-            val count = countsByDate[dStr] ?: 0
+            val count = spikesByDate[dStr] ?: 0
             DailySnapshotPoint(dStr, label, count.toFloat())
         }
 
         val total = points.sumOf { it.value?.toInt() ?: 0 }
-        return WeeklySnapshotMetricData("Symptoms", "", points, "7-Day Total: $total symptoms logged")
+        return WeeklySnapshotMetricData("HR Spikes", "spikes", points, "7-Day Total: $total spikes")
     }
-
-    fun aggregateMedication(
-        dates: List<LocalDate>,
-        dayLabels: List<String>,
-        occurrences: List<ScheduledDoseOccurrence>
-    ): WeeklySnapshotMetricData {
-        val today = timeProvider.today()
-        val currentTime = LocalTime.now(timeProvider.clock())
-
-        val grouped = occurrences.groupBy { it.scheduledDate }
-
-        val points = dates.zip(dayLabels).map { (date, label) ->
-            val dStr = date.format(dateFormatter)
-            val dayOccs = (grouped[dStr] ?: emptyList()).distinctBy { it.occurrenceKey }
-
-            val evaluatedOccurrences = dayOccs.filter { occ ->
-                if (date.isBefore(today)) {
-                    true
-                } else if (date == today) {
-                    if (occ.status == "TAKEN" || occ.status == "SKIPPED" || occ.status == "SNOOZED") {
-                        true
-                    } else if (occ.status == "PENDING") {
-                        val scheduledTime = try {
-                            if (!occ.scheduledTime.isNullOrBlank() && occ.scheduledTime.contains(":")) {
-                                LocalTime.parse(occ.scheduledTime)
-                            } else null
-                        } catch (e: Exception) { null }
-
-                        if (scheduledTime != null) {
-                            scheduledTime.isBefore(currentTime) || scheduledTime == currentTime
-                        } else true
-                    } else false
-                } else false
-            }
-
-            if (evaluatedOccurrences.isEmpty()) {
-                DailySnapshotPoint(dStr, label, null)
-            } else {
-                val takenCount = evaluatedOccurrences.count { it.status == "TAKEN" }
-                val totalCount = evaluatedOccurrences.size
-                val pct = (takenCount.toFloat() / totalCount.toFloat()) * 100f
-                DailySnapshotPoint(dStr, label, pct)
-            }
-        }
-
-        val validVals = points.mapNotNull { it.value }
-        val avgText = if (validVals.isNotEmpty()) {
-            "7-Day Adherence: ${validVals.average().toInt()}%"
-        } else "No scheduled medication doses due in past 7 days"
-
-        val emptyMsg = if (validVals.isEmpty()) "No scheduled medication doses due in past 7 days" else null
-        return WeeklySnapshotMetricData("Medication Adherence", "%", points, avgText, emptyMessage = emptyMsg)
-    }
-
     fun aggregateHabits(
         dateStrs: List<String>,
         dayLabels: List<String>,
@@ -236,8 +169,7 @@ class WeeklySnapshotAggregator(
 class WeeklySnapshotRepository @Inject constructor(
     private val healthConnectManager: HealthConnectManager,
     private val logEntryDao: LogEntryDao,
-    private val categoryDao: CategoryDao,
-    private val scheduledDoseOccurrenceDao: ScheduledDoseOccurrenceDao,
+    private val preferences: NotelPreferences,
     private val habitRepository: HabitRepository,
     private val timeProvider: TimeProvider
 ) {
@@ -256,6 +188,22 @@ class WeeklySnapshotRepository @Inject constructor(
                 val raw = healthConnectManager.readHistoricalHeartRate(days = 10)
                 aggregator.aggregateRestingHr(dateStrs, dayLabels, raw)
             }
+            "HR Spikes" -> {
+                val spikesStr = preferences.historicalHrSpikes.first()
+                val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                val cachedSpikes = try {
+                    if (spikesStr.isNotBlank()) {
+                        json.decodeFromString<List<com.notel.notel.data.healthconnect.DailyHeartRateSummary>>(spikesStr)
+                    } else null
+                } catch (e: Exception) { null }
+
+                val freshSpikes = try {
+                    healthConnectManager.readHistoricalHeartRateWithSpikes(days = 10)
+                } catch (e: Exception) { null }
+
+                val spikes = freshSpikes ?: cachedSpikes
+                aggregator.aggregateHrSpikes(dates, dateStrs, dayLabels, spikes)
+            }
             "Calories" -> {
                 val raw = healthConnectManager.readHistoricalCalories(days = 10)
                 aggregator.aggregateCalories(dateStrs, dayLabels, raw)
@@ -266,18 +214,6 @@ class WeeklySnapshotRepository @Inject constructor(
                 val endTs = dates.last().plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
                 val entries = logEntryDao.getEntriesInDateRangeDirect(startTs, endTs)
                 aggregator.aggregateLogs(dateStrs, dayLabels, entries)
-            }
-            "Symptoms" -> {
-                val category = categoryDao.getCategoryBySlug("symptoms")
-                val zoneId = timeProvider.zoneId()
-                val startTs = dates.first().atStartOfDay(zoneId).toInstant().toEpochMilli()
-                val endTs = dates.last().plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
-                val entries = logEntryDao.getEntriesInDateRangeDirect(startTs, endTs)
-                aggregator.aggregateSymptoms(dateStrs, dayLabels, entries, category?.id)
-            }
-            "Medication Adherence" -> {
-                val occurrences = scheduledDoseOccurrenceDao.getOccurrencesInDateRangeDirect(dateStrs.first(), dateStrs.last())
-                aggregator.aggregateMedication(dates, dayLabels, occurrences)
             }
             "Habit Completion" -> {
                 val isInit = habitRepository.isInitialized.value

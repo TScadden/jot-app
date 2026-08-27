@@ -5,10 +5,9 @@ object WeeklySnapshotDestinationMapper {
         return when (metricName) {
             "Sleep Hours" -> "sleep"
             "Resting Heart Rate" -> "fitbit"
+            "HR Spikes" -> "hr_spikes"
             "Calories" -> "key_metrics"
             "Logs" -> "history"
-            "Symptoms" -> "history"
-            "Medication Adherence" -> "medications"
             "Habit Completion" -> "habits"
             "Blood Pressure" -> "blood_pressure"
             else -> "history"

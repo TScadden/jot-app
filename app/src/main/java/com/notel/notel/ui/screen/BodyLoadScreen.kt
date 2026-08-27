@@ -797,20 +797,7 @@ fun BodyLoadScreen(
                     state = snapshotState,
                     availableMetrics = availableMetrics,
                     onSelectMetric = { weeklySnapshotViewModel.selectMetric(it) },
-                    onRefresh = { weeklySnapshotViewModel.refresh() },
-                    onViewDetails = { metric ->
-                        val dest = com.notel.notel.ui.navigation.WeeklySnapshotDestinationMapper.mapMetricToDestination(metric)
-                        when (dest) {
-                            "sleep" -> onNavigateToConnections()
-                            "fitbit" -> onNavigateToHeart()
-                            "key_metrics" -> onNavigateToConnections()
-                            "history" -> onNavigateToNotes()
-                            "medications" -> onNavigateToMedications()
-                            "habits" -> onNavigateToHabits()
-                            "blood_pressure" -> onNavigateToConnections()
-                            else -> onNavigateToNotes()
-                        }
-                    }
+                    onRefresh = { weeklySnapshotViewModel.refresh() }
                 )
             }
 

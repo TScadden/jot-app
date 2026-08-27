@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Close
@@ -40,6 +39,8 @@ import com.notel.notel.data.repository.WeeklySnapshotMetricData
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.WeeklySnapshotState
 
+// TODO: Restore metric-specific "View details" navigation after destination UX is finalized.
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WeeklySnapshotCard(
@@ -47,7 +48,6 @@ fun WeeklySnapshotCard(
     availableMetrics: List<String>,
     onSelectMetric: (String) -> Unit,
     onRefresh: () -> Unit,
-    onViewDetails: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -63,12 +63,13 @@ fun WeeklySnapshotCard(
             var selectedPointIndex by remember { mutableStateOf<Int?>(null) }
 
             val currentMetric = when (state) {
-                is WeeklySnapshotState.Ready -> state.metricData.metricName
+                is WeeklySnapshotState.ReadyWithData -> state.metricData.metricName
+                is WeeklySnapshotState.ReadyEmpty -> state.metricName
                 is WeeklySnapshotState.Error -> state.retainedData?.metricName ?: "Sleep Hours"
                 else -> "Sleep Hours"
             }
 
-            // Header Row: Title, Dropdown, Refresh & View Details
+            // Header Row: Title & Refresh
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -90,37 +91,16 @@ fun WeeklySnapshotCard(
                     )
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(
-                        onClick = { onViewDetails(currentMetric) },
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-                    ) {
-                        Text(
-                            text = "View details",
-                            fontSize = 12.sp,
-                            color = NotelPrimary,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                            contentDescription = "View Details for $currentMetric",
-                            tint = NotelPrimary,
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
-
-                    IconButton(
-                        onClick = onRefresh,
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Refresh Weekly Snapshot",
-                            tint = NotelTextSecondary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
+                IconButton(
+                    onClick = onRefresh,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Refresh Weekly Snapshot",
+                        tint = NotelTextSecondary,
+                        modifier = Modifier.size(16.dp)
+                    )
                 }
             }
 
@@ -200,6 +180,21 @@ fun WeeklySnapshotCard(
                         )
                     }
                 }
+                is WeeklySnapshotState.ReadyEmpty -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(140.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = state.emptyMessage,
+                            color = NotelTextSecondary,
+                            fontSize = 13.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
                 is WeeklySnapshotState.Error -> {
                     if (state.retainedData != null) {
                         SnapshotDataContent(
@@ -223,7 +218,7 @@ fun WeeklySnapshotCard(
                         }
                     }
                 }
-                is WeeklySnapshotState.Ready -> {
+                is WeeklySnapshotState.ReadyWithData -> {
                     SnapshotDataContent(
                         metricData = state.metricData,
                         selectedIndex = selectedPointIndex,
@@ -359,16 +354,15 @@ private fun WeeklySnapshotInteractiveCanvas(
     modifier: Modifier = Modifier
 ) {
     val points = metricData.points
-    val isBarChart = metricData.metricName in listOf("Calories", "Logs", "Symptoms", "Medication Adherence", "Habit Completion")
+    val isBarChart = metricData.metricName in listOf("HR Spikes", "Calories", "Logs", "Habit Completion")
     val isBpChart = metricData.metricName == "Blood Pressure"
 
     val lineColor = when (metricData.metricName) {
         "Sleep Hours" -> Color(0xFF42A5F5)
         "Resting Heart Rate" -> Color(0xFFFF5E62)
+        "HR Spikes" -> Color(0xFFE53935)
         "Calories" -> Color(0xFFFFA726)
         "Logs" -> Color(0xFF66BB6A)
-        "Symptoms" -> Color(0xFFAB47BC)
-        "Medication Adherence" -> Color(0xFF26A69A)
         "Habit Completion" -> Color(0xFFFFB74D)
         "Blood Pressure" -> Color(0xFFEF5350)
         else -> NotelPrimary
