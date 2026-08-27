@@ -487,12 +487,24 @@ class NotelPreferences @Inject constructor(
     }
 
     val selectedWeeklySnapshotGraph: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[SELECTED_WEEKLY_SNAPSHOT_GRAPH] ?: "Sleep Hours"
+        prefs[SELECTED_WEEKLY_SNAPSHOT_GRAPH] ?: com.notel.notel.data.model.WeeklySnapshotMetric.SLEEP_HOURS.stableKey
+    }
+
+    val selectedWeeklySnapshotMetric: Flow<com.notel.notel.data.model.WeeklySnapshotMetric> = context.dataStore.data.map { prefs ->
+        val raw = prefs[SELECTED_WEEKLY_SNAPSHOT_GRAPH]
+        com.notel.notel.data.model.WeeklySnapshotMetric.fromKeyOrDisplayName(raw)
     }
 
     suspend fun setSelectedWeeklySnapshotGraph(metric: String) {
+        val enumValue = com.notel.notel.data.model.WeeklySnapshotMetric.fromKeyOrDisplayName(metric)
         context.dataStore.edit { prefs ->
-            prefs[SELECTED_WEEKLY_SNAPSHOT_GRAPH] = metric
+            prefs[SELECTED_WEEKLY_SNAPSHOT_GRAPH] = enumValue.stableKey
+        }
+    }
+
+    suspend fun setSelectedWeeklySnapshotMetric(metric: com.notel.notel.data.model.WeeklySnapshotMetric) {
+        context.dataStore.edit { prefs ->
+            prefs[SELECTED_WEEKLY_SNAPSHOT_GRAPH] = metric.stableKey
         }
     }
 

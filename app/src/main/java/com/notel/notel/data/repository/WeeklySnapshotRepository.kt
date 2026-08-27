@@ -6,6 +6,9 @@ import com.notel.notel.data.local.entity.LogEntry
 import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.remote.HabitDtoModel
 import com.notel.notel.util.TimeProvider
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import java.time.Instant
 import java.time.LocalDate
@@ -175,70 +178,146 @@ class WeeklySnapshotRepository @Inject constructor(
 ) {
     val aggregator = WeeklySnapshotAggregator(timeProvider)
 
+    private val inMemoryCache = java.util.concurrent.ConcurrentHashMap<String, WeeklySnapshotCacheEntry>()
+    private val activeRefreshJobs = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.Deferred<SnapshotReadResult<WeeklySnapshotMetricData>>>()
+    private val mutex = kotlinx.coroutines.sync.Mutex()
+
+    fun getCachedSnapshot(metric: com.notel.notel.data.model.WeeklySnapshotMetric, targetToday: LocalDate? = null): WeeklySnapshotMetricData? {
+        val today = targetToday ?: timeProvider.today()
+        val entry = inMemoryCache[metric.stableKey] ?: return null
+        if (entry.key.rangeEndDate == today) {
+            return entry.metricData
+        }
+        return null
+    }
+
+    suspend fun get7DaySnapshotTyped(
+        metric: com.notel.notel.data.model.WeeklySnapshotMetric,
+        targetToday: LocalDate? = null,
+        forceRefresh: Boolean = false
+    ): SnapshotReadResult<WeeklySnapshotMetricData> {
+        val today = targetToday ?: timeProvider.today()
+        val cacheKey = MetricCacheKey(metric.stableKey, today)
+
+        if (!forceRefresh) {
+            val cached = inMemoryCache[metric.stableKey]
+            if (cached != null && cached.key.rangeEndDate == today) {
+                return SnapshotReadResult.Success(cached.metricData)
+            }
+        }
+
+        // Single-flight deduplication
+        val existingJob = activeRefreshJobs[metric.stableKey]
+        if (existingJob != null && existingJob.isActive) {
+            return existingJob.await()
+        }
+
+        return coroutineScope {
+            val deferred = async(Dispatchers.IO) {
+                try {
+                    val result = fetchMetricDataDirect(metric, today)
+                    if (result is SnapshotReadResult.Success) {
+                        inMemoryCache[metric.stableKey] = WeeklySnapshotCacheEntry(
+                            key = cacheKey,
+                            metricData = result.data,
+                            timestampMs = System.currentTimeMillis(),
+                            readClassification = if (result.data.points.any { it.value != null }) "SUCCESS" else "NO_DATA",
+                            startDate = today.minusDays(6),
+                            endDate = today
+                        )
+                    }
+                    result
+                } finally {
+                    activeRefreshJobs.remove(metric.stableKey)
+                }
+            }
+            activeRefreshJobs[metric.stableKey] = deferred
+            deferred.await()
+        }
+    }
+
     suspend fun get7DaySnapshot(metricName: String, targetToday: LocalDate? = null): WeeklySnapshotMetricData {
-        val (dates, dateStrsAndLabels) = aggregator.get7DayDates(targetToday)
-        val (dateStrs, dayLabels) = dateStrsAndLabels
-
-        return when (metricName) {
-            "Sleep Hours" -> {
-                val raw = healthConnectManager.readHistoricalSleep(days = 10, targetDateStr = dateStrs.last())
-                aggregator.aggregateSleep(dateStrs, dayLabels, raw)
-            }
-            "Resting Heart Rate" -> {
-                val raw = healthConnectManager.readHistoricalHeartRate(days = 10)
-                aggregator.aggregateRestingHr(dateStrs, dayLabels, raw)
-            }
-            "HR Spikes" -> {
-                val spikesStr = preferences.historicalHrSpikes.first()
-                val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-                val cachedSpikes = try {
-                    if (spikesStr.isNotBlank()) {
-                        json.decodeFromString<List<com.notel.notel.data.healthconnect.DailyHeartRateSummary>>(spikesStr)
-                    } else null
-                } catch (e: Exception) { null }
-
-                val freshSpikes = try {
-                    healthConnectManager.readHistoricalHeartRateWithSpikes(days = 10)
-                } catch (e: Exception) { null }
-
-                val spikes = freshSpikes ?: cachedSpikes
-                aggregator.aggregateHrSpikes(dates, dateStrs, dayLabels, spikes)
-            }
-            "Calories" -> {
-                val raw = healthConnectManager.readHistoricalCalories(days = 10)
-                aggregator.aggregateCalories(dateStrs, dayLabels, raw)
-            }
-            "Logs" -> {
-                val zoneId = timeProvider.zoneId()
-                val startTs = dates.first().atStartOfDay(zoneId).toInstant().toEpochMilli()
-                val endTs = dates.last().plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
-                val entries = logEntryDao.getEntriesInDateRangeDirect(startTs, endTs)
-                aggregator.aggregateLogs(dateStrs, dayLabels, entries)
-            }
-            "Habit Completion" -> {
-                val isInit = habitRepository.isInitialized.value
-                val habits = habitRepository.habits.value
-                aggregator.aggregateHabits(dateStrs, dayLabels, habits, isInit)
-            }
-            "Blood Pressure" -> getBloodPressureSnapshot(dates, dateStrs, dayLabels)
+        val metric = com.notel.notel.data.model.WeeklySnapshotMetric.fromKeyOrDisplayName(metricName)
+        return when (val res = get7DaySnapshotTyped(metric, targetToday, forceRefresh = false)) {
+            is SnapshotReadResult.Success -> res.data
             else -> {
-                val raw = healthConnectManager.readHistoricalSleep(days = 10, targetDateStr = dateStrs.last())
-                aggregator.aggregateSleep(dateStrs, dayLabels, raw)
+                val (dates, dateStrsAndLabels) = aggregator.get7DayDates(targetToday)
+                val emptyPoints = dateStrsAndLabels.first.zip(dateStrsAndLabels.second).map { DailySnapshotPoint(it.first, it.second, null) }
+                WeeklySnapshotMetricData(metric.displayName, "", emptyPoints, "No data available", isAvailable = false, emptyMessage = "No data available")
             }
         }
     }
 
-    private suspend fun getBloodPressureSnapshot(dates: List<LocalDate>, dateStrs: List<String>, dayLabels: List<String>): WeeklySnapshotMetricData {
+    private suspend fun fetchMetricDataDirect(
+        metric: com.notel.notel.data.model.WeeklySnapshotMetric,
+        targetToday: LocalDate
+    ): SnapshotReadResult<WeeklySnapshotMetricData> {
+        val (dates, dateStrsAndLabels) = aggregator.get7DayDates(targetToday)
+        val (dateStrs, dayLabels) = dateStrsAndLabels
+
+        return try {
+            val data = when (metric) {
+                com.notel.notel.data.model.WeeklySnapshotMetric.SLEEP_HOURS -> {
+                    val raw = healthConnectManager.readHistoricalSleep(days = 10, targetDateStr = dateStrs.last())
+                    aggregator.aggregateSleep(dateStrs, dayLabels, raw)
+                }
+                com.notel.notel.data.model.WeeklySnapshotMetric.RESTING_HEART_RATE -> {
+                    val raw = healthConnectManager.readHistoricalHeartRate(days = 10)
+                    aggregator.aggregateRestingHr(dateStrs, dayLabels, raw)
+                }
+                com.notel.notel.data.model.WeeklySnapshotMetric.HR_SPIKES -> {
+                    val spikesStr = preferences.historicalHrSpikes.first()
+                    val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                    val cachedSpikes = try {
+                        if (spikesStr.isNotBlank()) {
+                            json.decodeFromString<List<com.notel.notel.data.healthconnect.DailyHeartRateSummary>>(spikesStr)
+                        } else null
+                    } catch (e: Exception) { null }
+
+                    val freshSpikes = try {
+                        healthConnectManager.readHistoricalHeartRateWithSpikes(days = 10)
+                    } catch (e: Exception) { null }
+
+                    val spikes = freshSpikes ?: cachedSpikes
+                    aggregator.aggregateHrSpikes(dates, dateStrs, dayLabels, spikes)
+                }
+                com.notel.notel.data.model.WeeklySnapshotMetric.CALORIES -> {
+                    val raw = healthConnectManager.readHistoricalCalories(days = 10)
+                    aggregator.aggregateCalories(dateStrs, dayLabels, raw)
+                }
+                com.notel.notel.data.model.WeeklySnapshotMetric.LOGS -> {
+                    val zoneId = timeProvider.zoneId()
+                    val startTs = dates.first().atStartOfDay(zoneId).toInstant().toEpochMilli()
+                    val endTs = dates.last().plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
+                    val entries = logEntryDao.getEntriesInDateRangeDirect(startTs, endTs)
+                    aggregator.aggregateLogs(dateStrs, dayLabels, entries)
+                }
+                com.notel.notel.data.model.WeeklySnapshotMetric.HABIT_COMPLETION -> {
+                    val isInit = habitRepository.isInitialized.value
+                    val habits = habitRepository.habits.value
+                    aggregator.aggregateHabits(dateStrs, dayLabels, habits, isInit)
+                }
+                com.notel.notel.data.model.WeeklySnapshotMetric.BLOOD_PRESSURE -> {
+                    return getBloodPressureSnapshotResult(dates, dateStrs, dayLabels)
+                }
+            }
+            SnapshotReadResult.Success(data)
+        } catch (e: Exception) {
+            SnapshotReadResult.Failure(e)
+        }
+    }
+
+    private suspend fun getBloodPressureSnapshotResult(dates: List<LocalDate>, dateStrs: List<String>, dayLabels: List<String>): SnapshotReadResult<WeeklySnapshotMetricData> {
         val hasPermission = try { healthConnectManager.hasBloodPressurePermission() } catch (e: Exception) { false }
         if (!hasPermission) {
-            val emptyPoints = dateStrs.zip(dayLabels).map { DailySnapshotPoint(it.first, it.second, null) }
-            return WeeklySnapshotMetricData("Blood Pressure", "mmHg", emptyPoints, "Blood Pressure permission not granted", isAvailable = false, emptyMessage = "Blood Pressure permission not granted")
+            return SnapshotReadResult.PermissionRequired
         }
 
         val bpRecords = try { healthConnectManager.readBloodPressureRecords(days = 10) } catch (e: Exception) { emptyList() }
         if (bpRecords.isEmpty()) {
             val emptyPoints = dateStrs.zip(dayLabels).map { DailySnapshotPoint(it.first, it.second, null) }
-            return WeeklySnapshotMetricData("Blood Pressure", "mmHg", emptyPoints, "No blood pressure records found", isAvailable = false, emptyMessage = "No blood pressure records found")
+            val data = WeeklySnapshotMetricData("Blood Pressure", "mmHg", emptyPoints, "No blood pressure records found", isAvailable = false, emptyMessage = "No blood pressure records found")
+            return SnapshotReadResult.Success(data)
         }
 
         val zoneId = timeProvider.zoneId()
@@ -265,6 +344,7 @@ class WeeklySnapshotRepository @Inject constructor(
         } else "No blood pressure data logged past 7 days"
 
         val emptyMsg = if (validSys.isEmpty()) "No blood pressure data logged past 7 days" else null
-        return WeeklySnapshotMetricData("Blood Pressure", "mmHg", points, avgText, isAvailable = true, emptyMessage = emptyMsg)
+        val data = WeeklySnapshotMetricData("Blood Pressure", "mmHg", points, avgText, isAvailable = true, emptyMessage = emptyMsg)
+        return SnapshotReadResult.Success(data)
     }
 }

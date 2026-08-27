@@ -63,7 +63,11 @@ class WeeklySnapshotViewModelTest {
         logEntryDao = mock(LogEntryDao::class.java)
         habitRepository = mock(HabitRepository::class.java)
 
+        val selectedMetricFlow = MutableStateFlow(com.notel.notel.data.model.WeeklySnapshotMetric.fromKeyOrDisplayName(selectedGraphFlow.value))
         `when`(preferences.selectedWeeklySnapshotGraph).thenReturn(selectedGraphFlow)
+        `when`(preferences.selectedWeeklySnapshotMetric).thenAnswer {
+            MutableStateFlow(com.notel.notel.data.model.WeeklySnapshotMetric.fromKeyOrDisplayName(selectedGraphFlow.value))
+        }
         `when`(preferences.historicalHrSpikes).thenReturn(historicalSpikesFlow)
         `when`(logEntryDao.getAllEntries()).thenReturn(logEntriesFlow)
         `when`(habitRepository.habits).thenReturn(habitsFlow)
@@ -86,11 +90,16 @@ class WeeklySnapshotViewModelTest {
         )
     }
 
-    private fun stubGet7DaySnapshot(metric: String, data: WeeklySnapshotMetricData, callCounter: AtomicInteger? = null) {
+    private fun stubGet7DaySnapshot(metricName: String, data: WeeklySnapshotMetricData, callCounter: AtomicInteger? = null) {
+        val metricEnum = com.notel.notel.data.model.WeeklySnapshotMetric.fromKeyOrDisplayName(metricName)
         runBlocking {
-            `when`(weeklySnapshotRepository.get7DaySnapshot(eq(metric), anyOrNull())).thenAnswer {
+            `when`(weeklySnapshotRepository.get7DaySnapshot(eq(metricName), anyOrNull())).thenAnswer {
                 callCounter?.incrementAndGet()
                 data
+            }
+            `when`(weeklySnapshotRepository.get7DaySnapshotTyped(eq(metricEnum), anyOrNull(), anyOrNull())).thenAnswer {
+                callCounter?.incrementAndGet()
+                com.notel.notel.data.repository.SnapshotReadResult.Success(data)
             }
         }
     }
