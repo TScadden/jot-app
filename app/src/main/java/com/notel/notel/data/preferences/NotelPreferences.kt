@@ -115,6 +115,8 @@ class NotelPreferences @Inject constructor(
         val USER_NICKNAME = stringPreferencesKey("user_nickname")
         val USER_TAG = stringPreferencesKey("user_tag")
         val USER_EMAIL = stringPreferencesKey("user_email")
+        val STABLE_USER_ID = stringPreferencesKey("stable_user_id")
+        val RECONNECT_REQUIRED = booleanPreferencesKey("reconnect_required")
         val WEEKLY_SCORE = intPreferencesKey("weekly_score")
         val SHARE_DATA_WITH_FRIENDS = booleanPreferencesKey("share_data_with_friends")
         val TODAY_SLEEP_MINS = intPreferencesKey("today_sleep_mins")
@@ -475,7 +477,51 @@ class NotelPreferences @Inject constructor(
         prefs[USER_CONTEXT_HIDDEN] ?: true
     }
 
+    val stableUserId: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[STABLE_USER_ID] ?: ""
+    }
+
+    val reconnectRequired: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[RECONNECT_REQUIRED] ?: false
+    }
+
+    suspend fun saveSessionAtomically(
+        accessToken: String,
+        refreshToken: String,
+        email: String? = null,
+        userId: String? = null
+    ) {
+        if (accessToken.isBlank() || refreshToken.isBlank()) return
+        val encAccess = NotelCrypto.encrypt(accessToken)
+        val encRefresh = NotelCrypto.encrypt(refreshToken)
+        context.dataStore.edit { prefs ->
+            prefs[AUTH_TOKEN] = encAccess
+            prefs[REFRESH_TOKEN] = encRefresh
+            prefs[LOGGED_IN] = true
+            prefs[RECONNECT_REQUIRED] = false
+            if (!email.isNullOrBlank()) prefs[USER_EMAIL] = email
+            if (!userId.isNullOrBlank()) prefs[STABLE_USER_ID] = userId
+        }
+    }
+
+    suspend fun markReconnectRequiredAtomically() {
+        context.dataStore.edit { prefs ->
+            prefs[RECONNECT_REQUIRED] = true
+            // Do NOT clear refresh_token or auth_token or room DB
+        }
+    }
+
+    suspend fun clearSessionAtomically() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(AUTH_TOKEN)
+            prefs.remove(REFRESH_TOKEN)
+            prefs[LOGGED_IN] = false
+            prefs[RECONNECT_REQUIRED] = false
+        }
+    }
+
     suspend fun setAuthToken(token: String) {
+        if (token.isBlank()) return
         val encrypted = NotelCrypto.encrypt(token)
         context.dataStore.edit { it[AUTH_TOKEN] = encrypted }
     }
@@ -492,12 +538,13 @@ class NotelPreferences @Inject constructor(
     }
 
     suspend fun setRefreshToken(token: String) {
+        if (token.isBlank()) return
         val encrypted = NotelCrypto.encrypt(token)
         context.dataStore.edit { it[REFRESH_TOKEN] = encrypted }
     }
 
     suspend fun clearRefreshToken() {
-        context.dataStore.edit { it.remove(REFRESH_TOKEN) }
+        // Deprecated: avoid clearing standalone refresh tokens to protect session
     }
 
     suspend fun setOnboardingComplete(complete: Boolean) {
