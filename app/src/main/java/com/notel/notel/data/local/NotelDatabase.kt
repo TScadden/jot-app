@@ -37,7 +37,7 @@ import kotlinx.coroutines.launch
         com.notel.notel.data.local.entity.InsightEntryCrossRef::class
     ],
     version = 28,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class NotelDatabase : RoomDatabase() {
     abstract fun logEntryDao(): LogEntryDao

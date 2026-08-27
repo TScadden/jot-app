@@ -19,6 +19,10 @@ android {
         versionName = "2.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        
+        ksp {
+            arg("room.schemaLocation", "$projectDir/schemas")
+        }
     }
 
     signingConfigs {
@@ -52,6 +56,12 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+
+    sourceSets {
+        getByName("androidTest") {
+            assets.srcDir("$projectDir/schemas")
+        }
     }
 }
 

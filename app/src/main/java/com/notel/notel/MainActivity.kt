@@ -260,6 +260,52 @@ class MainActivity : ComponentActivity() {
 
                 val hasConsentedState by notelPreferences.hasConsented.collectAsState(initial = false)
                 val introConsultationSeenState by notelPreferences.introConsultationSeen.collectAsState(initial = false)
+                val reconnectRequiredState by notelPreferences.reconnectRequired.collectAsState(initial = false)
+                val coroutineScope = rememberCoroutineScope()
+
+                if (reconnectRequiredState) {
+                    AlertDialog(
+                        onDismissRequest = { /* Modal: force user action */ },
+                        title = {
+                            Text(
+                                "Session Expired",
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = NotelTextPrimary
+                            )
+                        },
+                        text = {
+                            Text(
+                                "Your login session has expired. Please sign back in to resume synchronization. Your local data remains safe on this device.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = NotelTextSecondary
+                            )
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    navController.navigate("login?mode=login")
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary)
+                            ) {
+                                Text("Sign In", color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = {
+                                    coroutineScope.launch {
+                                        notelPreferences.setReconnectRequiredDismissed(true)
+                                    }
+                                }
+                            ) {
+                                Text("Not Now", color = NotelTextSecondary)
+                            }
+                        },
+                        containerColor = NotelSurface,
+                        shape = RoundedCornerShape(24.dp)
+                    )
+                }
 
                 Box(modifier = Modifier.fillMaxSize()) {
                     // Main Content

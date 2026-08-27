@@ -143,10 +143,20 @@ class LoginViewModel @Inject constructor(
                 val body = response.body()
                 
                 if (response.isSuccessful && body != null && body.token?.isNotBlank() == true) {
-                    preferences.setAuthToken(body.token!!)
-                    body.refreshToken?.takeIf { it.isNotBlank() }?.let { preferences.setRefreshToken(it) }
-                    preferences.setLoggedIn(true)
-                    preferences.setUserEmail(email)
+                    val newUserId = body.userId ?: ""
+                    val currentStableUserId = preferences.stableUserId.first()
+                    if (currentStableUserId.isNotBlank() && newUserId.isNotBlank() && currentStableUserId != newUserId) {
+                        errorMsg = "Account mismatch: Local data belongs to another account."
+                        isLoading = false
+                        return@launch
+                    }
+
+                    preferences.saveSessionAtomically(
+                        accessToken = body.token!!,
+                        refreshToken = body.refreshToken ?: "",
+                        email = email,
+                        userId = newUserId.ifBlank { null }
+                    )
                     preferences.setOnboardingComplete(true)
                     preferences.setCupTheorySeen(true)
                     preferences.setSettingsTutorialSeen(true)
@@ -189,10 +199,20 @@ class LoginViewModel @Inject constructor(
                 
                 if (response.isSuccessful && body != null && body.token?.isNotBlank() == true) {
                     val email = body.email ?: ""
-                    preferences.setAuthToken(body.token!!)
-                    body.refreshToken?.takeIf { it.isNotBlank() }?.let { preferences.setRefreshToken(it) }
-                    preferences.setLoggedIn(true)
-                    preferences.setUserEmail(email)
+                    val newUserId = body.userId ?: ""
+                    val currentStableUserId = preferences.stableUserId.first()
+                    if (currentStableUserId.isNotBlank() && newUserId.isNotBlank() && currentStableUserId != newUserId) {
+                        errorMsg = "Account mismatch: Local data belongs to another account."
+                        isLoading = false
+                        return@launch
+                    }
+
+                    preferences.saveSessionAtomically(
+                        accessToken = body.token!!,
+                        refreshToken = body.refreshToken ?: "",
+                        email = email,
+                        userId = newUserId.ifBlank { null }
+                    )
                     preferences.setGoogleAccountConnected(true)
                     preferences.setGoogleAccountEmail(email)
                     preferences.setOnboardingComplete(true)
