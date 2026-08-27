@@ -1,6 +1,12 @@
 package com.notel.notel.ui.component
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
@@ -23,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -69,6 +76,24 @@ fun WeeklySnapshotCard(
                 else -> "Sleep Hours"
             }
 
+            val isRefreshing = when (state) {
+                is WeeklySnapshotState.ReadyWithData -> state.isRefreshing
+                is WeeklySnapshotState.ReadyEmpty -> state.isRefreshing
+                is WeeklySnapshotState.Loading -> true
+                else -> false
+            }
+
+            val infiniteTransition = rememberInfiniteTransition(label = "refreshRotation")
+            val rotationAngle by infiniteTransition.animateFloat(
+                initialValue = 0f,
+                targetValue = 360f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(1000, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart
+                ),
+                label = "refreshAngle"
+            )
+
             // Header Row: Title & Refresh
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -92,14 +117,23 @@ fun WeeklySnapshotCard(
                 }
 
                 IconButton(
-                    onClick = onRefresh,
+                    onClick = { if (!isRefreshing) onRefresh() },
+                    enabled = !isRefreshing,
                     modifier = Modifier.size(28.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Refresh,
-                        contentDescription = "Refresh Weekly Snapshot",
-                        tint = NotelTextSecondary,
-                        modifier = Modifier.size(16.dp)
+                        contentDescription = if (isRefreshing) "Refreshing weekly snapshot" else "Refresh weekly snapshot",
+                        tint = if (isRefreshing) NotelPrimary else NotelTextSecondary,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .graphicsLayer {
+                                if (isRefreshing) {
+                                    rotationZ = rotationAngle
+                                } else {
+                                    rotationZ = 0f
+                                }
+                            }
                     )
                 }
             }

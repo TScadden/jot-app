@@ -63,20 +63,28 @@ class WeeklySnapshotViewModel @Inject constructor(
     private var loadJob: Job? = null
     private var currentMetric: String = "Sleep Hours"
     private var lastHomeRefreshTimeMs: Long = 0L
+    private var lastHomeRefreshDate: java.time.LocalDate? = null
     private val freshnessIntervalMs = 60_000L // 60s freshness interval
+    private var isInitialized = false
 
     init {
         checkBloodPressureAvailability()
         observeSelectedMetric()
-        setupReactiveInvalidation()
+        setupSourceSpecificReactiveInvalidation()
     }
 
     fun onHomeActivated(forceFreshness: Boolean = false) {
-        val now = System.currentTimeMillis()
-        if (forceFreshness || (now - lastHomeRefreshTimeMs) > freshnessIntervalMs) {
-            lastHomeRefreshTimeMs = now
+        val nowMs = timeProvider.nowEpochMilli()
+        val todayDate = timeProvider.today()
+        val dateChanged = lastHomeRefreshDate != null && lastHomeRefreshDate != todayDate
+        val expired = (nowMs - lastHomeRefreshTimeMs) > freshnessIntervalMs
+
+        if (!isInitialized || forceFreshness || dateChanged || expired) {
+            isInitialized = true
+            lastHomeRefreshTimeMs = nowMs
+            lastHomeRefreshDate = todayDate
             checkBloodPressureAvailability()
-            loadMetricData(currentMetric, isExplicitRefresh = true)
+            loadMetricData(currentMetric, isExplicitRefresh = forceFreshness)
         }
     }
 
@@ -124,43 +132,79 @@ class WeeklySnapshotViewModel @Inject constructor(
             preferences.selectedWeeklySnapshotGraph
                 .distinctUntilChanged()
                 .collectLatest { metric ->
-                    currentMetric = metric
-                    loadMetricData(metric)
+                    val metricChanged = metric != currentMetric
+                    if (metricChanged) {
+                        currentMetric = metric
+                        loadMetricData(metric)
+                    } else if (!isInitialized) {
+                        onHomeActivated(forceFreshness = false)
+                    }
                 }
         }
     }
 
-    private fun setupReactiveInvalidation() {
+    private fun setupSourceSpecificReactiveInvalidation() {
+        // Logs observer
+        viewModelScope.launch {
+            logEntryDao.getAllEntries()
+                .drop(1)
+                .distinctUntilChanged()
+                .debounce(300L)
+                .collect {
+                    if (currentMetric == "Logs") {
+                        loadMetricData("Logs")
+                    }
+                }
+        }
+
+        // HR Spikes observer
+        viewModelScope.launch {
+            preferences.historicalHrSpikes
+                .drop(1)
+                .distinctUntilChanged()
+                .debounce(300L)
+                .collect {
+                    if (currentMetric == "HR Spikes") {
+                        loadMetricData("HR Spikes")
+                    }
+                }
+        }
+
+        // Habit Completion observer
         viewModelScope.launch {
             combine(
-                logEntryDao.getAllEntries().distinctUntilChanged(),
-                preferences.historicalHrSpikes.distinctUntilChanged(),
                 habitRepository.habits,
                 habitRepository.isInitialized
-            ) { entries, spikes, habits, isInit ->
-                val relevantChange = when (currentMetric) {
-                    "Logs" -> true
-                    "HR Spikes" -> true
-                    "Habit Completion" -> true
-                    else -> false
+            ) { habits, isInit -> Pair(habits, isInit) }
+                .drop(1)
+                .distinctUntilChanged()
+                .debounce(300L)
+                .collect {
+                    if (currentMetric == "Habit Completion") {
+                        loadMetricData("Habit Completion")
+                    }
                 }
-                relevantChange
-            }
-            .filter { it }
-            .collect {
-                loadMetricData(currentMetric)
-            }
         }
     }
 
     fun selectMetric(metric: String) {
         if (metric == currentMetric) return
+        currentMetric = metric
+        loadMetricData(metric)
         viewModelScope.launch {
             preferences.setSelectedWeeklySnapshotGraph(metric)
         }
     }
 
     fun refresh() {
+        val currentState = _uiState.value
+        val isCurrentlyRefreshing = when (currentState) {
+            is WeeklySnapshotState.ReadyWithData -> currentState.isRefreshing
+            is WeeklySnapshotState.ReadyEmpty -> currentState.isRefreshing
+            is WeeklySnapshotState.Loading -> true
+            else -> false
+        }
+        if (isCurrentlyRefreshing) return
         onHomeActivated(forceFreshness = true)
     }
 
@@ -189,7 +233,7 @@ class WeeklySnapshotViewModel @Inject constructor(
         loadJob = viewModelScope.launch {
             try {
                 val metricData = kotlinx.coroutines.withTimeout(5000L) {
-                    weeklySnapshotRepository.get7DaySnapshot(metric)
+                    weeklySnapshotRepository.get7DaySnapshot(metric, targetToday = timeProvider.today())
                 }
                 if (requestId == requestIdGenerator.get()) {
                     val allNull = metricData.points.all { it.value == null }
