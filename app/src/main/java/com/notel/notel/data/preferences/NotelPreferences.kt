@@ -481,16 +481,8 @@ class NotelPreferences @Inject constructor(
         prefs[STABLE_USER_ID] ?: ""
     }
 
-    private val RECONNECT_REQUIRED_DISMISSED = booleanPreferencesKey("reconnect_required_dismissed")
-
     val reconnectRequired: Flow<Boolean> = context.dataStore.data.map { prefs ->
-        (prefs[RECONNECT_REQUIRED] ?: false) && !(prefs[RECONNECT_REQUIRED_DISMISSED] ?: false)
-    }
-
-    suspend fun setReconnectRequiredDismissed(dismissed: Boolean) {
-        context.dataStore.edit { prefs ->
-            prefs[RECONNECT_REQUIRED_DISMISSED] = dismissed
-        }
+        prefs[RECONNECT_REQUIRED] ?: false
     }
 
     suspend fun saveSessionAtomically(
@@ -507,7 +499,6 @@ class NotelPreferences @Inject constructor(
             prefs[REFRESH_TOKEN] = encRefresh
             prefs[LOGGED_IN] = true
             prefs[RECONNECT_REQUIRED] = false
-            prefs[RECONNECT_REQUIRED_DISMISSED] = false
             if (!email.isNullOrBlank()) prefs[USER_EMAIL] = email
             if (!userId.isNullOrBlank()) prefs[STABLE_USER_ID] = userId
         }
@@ -516,7 +507,6 @@ class NotelPreferences @Inject constructor(
     suspend fun markReconnectRequiredAtomically() {
         context.dataStore.edit { prefs ->
             prefs[RECONNECT_REQUIRED] = true
-            prefs[RECONNECT_REQUIRED_DISMISSED] = false
             // Do NOT clear refresh_token or auth_token or room DB
         }
     }
@@ -527,7 +517,6 @@ class NotelPreferences @Inject constructor(
             prefs.remove(REFRESH_TOKEN)
             prefs[LOGGED_IN] = false
             prefs[RECONNECT_REQUIRED] = false
-            prefs[RECONNECT_REQUIRED_DISMISSED] = false
         }
     }
 

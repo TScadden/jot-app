@@ -71,8 +71,9 @@ class LoginViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            val isReconnect = preferences.reconnectRequired.first()
             val alreadyLoggedIn = preferences.loggedIn.first()
-            if (alreadyLoggedIn) {
+            if (alreadyLoggedIn && !isReconnect) {
                 val cachedOnboarding = preferences.onboardingComplete.first()
                 onboardingCompleteByServer = cachedOnboarding
                 isLoggedIn = true

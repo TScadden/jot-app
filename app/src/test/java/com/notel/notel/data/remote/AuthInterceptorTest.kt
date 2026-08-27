@@ -85,15 +85,12 @@ class AuthInterceptorBehaviorTest {
     }
 
     @Test
-    fun testDismissDialogPreservesSessionState() {
-        var reconnectRequired = true
-        var reconnectDismissed = false
+    fun testLoginScreenVisibilityDuringReconnectState() {
+        val reconnectRequired = true
+        val alreadyLoggedIn = true
 
-        // User clicks "Not Now"
-        reconnectDismissed = true
-        val showDialog = reconnectRequired && !reconnectDismissed
-
-        assertFalse("Dialog should not be shown after user clicks Not Now", showDialog)
-        assertTrue("Session reconnect required flag must remain true in background", reconnectRequired)
+        // During reconnect state, LoginScreen must remain visible (isLoggedIn = false for view model init)
+        val shouldRedirectBack = alreadyLoggedIn && !reconnectRequired
+        assertFalse("LoginScreen must not auto-redirect when reconnect is required", shouldRedirectBack)
     }
 }

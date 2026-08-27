@@ -265,10 +265,10 @@ class MainActivity : ComponentActivity() {
 
                 if (reconnectRequiredState) {
                     AlertDialog(
-                        onDismissRequest = { /* Modal: force user action */ },
+                        onDismissRequest = { /* Modal: prevent dismiss on tap outside or back */ },
                         title = {
                             Text(
-                                "Session Expired",
+                                "Session expired",
                                 style = MaterialTheme.typography.headlineSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = NotelTextPrimary
@@ -276,7 +276,7 @@ class MainActivity : ComponentActivity() {
                         },
                         text = {
                             Text(
-                                "Your login session has expired. Please sign back in to resume synchronization. Your local data remains safe on this device.",
+                                "Reconnect your account to continue. Your saved data will remain on this device.",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = NotelTextSecondary
                             )
@@ -288,18 +288,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary)
                             ) {
-                                Text("Sign In", color = Color.White, fontWeight = FontWeight.Bold)
-                            }
-                        },
-                        dismissButton = {
-                            TextButton(
-                                onClick = {
-                                    coroutineScope.launch {
-                                        notelPreferences.setReconnectRequiredDismissed(true)
-                                    }
-                                }
-                            ) {
-                                Text("Not Now", color = NotelTextSecondary)
+                                Text("Reconnect account", color = Color.White, fontWeight = FontWeight.Bold)
                             }
                         },
                         containerColor = NotelSurface,
