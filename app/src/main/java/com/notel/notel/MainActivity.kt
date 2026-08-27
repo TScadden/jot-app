@@ -261,9 +261,9 @@ class MainActivity : ComponentActivity() {
                 val hasConsentedState by notelPreferences.hasConsented.collectAsState(initial = false)
                 val introConsultationSeenState by notelPreferences.introConsultationSeen.collectAsState(initial = false)
                 val reconnectRequiredState by notelPreferences.reconnectRequired.collectAsState(initial = false)
-                val coroutineScope = rememberCoroutineScope()
+                val isLoginRoute = currentRoute?.startsWith("login") == true
 
-                if (reconnectRequiredState) {
+                if (reconnectRequiredState && !isLoginRoute) {
                     AlertDialog(
                         onDismissRequest = { /* Modal: prevent dismiss on tap outside or back */ },
                         title = {
@@ -284,7 +284,11 @@ class MainActivity : ComponentActivity() {
                         confirmButton = {
                             Button(
                                 onClick = {
-                                    navController.navigate("login?mode=login")
+                                    if (currentRoute?.startsWith("login") != true) {
+                                        navController.navigate("login?mode=login") {
+                                            launchSingleTop = true
+                                        }
+                                    }
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary)
                             ) {
@@ -361,10 +365,14 @@ class MainActivity : ComponentActivity() {
                                             notelPreferences.setHasConsented(true)
                                             notelPreferences.setIntroConsultationSeen(true)
                                             notelPreferences.setOnboardingComplete(true)
-                                            navController.navigate("body_load") { popUpTo("welcome_onboarding") { inclusive = true } }
+                                            navController.navigate("body_load") {
+                                                popUpTo(0) { inclusive = true }
+                                            }
                                         }
                                     } else {
-                                        navController.navigate("consent") { popUpTo("welcome_onboarding") { inclusive = true } }
+                                        navController.navigate("consent") {
+                                            popUpTo(0) { inclusive = true }
+                                        }
                                     }
                                 }
                             )

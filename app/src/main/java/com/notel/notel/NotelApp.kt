@@ -49,7 +49,11 @@ class NotelApp : Application(), Configuration.Provider {
             lifecycleTracker.isAppInForeground.collectLatest { isForeground ->
                 try {
                     if (isForeground && preferences.hrSpikeAlertsEnabled.first()) {
-                        HrSpikeMonitorService.startService(this@NotelApp)
+                        try {
+                            HrSpikeMonitorService.startService(this@NotelApp)
+                        } catch (e: Throwable) {
+                            android.util.Log.e("NotelApp", "Failed to start HrSpikeMonitorService foreground service", e)
+                        }
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()

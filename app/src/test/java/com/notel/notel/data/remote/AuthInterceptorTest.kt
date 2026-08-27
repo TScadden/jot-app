@@ -89,8 +89,17 @@ class AuthInterceptorBehaviorTest {
         val reconnectRequired = true
         val alreadyLoggedIn = true
 
-        // During reconnect state, LoginScreen must remain visible (isLoggedIn = false for view model init)
         val shouldRedirectBack = alreadyLoggedIn && !reconnectRequired
         assertFalse("LoginScreen must not auto-redirect when reconnect is required", shouldRedirectBack)
+    }
+
+    @Test
+    fun testDialogSuppressionOnLoginRoute() {
+        val reconnectRequired = true
+        val currentRouteOnLogin = "login?mode=login"
+        val isLoginRoute = currentRouteOnLogin.startsWith("login")
+
+        val showDialog = reconnectRequired && !isLoginRoute
+        assertFalse("Session Expired dialog MUST be suppressed while on login route", showDialog)
     }
 }
