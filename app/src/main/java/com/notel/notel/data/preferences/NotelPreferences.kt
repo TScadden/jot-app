@@ -117,6 +117,7 @@ class NotelPreferences @Inject constructor(
         val USER_EMAIL = stringPreferencesKey("user_email")
         val STABLE_USER_ID = stringPreferencesKey("stable_user_id")
         val RECONNECT_REQUIRED = booleanPreferencesKey("reconnect_required")
+        val SELECTED_WEEKLY_SNAPSHOT_GRAPH = stringPreferencesKey("selected_weekly_snapshot_graph")
         val WEEKLY_SCORE = intPreferencesKey("weekly_score")
         val SHARE_DATA_WITH_FRIENDS = booleanPreferencesKey("share_data_with_friends")
         val TODAY_SLEEP_MINS = intPreferencesKey("today_sleep_mins")
@@ -483,6 +484,16 @@ class NotelPreferences @Inject constructor(
 
     val reconnectRequired: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[RECONNECT_REQUIRED] ?: false
+    }
+
+    val selectedWeeklySnapshotGraph: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[SELECTED_WEEKLY_SNAPSHOT_GRAPH] ?: "Sleep Hours"
+    }
+
+    suspend fun setSelectedWeeklySnapshotGraph(metric: String) {
+        context.dataStore.edit { prefs ->
+            prefs[SELECTED_WEEKLY_SNAPSHOT_GRAPH] = metric
+        }
     }
 
     suspend fun saveSessionAtomically(

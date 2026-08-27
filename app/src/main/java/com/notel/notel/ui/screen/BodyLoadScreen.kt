@@ -55,6 +55,8 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun BodyLoadScreen(
     viewModel: BodyLoadViewModel = hiltViewModel(),
+    quickLogViewModel: QuickLogViewModel = hiltViewModel(),
+    weeklySnapshotViewModel: com.notel.notel.ui.viewmodel.WeeklySnapshotViewModel = hiltViewModel(),
     onBack: () -> Unit,
     onNavigateToConnections: () -> Unit = {},
     onNavigateToMembership: () -> Unit = {},
@@ -64,7 +66,6 @@ fun BodyLoadScreen(
     onNavigateToLists: () -> Unit = {},
     onNavigateToNotes: () -> Unit = {},
     onNavigateToProjectFocus: () -> Unit = {},
-    quickLogViewModel: QuickLogViewModel = hiltViewModel(),
     habitViewModel: HabitViewModel = hiltViewModel(),
     reminderViewModel: ReminderViewModel = hiltViewModel(),
     notesViewModel: NotesViewModel = hiltViewModel(),
@@ -780,6 +781,19 @@ fun BodyLoadScreen(
                         }
                     }
                 }
+            }
+
+            // ── 3B. Weekly Snapshot Graph Card ──────────────────────────────
+            item {
+                val snapshotState by weeklySnapshotViewModel.uiState.collectAsState()
+                val availableMetrics by weeklySnapshotViewModel.availableMetrics.collectAsState()
+
+                com.notel.notel.ui.component.WeeklySnapshotCard(
+                    state = snapshotState,
+                    availableMetrics = availableMetrics,
+                    onSelectMetric = { weeklySnapshotViewModel.selectMetric(it) },
+                    onRefresh = { weeklySnapshotViewModel.refresh() }
+                )
             }
 
 
