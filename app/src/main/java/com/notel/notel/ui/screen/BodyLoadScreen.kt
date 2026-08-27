@@ -736,7 +736,7 @@ fun BodyLoadScreen(
                                     }
                                     is TodayTrendsState.Empty -> {
                                         Text(
-                                            text = "No significant trend shifts recorded yet",
+                                            text = "Not enough data yet",
                                             color = NotelTextSecondary,
                                             fontSize = 12.sp,
                                             modifier = Modifier.padding(vertical = 4.dp)
