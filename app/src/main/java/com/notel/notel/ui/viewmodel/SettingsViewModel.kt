@@ -1103,9 +1103,10 @@ class SettingsViewModel @Inject constructor(
             }
 
             if (!syncSuccess) {
-                // If sync failed, we let the user know, but do not block security-sensitive session termination.
-                // We proceed with the logout and token revocation on the server.
-                _logoutError.value = "Data sync failed before logout. Logging out anyway to secure your account."
+                // If sync failed, block account wipe to prevent un-synced data deletion
+                _logoutError.value = "Unable to sync unsynced records to cloud. Logout cancelled to prevent data loss. Please check your internet connection."
+                _isLoggingOut.value = false
+                return@launch
             }
 
             // 1. Call server logout to revoke refresh token
@@ -1115,7 +1116,7 @@ class SettingsViewModel @Inject constructor(
                     tabsApi.logout(LogoutRequest(rfToken))
                 }
             } catch (_: Exception) {
-                // If network/logout call fails, proceed with local session cleanup anyway
+                // If network/logout call fails, proceed with local session cleanup since sync already succeeded
             }
 
             // 2. Clear DataStore preferences (credentials, tokens, AI context, etc.)
