@@ -1119,7 +1119,28 @@ fun SettingsScreen(
             }
 
             if (currentMenu == SettingsMenu.EVENT_COUNTERS) {
-            Text("EVENT COUNTER", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("EVENT COUNTERS", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        if (lastSyncTime > 0) Icons.Default.CloudDone else Icons.Default.Storage,
+                        contentDescription = null,
+                        tint = if (lastSyncTime > 0) NotelPrimary else NotelTextSecondary,
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        if (lastSyncTime > 0) "Synced" else "Saved locally",
+                        fontSize = 10.sp,
+                        color = if (lastSyncTime > 0) NotelPrimary else NotelTextSecondary,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
             Spacer(Modifier.height(8.dp))
 
             val eventCounters by viewModel.eventCounters.collectAsState()
@@ -1359,7 +1380,28 @@ fun SettingsScreen(
                         lowerCtx.contains("therapist") || lowerKB.contains("therapist") -> "Therapist"
                         else -> "Professional"
                     }
-                    Text("PHYSICIAN PROTOCOLS", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("PHYSICIAN PROTOCOLS", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                if (lastSyncTime > 0) Icons.Default.CloudDone else Icons.Default.Storage,
+                                contentDescription = null,
+                                tint = if (lastSyncTime > 0) NotelPrimary else NotelTextSecondary,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                if (lastSyncTime > 0) "Synced" else "Saved locally",
+                                fontSize = 10.sp,
+                                color = if (lastSyncTime > 0) NotelPrimary else NotelTextSecondary,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
                     Spacer(Modifier.height(8.dp))
 
                     var showProfessionalDialog by remember { mutableStateOf(false) }
@@ -1555,14 +1597,56 @@ fun SettingsScreen(
                 }
 
                 // ── FILE KNOWLEDGE BASE + ORIGINAL DOCUMENTS (merged) ────────────
-                Text("FILE KNOWLEDGE BASE", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("FILE KNOWLEDGE BASE", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            if (lastSyncTime > 0) Icons.Default.CloudDone else Icons.Default.Storage,
+                            contentDescription = null,
+                            tint = if (lastSyncTime > 0) NotelPrimary else NotelTextSecondary,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            if (lastSyncTime > 0) "Synced" else "Saved locally",
+                            fontSize = 10.sp,
+                            color = if (lastSyncTime > 0) NotelPrimary else NotelTextSecondary,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
 
                 GlassyCard(
                     shape = RoundedCornerShape(16.dp),
                     color = NotelSurface
                 ) {
-                    Text("Digital Knowledge Extraction", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Digital Knowledge Extraction", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                if (lastSyncTime > 0) Icons.Default.CloudDone else Icons.Default.Storage,
+                                contentDescription = null,
+                                tint = if (lastSyncTime > 0) NotelPrimary else NotelTextSecondary,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                if (lastSyncTime > 0) "Synced" else "Saved locally",
+                                fontSize = 10.sp,
+                                color = if (lastSyncTime > 0) NotelPrimary else NotelTextSecondary,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
                     Spacer(Modifier.height(4.dp))
                     Text(
                         "Upload notes or PDFs to extract permanent knowledge (patterns, triggers, facts) that Gemini will remember.",
