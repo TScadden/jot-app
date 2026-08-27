@@ -547,6 +547,21 @@ private fun WeeklySnapshotInteractiveCanvas(
                                 drawPath(it, lineColor, style = Stroke(width = 2.5.dp.toPx()))
                             }
                             currentSegmentPath = null
+
+                            // Skip day and draw a subtle "no data" icon indicator on the X axis baseline
+                            val noDataY = chartH - 12.dp.toPx()
+                            drawCircle(
+                                color = Color.White.copy(alpha = 0.2f),
+                                radius = 3.dp.toPx(),
+                                center = Offset(cx, noDataY),
+                                style = Stroke(width = 1.dp.toPx())
+                            )
+                            drawLine(
+                                color = Color.White.copy(alpha = 0.25f),
+                                start = Offset(cx - 2.dp.toPx(), noDataY),
+                                end = Offset(cx + 2.dp.toPx(), noDataY),
+                                strokeWidth = 1.dp.toPx()
+                            )
                         }
                     }
                     currentSegmentPath?.let {
