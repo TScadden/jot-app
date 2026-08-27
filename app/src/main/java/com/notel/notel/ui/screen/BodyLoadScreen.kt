@@ -785,6 +785,10 @@ fun BodyLoadScreen(
 
             // ── 3B. Weekly Snapshot Graph Card ──────────────────────────────
             item {
+                LaunchedEffect(Unit) {
+                    weeklySnapshotViewModel.onHomeActivated()
+                }
+
                 val snapshotState by weeklySnapshotViewModel.uiState.collectAsState()
                 val availableMetrics by weeklySnapshotViewModel.availableMetrics.collectAsState()
 
@@ -794,15 +798,15 @@ fun BodyLoadScreen(
                     onSelectMetric = { weeklySnapshotViewModel.selectMetric(it) },
                     onRefresh = { weeklySnapshotViewModel.refresh() },
                     onViewDetails = { metric ->
-                        when (metric) {
-                            "Sleep Hours" -> onNavigateToConnections()
-                            "Resting Heart Rate" -> onNavigateToHeart()
-                            "Calories" -> onNavigateToConnections()
-                            "Logs" -> onNavigateToNotes()
-                            "Symptoms" -> onNavigateToNotes()
-                            "Medication Adherence" -> onNavigateToConnections()
-                            "Habit Completion" -> onNavigateToHabits()
-                            "Blood Pressure" -> onNavigateToConnections()
+                        val dest = com.notel.notel.ui.navigation.WeeklySnapshotDestinationMapper.mapMetricToDestination(metric)
+                        when (dest) {
+                            "sleep" -> onNavigateToConnections()
+                            "fitbit" -> onNavigateToHeart()
+                            "key_metrics" -> onNavigateToConnections()
+                            "history" -> onNavigateToNotes()
+                            "medications" -> onNavigateToConnections()
+                            "habits" -> onNavigateToHabits()
+                            "blood_pressure" -> onNavigateToConnections()
                             else -> onNavigateToConnections()
                         }
                     }

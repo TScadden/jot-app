@@ -29,6 +29,9 @@ class HabitRepository @Inject constructor(
     private val _habits = MutableStateFlow<List<HabitDtoModel>>(emptyList())
     val habits = _habits.asStateFlow()
 
+    private val _isInitialized = MutableStateFlow(false)
+    val isInitialized = _isInitialized.asStateFlow()
+
     private val _isLoading = MutableStateFlow(false)
     val isLoading = _isLoading.asStateFlow()
 
@@ -50,6 +53,7 @@ class HabitRepository @Inject constructor(
                 }
             }
         } catch (e: Exception) { /* best effort */ }
+        _isInitialized.value = true
     }
 
     // Returns today's date string in YYYY-MM-DD format (UTC-safe for daily reset)

@@ -1,17 +1,11 @@
 package com.notel.notel.data.repository
 
-import com.notel.notel.data.healthconnect.HealthConnectManager
-import com.notel.notel.data.local.dao.CategoryDao
-import com.notel.notel.data.local.dao.LogEntryDao
-import com.notel.notel.data.local.dao.ScheduledDoseOccurrenceDao
 import com.notel.notel.data.local.entity.Category
 import com.notel.notel.data.local.entity.LogEntry
 import com.notel.notel.data.local.entity.ScheduledDoseOccurrence
 import com.notel.notel.data.remote.HabitDtoModel
-import com.notel.notel.ui.viewmodel.WeeklySnapshotState
+import com.notel.notel.ui.navigation.WeeklySnapshotDestinationMapper
 import com.notel.notel.util.TestTimeProvider
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -23,113 +17,126 @@ import java.time.ZoneId
 class WeeklySnapshotRepositoryTest {
 
     private lateinit var timeProvider: TestTimeProvider
+    private lateinit var aggregator: WeeklySnapshotAggregator
 
     @Before
     fun setup() {
-        // Set deterministic test date: Thursday 2026-08-27
+        // Fixed test clock: Thursday 2026-08-27 at 12:00 UTC
         val fixedClock = Clock.fixed(
             Instant.parse("2026-08-27T12:00:00Z"),
             ZoneId.of("UTC")
         )
         timeProvider = TestTimeProvider(fixedClock)
+        aggregator = WeeklySnapshotAggregator(timeProvider)
     }
 
     @Test
-    fun test7DaysChronologicalOrderAndLabels() {
-        val endDate = timeProvider.today()
-        val dates = (6 downTo 0).map { endDate.minusDays(it.toLong()) }
-        val dayLabels = dates.map { it.format(java.time.format.DateTimeFormatter.ofPattern("EEE", java.util.Locale.ENGLISH)) }
+    fun test7DayDateConstructionAndWeekdayLabels() {
+        val (dates, dateStrsAndLabels) = aggregator.get7DayDates()
+        val (dateStrs, dayLabels) = dateStrsAndLabels
 
+        assertEquals(7, dates.size)
         assertEquals(7, dayLabels.size)
         assertEquals("Fri", dayLabels[0])
         assertEquals("Thu", dayLabels[6])
+        assertEquals("2026-08-21", dateStrs[0])
+        assertEquals("2026-08-27", dateStrs[6])
     }
 
     @Test
-    fun testSleepMinutesConversionAndMissingNullHandling() {
-        val rawMins = 480 // 8 hours
-        val valHours = rawMins / 60f
-        assertEquals(8.0f, valHours)
+    fun testSleepMinuteConversionAndMissingNullValues() {
+        val (dates, dateStrsAndLabels) = aggregator.get7DayDates()
+        val (dateStrs, dayLabels) = dateStrsAndLabels
 
-        val pointMissing = DailySnapshotPoint("2026-08-27", "Thu", null)
-        assertNull("Missing sleep day must be null, not 0", pointMissing.value)
+        val rawHistory = listOf(
+            "2026-08-27" to 480, // 8.0h
+            "2026-08-26" to 450  // 7.5h
+        )
+
+        val result = aggregator.aggregateSleep(dateStrs, dayLabels, rawHistory)
+        assertEquals("Sleep Hours", result.metricName)
+        assertEquals(8.0f, result.points[6].value)
+        assertEquals(7.5f, result.points[5].value)
+        assertNull("Missing day 2026-08-25 must be null, not 0", result.points[4].value)
     }
 
     @Test
     fun testZeroLogsRemainsZeroCount() {
-        val pointZero = DailySnapshotPoint("2026-08-27", "Thu", 0f)
-        assertNotNull(pointZero.value)
-        assertEquals(0f, pointZero.value)
-    }
+        val (dates, dateStrsAndLabels) = aggregator.get7DayDates()
+        val (dateStrs, dayLabels) = dateStrsAndLabels
 
-    @Test
-    fun testMedicationAdherenceRules() {
-        // Given 2 scheduled doses today: 1 TAKEN, 1 PENDING (future)
-        val occTaken = ScheduledDoseOccurrence(
-            occurrenceKey = "med_1_2026-08-27_08:00",
-            medicationId = 1,
-            scheduledDate = "2026-08-27",
-            scheduledTime = "08:00",
-            status = "TAKEN"
-        )
-        val occFuturePending = ScheduledDoseOccurrence(
-            occurrenceKey = "med_1_2026-08-27_20:00",
-            medicationId = 1,
-            scheduledDate = "2026-08-27",
-            scheduledTime = "20:00",
-            status = "PENDING"
+        val entries = listOf(
+            LogEntry(id = 1, timestamp = Instant.parse("2026-08-27T10:00:00Z").toEpochMilli(), categoryId = 1, body = "Note")
         )
 
-        // At 12:00, 08:00 dose is evaluated, 20:00 future pending is excluded
-        val occurrences = listOf(occTaken, occFuturePending)
-        val evaluated = occurrences.filter { occ ->
-            if (occ.status == "TAKEN") true
-            else if (occ.status == "PENDING") {
-                val time = java.time.LocalTime.parse(occ.scheduledTime!!)
-                time.isBefore(java.time.LocalTime.of(12, 0))
-            } else false
-        }
-
-        assertEquals(1, evaluated.size)
-        assertEquals("TAKEN", evaluated[0].status)
+        val result = aggregator.aggregateLogs(dateStrs, dayLabels, entries)
+        assertEquals(1.0f, result.points[6].value)
+        assertEquals(0.0f, result.points[5].value) // Explicit 0 count for log day with no logs
     }
 
     @Test
-    fun testSymptomCategoryFiltering() {
-        val categoryIdSymptom = 5
-        val entry1 = LogEntry(id = 1, categoryId = 5, body = "Mild headache")
-        val entry2 = LogEntry(id = 2, categoryId = 6, body = "Unrelated note")
-        val entry3 = LogEntry(id = 3, categoryId = 0, body = "Legacy headache note")
+    fun testSymptomsCategoryResolutionAndLegacyFallback() {
+        val (dates, dateStrsAndLabels) = aggregator.get7DayDates()
+        val (dateStrs, dayLabels) = dateStrsAndLabels
 
-        val symptoms = listOf(entry1, entry2, entry3).filter { entry ->
-            val matchesCat = entry.categoryId == categoryIdSymptom
-            val matchesFallback = entry.categoryId == 0 && entry.body.contains("headache", ignoreCase = true)
-            matchesCat || matchesFallback
-        }
+        // Category with nonstandard ID 99 for symptoms
+        val symptomCategoryId = 99
+        val entries = listOf(
+            LogEntry(id = 1, timestamp = Instant.parse("2026-08-27T08:00:00Z").toEpochMilli(), categoryId = 99, body = "Custom symptom"),
+            LogEntry(id = 2, timestamp = Instant.parse("2026-08-27T09:00:00Z").toEpochMilli(), categoryId = 5, body = "Unrelated cat 5"),
+            LogEntry(id = 3, timestamp = Instant.parse("2026-08-27T10:00:00Z").toEpochMilli(), categoryId = 0, body = "Legacy headache note")
+        )
 
-        assertEquals(2, symptoms.size)
-        assertFalse(symptoms.contains(entry2))
+        val result = aggregator.aggregateSymptoms(dateStrs, dayLabels, entries, symptomCategoryId)
+        assertEquals(2.0f, result.points[6].value) // Should match entry 1 (cat 99) and entry 3 (cat 0 fallback), excluding cat 5
     }
 
     @Test
-    fun testViewDetailsDestinationMapping() {
-        fun mapDestination(metric: String): String {
-            return when (metric) {
-                "Sleep Hours" -> "sleep"
-                "Resting Heart Rate" -> "fitbit"
-                "Calories" -> "data_connections"
-                "Logs" -> "notes"
-                "Symptoms" -> "notes"
-                "Medication Adherence" -> "data_connections"
-                "Habit Completion" -> "habits"
-                "Blood Pressure" -> "data_connections"
-                else -> "data_connections"
-            }
-        }
+    fun testMedicationAdherenceDeduplicationAndRules() {
+        val (dates, dateStrsAndLabels) = aggregator.get7DayDates()
+        val (dateStrs, dayLabels) = dateStrsAndLabels
 
-        assertEquals("sleep", mapDestination("Sleep Hours"))
-        assertEquals("fitbit", mapDestination("Resting Heart Rate"))
-        assertEquals("habits", mapDestination("Habit Completion"))
-        assertEquals("notes", mapDestination("Logs"))
+        val occurrences = listOf(
+            // Past day 2026-08-26: 1 TAKEN, 1 SKIPPED -> 50%
+            ScheduledDoseOccurrence(occurrenceKey = "occ_1", medicationId = 1, scheduledDate = "2026-08-26", status = "TAKEN"),
+            ScheduledDoseOccurrence(occurrenceKey = "occ_2", medicationId = 2, scheduledDate = "2026-08-26", status = "SKIPPED"),
+            // Duplicate key should be ignored
+            ScheduledDoseOccurrence(occurrenceKey = "occ_1", medicationId = 1, scheduledDate = "2026-08-26", status = "TAKEN"),
+            // Today 2026-08-27: 1 TAKEN (08:00), 1 PENDING (20:00 future excluded) -> 100%
+            ScheduledDoseOccurrence(occurrenceKey = "occ_3", medicationId = 1, scheduledDate = "2026-08-27", scheduledTime = "08:00", status = "TAKEN"),
+            ScheduledDoseOccurrence(occurrenceKey = "occ_4", medicationId = 1, scheduledDate = "2026-08-27", scheduledTime = "20:00", status = "PENDING")
+        )
+
+        val result = aggregator.aggregateMedication(dates, dayLabels, occurrences)
+        assertEquals(50.0f, result.points[5].value)
+        assertEquals(100.0f, result.points[6].value)
+    }
+
+    @Test
+    fun testHabitUninitializedVsEmptyLoadedState() {
+        val (dates, dateStrsAndLabels) = aggregator.get7DayDates()
+        val (dateStrs, dayLabels) = dateStrsAndLabels
+
+        // Uninitialized state
+        val uninitResult = aggregator.aggregateHabits(dateStrs, dayLabels, emptyList(), isInitialized = false)
+        assertEquals("Loading habits...", uninitResult.averageOrTotalText)
+        assertNull(uninitResult.emptyMessage)
+
+        // Initialized empty state
+        val initEmptyResult = aggregator.aggregateHabits(dateStrs, dayLabels, emptyList(), isInitialized = true)
+        assertEquals("No habits configured", initEmptyResult.averageOrTotalText)
+        assertEquals("No habits configured", initEmptyResult.emptyMessage)
+    }
+
+    @Test
+    fun testProductionDestinationMapping() {
+        assertEquals("sleep", WeeklySnapshotDestinationMapper.mapMetricToDestination("Sleep Hours"))
+        assertEquals("fitbit", WeeklySnapshotDestinationMapper.mapMetricToDestination("Resting Heart Rate"))
+        assertEquals("key_metrics", WeeklySnapshotDestinationMapper.mapMetricToDestination("Calories"))
+        assertEquals("history", WeeklySnapshotDestinationMapper.mapMetricToDestination("Logs"))
+        assertEquals("history", WeeklySnapshotDestinationMapper.mapMetricToDestination("Symptoms"))
+        assertEquals("medications", WeeklySnapshotDestinationMapper.mapMetricToDestination("Medication Adherence"))
+        assertEquals("habits", WeeklySnapshotDestinationMapper.mapMetricToDestination("Habit Completion"))
+        assertEquals("blood_pressure", WeeklySnapshotDestinationMapper.mapMetricToDestination("Blood Pressure"))
     }
 }

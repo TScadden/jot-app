@@ -13,6 +13,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 
@@ -57,11 +59,22 @@ class WeeklySnapshotViewModel @Inject constructor(
     private val requestIdGenerator = AtomicLong(0)
     private var loadJob: Job? = null
     private var currentMetric: String = "Sleep Hours"
+    private var lastHomeRefreshTimeMs: Long = 0L
+    private val freshnessIntervalMs = 60_000L // 60s freshness interval
 
     init {
         checkBloodPressureAvailability()
         observeSelectedMetric()
         setupReactiveInvalidation()
+    }
+
+    fun onHomeActivated(forceFreshness: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (forceFreshness || (now - lastHomeRefreshTimeMs) > freshnessIntervalMs) {
+            lastHomeRefreshTimeMs = now
+            checkBloodPressureAvailability()
+            loadMetricData(currentMetric, isExplicitRefresh = true)
+        }
     }
 
     fun checkBloodPressureAvailability() {
@@ -100,11 +113,16 @@ class WeeklySnapshotViewModel @Inject constructor(
     }
 
     private fun setupReactiveInvalidation() {
+        val today = LocalDate.now()
+        val startDate = today.minusDays(6).format(DateTimeFormatter.ISO_LOCAL_DATE)
+        val endDate = today.format(DateTimeFormatter.ISO_LOCAL_DATE)
+
         viewModelScope.launch {
             merge(
                 logEntryDao.getAllEntries(),
-                scheduledDoseOccurrenceDao.getOccurrencesForDate(""),
-                habitRepository.habits
+                scheduledDoseOccurrenceDao.getOccurrencesInDateRange(startDate, endDate),
+                habitRepository.habits,
+                habitRepository.isInitialized
             ).collect {
                 loadMetricData(currentMetric)
             }
@@ -119,8 +137,7 @@ class WeeklySnapshotViewModel @Inject constructor(
     }
 
     fun refresh() {
-        checkBloodPressureAvailability()
-        loadMetricData(currentMetric, isExplicitRefresh = true)
+        onHomeActivated(forceFreshness = true)
     }
 
     private fun loadMetricData(metric: String, isExplicitRefresh: Boolean = false) {
@@ -153,7 +170,7 @@ class WeeklySnapshotViewModel @Inject constructor(
             } catch (e: Exception) {
                 if (requestId == requestIdGenerator.get()) {
                     _uiState.value = WeeklySnapshotState.Error(
-                        message = e.message ?: "Failed to load snapshot data",
+                        message = "Failed to load snapshot data",
                         retainedData = retainedData
                     )
                 }
