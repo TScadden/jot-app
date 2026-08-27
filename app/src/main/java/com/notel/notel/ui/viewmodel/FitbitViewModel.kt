@@ -73,7 +73,8 @@ data class FitbitState(
     val weightPounds: Float = 0f,
     val todayHRV: Double = 0.0,
     val hasFullPermissions: Boolean = false,
-    val isSpikesLoading: Boolean = false
+    val isSpikesLoading: Boolean = false,
+    val bloodPressureState: com.notel.notel.data.repository.BloodPressureTileState = com.notel.notel.data.repository.BloodPressureTileState.Checking
 )
 
 
@@ -184,11 +185,20 @@ class FitbitViewModel @Inject constructor(
             val hasBasic = healthConnectManager.hasBasicPermissions()
             val hasFull = healthConnectManager.hasFullPermissions()
             _state.update { it.copy(isConnected = hasBasic, hasFullPermissions = hasFull) }
+            refreshBloodPressureState()
             if (hasBasic) {
                 sync(force = false)
             }
         } catch (e: Exception) {
             _state.update { it.copy(errorMessage = "Connection check failed") }
+        }
+    }
+
+    fun refreshBloodPressureState() {
+        viewModelScope.launch {
+            val repo = com.notel.notel.data.repository.BloodPressureRepository(healthConnectManager)
+            val bpState = repo.getTileState()
+            _state.update { it.copy(bloodPressureState = bpState) }
         }
     }
 

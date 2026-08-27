@@ -54,7 +54,7 @@ data class DailyHeartRateSummary(
     }
 }
 
-class HealthConnectManager(private val context: Context) {
+class HealthConnectManager(private val context: Context) : com.notel.notel.data.repository.BloodPressureDataSource {
     val healthConnectClient by lazy { HealthConnectClient.getOrCreate(context) }
 
     private fun getSessionPriority(packageName: String): Int {
@@ -161,11 +161,12 @@ class HealthConnectManager(private val context: Context) {
             HealthPermission.getReadPermission(OxygenSaturationRecord::class),
             HealthPermission.getReadPermission(RestingHeartRateRecord::class),
             HealthPermission.getReadPermission(PowerRecord::class),
+            HealthPermission.getReadPermission(BloodPressureRecord::class),
             "android.permission.health.READ_HEALTH_DATA_HISTORY"
         )
     }
 
-    fun checkAvailability(): Int {
+    override fun checkAvailability(): Int {
         return HealthConnectClient.getSdkStatus(context, "com.google.android.apps.healthdata")
     }
 
@@ -189,6 +190,12 @@ class HealthConnectManager(private val context: Context) {
             HealthPermission.getReadPermission(SleepSessionRecord::class)
         )
         return granted.containsAll(basic)
+    }
+
+    override suspend fun hasBloodPressurePermission(): Boolean {
+        if (checkAvailability() != HealthConnectClient.SDK_AVAILABLE) return false
+        val granted = healthConnectClient.permissionController.getGrantedPermissions()
+        return granted.contains(HealthPermission.getReadPermission(BloodPressureRecord::class))
     }
 
     private fun startOfDate(dateStr: String): Instant {
@@ -895,7 +902,43 @@ class HealthConnectManager(private val context: Context) {
     fun requestPermissionsActivityContract(): androidx.activity.result.contract.ActivityResultContract<Set<String>, Set<String>> {
         return PermissionController.createRequestPermissionResultContract()
     }
+
+    override suspend fun readBloodPressureRecords(days: Int): List<BloodPressureUiRecord> = withContext(Dispatchers.IO) {
+        try {
+            val end = Instant.now()
+            val start = end.minus(days.toLong(), ChronoUnit.DAYS)
+            val rawRecords = mutableListOf<BloodPressureRecord>()
+            var pageToken: String? = null
+            do {
+                val pageResponse = healthConnectClient.readRecords(
+                    ReadRecordsRequest(
+                        recordType = BloodPressureRecord::class,
+                        timeRangeFilter = TimeRangeFilter.between(start, end),
+                        pageToken = pageToken
+                    )
+                )
+                rawRecords.addAll(pageResponse.records)
+                pageToken = pageResponse.pageToken
+            } while (pageToken != null)
+
+            rawRecords.map { record ->
+                BloodPressureUiRecord(
+                    systolic = record.systolic.inMillimetersOfMercury.toInt(),
+                    diastolic = record.diastolic.inMillimetersOfMercury.toInt(),
+                    timeEpochMs = record.time.toEpochMilli()
+                )
+            }.sortedByDescending { it.timeEpochMs }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
 }
+
+data class BloodPressureUiRecord(
+    val systolic: Int,
+    val diastolic: Int,
+    val timeEpochMs: Long
+)
 
 private class HeartSample(val time: Long, val bpm: Int, val hour: Int)
 

@@ -56,6 +56,7 @@ val DEFAULT_INFO_TILES = listOf(
     InfoTile("tips_and_tricks", "Tips and Tricks", Icons.Default.Lightbulb, "Master your data"),
     InfoTile("health_coach", "Health Coach", Icons.Default.QuestionMark, "Personalized Advice"),
     InfoTile("key_metrics", "Key Metrics", Icons.Default.BarChart, "Your Body Data"),
+    InfoTile("blood_pressure", "Blood Pressure", Icons.Default.Favorite, "Systolic & Diastolic"),
     InfoTile("food", "Food", Icons.Default.Restaurant, "Sensitivity Checker"),
     InfoTile("community", "Community", Icons.Default.People, "Friends & Leaderboard")
 )
@@ -77,8 +78,10 @@ fun InfoScreen(
     onListsClick: () -> Unit = {},
     onNotesClick: () -> Unit = {},
     onProjectFocusClick: () -> Unit = {},
+    onBloodPressureClick: () -> Unit = {},
     onNavigateToMembership: () -> Unit = {},
     isUnlimited: Boolean = false,
+    bloodPressureState: com.notel.notel.data.repository.BloodPressureTileState = com.notel.notel.data.repository.BloodPressureTileState.Checking,
     onReorderStateChange: (Boolean) -> Unit = {}
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -311,6 +314,8 @@ fun InfoScreen(
                             onListsClick = onListsClick,
                             onNotesClick = onNotesClick,
                             onProjectFocusClick = onProjectFocusClick,
+                            onBloodPressureClick = onBloodPressureClick,
+                            bloodPressureState = bloodPressureState,
                             recordClick = { key ->
                                 coroutineScope.launch {
                                     prefs.recordRoutineClick(key)
@@ -344,30 +349,50 @@ fun InfoTileCard(
     onListsClick: () -> Unit = {},
     onNotesClick: () -> Unit = {},
     onProjectFocusClick: () -> Unit = {},
+    onBloodPressureClick: () -> Unit = {},
+    bloodPressureState: com.notel.notel.data.repository.BloodPressureTileState = com.notel.notel.data.repository.BloodPressureTileState.Checking,
     recordClick: (String) -> Unit = {}
 ) {
     val isAiGated = tile.id == "health_coach" || tile.id == "tips_and_tricks"
     val isLocked = isAiGated && !isUnlimited
+    val isBpTile = tile.id == "blood_pressure"
+    val isBpAvailable = isBpTile && bloodPressureState is com.notel.notel.data.repository.BloodPressureTileState.Available
+    val isBpDisabled = isBpTile && !isBpAvailable
+
     val cardShape = RoundedCornerShape(20.dp)
 
     val borderColor = when {
         isBeingDragged -> NotelPrimary
         isEditMode -> NotelPrimary.copy(alpha = 0.45f)
+        isBpDisabled -> Color.Gray.copy(alpha = 0.2f)
         else -> NotelPrimary.copy(alpha = 0.15f)
     }
+
+    val isClickable = !isEditMode && (!isBpTile || isBpAvailable)
+
+    val subtitleText = if (isBpTile) {
+        when (bloodPressureState) {
+            is com.notel.notel.data.repository.BloodPressureTileState.Checking -> "Checking..."
+            is com.notel.notel.data.repository.BloodPressureTileState.HealthConnectUnavailable -> "Health Connect unavailable"
+            is com.notel.notel.data.repository.BloodPressureTileState.PermissionRequired -> "Permission required"
+            is com.notel.notel.data.repository.BloodPressureTileState.NoData -> "No readings found"
+            is com.notel.notel.data.repository.BloodPressureTileState.Error -> "Unable to load"
+            is com.notel.notel.data.repository.BloodPressureTileState.Available -> "${bloodPressureState.latestReading.systolic}/${bloodPressureState.latestReading.diastolic} mmHg"
+        }
+    } else tile.description
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
             .clip(cardShape)
-            .background(NotelSurface)
+            .background(if (isBpDisabled) NotelSurface.copy(alpha = 0.6f) else NotelSurface)
             .border(
                 width = if (isBeingDragged) 2.dp else 1.dp,
                 color = borderColor,
                 shape = cardShape
             )
-            .clickable(enabled = !isEditMode) {
+            .clickable(enabled = isClickable) {
                 if (isLocked) {
                     onNavigateToMembership()
                 } else {
@@ -385,6 +410,7 @@ fun InfoTileCard(
                         "lists" -> onListsClick()
                         "notes" -> onNotesClick()
                         "project_focus" -> onProjectFocusClick()
+                        "blood_pressure" -> if (isBpAvailable) onBloodPressureClick()
                     }
                 }
             }
@@ -393,7 +419,7 @@ fun InfoTileCard(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer(alpha = if (isLocked) 0.5f else 1f),
+                .graphicsLayer(alpha = if (isLocked || isBpDisabled) 0.55f else 1f),
             verticalArrangement = Arrangement.SpaceBetween,
             horizontalAlignment = Alignment.Start
         ) {
@@ -402,13 +428,13 @@ fun InfoTileCard(
                 modifier = Modifier
                     .size(42.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(NotelPrimary.copy(alpha = 0.12f)),
+                    .background(if (isBpDisabled) Color.Gray.copy(alpha = 0.15f) else NotelPrimary.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = tile.icon,
                     contentDescription = null,
-                    tint = NotelPrimary,
+                    tint = if (isBpDisabled) Color.Gray else NotelPrimary,
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -417,14 +443,14 @@ fun InfoTileCard(
             Column {
                 Text(
                     text = tile.title,
-                    color = NotelTextPrimary,
+                    color = if (isBpDisabled) NotelTextSecondary else NotelTextPrimary,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     lineHeight = 19.sp
                 )
                 Spacer(Modifier.height(3.dp))
                 Text(
-                    text = tile.description,
+                    text = subtitleText,
                     color = NotelTextSecondary,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Normal,

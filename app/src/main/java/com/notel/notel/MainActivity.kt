@@ -445,7 +445,14 @@ class MainActivity : ComponentActivity() {
                         }
                         composable("info") {
                             val settingsViewModel: com.notel.notel.ui.viewmodel.SettingsViewModel = hiltViewModel()
+                            val fitbitViewModel: com.notel.notel.ui.viewmodel.FitbitViewModel = hiltViewModel()
                             val isUnlimited by settingsViewModel.isUnlimited.collectAsState(initial = false)
+                            val fitbitState by fitbitViewModel.state.collectAsState()
+
+                            LaunchedEffect(Unit) {
+                                fitbitViewModel.refreshBloodPressureState()
+                            }
+
                             InfoScreen(
                                 onBack = { navController.popBackStack() },
                                 onSleepClick = { navController.navigate("sleep") },
@@ -467,10 +474,15 @@ class MainActivity : ComponentActivity() {
                                 onListsClick = { navController.navigate("lists") },
                                 onNotesClick = { navController.navigate("notes") },
                                 onProjectFocusClick = { navController.navigate("project_focus") },
+                                onBloodPressureClick = { navController.navigate("blood_pressure") },
                                 onNavigateToMembership = { navController.navigate("settings?menu=MEMBERSHIP") },
                                 isUnlimited = isUnlimited,
+                                bloodPressureState = fitbitState.bloodPressureState,
                                 onReorderStateChange = { isReorderingTiles = it }
                             )
+                        }
+                        composable("blood_pressure") {
+                            com.notel.notel.ui.screen.BloodPressureScreen(onBack = { navController.popBackStack() })
                         }
                         composable("body_info") {
                             BodyInfoScreen(onBack = { navController.popBackStack() })
