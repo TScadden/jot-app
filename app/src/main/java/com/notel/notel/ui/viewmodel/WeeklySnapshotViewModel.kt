@@ -38,7 +38,8 @@ class WeeklySnapshotViewModel @Inject constructor(
     private val healthConnectManager: HealthConnectManager,
     private val logEntryDao: LogEntryDao,
     private val scheduledDoseOccurrenceDao: ScheduledDoseOccurrenceDao,
-    private val habitRepository: HabitRepository
+    private val habitRepository: HabitRepository,
+    private val timeProvider: com.notel.notel.util.TimeProvider
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<WeeklySnapshotState>(WeeklySnapshotState.Loading)
@@ -88,18 +89,31 @@ class WeeklySnapshotViewModel @Inject constructor(
                 "Medication Adherence",
                 "Habit Completion"
             )
+            var bpAvailable = false
             try {
                 val hasBpPermission = healthConnectManager.hasBloodPressurePermission()
                 if (hasBpPermission) {
                     val bpRecords = healthConnectManager.readBloodPressureRecords(days = 10)
                     if (bpRecords.isNotEmpty()) {
                         list.add("Blood Pressure")
+                        bpAvailable = true
                     }
                 }
             } catch (e: Exception) {
                 // Safeguard against Health Connect exceptions
             }
             availableMetrics.value = list
+
+            // Update visible ready state if present
+            val currentState = _uiState.value
+            if (currentState is WeeklySnapshotState.Ready) {
+                _uiState.value = currentState.copy(availableMetrics = list)
+            }
+
+            // Fallback if current metric is Blood Pressure but it is no longer available
+            if (currentMetric == "Blood Pressure" && !bpAvailable) {
+                selectMetric("Sleep Hours")
+            }
         }
     }
 
@@ -113,7 +127,7 @@ class WeeklySnapshotViewModel @Inject constructor(
     }
 
     private fun setupReactiveInvalidation() {
-        val today = LocalDate.now()
+        val today = timeProvider.today()
         val startDate = today.minusDays(6).format(DateTimeFormatter.ISO_LOCAL_DATE)
         val endDate = today.format(DateTimeFormatter.ISO_LOCAL_DATE)
 

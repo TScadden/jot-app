@@ -457,6 +457,7 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToMembership = { navController.navigate("settings?menu=MEMBERSHIP") },
                                 onNavigateToHabits = { navController.navigate("habits") },
                                 onNavigateToReminders = { navController.navigate("reminders") },
+                                onNavigateToMedications = { navController.navigate("medications") },
                                 onNavigateToLists = { navController.navigate("lists") },
                                 onNavigateToNotes = { navController.navigate("notes") },
                                 onNavigateToProjectFocus = { navController.navigate("project_focus") }

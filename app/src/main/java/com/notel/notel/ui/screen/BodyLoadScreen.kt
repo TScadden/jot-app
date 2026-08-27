@@ -63,6 +63,7 @@ fun BodyLoadScreen(
     onNavigateToHeart: () -> Unit = {},
     onNavigateToHabits: () -> Unit = {},
     onNavigateToReminders: () -> Unit = {},
+    onNavigateToMedications: () -> Unit = {},
     onNavigateToLists: () -> Unit = {},
     onNavigateToNotes: () -> Unit = {},
     onNavigateToProjectFocus: () -> Unit = {},
@@ -804,10 +805,10 @@ fun BodyLoadScreen(
                             "fitbit" -> onNavigateToHeart()
                             "key_metrics" -> onNavigateToConnections()
                             "history" -> onNavigateToNotes()
-                            "medications" -> onNavigateToConnections()
+                            "medications" -> onNavigateToMedications()
                             "habits" -> onNavigateToHabits()
                             "blood_pressure" -> onNavigateToConnections()
-                            else -> onNavigateToConnections()
+                            else -> onNavigateToNotes()
                         }
                     }
                 )

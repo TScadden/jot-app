@@ -276,7 +276,7 @@ class WeeklySnapshotRepository @Inject constructor(
                 aggregator.aggregateSymptoms(dateStrs, dayLabels, entries, category?.id)
             }
             "Medication Adherence" -> {
-                val occurrences = scheduledDoseOccurrenceDao.getOccurrencesForDateDirect("") // fallback range
+                val occurrences = scheduledDoseOccurrenceDao.getOccurrencesInDateRangeDirect(dateStrs.first(), dateStrs.last())
                 aggregator.aggregateMedication(dates, dayLabels, occurrences)
             }
             "Habit Completion" -> {

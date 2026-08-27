@@ -21,6 +21,9 @@ interface ScheduledDoseOccurrenceDao {
     @Query("SELECT * FROM scheduled_dose_occurrences WHERE scheduledDate >= :startDate AND scheduledDate <= :endDate")
     fun getOccurrencesInDateRange(startDate: String, endDate: String): Flow<List<ScheduledDoseOccurrence>>
 
+    @Query("SELECT * FROM scheduled_dose_occurrences WHERE scheduledDate >= :startDate AND scheduledDate <= :endDate")
+    suspend fun getOccurrencesInDateRangeDirect(startDate: String, endDate: String): List<ScheduledDoseOccurrence>
+
     @Query("SELECT * FROM scheduled_dose_occurrences")
     fun getAllOccurrences(): Flow<List<ScheduledDoseOccurrence>>
 
