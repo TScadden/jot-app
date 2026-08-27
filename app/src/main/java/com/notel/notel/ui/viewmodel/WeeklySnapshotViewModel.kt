@@ -220,9 +220,18 @@ class WeeklySnapshotViewModel @Inject constructor(
             else -> null
         }
 
-        when (currentState) {
-            is WeeklySnapshotState.ReadyWithData -> _uiState.value = currentState.copy(isRefreshing = true)
-            is WeeklySnapshotState.ReadyEmpty -> _uiState.value = currentState.copy(isRefreshing = true)
+        val isMetricSwitch = retainedData?.metricName != metric
+
+        when {
+            isMetricSwitch -> {
+                _uiState.value = WeeklySnapshotState.Loading
+            }
+            currentState is WeeklySnapshotState.ReadyWithData -> {
+                _uiState.value = currentState.copy(isRefreshing = true)
+            }
+            currentState is WeeklySnapshotState.ReadyEmpty -> {
+                _uiState.value = currentState.copy(isRefreshing = true)
+            }
             else -> {
                 if (!isExplicitRefresh && retainedData == null) {
                     _uiState.value = WeeklySnapshotState.Loading
