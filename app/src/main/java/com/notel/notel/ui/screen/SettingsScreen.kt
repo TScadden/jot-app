@@ -1134,7 +1134,7 @@ fun SettingsScreen(
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
-                        "Cloud sync enabled",
+                        "Synced",
                         fontSize = 10.sp,
                         color = NotelPrimary,
                         fontWeight = FontWeight.Medium
@@ -1404,7 +1404,7 @@ fun SettingsScreen(
                                 )
                                 Spacer(Modifier.width(4.dp))
                                 Text(
-                                    "Cloud sync enabled",
+                                    "Synced",
                                     fontSize = 10.sp,
                                     color = NotelPrimary,
                                     fontWeight = FontWeight.Medium
@@ -1612,16 +1612,16 @@ fun SettingsScreen(
                         Text("Digital Knowledge Extraction", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                Icons.Default.CloudDone,
+                                Icons.Default.Storage,
                                 contentDescription = null,
-                                tint = NotelPrimary,
+                                tint = NotelTextSecondary,
                                 modifier = Modifier.size(12.dp)
                             )
                             Spacer(Modifier.width(4.dp))
                             Text(
-                                "Extracted knowledge cloud-synced",
+                                "On-device",
                                 fontSize = 10.sp,
-                                color = NotelPrimary,
+                                color = NotelTextSecondary,
                                 fontWeight = FontWeight.Medium
                             )
                         }
