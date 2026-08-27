@@ -1127,16 +1127,16 @@ fun SettingsScreen(
                 Text("EVENT COUNTERS", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        if (lastSyncTime > 0) Icons.Default.CloudDone else Icons.Default.Storage,
+                        Icons.Default.CloudDone,
                         contentDescription = null,
-                        tint = if (lastSyncTime > 0) NotelPrimary else NotelTextSecondary,
+                        tint = NotelPrimary,
                         modifier = Modifier.size(12.dp)
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
-                        if (lastSyncTime > 0) "Synced" else "Saved locally",
+                        "Cloud sync enabled",
                         fontSize = 10.sp,
-                        color = if (lastSyncTime > 0) NotelPrimary else NotelTextSecondary,
+                        color = NotelPrimary,
                         fontWeight = FontWeight.Medium
                     )
                 }
@@ -1380,28 +1380,7 @@ fun SettingsScreen(
                         lowerCtx.contains("therapist") || lowerKB.contains("therapist") -> "Therapist"
                         else -> "Professional"
                     }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("PHYSICIAN PROTOCOLS", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                if (lastSyncTime > 0) Icons.Default.CloudDone else Icons.Default.Storage,
-                                contentDescription = null,
-                                tint = if (lastSyncTime > 0) NotelPrimary else NotelTextSecondary,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text(
-                                if (lastSyncTime > 0) "Synced" else "Saved locally",
-                                fontSize = 10.sp,
-                                color = if (lastSyncTime > 0) NotelPrimary else NotelTextSecondary,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
+                    Text("PHYSICIAN PROTOCOLS", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(8.dp))
 
                     var showProfessionalDialog by remember { mutableStateOf(false) }
@@ -1410,7 +1389,28 @@ fun SettingsScreen(
                         shape = RoundedCornerShape(16.dp),
                         color = NotelSurface
                     ) {
-                        Text("New Physician Protocol", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("New Physician Protocol", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.CloudDone,
+                                    contentDescription = null,
+                                    tint = NotelPrimary,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    "Cloud sync enabled",
+                                    fontSize = 10.sp,
+                                    color = NotelPrimary,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
                         Spacer(Modifier.height(4.dp))
                         Text(
                             "Did your doctor or specialist suggest a new protocol, medication change, or routine? Add it here for AI compliance tracking.",
@@ -1597,28 +1597,7 @@ fun SettingsScreen(
                 }
 
                 // ── FILE KNOWLEDGE BASE + ORIGINAL DOCUMENTS (merged) ────────────
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("FILE KNOWLEDGE BASE", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            if (lastSyncTime > 0) Icons.Default.CloudDone else Icons.Default.Storage,
-                            contentDescription = null,
-                            tint = if (lastSyncTime > 0) NotelPrimary else NotelTextSecondary,
-                            modifier = Modifier.size(12.dp)
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            if (lastSyncTime > 0) "Synced" else "Saved locally",
-                            fontSize = 10.sp,
-                            color = if (lastSyncTime > 0) NotelPrimary else NotelTextSecondary,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
+                Text("FILE KNOWLEDGE BASE", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(8.dp))
 
                 GlassyCard(
@@ -1633,16 +1612,16 @@ fun SettingsScreen(
                         Text("Digital Knowledge Extraction", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                if (lastSyncTime > 0) Icons.Default.CloudDone else Icons.Default.Storage,
+                                Icons.Default.CloudDone,
                                 contentDescription = null,
-                                tint = if (lastSyncTime > 0) NotelPrimary else NotelTextSecondary,
+                                tint = NotelPrimary,
                                 modifier = Modifier.size(12.dp)
                             )
                             Spacer(Modifier.width(4.dp))
                             Text(
-                                if (lastSyncTime > 0) "Synced" else "Saved locally",
+                                "Extracted knowledge cloud-synced",
                                 fontSize = 10.sp,
-                                color = if (lastSyncTime > 0) NotelPrimary else NotelTextSecondary,
+                                color = NotelPrimary,
                                 fontWeight = FontWeight.Medium
                             )
                         }
