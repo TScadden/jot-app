@@ -1555,7 +1555,11 @@
             return refreshPromise;
         }
 
-        async function authenticatedFetch(url, options = {}) {
+        async function authenticatedFetch(url, options = {}, fetchOpts = {}) {
+            const timeoutMs = fetchOpts.timeoutMs || 15000;
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
             const headers = new Headers(options.headers || {});
             let token = sessionStorage.getItem('token');
             if (token) {
@@ -1564,9 +1568,17 @@
 
             let response;
             try {
-                response = await fetch(url, { ...options, headers });
+                response = await fetch(url, { ...options, headers, signal: controller.signal });
             } catch (err) {
-                throw new Error('Couldn\'t reach Tabs. Check your connection and retry.');
+                clearTimeout(timeoutId);
+                if (err.name === 'AbortError') {
+                    const abortErr = new Error('Tabs is taking too long to respond.');
+                    abortErr.name = 'AbortError';
+                    throw abortErr;
+                }
+                throw new Error(navigator.onLine === false ? 'You are currently offline. Check your internet connection.' : 'Couldn\'t reach Tabs. Check your connection and retry.');
+            } finally {
+                clearTimeout(timeoutId);
             }
 
             if (response.status !== 401) {
@@ -1576,15 +1588,27 @@
             // Status is 401: perform single-flight refresh token rotation
             const newToken = await refreshSessionToken();
             if (!newToken) {
+                handleLogout('Your session expired. Please sign in again.');
                 throw new Error('Your session expired. Please sign in again.');
             }
 
+            const retryController = new AbortController();
+            const retryTimeoutId = setTimeout(() => retryController.abort(), timeoutMs);
             headers.set('Authorization', `Bearer ${newToken}`);
+
             let retryResponse;
             try {
-                retryResponse = await fetch(url, { ...options, headers });
+                retryResponse = await fetch(url, { ...options, headers, signal: retryController.signal });
             } catch (err) {
-                throw new Error('Couldn\'t reach Tabs. Check your connection and retry.');
+                clearTimeout(retryTimeoutId);
+                if (err.name === 'AbortError') {
+                    const abortErr = new Error('Tabs is taking too long to respond.');
+                    abortErr.name = 'AbortError';
+                    throw abortErr;
+                }
+                throw new Error(navigator.onLine === false ? 'You are currently offline. Check your internet connection.' : 'Couldn\'t reach Tabs. Check your connection and retry.');
+            } finally {
+                clearTimeout(retryTimeoutId);
             }
 
             if (retryResponse.status === 401) {
@@ -1595,58 +1619,203 @@
             return retryResponse;
         }
 
-        if (!sessionStorage.getItem('token')) {
-            window.location.href = '/login.html';
-        }
+        // Authentication guard and Greeting update
+        function checkSessionAndInitGreeting() {
+            const token = sessionStorage.getItem('token');
+            if (!token) {
+                window.location.href = '/login.html?expired=1';
+                return false;
+            }
 
-        // Set up welcome greeting
-        const nickname = sessionStorage.getItem('nickname') || 'User';
-        const tag = sessionStorage.getItem('tag') || '00000';
-        document.getElementById('user-display-name').textContent = `${nickname} #${tag}`;
+            const nickname = sessionStorage.getItem('nickname');
+            const tag = sessionStorage.getItem('tag');
+
+            if (nickname && tag) {
+                document.getElementById('user-display-name').textContent = `${nickname} #${tag}`;
+            } else {
+                document.getElementById('user-display-name').textContent = `Account #${tag || 'Member'}`;
+            }
+            return true;
+        }
 
         let globalSyncData = null;
         let globalSortedRecords = [];
         let currentGraphAnalysisId = null;
         let currentGraphAnalysisRequestId = null;
 
+        let currentDashboardState = 'loading'; // 'loading', 'success', 'empty', 'error', 'authentication-required'
+
+        function setDashboardState(state) {
+            currentDashboardState = state;
+            console.log(`[Dashboard State] ${state}`);
+        }
+
+        function hideEveryDashboardSpinner() {
+            const globalSpinner = document.getElementById('loading-spinner');
+            if (globalSpinner) globalSpinner.style.display = 'none';
+
+            const logsList = document.getElementById('logs-list');
+            if (logsList && logsList.querySelector('.spinner')) {
+                // If logsList still has raw spinner HTML, clean it up
+                const spinnerElem = logsList.querySelector('.spinner');
+                if (spinnerElem && spinnerElem.parentElement) {
+                    spinnerElem.parentElement.remove();
+                }
+            }
+        }
+
+        function hasDashboardData(data) {
+            if (!data) return false;
+            const hasEntries = Array.isArray(data.entries) && data.entries.length > 0;
+            const hasInsights = Array.isArray(data.insights) && data.insights.length > 0;
+            const hasBiometrics = data.profile && (
+                data.profile.todaySleepMins > 0 ||
+                data.profile.todayAvgHr > 0 ||
+                (data.profile.heartRateHistory && data.profile.heartRateHistory !== '[]')
+            );
+            return hasEntries || hasInsights || hasBiometrics;
+        }
+
+        function renderEmptyDashboard() {
+            setDashboardState('empty');
+            
+            // Set stats to 0 or appropriate empty state rather than keeping -- indefinitely
+            document.getElementById('stat-jots-count').textContent = '0';
+            document.getElementById('stat-streak').textContent = '0 days';
+            document.getElementById('stat-bodyload').textContent = 'No data';
+            document.getElementById('stat-weekly-score').textContent = '--';
+
+            // Insights Empty State
+            const insightsContainer = document.getElementById('ai-insights-list');
+            if (insightsContainer) {
+                insightsContainer.innerHTML = `
+                    <div style="background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 1.25rem; text-align: center;">
+                        <p style="margin: 0 0 0.5rem 0; color: #a5b4fc; font-weight: 600;">No AI Insights Yet</p>
+                        <p style="margin: 0; font-size: 0.85rem; color: #94a3b8;">Insights will be generated automatically as you log symptoms and biometric data in the Tabs mobile app.</p>
+                    </div>
+                `;
+            }
+
+            // Timeline Empty State
+            const listContainer = document.getElementById('logs-list');
+            const logsCount = document.getElementById('logs-count');
+            if (logsCount) logsCount.textContent = '0 items';
+            if (listContainer) {
+                listContainer.innerHTML = `
+                    <div class="no-data-msg glass" style="padding: 2.5rem 1.5rem; text-align: center;">
+                        <div style="font-size: 2.5rem; margin-bottom: 0.75rem;">📝</div>
+                        <h3 style="margin-bottom: 0.5rem; color: var(--text-color);">No logs synced yet</h3>
+                        <p style="color: var(--text-muted); font-size: 0.9rem; max-width: 420px; margin: 0 auto 1.25rem auto;">
+                            Your account has no recorded jots or symptoms. Log entries in the Tabs mobile app to populate your timeline.
+                        </p>
+                        <button onclick="fetchDashboardData()" class="btn-primary" style="padding: 0.5rem 1.25rem; font-size: 0.88rem;">
+                            🔄 Refresh Sync
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
+        function showDashboardError(msg, isAuthError = false) {
+            setDashboardState(isAuthError ? 'authentication-required' : 'error');
+
+            const listContainer = document.getElementById('logs-list');
+            if (!listContainer) return;
+
+            const isOffline = navigator.onLine === false;
+            const displayTitle = isOffline ? 'Offline Mode' : (isAuthError ? 'Session Expired' : 'Sync Error');
+            const displayMsg = isOffline ? 'You are currently offline. Check your connection and try again.' : msg;
+
+            const buttonHtml = isAuthError 
+                ? `<button onclick="handleLogout('Your session expired. Please sign in again.')" class="btn-primary" style="background: linear-gradient(135deg, #FF5E62, #FF9966); padding: 0.55rem 1.25rem; border: none; border-radius: 8px; color: white; font-weight: 600; cursor: pointer;">🔐 Sign In Again</button>`
+                : `<button onclick="fetchDashboardData()" class="btn-primary" style="padding: 0.55rem 1.25rem; border-radius: 8px; color: white; font-weight: 600; cursor: pointer;">🔄 Try Again</button>`;
+
+            listContainer.innerHTML = `
+                <div class="no-data-msg glass" style="border-color: rgba(255, 94, 98, 0.3); padding: 2rem 1.5rem; text-align: center;">
+                    <div style="font-size: 2.2rem; margin-bottom: 0.5rem;">${isOffline ? '📡' : '⚠️'}</div>
+                    <h3 style="color: #FF5E62; margin-bottom: 0.5rem;">${displayTitle}</h3>
+                    <p style="color: var(--text-muted); font-size: 0.9rem; max-width: 440px; margin: 0 auto 1.25rem auto;">${displayMsg}</p>
+                    <div style="display: flex; gap: 0.75rem; justify-content: center;">
+                        ${buttonHtml}
+                    </div>
+                </div>
+            `;
+        }
+
         // Fetch User Data
         async function fetchDashboardData() {
-            try {
-                const response = await authenticatedFetch(`${API_BASE}/api/sync/pull`);
-                const data = await response.json().catch(() => null);
-                document.getElementById('loading-spinner').style.display = 'none';
+            setDashboardState('loading');
+            
+            // Ensure session validity
+            if (!checkSessionAndInitGreeting()) return;
 
-                if (response.ok && data) {
-                    globalSyncData = data;
-                    parseBiometricRecords(data);
-                    renderStats(data.profile, data.insights);
-                    renderInsights(data.insights);
-                    renderLogs(data.entries, data.categories);
-                    
-                    // Sync focus state from server user profile
-                    if (data.profile && data.profile.focusState) {
-                        try {
-                            const parsed = JSON.parse(data.profile.focusState);
-                            if (parsed && typeof parsed === 'object') {
-                                const localTime = focusState.lastUpdated || 0;
-                                const serverTime = parsed.lastUpdated || 0;
-                                if (serverTime >= localTime) {
-                                    focusState = parsed;
-                                    localStorage.setItem('focus_state', JSON.stringify(focusState));
-                                    renderActiveTestsHeader();
-                                    restoreActiveSubView(true); // pass true to prevent immediate back-push
-                                }
-                            }
-                        } catch(e) {
-                            console.error("Failed to restore focusState from sync:", e);
-                        }
+            // Show timeline loading indicator if retrying
+            const listContainer = document.getElementById('logs-list');
+            if (listContainer) {
+                listContainer.innerHTML = `
+                    <div style="text-align: center; padding: 3rem 1rem;">
+                        <div class="spinner" style="margin: 0 auto 1rem auto; width: 32px; height: 32px; border-width: 3px;"></div>
+                        <p style="color: var(--text-muted); font-size: 0.9rem;">Synchronizing wellness timeline...</p>
+                    </div>
+                `;
+            }
+
+            try {
+                const response = await authenticatedFetch(`${API_BASE}/api/sync/pull`, {}, { timeoutMs: 15000 });
+                const data = await response.json().catch(() => null);
+
+                if (!response.ok || !data) {
+                    const errorMsg = data?.error || 'Failed to fetch synchronization data.';
+                    if (response.status === 401) {
+                        showDashboardError('Your session expired. Please sign in again.', true);
+                    } else {
+                        showDashboardError(errorMsg, false);
                     }
+                    return;
+                }
+
+                // Update nickname/tag if returned from server
+                if (data.nickname) sessionStorage.setItem('nickname', data.nickname);
+                if (data.tag) sessionStorage.setItem('tag', data.tag);
+                checkSessionAndInitGreeting();
+
+                globalSyncData = data;
+                parseBiometricRecords(data);
+                renderStats(data.profile, data.insights);
+                renderInsights(data.insights);
+                renderLogs(data.entries, data.categories);
+                
+                // Sync focus state from server user profile
+                if (data.profile && data.profile.focusState) {
+                    try {
+                        const parsed = JSON.parse(data.profile.focusState);
+                        if (parsed && typeof parsed === 'object') {
+                            const localTime = focusState.lastUpdated || 0;
+                            const serverTime = parsed.lastUpdated || 0;
+                            if (serverTime >= localTime) {
+                                focusState = parsed;
+                                localStorage.setItem('focus_state', JSON.stringify(focusState));
+                                try { renderActiveTestsHeader(); } catch (e) {}
+                                try { restoreActiveSubView(true); } catch (e) {}
+                            }
+                        }
+                    } catch(e) {
+                        console.error("Failed to restore focusState from sync:", e);
+                    }
+                }
+
+                if (hasDashboardData(data)) {
+                    setDashboardState('success');
                 } else {
-                    showError(data?.error || 'Failed to fetch synchronization data.');
+                    renderEmptyDashboard();
                 }
             } catch (err) {
-                document.getElementById('loading-spinner').style.display = 'none';
-                showError(err.message || 'Failed to fetch synchronization data.');
+                console.error("Dashboard fetch error:", err);
+                const isAuth = err.message.includes('expired');
+                showDashboardError(err.message || 'Failed to fetch synchronization data.', isAuth);
+            } finally {
+                hideEveryDashboardSpinner();
+            }
         }
 
         function renderStats(profile, insights) {
@@ -3286,9 +3455,16 @@
             }
         }
 
-        // Run fetch
-        initFocusState();
-        fetchDashboardData();
+        // Start critical dashboard fetch independently & wrap optional initializers separately
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchDashboardData();
+
+            try {
+                initFocusState();
+            } catch (error) {
+                console.error('Project Focus initialization failed:', error);
+            }
+        });
     </script>
 
     <!-- AI Graph Analysis Modal -->
