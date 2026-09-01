@@ -1517,8 +1517,85 @@
     <script>
         const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:3000' : 'https://api.jottracker.com';
         
-        const token = sessionStorage.getItem('token');
-        if (!token) {
+        let refreshPromise = null;
+
+        async function refreshSessionToken() {
+            if (refreshPromise) return refreshPromise;
+
+            refreshPromise = (async () => {
+                const refreshToken = sessionStorage.getItem('refreshToken');
+                if (!refreshToken) {
+                    handleLogout('Your session expired. Please sign in again.');
+                    return null;
+                }
+
+                try {
+                    const res = await fetch(`${API_BASE}/api/auth/refresh-token`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ refreshToken })
+                    });
+
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.token) sessionStorage.setItem('token', data.token);
+                        if (data.refreshToken) sessionStorage.setItem('refreshToken', data.refreshToken);
+                        return data.token;
+                    }
+                } catch (e) {
+                    console.error('Refresh token request failed:', e);
+                }
+
+                handleLogout('Your session expired. Please sign in again.');
+                return null;
+            })().finally(() => {
+                refreshPromise = null;
+            });
+
+            return refreshPromise;
+        }
+
+        async function authenticatedFetch(url, options = {}) {
+            const headers = new Headers(options.headers || {});
+            let token = sessionStorage.getItem('token');
+            if (token) {
+                headers.set('Authorization', `Bearer ${token}`);
+            }
+
+            let response;
+            try {
+                response = await fetch(url, { ...options, headers });
+            } catch (err) {
+                throw new Error('Couldn\'t reach Tabs. Check your connection and retry.');
+            }
+
+            if (response.status !== 401) {
+                return response;
+            }
+
+            // Status is 401: perform single-flight refresh token rotation
+            const newToken = await refreshSessionToken();
+            if (!newToken) {
+                throw new Error('Your session expired. Please sign in again.');
+            }
+
+            headers.set('Authorization', `Bearer ${newToken}`);
+            let retryResponse;
+            try {
+                retryResponse = await fetch(url, { ...options, headers });
+            } catch (err) {
+                throw new Error('Couldn\'t reach Tabs. Check your connection and retry.');
+            }
+
+            if (retryResponse.status === 401) {
+                handleLogout('Your session expired. Please sign in again.');
+                throw new Error('Your session expired. Please sign in again.');
+            }
+
+            return retryResponse;
+        }
+
+        if (!sessionStorage.getItem('token')) {
             window.location.href = '/login.html';
         }
 
@@ -1529,24 +1606,17 @@
 
         let globalSyncData = null;
         let globalSortedRecords = [];
+        let currentGraphAnalysisId = null;
+        let currentGraphAnalysisRequestId = null;
 
         // Fetch User Data
         async function fetchDashboardData() {
-
             try {
-                const response = await fetch(`${API_BASE}/api/sync/pull`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-
-                if (response.status === 401) {
-                    handleLogout();
-                    return;
-                }
-
-                const data = await response.json();
+                const response = await authenticatedFetch(`${API_BASE}/api/sync/pull`);
+                const data = await response.json().catch(() => null);
                 document.getElementById('loading-spinner').style.display = 'none';
 
-                if (response.ok) {
+                if (response.ok && data) {
                     globalSyncData = data;
                     parseBiometricRecords(data);
                     renderStats(data.profile, data.insights);
@@ -1572,12 +1642,11 @@
                         }
                     }
                 } else {
-                    showError('Failed to fetch synchronization data.');
+                    showError(data?.error || 'Failed to fetch synchronization data.');
                 }
             } catch (err) {
                 document.getElementById('loading-spinner').style.display = 'none';
-                showError('Error connecting to the synchronization server.');
-            }
+                showError(err.message || 'Failed to fetch synchronization data.');
         }
 
         function renderStats(profile, insights) {
@@ -1874,10 +1943,9 @@
 
         async function syncFocusStateToServer() {
             try {
-                await fetch(`${API_BASE}/api/sync/profile`, {
+                await authenticatedFetch(`${API_BASE}/api/sync/profile`, {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
@@ -2014,10 +2082,9 @@
             
             let success = false;
             try {
-                const response = await fetch(`${API_BASE}/api/ai/focus-suggestions`, {
+                const response = await authenticatedFetch(`${API_BASE}/api/ai/focus-suggestions`, {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({ struggle })
@@ -2917,10 +2984,9 @@
                 const uContext = globalSyncData?.profile?.userContext || '';
                 const kBase = globalSyncData?.profile?.knowledgeBase || '';
 
-                let response = await fetch(`${API_BASE}/api/ai/read-graphs`, {
+                let response = await authenticatedFetch(`${API_BASE}/api/ai/read-graphs`, {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
@@ -2952,10 +3018,9 @@
 
                     const fullMedicalContext = `User Medical Background & Conditions: ${kBase || 'POTS, MCAS, EDS'}. User Personal Context: ${uContext}. Analyze how their conditions explain HR spikes and correlate medication start dates with graph metric shifts. DO NOT list out long strings of raw numbers.`;
 
-                    response = await fetch(`${API_BASE}/api/ai/advice`, {
+                    response = await authenticatedFetch(`${API_BASE}/api/ai/advice`, {
                         method: 'POST',
                         headers: {
-                            'Authorization': `Bearer ${token}`,
                             'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({
@@ -2975,6 +3040,8 @@
 
                 if (response.ok && data.result) {
                     cachedGraphAnalysis = data.result;
+                    currentGraphAnalysisId = `graph_report_${Date.now()}`;
+                    currentGraphAnalysisRequestId = `req_graph_report_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
                     graphAnalysisState = 'ready';
                     btn.disabled = false;
                     btn.classList.add('btn-analysis-ready');
@@ -3106,20 +3173,27 @@
             if (!btn || !cachedGraphAnalysis) return;
 
             btn.disabled = true;
-            if (text) text.textContent = 'Sending to App...';
+            if (text) text.textContent = 'Saving to Tabs...';
             if (icon) icon.textContent = '⏳';
 
             try {
+                if (!currentGraphAnalysisId) {
+                    currentGraphAnalysisId = `graph_report_${Date.now()}`;
+                }
+                if (!currentGraphAnalysisRequestId) {
+                    currentGraphAnalysisRequestId = `req_graph_report_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+                }
+
                 const cleanText = formatAnalysisForApp(cachedGraphAnalysis);
-                const response = await fetch(`${API_BASE}/api/sync/insights`, {
+                const response = await authenticatedFetch(`${API_BASE}/api/sync/insights`, {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
                         insights: [{
-                            id: `graph_report_${Date.now()}`,
+                            id: currentGraphAnalysisId,
+                            requestId: currentGraphAnalysisRequestId,
                             text: cleanText,
                             type: 'Graph Analysis Report',
                             timestamp: Date.now()
@@ -3127,30 +3201,38 @@
                     })
                 });
 
-                if (response.ok) {
-                    if (text) text.textContent = 'Sent to Tabs App!';
-                    if (icon) icon.textContent = '✅';
-                    btn.style.background = 'rgba(74, 222, 128, 0.2)';
-                    btn.style.borderColor = 'rgba(74, 222, 128, 0.5)';
-                    setTimeout(() => {
-                        btn.disabled = false;
-                        if (text) text.textContent = 'Send To Tabs App';
-                        if (icon) icon.textContent = '📱';
-                        btn.style.background = 'rgba(124, 110, 255, 0.15)';
-                        btn.style.borderColor = 'rgba(124, 110, 255, 0.35)';
-                    }, 4000);
-                } else {
-                    throw new Error('Server returned an error');
+                const data = await response.json().catch(() => null);
+
+                if (!response.ok) {
+                    const serverErrorMsg = data?.error || (data?.items && data.items[0]?.message) || 'Sync server error';
+                    throw new Error(serverErrorMsg);
                 }
+
+                const itemStatus = data?.items?.[0];
+                if (itemStatus && itemStatus.status === 'error') {
+                    throw new Error(itemStatus.message || 'Saved with errors');
+                }
+
+                if (text) text.textContent = 'Saved to Tabs!';
+                if (icon) icon.textContent = '✅';
+                btn.style.background = 'rgba(74, 222, 128, 0.2)';
+                btn.style.borderColor = 'rgba(74, 222, 128, 0.5)';
+                setTimeout(() => {
+                    btn.disabled = false;
+                    if (text) text.textContent = 'Save to Tabs';
+                    if (icon) icon.textContent = '📱';
+                    btn.style.background = 'rgba(124, 110, 255, 0.15)';
+                    btn.style.borderColor = 'rgba(124, 110, 255, 0.35)';
+                }, 4000);
             } catch (err) {
                 console.error('Failed to send insight to app:', err);
-                if (text) text.textContent = 'Failed to Send';
+                if (text) text.textContent = err.message.includes('expired') ? 'Session Expired' : 'Failed to Save';
                 if (icon) icon.textContent = '❌';
                 setTimeout(() => {
                     btn.disabled = false;
-                    if (text) text.textContent = 'Send To Tabs App';
+                    if (text) text.textContent = 'Save to Tabs';
                     if (icon) icon.textContent = '📱';
-                }, 3000);
+                }, 3500);
             }
         }
 
@@ -3173,24 +3255,18 @@
                 container.innerHTML = `
                     <div style="border-bottom: 2px solid #6366f1; padding-bottom: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
                         <div>
-                            <h2 style="margin: 0; color: #4f46e5; font-size: 22px; font-weight: 800;">🧪 Tabs Health AI Report</h2>
-                            <p style="margin: 4px 0 0 0; color: #64748b; font-size: 13px;">Biometric Trend Analysis & Condition Correlation</p>
-                        </div>
-                        <div style="text-align: right;">
-                            <span style="background: #e0e7ff; color: #3730a3; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;">${todayStr}</span>
+                            <h2 style="margin: 0; color: #4f46e5; font-size: 1.5rem; font-weight: 700;">Tabs Wellness Biometric Analysis</h2>
+                            <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.85rem;">Clinical Graph Pattern Summary • ${todayStr}</p>
                         </div>
                     </div>
-                    <div style="line-height: 1.7; font-size: 14px; color: #334155;">
+                    <div style="line-height: 1.6; color: #334155;">
                         ${cachedGraphAnalysis}
-                    </div>
-                    <div style="margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 12px; text-align: center; color: #94a3b8; font-size: 11px;">
-                        Generated automatically by Tabs Health Intelligence • Keep for personal and medical records
                     </div>
                 `;
 
                 const opt = {
-                    margin:       [0.4, 0.4, 0.4, 0.4],
-                    filename:     `Tabs_AI_Graph_Analysis_${new Date().toISOString().split('T')[0]}.pdf`,
+                    margin:       [0.5, 0.5, 0.5, 0.5],
+                    filename:     `Tabs_Biometric_Graph_Analysis_${new Date().toISOString().slice(0,10)}.pdf`,
                     image:        { type: 'jpeg', quality: 0.98 },
                     html2canvas:  { scale: 2, useCORS: true, logging: false },
                     jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
@@ -3199,14 +3275,12 @@
                 if (window.html2pdf) {
                     await window.html2pdf().set(opt).from(container).save();
                 } else {
-                    const printWin = window.open('', '_blank');
-                    printWin.document.write(`<html><head><title>Tabs AI Report</title></head><body style="padding:20px;">${container.innerHTML}</body></html>`);
-                    printWin.document.close();
-                    printWin.print();
+                    window.print();
                 }
-            } catch (err) {
-                console.error('Failed to generate PDF report:', err);
-                alert('Failed to generate PDF file. Please try again.');
+            } catch (pdfErr) {
+                console.error("PDF generation failed:", pdfErr);
+                alert("Failed to export PDF report. Printing fallback initialized.");
+                window.print();
             } finally {
                 if (btn) btn.disabled = false;
             }
@@ -3217,9 +3291,9 @@
         fetchDashboardData();
     </script>
 
-    <!-- Graph Analysis Modal -->
-    <div id="graph-analysis-modal" class="modal-overlay" style="display: none;">
-        <div class="modal-card" style="max-width: 650px; width: 92%; max-height: 85vh; display: flex; flex-direction: column;">
+    <!-- AI Graph Analysis Modal -->
+    <div id="graph-analysis-modal" class="modal-overlay">
+        <div class="modal-card glass" style="max-width: 720px; width: 92%; max-height: 88vh; display: flex; flex-direction: column;">
             <div class="modal-header" style="flex-shrink: 0;">
                 <h3>🤖 AI Graph Analysis</h3>
                 <button class="btn-close" onclick="closeGraphAnalysisModal()">✕</button>
@@ -3234,7 +3308,7 @@
                 <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
                     <button id="btn-send-to-app" class="btn-secondary" onclick="sendGraphAnalysisToApp()" style="display: flex; align-items: center; gap: 0.5rem; background: rgba(124, 110, 255, 0.15); border: 1px solid rgba(124, 110, 255, 0.35); color: white; border-radius: 10px; padding: 0.6rem 1.1rem; font-weight: 500; cursor: pointer; transition: all 0.2s ease;">
                         <span id="send-to-app-icon">📱</span>
-                        <span id="send-to-app-text">Send To Tabs App</span>
+                        <span id="send-to-app-text">Save to Tabs</span>
                     </button>
                     <button id="btn-download-report" class="btn-secondary" onclick="downloadGraphAnalysisReport()" style="display: flex; align-items: center; gap: 0.5rem; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: white; border-radius: 10px; padding: 0.6rem 1rem; font-weight: 500; cursor: pointer; transition: all 0.2s ease;">
                         <span>📥</span>

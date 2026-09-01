@@ -33,6 +33,78 @@ export const clearSession = (): void => {
     sessionStorage.clear();
 };
 
+let refreshPromise: Promise<string | null> | null = null;
+
+export const refreshSession = async (): Promise<string | null> => {
+    if (refreshPromise) {
+        return refreshPromise;
+    }
+
+    refreshPromise = (async () => {
+        const refreshToken = sessionStorage.getItem('refreshToken');
+        if (!refreshToken) {
+            clearSession();
+            return null;
+        }
+
+        try {
+            const res = await fetch(`${getApiBaseUrl()}/api/auth/refresh-token`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ refreshToken })
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                if (data.token) sessionStorage.setItem('token', data.token);
+                if (data.refreshToken) sessionStorage.setItem('refreshToken', data.refreshToken);
+                return data.token;
+            }
+        } catch (e) {
+            console.error('Failed to perform token refresh:', e);
+        }
+
+        clearSession();
+        return null;
+    })().finally(() => {
+        refreshPromise = null;
+    });
+
+    return refreshPromise;
+};
+
+export const authenticatedFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
+    const headers = new Headers(options.headers || {});
+    let token = sessionStorage.getItem('token');
+
+    if (token) {
+        headers.set('Authorization', `Bearer ${token}`);
+    }
+
+    const firstResponse = await fetch(url, { ...options, headers });
+    if (firstResponse.status !== 401) {
+        return firstResponse;
+    }
+
+    // Response is 401: attempt single-flight refresh token rotation
+    const newToken = await refreshSession();
+    if (!newToken) {
+        clearSession();
+        window.location.href = '/login.html?expired=1';
+        throw new Error('Your session expired. Please sign in again.');
+    }
+
+    headers.set('Authorization', `Bearer ${newToken}`);
+    const retryResponse = await fetch(url, { ...options, headers });
+    if (retryResponse.status === 401) {
+        clearSession();
+        window.location.href = '/login.html?expired=1';
+        throw new Error('Your session expired. Please sign in again.');
+    }
+
+    return retryResponse;
+};
+
 export const refreshSessionIfNeeded = async (): Promise<string | null> => {
     const token = getItem('token');
     const refreshToken = getItem('refreshToken');
@@ -46,19 +118,8 @@ export const refreshSessionIfNeeded = async (): Promise<string | null> => {
 
         if (res.ok) return token;
 
-        if (res.status === 401 && refreshToken) {
-            const refreshRes = await fetch(`${getApiBaseUrl()}/api/auth/refresh`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ refreshToken })
-            });
-
-            if (refreshRes.ok) {
-                const data = await refreshRes.json();
-                setItem('token', data.token);
-                if (data.refreshToken) setItem('refreshToken', data.refreshToken);
-                return data.token;
-            }
+        if (res.status === 401) {
+            return await refreshSession();
         }
     } catch (e) {
         return token;

@@ -1,4 +1,5 @@
 import './onboarding.css';
+import { authenticatedFetch, clearSession } from './auth';
 
 // Predefined condition options matching common conditions in app
 const COMMON_CONDITIONS = [
@@ -41,7 +42,7 @@ class OnboardingController {
     }
 
     private async init() {
-        this.token = localStorage.getItem('tabs_token');
+        this.token = sessionStorage.getItem('token');
         if (!this.token) {
             window.location.href = '/login.html';
             return;
@@ -75,14 +76,7 @@ class OnboardingController {
 
     private async fetchProfile() {
         try {
-            const res = await fetch(`${API_BASE}/api/sync/pull`, {
-                headers: { 'Authorization': `Bearer ${this.token}` }
-            });
-            if (res.status === 401) {
-                localStorage.removeItem('tabs_token');
-                window.location.href = '/login.html';
-                return;
-            }
+            const res = await authenticatedFetch(`${API_BASE}/api/sync/pull`);
             if (res.ok) {
                 const data = await res.json();
                 const prof = data.profile || {};
@@ -117,7 +111,7 @@ class OnboardingController {
 
     private bindEvents() {
         document.getElementById('logoutBtn')?.addEventListener('click', () => {
-            localStorage.removeItem('tabs_token');
+            clearSession();
             localStorage.removeItem(STORAGE_KEY);
             window.location.href = '/login.html';
         });
@@ -327,11 +321,10 @@ class OnboardingController {
                 onboardingComplete: onboardingCompleteState
             };
 
-            const res = await fetch(`${API_BASE}/api/sync/profile`, {
+            const res = await authenticatedFetch(`${API_BASE}/api/sync/profile`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${this.token}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(bodyPayload)
             });
