@@ -827,45 +827,200 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
+        /* Navigation Mobile Fixes */
+        nav.glass {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            background: rgba(10, 10, 16, 0.95) !important;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--glass-border);
+            padding-top: env(safe-area-inset-top, 0px);
+        }
+
+        .nav-actions-row {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            width: 100%;
+        }
+
+        .nav-btn {
+            min-height: 44px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            padding: 0.5rem 0.75rem;
+            border-radius: 10px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: var(--transition);
+            box-sizing: border-box;
+            touch-action: manipulation;
+        }
+
         @media (max-width: 768px) {
             nav {
                 height: auto !important;
                 padding: 0.5rem 0 !important;
             }
             .container {
-                padding: 0 1rem !important;
+                padding: 0 0.85rem !important;
             }
             .nav-content {
                 flex-direction: column !important;
                 gap: 0.6rem !important;
-                padding: 0.6rem 0.5rem !important;
+                padding: 0.4rem 0 !important;
                 align-items: center !important;
             }
             .nav-actions {
                 width: 100% !important;
-                justify-content: center !important;
-                gap: 0.35rem !important;
+            }
+            .nav-actions-row {
+                display: grid !important;
+                grid-template-columns: repeat(3, 1fr) !important;
+                gap: 0.5rem !important;
+                width: 100% !important;
             }
             .btn-tracker, .btn-logout {
-                padding: 0.4rem 0.35rem !important;
-                font-size: 0.7rem !important;
-                border-radius: 8px !important;
-                flex: 1 !important;
+                min-height: 44px !important;
+                font-size: 13px !important;
+                padding: 0.5rem 0.25rem !important;
+                border-radius: 10px !important;
+                width: 100% !important;
                 text-align: center !important;
                 white-space: nowrap !important;
             }
             .dashboard-container {
-                padding-top: 145px !important;
+                padding-top: calc(env(safe-area-inset-top, 0px) + 115px) !important;
+                padding-left: 0.85rem !important;
+                padding-right: 0.85rem !important;
             }
             .welcome-greet h2 {
-                font-size: 1.6rem !important;
+                font-size: 1.5rem !important;
             }
         }
         @media (min-width: 769px) and (max-width: 992px) {
             .btn-tracker, .btn-logout {
-                padding: 0.35rem 0.65rem !important;
-                font-size: 0.75rem !important;
-                border-radius: 8px !important;
+                padding: 0.5rem 0.85rem !important;
+                font-size: 0.85rem !important;
+                border-radius: 10px !important;
+                min-height: 44px !important;
+            }
+        }
+
+        /* View-State Management */
+        body[data-dashboard-view="graphs"] .dashboard-header,
+        body[data-dashboard-view="graphs"] #stats-container,
+        body[data-dashboard-view="graphs"] #main-dashboard-view {
+            display: none !important;
+        }
+
+        body[data-dashboard-view="focus"] .dashboard-header,
+        body[data-dashboard-view="focus"] #stats-container,
+        body[data-dashboard-view="focus"] #main-dashboard-view {
+            display: none !important;
+        }
+
+        /* Responsive Graphs Grid & Cards */
+        .graphs-wrapper-card {
+            padding: 2rem;
+            border-radius: 20px;
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+        }
+
+        .graphs-header-row {
+            margin-bottom: 1.5rem;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .graphs-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 450px), 1fr));
+            gap: 1.5rem;
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+        }
+
+        .graphs-grid,
+        .chart-card,
+        .chart-wrapper,
+        .chart-wrapper canvas {
+            min-width: 0;
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+        }
+
+        .chart-card {
+            padding: 1.5rem;
+            border-radius: 16px;
+            min-height: 320px;
+            position: relative;
+            background: rgba(255, 255, 255, 0.01);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chart-card-title {
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+            font-size: 1.05rem;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 250px;
+            flex: 1;
+        }
+
+        @media (max-width: 768px) {
+            .graphs-wrapper-card {
+                padding: 12px !important;
+                border-radius: 16px !important;
+            }
+            .graphs-header-row {
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 0.75rem !important;
+                margin-bottom: 1.25rem !important;
+            }
+            .graphs-header-title {
+                font-size: 1.3rem !important;
+            }
+            #btn-read-graphs {
+                width: 100% !important;
+                min-height: 44px !important;
+                justify-content: center !important;
+                font-size: 0.95rem !important;
+            }
+            .graphs-grid {
+                grid-template-columns: minmax(0, 1fr) !important;
+                gap: 14px !important;
+            }
+            .chart-card {
+                padding: 14px !important;
+                border-radius: 12px !important;
+                min-height: 270px !important;
+            }
+            .chart-wrapper {
+                height: 220px !important;
             }
         }
         
@@ -1039,10 +1194,12 @@
                 <img src="/tabs_logo.png" alt="Tabs Logo" class="app-icon">
                 <span>Tabs</span>
             </a>
-            <div class="nav-actions" style="display: flex; gap: 0.75rem; align-items: center;">
-                <button class="btn-tracker" id="btn-toggle-focus" onclick="toggleFocusView()">Project Focus</button>
-                <button class="btn-tracker" id="btn-toggle-graphs" onclick="toggleGraphsView()">Graph Tracker</button>
-                <button class="btn-logout" onclick="handleLogout()">Log Out</button>
+            <div class="nav-actions">
+                <div class="nav-actions-row">
+                    <button class="btn-tracker nav-btn" id="btn-toggle-focus" onclick="toggleFocusView()">Project Focus</button>
+                    <button class="btn-tracker nav-btn" id="btn-toggle-graphs" onclick="toggleGraphsView()">Graph Tracker</button>
+                    <button class="btn-logout nav-btn" onclick="handleLogout()">Log Out</button>
+                </div>
             </div>
         </div>
     </nav>
@@ -1122,42 +1279,44 @@
         </div>
 
         <!-- Hidden Graphs View Container -->
-        <div id="graphs-view" style="display: none; margin-top: 2rem;">
-            <div class="glass" style="padding: 2rem; border-radius: 20px;">
-                <h3 style="margin-bottom: 2rem; color: var(--text-primary); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
-                    <span style="display: flex; align-items: center; gap: 0.5rem;">📈 Wellness Graph Tracker</span>
+        <div id="graphs-view" style="display: none; width: 100%;">
+            <div class="glass graphs-wrapper-card">
+                <div class="graphs-header-row">
+                    <h3 class="graphs-header-title" style="display: flex; align-items: center; gap: 0.5rem; margin: 0;">
+                        <span>📈 Wellness Graph Tracker</span>
+                    </h3>
                     <button id="btn-read-graphs" class="btn-tracker" onclick="handleReadGraphsClick(event)" style="display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; padding: 0.55rem 1.25rem; border-radius: 12px; font-weight: 700; transition: all 0.3s ease;">
                         <span id="btn-read-graphs-icon">✨</span> <span id="btn-read-graphs-text">Read Graphs</span>
                     </button>
-                </h3>
-                <div class="graphs-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 1.5rem;">
-                    <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 340px; position: relative; background: rgba(255,255,255,0.01);">
-                        <h4 style="color: var(--text-secondary); margin-bottom: 1rem;">Sleep Duration (Hours)</h4>
-                        <div style="position: relative; height: 260px;"><canvas id="chart-sleep"></canvas></div>
+                </div>
+                <div class="graphs-grid">
+                    <div class="chart-card glass">
+                        <h4 class="chart-card-title">Sleep Duration (Hours)</h4>
+                        <div class="chart-wrapper"><canvas id="chart-sleep"></canvas></div>
                     </div>
-                    <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 340px; position: relative; background: rgba(255,255,255,0.01);">
-                        <h4 style="color: var(--text-secondary); margin-bottom: 1rem;">Deep Sleep (Hours)</h4>
-                        <div style="position: relative; height: 260px;"><canvas id="chart-deepsleep"></canvas></div>
+                    <div class="chart-card glass">
+                        <h4 class="chart-card-title">Deep Sleep (Hours)</h4>
+                        <div class="chart-wrapper"><canvas id="chart-deepsleep"></canvas></div>
                     </div>
-                    <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 340px; position: relative; background: rgba(255,255,255,0.01);">
-                        <h4 style="color: var(--text-secondary); margin-bottom: 1rem;">Heart Rate (Average)</h4>
-                        <div style="position: relative; height: 260px;"><canvas id="chart-hr"></canvas></div>
+                    <div class="chart-card glass">
+                        <h4 class="chart-card-title">Heart Rate (Average)</h4>
+                        <div class="chart-wrapper"><canvas id="chart-hr"></canvas></div>
                     </div>
-                    <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 340px; position: relative; background: rgba(255,255,255,0.01);">
-                        <h4 style="color: var(--text-secondary); margin-bottom: 1rem;">Heart Rate Variability (HRV)</h4>
-                        <div style="position: relative; height: 260px;"><canvas id="chart-hrv"></canvas></div>
+                    <div class="chart-card glass">
+                        <h4 class="chart-card-title">Heart Rate Variability (HRV)</h4>
+                        <div class="chart-wrapper"><canvas id="chart-hrv"></canvas></div>
                     </div>
-                    <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 340px; position: relative; background: rgba(255,255,255,0.01);">
-                        <h4 style="color: var(--text-secondary); margin-bottom: 1rem;">Calories Burned (kcal)</h4>
-                        <div style="position: relative; height: 260px;"><canvas id="chart-calories"></canvas></div>
+                    <div class="chart-card glass">
+                        <h4 class="chart-card-title">Calories Burned (kcal)</h4>
+                        <div class="chart-wrapper"><canvas id="chart-calories"></canvas></div>
                     </div>
-                    <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 340px; position: relative; background: rgba(255,255,255,0.01);">
-                        <h4 style="color: var(--text-secondary); margin-bottom: 1rem;">Heart Rate Spikes</h4>
-                        <div style="position: relative; height: 260px;"><canvas id="chart-spikes"></canvas></div>
+                    <div class="chart-card glass">
+                        <h4 class="chart-card-title">Heart Rate Spikes</h4>
+                        <div class="chart-wrapper"><canvas id="chart-spikes"></canvas></div>
                     </div>
-                    <div class="chart-card glass" style="padding: 1.5rem; border-radius: 16px; min-height: 340px; position: relative; background: rgba(255,255,255,0.01);">
-                        <h4 style="color: var(--text-secondary); margin-bottom: 1rem;">Number of Jots</h4>
-                        <div style="position: relative; height: 260px;"><canvas id="chart-jots"></canvas></div>
+                    <div class="chart-card glass">
+                        <h4 class="chart-card-title">Number of Jots</h4>
+                        <div class="chart-wrapper"><canvas id="chart-jots"></canvas></div>
                     </div>
                 </div>
             </div>
@@ -1602,6 +1761,10 @@
 
         let activeCharts = {};
 
+        function setDashboardViewMode(mode) {
+            document.body.setAttribute('data-dashboard-view', mode);
+        }
+
         function toggleGraphsView() {
             const dashView = document.getElementById('main-dashboard-view');
             const graphsView = document.getElementById('graphs-view');
@@ -1609,7 +1772,8 @@
             const btnGraphs = document.getElementById('btn-toggle-graphs');
             const btnFocus = document.getElementById('btn-toggle-focus');
             
-            if (graphsView.style.display === 'none') {
+            if (graphsView.style.display === 'none' || !graphsView.style.display) {
+                setDashboardViewMode('graphs');
                 dashView.style.display = 'none';
                 focusView.style.display = 'none';
                 graphsView.style.display = 'block';
@@ -1621,6 +1785,7 @@
                     renderGraphs(globalSyncData);
                 }
             } else {
+                setDashboardViewMode('dashboard');
                 dashView.style.display = 'grid';
                 graphsView.style.display = 'none';
                 btnGraphs.textContent = 'Graph Tracker';
@@ -2469,6 +2634,7 @@
             const btnFocus = document.getElementById('btn-toggle-focus');
             
             if (focusView.style.display === 'none' || !focusView.style.display) {
+                setDashboardViewMode('focus');
                 dashView.style.display = 'none';
                 graphsView.style.display = 'none';
                 focusView.style.display = 'flex';
@@ -2488,6 +2654,7 @@
                     if (input) input.focus();
                 }, 50);
             } else {
+                setDashboardViewMode('dashboard');
                 dashView.style.display = 'grid';
                 focusView.style.display = 'none';
                 btnFocus.textContent = 'Project Focus';
@@ -2633,16 +2800,17 @@
                                 grid: { color: 'rgba(255,255,255,0.03)' },
                                 ticks: { 
                                     color: '#a1a1b5', 
-                                    font: { family: 'Outfit' },
-                                    maxTicksLimit: 8,
-                                    maxRotation: 0
+                                    font: { family: 'Outfit', size: 10 },
+                                    maxTicksLimit: 5,
+                                    maxRotation: 0,
+                                    autoSkip: true
                                 }
                             },
                             y: {
                                 grid: { color: 'rgba(255,255,255,0.03)' },
                                 ticks: { 
                                     color: '#a1a1b5', 
-                                    font: { family: 'Outfit' },
+                                    font: { family: 'Outfit', size: 10 },
                                     callback: function(value) {
                                         return isDuration ? value + 'h' : value;
                                     }
