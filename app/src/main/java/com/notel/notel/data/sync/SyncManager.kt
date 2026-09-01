@@ -44,6 +44,7 @@ class SyncManager @Inject constructor(
 ) {
     private val tag = "SyncManager"
     private val syncMutex = Mutex()
+    private val syncRequested = java.util.concurrent.atomic.AtomicBoolean(false)
     private var logCallback: ((String) -> Unit)? = null
 
     fun setLogCallback(callback: (String) -> Unit) {
@@ -56,58 +57,63 @@ class SyncManager @Inject constructor(
     }
 
     suspend fun syncAllData() = withContext(Dispatchers.IO) {
+        syncRequested.set(true)
         if (!syncMutex.tryLock()) {
-            Log.d(tag, "Sync already in progress. Skipping duplicate request.")
+            Log.d(tag, "Sync already in progress. Queued subsequent sync request.")
             return@withContext
         }
         try {
-            if (!preferences.loggedIn.first()) return@withContext
+            while (syncRequested.getAndSet(false)) {
+                if (!preferences.loggedIn.first()) break
 
-            Log.d(tag, "Full sync initiated...")
-            log("SYNC_START: Beginning full sync cycle…")
+                Log.d(tag, "Full sync initiated...")
+                log("SYNC_START: Beginning full sync cycle…")
 
-            // 1. Push Profile
-            val profilePushSuccess = pushProfileData()
-            if (profilePushSuccess) {
-                log("SYNC_OK: Profile (context, medications, settings, streaks)")
-            } else {
-                log("SYNC_WARN: Profile — could not push to server.")
-            }
-
-            val isOnboarded = preferences.onboardingComplete.first()
-
-            if (isOnboarded) {
-                // 2. Push Categories
-                val categories = categoryDao.getAllCategories().first()
-                if (categories.isNotEmpty()) {
-                    val categoryDtos = categories.map {
-                        CategoryDtoModel(it.id, it.name, it.icon, it.colorHex, it.isDefault, it.sortOrder)
-                    }
-                    val catRes = tabsApi.syncCategories(SyncCategoriesRequest(categoryDtos))
-                    if (!catRes.isSuccessful) {
-                        log("SYNC_FAIL: Categories (${categories.size}) — HTTP ${catRes.code()}")
-                    } else {
-                        log("SYNC_OK: Categories (${categories.size} pushed)")
-                    }
+                // 1. Push Profile
+                val profilePushSuccess = pushProfileData()
+                if (profilePushSuccess) {
+                    log("SYNC_OK: Profile (context, medications, settings, streaks)")
                 } else {
-                    log("SYNC_SKIP: Categories — none found locally")
+                    log("SYNC_WARN: Profile — could not push to server.")
                 }
 
-                // 3. Push Log Entries
-                val entries = logEntryDao.getAllEntries().first()
-                if (entries.isNotEmpty()) {
-                    val entryDtos = entries.map {
-                        LogEntryDtoModel(it.id, it.categoryId, it.body, it.chips, it.manualText, it.timestamp)
-                    }
-                    val entryRes = tabsApi.syncEntries(SyncEntriesRequest(entryDtos))
-                    if (!entryRes.isSuccessful) {
-                        log("SYNC_FAIL: Jot Logs (${entries.size}) — HTTP ${entryRes.code()}")
+                val isOnboarded = preferences.onboardingComplete.first()
+
+                if (isOnboarded) {
+                    // 2. Push Categories
+                    val categories = categoryDao.getAllCategories().first()
+                    if (categories.isNotEmpty()) {
+                        val categoryDtos = categories.map {
+                            CategoryDtoModel(it.id, it.name, it.icon, it.colorHex, it.isDefault, it.sortOrder)
+                        }
+                        val catRes = tabsApi.syncCategories(SyncCategoriesRequest(categoryDtos))
+                        if (!catRes.isSuccessful) {
+                            log("SYNC_FAIL: Categories (${categories.size}) — HTTP ${catRes.code()}")
+                        } else {
+                            log("SYNC_OK: Categories (${categories.size} pushed)")
+                        }
                     } else {
-                        log("SYNC_OK: Jot Logs (${entries.size} pushed)")
+                        log("SYNC_SKIP: Categories — none found locally")
                     }
-                } else {
-                    log("SYNC_SKIP: Jot Logs — none found locally")
-                }
+
+                    // 3. Push DIRTY Log Entries
+                    val dirtyEntries = logEntryDao.getDirtyEntries()
+                    if (dirtyEntries.isNotEmpty()) {
+                        val entryDtos = dirtyEntries.map {
+                            LogEntryDtoModel(it.id, it.categoryId, it.body, it.chips, it.manualText, it.timestamp, it.updatedAt)
+                        }
+                        val entryRes = tabsApi.syncEntries(SyncEntriesRequest(entryDtos))
+                        if (entryRes.isSuccessful) {
+                            dirtyEntries.forEach { entry ->
+                                logEntryDao.markSyncedIfUnchanged(entry.id, entry.updatedAt)
+                            }
+                            log("SYNC_OK: Jot Logs (${dirtyEntries.size} dirty entries pushed and marked SYNCED)")
+                        } else {
+                            log("SYNC_FAIL: Jot Logs (${dirtyEntries.size}) — HTTP ${entryRes.code()}")
+                        }
+                    } else {
+                        log("SYNC_SKIP: Jot Logs — no dirty entries to push")
+                    }
 
                 // 4. Documents
                 val docSyncOk = try { syncDocuments(); true } catch (e: Exception) { false }
@@ -160,21 +166,22 @@ class SyncManager @Inject constructor(
                 } else {
                     log("SYNC_SKIP: AI Insights — none found locally")
                 }
-            } else {
-                log("SYNC_SKIP: Skipping categories, entries, documents, coach sessions, biometrics, and insights because onboarding is not complete.")
-            }
+                } else {
+                    log("SYNC_SKIP: Skipping categories, entries, documents, coach sessions, biometrics, and insights because onboarding is not complete.")
+                }
 
-            // 9. Pull cloud data LAST
-            val pullSuccess = pullAllData()
-            if (!pullSuccess) {
-                log("SYNC_FAIL: Cloud Pull — server unreachable or rejected")
-            } else {
-                log("SYNC_OK: Cloud Pull (logs, categories, profile, medications, insights)")
-            }
+                // 9. Pull cloud data LAST
+                val pullSuccess = pullAllData()
+                if (!pullSuccess) {
+                    log("SYNC_FAIL: Cloud Pull — server unreachable or rejected")
+                } else {
+                    log("SYNC_OK: Cloud Pull (logs, categories, profile, medications, insights)")
+                }
 
-            preferences.setLastSyncTime(System.currentTimeMillis())
-            log("SYNC_DONE: All categories synced successfully ✓")
-            Log.d(tag, "Sync cycle complete!")
+                preferences.setLastSyncTime(System.currentTimeMillis())
+                log("SYNC_DONE: All categories synced successfully ✓")
+                Log.d(tag, "Sync cycle complete!")
+            }
         } catch (e: Exception) {
             log("SYNC_ERROR: ${e.message}")
             Log.e(tag, "Sync cycle failed: ${e.message}")
@@ -522,17 +529,38 @@ class SyncManager @Inject constructor(
 
                 // B. Restore Logs
                 if (logsFound > 0) {
-                    val entryEntities = body.entries.map { 
-                        com.notel.notel.data.local.entity.LogEntry(
-                            id = it.id, 
-                            timestamp = it.timestamp,
-                            categoryId = it.categoryId, 
-                            body = it.body, 
-                            chips = it.chips, 
-                            manualText = it.manualText
-                        ) 
+                    for (remote in body.entries) {
+                        val local = logEntryDao.getEntryById(remote.id)
+                        val remoteUpdatedAt = if (remote.updatedAt > 0) remote.updatedAt else remote.timestamp
+                        if (local == null) {
+                            logEntryDao.insertEntry(
+                                com.notel.notel.data.local.entity.LogEntry(
+                                    id = remote.id,
+                                    timestamp = remote.timestamp,
+                                    categoryId = remote.categoryId,
+                                    body = remote.body,
+                                    chips = remote.chips,
+                                    manualText = remote.manualText,
+                                    updatedAt = remoteUpdatedAt,
+                                    syncState = com.notel.notel.data.local.entity.EntrySyncState.SYNCED
+                                )
+                            )
+                        } else {
+                            if (local.syncState != com.notel.notel.data.local.entity.EntrySyncState.DIRTY && remoteUpdatedAt >= local.updatedAt) {
+                                logEntryDao.insertEntry(
+                                    local.copy(
+                                        timestamp = remote.timestamp,
+                                        categoryId = remote.categoryId,
+                                        body = remote.body,
+                                        chips = remote.chips,
+                                        manualText = remote.manualText,
+                                        updatedAt = remoteUpdatedAt,
+                                        syncState = com.notel.notel.data.local.entity.EntrySyncState.SYNCED
+                                    )
+                                )
+                            }
+                        }
                     }
-                    logEntryDao.insertAll(entryEntities)
                 }
 
                 // Restore User Nickname and Unique Tag

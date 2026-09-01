@@ -36,22 +36,28 @@ import kotlinx.serialization.decodeFromString
 
 // ── ViewModel ─────────────────────────────────────────────────────────────────
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class EntryDetailViewModel @Inject constructor(
     private val logRepository: LogRepository,
-    private val categoryRepository: CategoryRepository
+    private val categoryRepository: CategoryRepository,
+    private val logEntryDao: com.notel.notel.data.local.dao.LogEntryDao
 ) : ViewModel() {
 
-    private val _entry = MutableStateFlow<LogEntry?>(null)
-    val entry: StateFlow<LogEntry?> = _entry
+    private val _entryId = MutableStateFlow<Long?>(null)
+
+    val entry: StateFlow<LogEntry?> = _entryId
+        .flatMapLatest { id ->
+            if (id == null) flowOf(null)
+            else logEntryDao.getEntryByIdFlow(id)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val categories = categoryRepository.getAllCategories()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun loadEntry(id: Long) {
-        viewModelScope.launch {
-            _entry.value = logRepository.getEntryById(id)
-        }
+        _entryId.value = id
     }
 
     fun deleteEntry(entry: LogEntry, onDone: () -> Unit) {
@@ -62,7 +68,7 @@ class EntryDetailViewModel @Inject constructor(
     }
 
     fun updateCategory(categoryId: Int) {
-        val current = _entry.value ?: return
+        val current = entry.value ?: return
         // Prevent modifying category for entries logged from the Medications tab
         if (current.source == "Medications Tab" || current.chips.contains("Medication Tab")) {
             return
@@ -72,17 +78,25 @@ class EntryDetailViewModel @Inject constructor(
             val updatedChips = if (catName.isNotBlank()) listOf(catName) else emptyList()
             val updatedChipsJson = org.json.JSONArray(updatedChips).toString()
 
-            val updated = current.copy(categoryId = categoryId, chips = updatedChipsJson)
-            _entry.value = updated // OPTIMISTIC
+            val updated = current.copy(
+                categoryId = categoryId,
+                chips = updatedChipsJson,
+                updatedAt = System.currentTimeMillis(),
+                syncState = com.notel.notel.data.local.entity.EntrySyncState.DIRTY
+            )
             logRepository.updateEntry(updated)
         }
     }
 
     fun updateText(body: String, manualText: String) {
-        val current = _entry.value ?: return
+        val current = entry.value ?: return
         viewModelScope.launch {
-            val updated = current.copy(body = body, manualText = manualText)
-            _entry.value = updated // OPTIMISTIC
+            val updated = current.copy(
+                body = body,
+                manualText = manualText,
+                updatedAt = System.currentTimeMillis(),
+                syncState = com.notel.notel.data.local.entity.EntrySyncState.DIRTY
+            )
             logRepository.updateEntry(updated)
         }
     }

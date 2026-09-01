@@ -791,10 +791,12 @@ fun BodyLoadScreen(
                 }
 
                 val snapshotState by weeklySnapshotViewModel.uiState.collectAsState()
+                val selectedMetric by weeklySnapshotViewModel.selectedMetric.collectAsState()
                 val availableMetrics by weeklySnapshotViewModel.availableMetrics.collectAsState()
 
                 com.notel.notel.ui.component.WeeklySnapshotCard(
                     state = snapshotState,
+                    selectedMetric = selectedMetric.displayName,
                     availableMetrics = availableMetrics,
                     onSelectMetric = { weeklySnapshotViewModel.selectMetric(it) },
                     onRefresh = { weeklySnapshotViewModel.refresh() }

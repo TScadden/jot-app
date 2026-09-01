@@ -11,5 +11,8 @@ data class LogEntry(
     val body: String,
     val chips: String = "[]",       // JSON array of tapped chip labels
     val manualText: String = "",    // optional free-form addition
-    val source: String? = null      // e.g. "Voice AI"
+    val source: String? = null,     // e.g. "Voice AI"
+    val updatedAt: Long = System.currentTimeMillis(),
+    val syncState: EntrySyncState = EntrySyncState.DIRTY
 )
+

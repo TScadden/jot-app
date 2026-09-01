@@ -205,7 +205,8 @@ data class LogEntryDtoModel(
     val body: String,
     val chips: String,
     val manualText: String,
-    val timestamp: Long
+    val timestamp: Long,
+    val updatedAt: Long = 0L
 )
 
 @Serializable

@@ -18,12 +18,18 @@ import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 
 sealed interface WeeklySnapshotState {
-    object Loading : WeeklySnapshotState
+    data class Loading(
+        val metricName: String,
+        val retainedData: WeeklySnapshotMetricData? = null
+    ) : WeeklySnapshotState
+
     data class ReadyWithData(
+        val metricName: String,
         val metricData: WeeklySnapshotMetricData,
         val availableMetrics: List<String>,
         val isRefreshing: Boolean = false
     ) : WeeklySnapshotState
+
     data class ReadyEmpty(
         val metricName: String,
         val emptyMessage: String,
@@ -31,7 +37,9 @@ sealed interface WeeklySnapshotState {
         val retainedData: WeeklySnapshotMetricData? = null,
         val isRefreshing: Boolean = false
     ) : WeeklySnapshotState
+
     data class Error(
+        val metricName: String,
         val message: String,
         val retainedData: WeeklySnapshotMetricData? = null
     ) : WeeklySnapshotState
@@ -47,7 +55,12 @@ class WeeklySnapshotViewModel @Inject constructor(
     private val timeProvider: com.notel.notel.util.TimeProvider
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow<WeeklySnapshotState>(WeeklySnapshotState.Loading)
+    private val _selectedMetric = MutableStateFlow(WeeklySnapshotMetric.SLEEP_HOURS)
+    val selectedMetric: StateFlow<WeeklySnapshotMetric> = _selectedMetric.asStateFlow()
+
+    private val _uiState = MutableStateFlow<WeeklySnapshotState>(
+        WeeklySnapshotState.Loading(metricName = WeeklySnapshotMetric.SLEEP_HOURS.displayName)
+    )
     val uiState: StateFlow<WeeklySnapshotState> = _uiState.asStateFlow()
 
     private val _newUiState = MutableStateFlow(WeeklySnapshotUiState())
@@ -66,7 +79,6 @@ class WeeklySnapshotViewModel @Inject constructor(
 
     private val requestIdGenerator = AtomicLong(0)
     private var loadJob: Job? = null
-    private var currentMetric: WeeklySnapshotMetric = WeeklySnapshotMetric.SLEEP_HOURS
     private var lastHomeRefreshTimeMs: Long = 0L
     private var lastHomeRefreshDate: java.time.LocalDate? = null
     private val freshnessIntervalMs = 60_000L // 60s freshness interval
@@ -92,7 +104,7 @@ class WeeklySnapshotViewModel @Inject constructor(
             lastHomeRefreshTimeMs = nowMs
             lastHomeRefreshDate = todayDate
             checkBloodPressureAvailability()
-            loadMetricDataTyped(currentMetric, isExplicitRefresh = forceFreshness)
+            loadMetricDataTyped(_selectedMetric.value, isExplicitRefresh = forceFreshness)
         }
     }
 
@@ -131,7 +143,7 @@ class WeeklySnapshotViewModel @Inject constructor(
             }
 
             // Fallback if current metric is Blood Pressure but it is no longer available
-            if (currentMetric == WeeklySnapshotMetric.BLOOD_PRESSURE && !bpAvailable) {
+            if (_selectedMetric.value == WeeklySnapshotMetric.BLOOD_PRESSURE && !bpAvailable) {
                 selectMetricTyped(WeeklySnapshotMetric.SLEEP_HOURS)
             }
         }
@@ -147,10 +159,9 @@ class WeeklySnapshotViewModel @Inject constructor(
                         pendingPersistedMetric = null
                         return@collectLatest
                     }
-                    val metricChanged = metric != currentMetric
+                    val metricChanged = metric != _selectedMetric.value
                     if (metricChanged) {
-                        currentMetric = metric
-                        loadMetricDataTyped(metric)
+                        selectMetricTyped(metric)
                     } else if (!isInitialized) {
                         onHomeActivated(forceFreshness = false)
                     }
@@ -165,7 +176,7 @@ class WeeklySnapshotViewModel @Inject constructor(
                 .distinctUntilChanged()
                 .debounce(300L)
                 .collect {
-                    if (currentMetric == WeeklySnapshotMetric.LOGS) {
+                    if (_selectedMetric.value == WeeklySnapshotMetric.LOGS) {
                         loadMetricDataTyped(WeeklySnapshotMetric.LOGS, isExplicitRefresh = true)
                     }
                 }
@@ -177,7 +188,7 @@ class WeeklySnapshotViewModel @Inject constructor(
                 .distinctUntilChanged()
                 .debounce(300L)
                 .collect {
-                    if (currentMetric == WeeklySnapshotMetric.HR_SPIKES) {
+                    if (_selectedMetric.value == WeeklySnapshotMetric.HR_SPIKES) {
                         loadMetricDataTyped(WeeklySnapshotMetric.HR_SPIKES, isExplicitRefresh = true)
                     }
                 }
@@ -192,7 +203,7 @@ class WeeklySnapshotViewModel @Inject constructor(
                 .distinctUntilChanged()
                 .debounce(300L)
                 .collect {
-                    if (currentMetric == WeeklySnapshotMetric.HABIT_COMPLETION) {
+                    if (_selectedMetric.value == WeeklySnapshotMetric.HABIT_COMPLETION) {
                         loadMetricDataTyped(WeeklySnapshotMetric.HABIT_COMPLETION, isExplicitRefresh = true)
                     }
                 }
@@ -205,8 +216,14 @@ class WeeklySnapshotViewModel @Inject constructor(
     }
 
     fun selectMetricTyped(metric: WeeklySnapshotMetric) {
-        if (metric == currentMetric && _uiState.value !is WeeklySnapshotState.Loading) return
-        currentMetric = metric
+        val sameMetric = metric == _selectedMetric.value
+        val shouldRetry = when (_uiState.value) {
+            is WeeklySnapshotState.Error,
+            is WeeklySnapshotState.ReadyEmpty -> true
+            else -> false
+        }
+
+        _selectedMetric.value = metric
         pendingPersistedMetric = metric
 
         // Instantly serve cached data if available (<100ms target)
@@ -224,6 +241,7 @@ class WeeklySnapshotViewModel @Inject constructor(
                 )
             } else {
                 _uiState.value = WeeklySnapshotState.ReadyWithData(
+                    metricName = metric.displayName,
                     metricData = cached,
                     availableMetrics = availableMetrics.value,
                     isRefreshing = false
@@ -241,7 +259,9 @@ class WeeklySnapshotViewModel @Inject constructor(
             }
         }
 
-        loadMetricDataTyped(metric)
+        if (!sameMetric || shouldRetry) {
+            loadMetricDataTyped(metric)
+        }
 
         viewModelScope.launch {
             preferences.setSelectedWeeklySnapshotMetric(metric)
@@ -269,14 +289,14 @@ class WeeklySnapshotViewModel @Inject constructor(
 
         val currentState = _uiState.value
         val retainedData = cached ?: when (currentState) {
-            is WeeklySnapshotState.ReadyWithData -> currentState.metricData
-            is WeeklySnapshotState.ReadyEmpty -> currentState.retainedData
-            is WeeklySnapshotState.Error -> currentState.retainedData
-            else -> null
+            is WeeklySnapshotState.ReadyWithData -> if (currentState.metricName == metric.displayName) currentState.metricData else null
+            is WeeklySnapshotState.ReadyEmpty -> if (currentState.metricName == metric.displayName) currentState.retainedData else null
+            is WeeklySnapshotState.Error -> if (currentState.metricName == metric.displayName) currentState.retainedData else null
+            is WeeklySnapshotState.Loading -> if (currentState.metricName == metric.displayName) currentState.retainedData else null
         }
 
         if (!isCachedHit) {
-            _uiState.value = WeeklySnapshotState.Loading
+            _uiState.value = WeeklySnapshotState.Loading(metricName = metric.displayName, retainedData = retainedData)
             _newUiState.update { it.copy(selectedMetric = metric, isInitialLoading = true, errorMessage = null) }
         } else if (isExplicitRefresh) {
             when (currentState) {
@@ -325,6 +345,7 @@ class WeeklySnapshotViewModel @Inject constructor(
                                 }
                             } else {
                                 _uiState.value = WeeklySnapshotState.ReadyWithData(
+                                    metricName = metric.displayName,
                                     metricData = metricData,
                                     availableMetrics = availableMetrics.value,
                                     isRefreshing = false
@@ -380,6 +401,7 @@ class WeeklySnapshotViewModel @Inject constructor(
                         is SnapshotReadResult.Failure -> {
                             val errMsg = result.cause.message ?: "Failed to read data"
                             _uiState.value = WeeklySnapshotState.Error(
+                                metricName = metric.displayName,
                                 message = errMsg,
                                 retainedData = retainedData
                             )
@@ -398,6 +420,7 @@ class WeeklySnapshotViewModel @Inject constructor(
                 if (requestId == requestIdGenerator.get()) {
                     val errMsg = "Request timed out while reading Health Connect. Tap refresh to retry."
                     _uiState.value = WeeklySnapshotState.Error(
+                        metricName = metric.displayName,
                         message = errMsg,
                         retainedData = retainedData
                     )
@@ -410,10 +433,14 @@ class WeeklySnapshotViewModel @Inject constructor(
                         )
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Do not publish state updates for cancelled jobs
+                throw e
             } catch (e: Exception) {
                 if (requestId == requestIdGenerator.get()) {
                     val errMsg = e.message ?: "Failed to load data"
                     _uiState.value = WeeklySnapshotState.Error(
+                        metricName = metric.displayName,
                         message = errMsg,
                         retainedData = retainedData
                     )

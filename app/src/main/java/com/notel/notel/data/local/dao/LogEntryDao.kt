@@ -31,8 +31,47 @@ interface LogEntryDao {
     @Query("SELECT * FROM log_entries WHERE categoryId = :categoryId ORDER BY timestamp DESC LIMIT :limit")
     suspend fun getRecentEntries(categoryId: Int, limit: Int = 15): List<LogEntry>
 
+    @Query("""
+        UPDATE log_entries
+        SET categoryId = :categoryId,
+            chips = :chips,
+            updatedAt = :updatedAt,
+            syncState = 'DIRTY'
+        WHERE id = :entryId
+    """)
+    suspend fun updateEntryCategory(
+        entryId: Long,
+        categoryId: Int,
+        chips: String,
+        updatedAt: Long
+    )
+
+    @Query("""
+        UPDATE log_entries
+        SET body = :body,
+            manualText = :manualText,
+            updatedAt = :updatedAt,
+            syncState = 'DIRTY'
+        WHERE id = :entryId
+    """)
+    suspend fun updateEntryText(
+        entryId: Long,
+        body: String,
+        manualText: String,
+        updatedAt: Long
+    )
+
+    @Query("UPDATE log_entries SET syncState = :syncState WHERE id = :entryId AND updatedAt = :expectedUpdatedAt")
+    suspend fun markSyncedIfUnchanged(entryId: Long, expectedUpdatedAt: Long, syncState: com.notel.notel.data.local.entity.EntrySyncState = com.notel.notel.data.local.entity.EntrySyncState.SYNCED): Int
+
+    @Query("SELECT * FROM log_entries WHERE syncState = 'DIRTY'")
+    suspend fun getDirtyEntries(): List<LogEntry>
+
     @Query("SELECT * FROM log_entries WHERE id = :id")
     suspend fun getEntryById(id: Long): LogEntry?
+
+    @Query("SELECT * FROM log_entries WHERE id = :id")
+    fun getEntryByIdFlow(id: Long): Flow<LogEntry?>
 
     @Query("SELECT * FROM log_entries ORDER BY timestamp DESC LIMIT :limit")
     suspend fun getRecentEntriesAll(limit: Int = 10): List<LogEntry>

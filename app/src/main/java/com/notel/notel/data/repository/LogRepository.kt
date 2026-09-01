@@ -214,7 +214,11 @@ class LogRepository @Inject constructor(
     }
 
     suspend fun insertEntry(entry: LogEntry): Long {
-        val id = logEntryDao.insertEntry(entry)
+        val entryToInsert = entry.copy(
+            updatedAt = if (entry.updatedAt == 0L) System.currentTimeMillis() else entry.updatedAt,
+            syncState = com.notel.notel.data.local.entity.EntrySyncState.DIRTY
+        )
+        val id = logEntryDao.insertEntry(entryToInsert)
         clearTodayBodyLoadCache()
         triggerSync()
         return id
@@ -224,7 +228,11 @@ class LogRepository @Inject constructor(
         logEntryDao.getRecentEntriesAll(limit)
 
     suspend fun updateEntry(entry: LogEntry) {
-        logEntryDao.updateEntry(entry)
+        val entryToUpdate = entry.copy(
+            updatedAt = System.currentTimeMillis(),
+            syncState = com.notel.notel.data.local.entity.EntrySyncState.DIRTY
+        )
+        logEntryDao.updateEntry(entryToUpdate)
         clearTodayBodyLoadCache()
         triggerSync()
     }

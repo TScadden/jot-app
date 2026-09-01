@@ -52,6 +52,7 @@ import com.notel.notel.ui.viewmodel.WeeklySnapshotState
 @Composable
 fun WeeklySnapshotCard(
     state: WeeklySnapshotState,
+    selectedMetric: String,
     availableMetrics: List<String>,
     onSelectMetric: (String) -> Unit,
     onRefresh: () -> Unit,
@@ -69,12 +70,7 @@ fun WeeklySnapshotCard(
             var dropdownExpanded by remember { mutableStateOf(false) }
             var selectedPointIndex by remember { mutableStateOf<Int?>(null) }
 
-            val currentMetric = when (state) {
-                is WeeklySnapshotState.ReadyWithData -> state.metricData.metricName
-                is WeeklySnapshotState.ReadyEmpty -> state.metricName
-                is WeeklySnapshotState.Error -> state.retainedData?.metricName ?: "Sleep Hours"
-                else -> "Sleep Hours"
-            }
+            val currentMetric = selectedMetric
 
             val isRefreshing = when (state) {
                 is WeeklySnapshotState.ReadyWithData -> state.isRefreshing
@@ -244,25 +240,25 @@ fun WeeklySnapshotCard(
                     }
                 }
                 is WeeklySnapshotState.Error -> {
-                    if (state.retainedData != null) {
-                        SnapshotDataContent(
-                            metricData = state.retainedData,
-                            selectedIndex = selectedPointIndex,
-                            onSelectIndex = { selectedPointIndex = it }
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(140.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = state.message,
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 12.sp,
+                            textAlign = TextAlign.Center
                         )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(120.dp),
-                            contentAlignment = Alignment.Center
+                        Spacer(Modifier.height(8.dp))
+                        Button(
+                            onClick = { onSelectMetric(currentMetric) },
+                            colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary.copy(alpha = 0.2f), contentColor = NotelPrimary)
                         ) {
-                            Text(
-                                text = state.message,
-                                color = MaterialTheme.colorScheme.error,
-                                fontSize = 12.sp,
-                                textAlign = TextAlign.Center
-                            )
+                            Text("Try Again", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }

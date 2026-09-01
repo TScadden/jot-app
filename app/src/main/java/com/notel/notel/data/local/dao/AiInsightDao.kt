@@ -29,7 +29,7 @@ interface AiInsightDao {
     @Query("""
         SELECT 
             i.*,
-            e.id AS entry_id, e.timestamp AS entry_timestamp, e.categoryId AS entry_categoryId, e.body AS entry_body, e.chips AS entry_chips, e.manualText AS entry_manualText, e.source AS entry_source,
+            e.id AS entry_id, e.timestamp AS entry_timestamp, e.categoryId AS entry_categoryId, e.body AS entry_body, e.chips AS entry_chips, e.manualText AS entry_manualText, e.source AS entry_source, e.updatedAt AS entry_updatedAt, e.syncState AS entry_syncState,
             c.id AS cat_id, c.name AS cat_name, c.icon AS cat_icon, c.colorHex AS cat_colorHex, c.isDefault AS cat_isDefault, c.sortOrder AS cat_sortOrder, c.slug AS cat_slug
         FROM ai_insights i
         LEFT JOIN log_entries e ON i.entryId = e.id
