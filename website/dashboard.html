@@ -3114,14 +3114,14 @@
 
         // ── Graph Analysis Functions ──────────────────────────────────────────
         let graphAnalysisState = 'idle'; // 'idle' | 'loading' | 'ready'
-        let cachedGraphAnalysis = null;
+        let currentGraphReport = null;
 
         async function handleReadGraphsClick(e) {
             if (e) {
                 if (typeof e.preventDefault === 'function') e.preventDefault();
                 if (typeof e.stopPropagation === 'function') e.stopPropagation();
             }
-            if (graphAnalysisState === 'ready' && cachedGraphAnalysis) {
+            if (graphAnalysisState === 'ready' && currentGraphReport) {
                 openGraphAnalysisModal();
             } else if (graphAnalysisState === 'idle') {
                 await triggerGraphAnalysis();
@@ -3176,7 +3176,6 @@
                         body: `Biometric record for ${r.dateStr}: Sleep Duration: ${(r.sleepMins/60).toFixed(1)}h, Deep Sleep: ${(r.deepSleepMins/60).toFixed(1)}h, Average Heart Rate: ${r.avgHr||'N/A'} bpm, HRV: ${r.hrv||'N/A'} ms, Calories: ${r.calories||'N/A'} kcal, HR Spikes: ${r.spikes!==undefined?r.spikes:'N/A'}, Jots logged: ${r.jots||0}`
                     }));
 
-                    // Add user logged notes to fallback
                     userEntriesList.slice(0, 50).forEach((e, idx) => {
                         entriesFallback.push({
                             id: `user_note_${idx}`,
@@ -3201,18 +3200,27 @@
                     });
 
                     data = await response.json();
-                    if (response.ok && data.result) {
-                        data.result = formatGraphAnalysisHtml(data.result);
-                    }
                 } else {
                     data = await response.json();
                 }
 
-                if (response.ok && data.result) {
-                    cachedGraphAnalysis = data.result;
-                    cachedReportModel = data.report || parseGraphAnalysisReport(data.rawText || data.result);
-                    currentGraphAnalysisId = `graph_report_${Date.now()}`;
-                    currentGraphAnalysisRequestId = `req_graph_report_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+                if (response.ok && (data.report || data.result)) {
+                    const reportModel = data.report || parseGraphAnalysisReport(data.rawText || data.result);
+                    const reportId = `graph_report_${Date.now()}`;
+                    const requestId = `req_graph_report_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+                    currentGraphReport = {
+                        id: reportId,
+                        requestId: requestId,
+                        generatedAt: Date.now(),
+                        title: reportModel.title || 'AI Biometric Graph Analysis',
+                        introduction: reportModel.introduction || '',
+                        findings: reportModel.findings || [],
+                        disclaimer: reportModel.disclaimer || '',
+                        html: formatReportToHtml(reportModel),
+                        dateRangeText: globalSortedRecords.length > 0 ? `${globalSortedRecords[0].dateStr} - ${globalSortedRecords[globalSortedRecords.length - 1].dateStr}` : ''
+                    };
+
                     graphAnalysisState = 'ready';
                     btn.disabled = false;
                     btn.classList.add('btn-analysis-ready');
@@ -3236,8 +3244,8 @@
             const content = document.getElementById('graph-analysis-content');
             if (!modal || !content) return;
 
-            if (cachedGraphAnalysis) {
-                content.innerHTML = `<div class="graph-analysis-body">${cachedGraphAnalysis}</div>`;
+            if (currentGraphReport) {
+                content.innerHTML = `<div class="graph-analysis-body">${currentGraphReport.html}</div>`;
             }
             modal.classList.add('active');
             document.body.style.overflow = 'hidden';
@@ -3375,8 +3383,8 @@
             `;
         }
 
-        function formatAnalysisForApp(rawOrReport) {
-            let report = typeof rawOrReport === 'object' && rawOrReport.findings ? rawOrReport : parseGraphAnalysisReport(rawOrReport);
+        function serializeGraphReportForApp(report) {
+            if (!report || !Array.isArray(report.findings)) return '';
             const lines = [];
             report.findings.forEach(f => {
                 lines.push(`■ Tip ${f.number}: ${f.heading}\n${f.body}`);
@@ -3384,15 +3392,93 @@
             return lines.join('\n\n');
         }
 
-        let cachedReportModel = null;
+        async function saveCurrentGraphReport() {
+            const btn = document.getElementById('btn-send-to-app');
+            const icon = document.getElementById('send-to-app-icon');
+            const text = document.getElementById('send-to-app-text');
+
+            if (!btn) {
+                console.error('Save button was not found.');
+                return;
+            }
+
+            const report = currentGraphReport;
+            if (!report || !Array.isArray(report.findings) || report.findings.length === 0) {
+                if (text) text.textContent = 'Regenerate Report';
+                if (icon) icon.textContent = '⚠️';
+                alert('This report is not ready to save. Please regenerate it.');
+                return;
+            }
+
+            btn.disabled = true;
+            if (text) text.textContent = 'Saving…';
+            if (icon) icon.textContent = '⏳';
+
+            try {
+                const serializedText = serializeGraphReportForApp(report);
+                const payload = {
+                    insights: [
+                        {
+                            id: report.id,
+                            requestId: report.requestId,
+                            text: serializedText,
+                            type: 'Graph Analysis Report',
+                            timestamp: report.generatedAt,
+                            classification: 'OBSERVATION',
+                            dataUsed: 'Biometric graph history',
+                            dateRangeText: report.dateRangeText || '',
+                            plainLanguageReason: 'Patterns observed across the selected biometric history.',
+                            confidence: 0.8,
+                            feedbackState: 'NONE',
+                            isDismissed: false
+                        }
+                    ]
+                };
+
+                const response = await authenticatedFetch(`${API_BASE}/api/sync/insights`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json().catch(() => null);
+
+                if (!response.ok) {
+                    throw new Error(data?.error || `Save failed (${response.status})`);
+                }
+
+                const savedItem = data?.items?.find(item => item.id === report.id);
+                if (!savedItem || savedItem.status !== 'synced') {
+                    throw new Error(savedItem?.message || 'The server did not confirm the report was saved.');
+                }
+
+                if (text) text.textContent = 'Saved to Tabs!';
+                if (icon) icon.textContent = '✅';
+                btn.style.background = 'rgba(74, 222, 128, 0.2)';
+                btn.style.borderColor = 'rgba(74, 222, 128, 0.5)';
+            } catch (err) {
+                console.error('Failed to save report to app:', err);
+                if (text) text.textContent = err.message.includes('401') || err.message.includes('expired') ? 'Session Expired' : 'Couldn’t Save — Retry';
+                if (icon) icon.textContent = '❌';
+                btn.disabled = false; // Keep clickable for retry
+            } finally {
+                // Ensure disabled state is cleaned up unless in error state
+                if (text && text.textContent === 'Saving…') {
+                    btn.disabled = false;
+                }
+            }
+        }
 
         async function downloadGraphAnalysisReport() {
-            if (!cachedGraphAnalysis) return;
             const btn = document.getElementById('btn-download-report');
+            const report = currentGraphReport;
+            if (!report) {
+                alert('No report available to download.');
+                return;
+            }
             if (btn) btn.disabled = true;
 
             try {
-                const report = cachedReportModel || parseGraphAnalysisReport(cachedGraphAnalysis);
                 const { jsPDF } = window.jspdf || {};
 
                 if (!jsPDF) {
@@ -3400,11 +3486,10 @@
                     return;
                 }
 
-                // Create A4 Printable PDF Vector Document
                 const doc = new jsPDF({
                     orientation: 'portrait',
                     unit: 'pt',
-                    format: 'a4' // 595.28 x 841.89 pt
+                    format: 'a4'
                 });
 
                 const pageWidth = doc.internal.pageSize.getWidth();
@@ -3416,12 +3501,12 @@
                 function drawHeader(isContinuation = false) {
                     doc.setFont("helvetica", "bold");
                     doc.setFontSize(22);
-                    doc.setTextColor(79, 70, 229); // #4f46e5
+                    doc.setTextColor(79, 70, 229);
                     doc.text("Tabs", margin, y);
 
                     y += 18;
                     doc.setFontSize(14);
-                    doc.setTextColor(30, 41, 59); // #1e293b
+                    doc.setTextColor(30, 41, 59);
                     doc.text(report.title, margin, y);
 
                     if (!isContinuation) {
@@ -3429,7 +3514,8 @@
                         doc.setFont("helvetica", "normal");
                         doc.setFontSize(10);
                         doc.setTextColor(100, 116, 139);
-                        doc.text(`Clinical Graph Pattern Summary • Generated ${report.generatedAt}`, margin, y);
+                        const genDateStr = new Date(report.generatedAt).toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+                        doc.text(`Clinical Graph Pattern Summary • Generated ${genDateStr}`, margin, y);
                     }
 
                     y += 12;
@@ -3439,10 +3525,8 @@
                     y += 20;
                 }
 
-                // Page 1 Header
                 drawHeader(false);
 
-                // Draw Overview / Intro
                 doc.setFont("helvetica", "bold");
                 doc.setFontSize(11);
                 doc.setTextColor(79, 70, 229);
@@ -3456,9 +3540,7 @@
                 doc.text(introLines, margin, y);
                 y += (introLines.length * 14) + 16;
 
-                // Loop through findings
                 report.findings.forEach(f => {
-                    // Check widow threshold for finding heading + at least 2 lines of body (approx 70pt needed)
                     if (y + 70 > pageHeight - margin - 40) {
                         doc.addPage();
                         y = margin;
@@ -3488,7 +3570,6 @@
                             y = margin;
                             drawHeader(true);
 
-                            // Subtle continuation label
                             doc.setFont("helvetica", "italic");
                             doc.setFontSize(9);
                             doc.setTextColor(100, 116, 139);
@@ -3503,10 +3584,9 @@
                         y += 14;
                     });
 
-                    y += 16; // Space after finding
+                    y += 16;
                 });
 
-                // Check footer position
                 if (y + 50 > pageHeight - margin) {
                     doc.addPage();
                     y = margin;
@@ -3525,7 +3605,6 @@
                 const disclaimerLines = doc.splitTextToSize(`Important note: ${report.disclaimer}`, contentWidth);
                 doc.text(disclaimerLines, margin, y);
 
-                // Add Page X of Y page numbers on each page
                 const totalPages = doc.internal.getNumberOfPages();
                 for (let i = 1; i <= totalPages; i++) {
                     doc.setPage(i);
@@ -3545,7 +3624,6 @@
             }
         }
 
-        // Start critical dashboard fetch independently & wrap optional initializers separately
         document.addEventListener('DOMContentLoaded', () => {
             fetchDashboardData();
 
@@ -3553,6 +3631,13 @@
                 initFocusState();
             } catch (error) {
                 console.error('Project Focus initialization failed:', error);
+            }
+
+            const saveButton = document.getElementById('btn-send-to-app');
+            if (saveButton) {
+                saveButton.addEventListener('click', async () => {
+                    await saveCurrentGraphReport();
+                });
             }
         });
     </script>
@@ -3572,7 +3657,7 @@
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem; border-top: 1px solid var(--glass-border); padding-top: 1rem; flex-shrink: 0; gap: 0.5rem; flex-wrap: wrap;">
                 <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-                    <button id="btn-send-to-app" class="btn-secondary" onclick="sendGraphAnalysisToApp()" style="display: flex; align-items: center; gap: 0.5rem; background: rgba(124, 110, 255, 0.15); border: 1px solid rgba(124, 110, 255, 0.35); color: white; border-radius: 10px; padding: 0.6rem 1.1rem; font-weight: 500; cursor: pointer; transition: all 0.2s ease;">
+                    <button id="btn-send-to-app" class="btn-secondary" style="display: flex; align-items: center; gap: 0.5rem; background: rgba(124, 110, 255, 0.15); border: 1px solid rgba(124, 110, 255, 0.35); color: white; border-radius: 10px; padding: 0.6rem 1.1rem; font-weight: 500; cursor: pointer; transition: all 0.2s ease;">
                         <span id="send-to-app-icon">📱</span>
                         <span id="send-to-app-text">Save to Tabs</span>
                     </button>
