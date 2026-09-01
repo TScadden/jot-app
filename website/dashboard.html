@@ -3116,6 +3116,19 @@
         let graphAnalysisState = 'idle'; // 'idle' | 'loading' | 'ready'
         let currentGraphReport = null;
 
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, character => {
+                const entities = {
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#39;'
+                };
+                return entities[character];
+            });
+        }
+
         async function handleReadGraphsClick(e) {
             if (e) {
                 if (typeof e.preventDefault === 'function') e.preventDefault();
@@ -3222,7 +3235,6 @@
                     };
 
                     graphAnalysisState = 'ready';
-                    btn.disabled = false;
                     btn.classList.add('btn-analysis-ready');
                     btnText.textContent = 'Analysis Ready';
                     if (btnIcon) btnIcon.textContent = '🎉';
@@ -3232,10 +3244,11 @@
             } catch (err) {
                 console.error('Graph analysis failed:', err);
                 graphAnalysisState = 'idle';
-                btn.disabled = false;
                 btnText.textContent = 'Read Graphs';
                 if (btnIcon) btnIcon.textContent = '✨';
                 alert('Failed to analyze graphs: ' + err.message);
+            } finally {
+                btn.disabled = false;
             }
         }
 
