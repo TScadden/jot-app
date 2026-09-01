@@ -1516,16 +1516,15 @@
 
     <script>
         const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:3000' : 'https://api.jottracker.com';
-        const getSessionVal = (key) => sessionStorage.getItem(key) || localStorage.getItem(key);
         
-        const token = getSessionVal('token');
+        const token = sessionStorage.getItem('token');
         if (!token) {
             window.location.href = '/login.html';
         }
 
         // Set up welcome greeting
-        const nickname = getSessionVal('nickname') || 'User';
-        const tag = getSessionVal('tag') || '00000';
+        const nickname = sessionStorage.getItem('nickname') || 'User';
+        const tag = sessionStorage.getItem('tag') || '00000';
         document.getElementById('user-display-name').textContent = `${nickname} #${tag}`;
 
         let globalSyncData = null;

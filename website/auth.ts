@@ -22,20 +22,15 @@ export const getApiBaseUrl = (): string => {
 };
 
 export const getItem = (key: string): string | null => {
-    return sessionStorage.getItem(key) || localStorage.getItem(key);
+    return sessionStorage.getItem(key);
 };
 
-export const setItem = (key: string, value: string, usePersistent: boolean = false): void => {
-    if (usePersistent) {
-        localStorage.setItem(key, value);
-    } else {
-        sessionStorage.setItem(key, value);
-    }
+export const setItem = (key: string, value: string): void => {
+    sessionStorage.setItem(key, value);
 };
 
 export const clearSession = (): void => {
     sessionStorage.clear();
-    localStorage.clear();
 };
 
 export const refreshSessionIfNeeded = async (): Promise<string | null> => {
@@ -60,9 +55,8 @@ export const refreshSessionIfNeeded = async (): Promise<string | null> => {
 
             if (refreshRes.ok) {
                 const data = await refreshRes.json();
-                const usePersistent = !!localStorage.getItem('token');
-                setItem('token', data.token, usePersistent);
-                if (data.refreshToken) setItem('refreshToken', data.refreshToken, usePersistent);
+                setItem('token', data.token);
+                if (data.refreshToken) setItem('refreshToken', data.refreshToken);
                 return data.token;
             }
         }
@@ -75,10 +69,10 @@ export const refreshSessionIfNeeded = async (): Promise<string | null> => {
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
-    // Session Routing Check
+    // Session Routing Check - ONLY checks sessionStorage
     const activeToken = await refreshSessionIfNeeded();
     if (activeToken) {
-        const onboardingComplete = localStorage.getItem('onboardingComplete') === 'true';
+        const onboardingComplete = sessionStorage.getItem('onboardingComplete') === 'true';
         if (!onboardingComplete) {
             window.location.href = '/onboarding.html';
         } else {
@@ -122,7 +116,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     const reqLetterNumber = document.getElementById('req-letternumber');
     const signupEmailError = document.getElementById('signup-email-error');
     const signupConfirmError = document.getElementById('signup-confirm-error');
-    const signupTermsError = document.getElementById('signup-terms-error');
+    const signinEmailInput = document.getElementById('signin-email') as HTMLInputElement | null;
+    const signinRememberInput = document.getElementById('signin-remember') as HTMLInputElement | null;
+
+    // Prefill remembered email if available
+    const savedEmail = localStorage.getItem('saved_email');
+    if (savedEmail && signinEmailInput) {
+        signinEmailInput.value = savedEmail;
+        if (signinRememberInput) signinRememberInput.checked = true;
+    }
 
     let isAnimating = false;
 
@@ -256,21 +258,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     const handleAuthSuccess = (data: AuthResponse, isNewRegistration: boolean = false) => {
         const rememberMeInput = document.getElementById('signin-remember') as HTMLInputElement | null;
         const remember = rememberMeInput ? rememberMeInput.checked : false;
-        const storage = remember ? localStorage : sessionStorage;
 
-        // Clear any previous items across both storages
-        localStorage.clear();
-        sessionStorage.clear();
+        // Remember Me: Saves login credential (email) so user doesn't have to retype it
+        if (remember && data.email) {
+            localStorage.setItem('saved_email', data.email);
+        } else {
+            localStorage.removeItem('saved_email');
+        }
 
-        storage.setItem('token', data.token);
-        storage.setItem('userId', data.userId);
-        storage.setItem('email', data.email);
-        if (data.refreshToken) storage.setItem('refreshToken', data.refreshToken);
-        if (data.nickname) storage.setItem('nickname', data.nickname);
-        if (data.tag) storage.setItem('tag', data.tag);
+        // Active session token ALWAYS stored in sessionStorage (logged out when tab closes)
+        sessionStorage.setItem('token', data.token);
+        sessionStorage.setItem('userId', data.userId);
+        sessionStorage.setItem('email', data.email);
+        if (data.refreshToken) sessionStorage.setItem('refreshToken', data.refreshToken);
+        if (data.nickname) sessionStorage.setItem('nickname', data.nickname);
+        if (data.tag) sessionStorage.setItem('tag', data.tag);
 
         const onboardingComplete = data.onboardingComplete === true;
-        storage.setItem('onboardingComplete', onboardingComplete ? 'true' : 'false');
+        sessionStorage.setItem('onboardingComplete', onboardingComplete ? 'true' : 'false');
 
         showAlert('Authentication successful! Redirecting...', 'success', isNewRegistration);
 
