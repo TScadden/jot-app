@@ -619,7 +619,7 @@ a:focus-visible {
     }
 
     .panel-content {
-        transition: opacity 0.01ms !important, transform 0.01ms !important;
+        transition-duration: 0.01ms !important;
     }
 }
 
