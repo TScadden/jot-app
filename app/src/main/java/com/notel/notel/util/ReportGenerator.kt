@@ -707,7 +707,6 @@ class ReportGenerator @Inject constructor(
                 val headingText = match.groupValues[2].trim()
                 val restText = match.groupValues[3].trim()
 
-                // Check widow for finding header
                 checkPageBreak(70f, isHeading = true)
 
                 currentFindingNum = if (num > 0) num else currentFindingNum + 1
@@ -753,12 +752,14 @@ class ReportGenerator @Inject constructor(
             y += 12f
         }
 
-        // Finish current page
         pdfDocument.finishPage(currentPage)
 
         val totalPages = pages.size
-        // Draw page numbers "Page X of Y" at footer of each page
-        // Note: PdfDocument pages are already finished, so we create and save file safely.
+        pages.forEachIndexed { idx, page ->
+            val pCanvas = page.canvas
+            val pageNumText = "Page ${idx + 1} of $totalPages"
+            pCanvas.drawText(pageNumText, 595f - margin - metaPaint.measureText(pageNumText), 820f, metaPaint)
+        }
 
         val timeStamp = SimpleDateFormat("MMM_dd_yyyy_HHmm", Locale.getDefault()).format(Date())
         val fileName = "Tabs_AI_Graph_Report_$timeStamp.pdf"
