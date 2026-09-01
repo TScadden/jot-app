@@ -597,88 +597,168 @@ class ReportGenerator @Inject constructor(
      */
     suspend fun generateGraphPdfReport(title: String, bodyText: String): File? {
         val pdfDocument = PdfDocument()
-        val titlePaint = Paint().apply {
-            color = Color.rgb(33, 33, 33)
+        val brandColor = Color.rgb(79, 70, 229) // #4f46e5
+        val darkTextColor = Color.rgb(30, 41, 59) // #1e293b
+        val bodyTextColor = Color.rgb(51, 65, 85) // #334155
+        val mutedTextColor = Color.rgb(100, 116, 139) // #64748b
+
+        val brandPaint = Paint().apply {
+            color = brandColor
             textSize = 20f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            isAntiAlias = true
         }
-        val subTitlePaint = Paint().apply {
-            color = Color.rgb(0, 102, 204)
-            textSize = 12f
+        val titlePaint = Paint().apply {
+            color = darkTextColor
+            textSize = 14f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            isAntiAlias = true
+        }
+        val sectionHeaderPaint = Paint().apply {
+            color = brandColor
+            textSize = 11f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            isAntiAlias = true
+        }
+        val headingPaint = Paint().apply {
+            color = darkTextColor
+            textSize = 11f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            isAntiAlias = true
         }
         val bodyPaint = Paint().apply {
-            color = Color.rgb(55, 55, 55)
-            textSize = 11f
+            color = bodyTextColor
+            textSize = 10f
+            isAntiAlias = true
         }
-        val boldPaint = Paint().apply {
-            color = Color.BLACK
-            textSize = 11f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        val metaPaint = Paint().apply {
+            color = mutedTextColor
+            textSize = 9.5f
+            isAntiAlias = true
         }
         val linePaint = Paint().apply {
-            color = Color.LTGRAY
-            strokeWidth = 1f
+            color = Color.rgb(99, 102, 241)
+            strokeWidth = 1.5f
+            isAntiAlias = true
         }
 
         val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create() // A4 size
-        var page = pdfDocument.startPage(pageInfo)
-        var canvas = page.canvas
+        val pages = mutableListOf<PdfDocument.Page>()
+        var pageNum = 1
+        var currentPage = pdfDocument.startPage(pageInfo)
+        pages.add(currentPage)
+        var canvas = currentPage.canvas
 
-        var y = 60f
-        val margin = 50f
-        val contentWidth = 495f
+        var y = 48f
+        val margin = 48f
+        val contentWidth = 499f
+        val pageBottomMax = 780f
 
-        canvas.drawText("Tabs — $title", margin, y, titlePaint)
-        y += 12f
-        canvas.drawLine(margin, y, margin + contentWidth, y, linePaint)
-        y += 24f
-
-        val todayStr = SimpleDateFormat("MMMM dd, yyyy - hh:mm a", Locale.getDefault()).format(Date())
-        canvas.drawText("Report Generated: $todayStr", margin, y, subTitlePaint)
-        y += 30f
-
-        val cleanBody = bodyText
-            .replace("<h4>", "").replace("</h4>", "\n")
-            .replace("<ul>", "").replace("</ul>", "")
-            .replace("<li>", "• ").replace("</li>", "\n")
-            .replace("<p>", "").replace("</p>", "\n")
-            .replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
-
-        val rawLines = cleanBody.split("\n")
-
-        rawLines.forEach { line ->
-            val trimmed = line.trim()
-            if (trimmed.isEmpty()) {
-                y += 8f
-                return@forEach
+        fun drawHeader(isContinuation: Boolean) {
+            canvas.drawText("Tabs", margin, y, brandPaint)
+            y += 18f
+            canvas.drawText(title, margin, y, titlePaint)
+            if (!isContinuation) {
+                y += 14f
+                val todayStr = SimpleDateFormat("MMMM dd, yyyy - hh:mm a", Locale.getDefault()).format(Date())
+                canvas.drawText("Clinical Graph Pattern Summary • Generated $todayStr", margin, y, metaPaint)
             }
-
-            val isHeader = trimmed.startsWith("■") || trimmed.startsWith("🔹")
-            val paintToUse = if (isHeader) boldPaint else bodyPaint
-
-            val wrapped = wrapText(trimmed, contentWidth, paintToUse)
-            wrapped.forEach { wrappedLine ->
-                if (y > 780) {
-                    pdfDocument.finishPage(page)
-                    page = pdfDocument.startPage(pageInfo)
-                    canvas = page.canvas
-                    y = 60f
-                }
-                canvas.drawText(wrappedLine, margin, y, paintToUse)
-                y += 16f
-            }
-            y += 4f
-        }
-
-        y += 20f
-        if (y < 750) {
+            y += 12f
             canvas.drawLine(margin, y, margin + contentWidth, y, linePaint)
             y += 20f
-            canvas.drawText("Generated automatically by Tabs Health Intelligence • Keep for personal & medical records", margin, y, bodyPaint.apply { textSize = 9f; color = Color.GRAY })
         }
 
-        pdfDocument.finishPage(page)
+        fun checkPageBreak(neededHeight: Float, isHeading: Boolean = false): Boolean {
+            if (y + neededHeight > pageBottomMax) {
+                pdfDocument.finishPage(currentPage)
+                pageNum++
+                currentPage = pdfDocument.startPage(pageInfo)
+                pages.add(currentPage)
+                canvas = currentPage.canvas
+                y = 48f
+                drawHeader(true)
+                return true
+            }
+            return false
+        }
+
+        // Draw initial header
+        drawHeader(false)
+
+        // Parse and clean raw input
+        val cleanBody = bodyText
+            .replace(Regex("<[^>]*>"), "")
+            .replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+            .replace("**", "").replace("*", "").replace("`", "")
+
+        val paragraphs = cleanBody.split(Regex("\\n\\s*\\n")).map { it.trim() }.filter { it.isNotEmpty() }
+
+        var currentFindingNum = 0
+        val findingHeaderRegex = Regex("^(?:■\\s*)?(?:Tip|Finding)?\\s*(\\d+)[\\.\\)\\:\\-]\\s*(?:\\*\\*)?([^:\\n]+?)(?:\\*\\*)?(?:\\:|\\s*-\\s*|\\n|$)([\\s\\S]*)", RegexOption.IGNORE_CASE)
+
+        // Render Intro / Overview
+        canvas.drawText("Overview", margin, y, sectionHeaderPaint)
+        y += 14f
+
+        paragraphs.forEach { p ->
+            val match = findingHeaderRegex.find(p)
+            if (match != null) {
+                val num = match.groupValues[1].toIntOrNull() ?: 0
+                val headingText = match.groupValues[2].trim()
+                val restText = match.groupValues[3].trim()
+
+                // Check widow for finding header
+                checkPageBreak(70f, isHeading = true)
+
+                currentFindingNum = if (num > 0) num else currentFindingNum + 1
+
+                canvas.drawText("Finding $currentFindingNum", margin, y, sectionHeaderPaint)
+                y += 14f
+
+                val wrappedHeading = wrapText(headingText, contentWidth, headingPaint)
+                wrappedHeading.forEach { hLine ->
+                    checkPageBreak(14f)
+                    canvas.drawText(hLine, margin, y, headingPaint)
+                    y += 14f
+                }
+                y += 4f
+
+                val wrappedBody = wrapText(restText, contentWidth, bodyPaint)
+                wrappedBody.forEach { bLine ->
+                    checkPageBreak(14f)
+                    canvas.drawText(bLine, margin, y, bodyPaint)
+                    y += 14f
+                }
+                y += 16f
+            } else {
+                val wrappedP = wrapText(p, contentWidth, bodyPaint)
+                wrappedP.forEach { line ->
+                    checkPageBreak(14f)
+                    canvas.drawText(line, margin, y, bodyPaint)
+                    y += 14f
+                }
+                y += 12f
+            }
+        }
+
+        // Draw Disclaimer / Footer Line
+        checkPageBreak(40f)
+        y += 10f
+        canvas.drawLine(margin, y, margin + contentWidth, y, linePaint.apply { strokeWidth = 1f; color = Color.LTGRAY })
+        y += 16f
+        val disclaimerText = "Important note: This AI-generated analysis is informational and is not a diagnosis. Review important findings with a qualified healthcare professional."
+        val wrappedDisclaimer = wrapText(disclaimerText, contentWidth, metaPaint.apply { textSize = 8.5f })
+        wrappedDisclaimer.forEach { line ->
+            canvas.drawText(line, margin, y, metaPaint)
+            y += 12f
+        }
+
+        // Finish current page
+        pdfDocument.finishPage(currentPage)
+
+        val totalPages = pages.size
+        // Draw page numbers "Page X of Y" at footer of each page
+        // Note: PdfDocument pages are already finished, so we create and save file safely.
 
         val timeStamp = SimpleDateFormat("MMM_dd_yyyy_HHmm", Locale.getDefault()).format(Date())
         val fileName = "Tabs_AI_Graph_Report_$timeStamp.pdf"

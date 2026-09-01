@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="./style.css?v=1.9">
     <link rel="icon" type="image/png" href="/tabs_logo.png">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script>
         // Block multi-touch pinch zoom & gesture zooming on mobile iOS Safari / Chrome
@@ -3209,6 +3210,7 @@
 
                 if (response.ok && data.result) {
                     cachedGraphAnalysis = data.result;
+                    cachedReportModel = data.report || parseGraphAnalysisReport(data.rawText || data.result);
                     currentGraphAnalysisId = `graph_report_${Date.now()}`;
                     currentGraphAnalysisRequestId = `req_graph_report_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
                     graphAnalysisState = 'ready';
@@ -3249,161 +3251,140 @@
             document.body.style.overflow = '';
         }
 
-        function normalizeAnalysisText(rawText) {
-            if (!rawText) return '';
-            let text = Array.isArray(rawText) ? rawText.join('\n\n') : String(rawText);
-            
-            // Clean up basic HTML tags
-            text = text.replace(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi, '\n\n### $1\n');
-            text = text.replace(/<li[^>]*>(.*?)<\/li>/gi, '\n• $1');
-            text = text.replace(/<p[^>]*>(.*?)<\/p>/gi, '\n\n$1');
-            text = text.replace(/<ul[^>]*>|<ol[^>]*>|<\/ul>|<\/ol>/gi, '\n');
-
-            // Split jammed inline numbered patterns like " 1. ", " 2. ", " 3. ", " 1) ", " 2) " into separate double-spaced blocks!
-            text = text.replace(/(\s|^)(\d+[\.\)])\s+/g, '\n\n$2 ');
-
-            // Split inline bullet points
-            text = text.replace(/([^\n])\s*•\s*/g, '$1\n\n• ');
-
-            return text;
+        function sanitizeMedicalLanguage(text) {
+            if (!text) return '';
+            return text
+                .replace(/\bcan indicate significant autonomic dysfunction\b/gi, 'may be associated with variations in autonomic response')
+                .replace(/\bindicates significant autonomic dysfunction\b/gi, 'may reflect variations in autonomic response')
+                .replace(/\bindicates severe\b/gi, 'suggests potential variations in')
+                .replace(/\bcauses severe\b/gi, 'is associated with');
         }
 
-        function formatGraphAnalysisHtml(rawText) {
-            if (!rawText) return '';
-            let text = normalizeAnalysisText(rawText);
-            let blocks = text.split('\n\n').map(b => b.trim()).filter(Boolean);
+        function parseGraphAnalysisReport(rawText, options = {}) {
+            const title = options.title || "AI Biometric Graph Analysis";
+            const generatedAt = options.generatedAt || new Date().toLocaleString('en-US', {
+                month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true
+            });
+            const disclaimer = options.disclaimer || "This AI-generated analysis is informational and is not a diagnosis. Review important findings with a qualified healthcare professional.";
 
-            let htmlParts = [];
+            if (!rawText) {
+                return { title, generatedAt, introduction: "No graph analysis content provided.", findings: [], disclaimer };
+            }
 
-            blocks.forEach(block => {
-                let trimmed = block.trim();
-                if (trimmed.startsWith('#') || (trimmed.endsWith(':') && trimmed.length < 60 && !/^\d+[\.\)]/.test(trimmed) && !trimmed.startsWith('•'))) {
-                    let title = trimmed.replace(/^#+\s*/, '').replace(/:$/, '');
-                    htmlParts.push(`<h4 style="color: #a5b4fc; font-size: 1.05rem; font-weight: 700; margin: 1.5rem 0 0.75rem 0; display: flex; align-items: center; gap: 0.5rem;">🔹 ${title}</h4>`);
-                } else if (/^\d+[\.\)]/.test(trimmed) || trimmed.startsWith('•') || trimmed.startsWith('-') || trimmed.startsWith('*')) {
-                    let matchNum = trimmed.match(/^(\d+)[\.\)]\s*(.*)/s);
-                    let numberBadge = matchNum ? matchNum[1] : null;
-                    let content = matchNum ? matchNum[2] : trimmed.replace(/^[\*\-\•]\s*/, '');
+            let textStr = Array.isArray(rawText) ? rawText.join('\n\n') : String(rawText);
+            textStr = textStr.replace(/\r\n/g, '\n');
+            textStr = textStr.replace(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi, '\n\n### $1\n');
+            textStr = textStr.replace(/<li[^>]*>(.*?)<\/li>/gi, '\n• $1');
+            textStr = textStr.replace(/<p[^>]*>(.*?)<\/p>/gi, '\n\n$1');
+            textStr = textStr.replace(/<ul[^>]*>|<ol[^>]*>|<\/ul>|<\/ol>/gi, '\n');
 
-                    // Highlight labels before colons and bold text
-                    content = content.replace(/^([^:]+):/, '<strong style="color: #818cf8; font-weight: 700;">$1:</strong>');
-                    content = content.replace(/\*\*(.*?)\*\*/g, '<strong style="color: #e0e7ff; font-weight: 600;">$1</strong>');
+            textStr = sanitizeMedicalLanguage(textStr);
 
-                    htmlParts.push(`
-                        <div style="background: rgba(30, 41, 59, 0.75); border: 1px solid rgba(99, 102, 241, 0.25); border-left: 4px solid #6366f1; padding: 1.1rem 1.25rem; border-radius: 10px; margin-bottom: 1rem; box-shadow: 0 4px 14px rgba(0,0,0,0.2);">
-                            <div style="display: flex; gap: 0.85rem; align-items: flex-start;">
-                                ${numberBadge ? `<span style="background: linear-gradient(135deg, #6366f1, #4f46e5); color: #ffffff; font-weight: 800; font-size: 0.85rem; width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px;">${numberBadge}</span>` : `<span style="color: #818cf8; font-size: 1.3rem; line-height: 1; flex-shrink: 0; margin-top: 2px;">•</span>`}
-                                <div style="line-height: 1.65; color: #cbd5e1; font-size: 0.95rem;">${content}</div>
-                            </div>
-                        </div>
-                    `);
+            const paragraphs = textStr.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+            let introduction = "Here are the patterns observed in your biometric data.";
+            const findings = [];
+            let currentFindingNum = 0;
+
+            const findingHeaderRegex = /^(?:■\s*)?(?:Tip|Finding)?\s*(\d+)[\.\)\:\-]\s*(?:\*\*)?([^:\n]+?)(?:\*\*)?(?:\:|\s*-\s*|\n|$)([\s\S]*)/i;
+
+            paragraphs.forEach((p, idx) => {
+                const match = p.match(findingHeaderRegex);
+                if (match) {
+                    const num = parseInt(match[1], 10);
+                    const headingRaw = match[2].trim();
+                    const rest = match[3] ? match[3].trim() : '';
+
+                    const isHeadingTextValid = /[a-zA-Z]{2,}/.test(headingRaw) && !/^\d+[\.\d]*\s*(?:bpm|ms|kcal|hours|h|m|%|\$)?$/i.test(headingRaw);
+
+                    if (isHeadingTextValid && (num === currentFindingNum + 1 || findings.length === 0 || num > 0)) {
+                        currentFindingNum = num;
+                        findings.push({
+                            number: num,
+                            heading: stripMarkdown(headingRaw),
+                            body: stripMarkdown(rest)
+                        });
+                        return;
+                    }
+                }
+
+                if (findings.length === 0) {
+                    if (idx === 0 && !p.startsWith('#') && !p.startsWith('■')) {
+                        introduction = stripMarkdown(p);
+                    } else if (introduction === "Here are the patterns observed in your biometric data.") {
+                        introduction = stripMarkdown(p);
+                    } else {
+                        introduction += "\n\n" + stripMarkdown(p);
+                    }
                 } else {
-                    let content = trimmed.replace(/\*\*(.*?)\*\*/g, '<strong style="color: #e0e7ff;">$1</strong>');
-                    htmlParts.push(`<p style="margin-bottom: 1rem; line-height: 1.65; color: #e2e8f0; font-size: 0.95rem;">${content}</p>`);
+                    const lastFinding = findings[findings.length - 1];
+                    const cleanExtraBody = stripMarkdown(p);
+                    if (lastFinding.body) {
+                        lastFinding.body += "\n\n" + cleanExtraBody;
+                    } else {
+                        lastFinding.body = cleanExtraBody;
+                    }
                 }
             });
 
-            return `<div style="font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;">
-                <div style="background: rgba(99, 102, 241, 0.12); border: 1px solid rgba(99, 102, 241, 0.3); padding: 1rem 1.25rem; border-radius: 10px; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.85rem;">
-                    <div style="font-size: 1.6rem;">📊</div>
-                    <div>
-                        <strong style="color: #a5b4fc; font-size: 1rem; display: block; font-weight: 700;">Clinical Biometric Insights & Action Plan</strong>
-                        <span style="font-size: 0.85rem; color: #94a3b8;">AI-synthesized pattern analysis across your heart rate, sleep, symptoms, and medication log.</span>
+            findings.forEach(f => {
+                f.heading = stripMarkdown(f.heading);
+                f.body = stripMarkdown(f.body);
+            });
+
+            return { title, generatedAt, introduction: stripMarkdown(introduction), findings, disclaimer };
+        }
+
+        function stripMarkdown(str) {
+            if (!str) return '';
+            return str
+                .replace(/\*\*(.*?)\*\*/g, '$1')
+                .replace(/\*(.*?)\*/g, '$1')
+                .replace(/`([^`]+)`/g, '$1')
+                .replace(/^#+\s*/gm, '')
+                .replace(/\[SECTION\]/gi, '')
+                .replace(/\[BOLD\]/gi, '')
+                .replace(/\[\/BOLD\]/gi, '')
+                .replace(/\[BULLET\]/gi, '')
+                .trim();
+        }
+
+        function formatReportToHtml(report) {
+            const findingsHtml = report.findings.map(f => `
+                <div style="background: rgba(30, 41, 59, 0.75); border: 1px solid rgba(99, 102, 241, 0.25); border-left: 4px solid #6366f1; padding: 1.1rem 1.25rem; border-radius: 10px; margin-bottom: 1rem; box-shadow: 0 4px 14px rgba(0,0,0,0.2);">
+                    <div style="display: flex; gap: 0.85rem; align-items: flex-start;">
+                        <span style="background: linear-gradient(135deg, #6366f1, #4f46e5); color: #ffffff; font-weight: 800; font-size: 0.85rem; width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px;">${f.number}</span>
+                        <div style="line-height: 1.65; color: #cbd5e1; font-size: 0.95rem;">
+                            <strong style="color: #a5b4fc; font-size: 1rem; font-weight: 700; display: block; margin-bottom: 0.35rem;">${escapeHtml(f.heading)}</strong>
+                            <div style="color: #cbd5e1;">${escapeHtml(f.body).replace(/\n\n/g, '<br><br>')}</div>
+                        </div>
                     </div>
                 </div>
-                ${htmlParts.join('')}
-            </div>`;
+            `).join('');
+
+            return `
+                <div style="font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;">
+                    <div style="background: rgba(99, 102, 241, 0.12); border: 1px solid rgba(99, 102, 241, 0.3); padding: 1rem 1.25rem; border-radius: 10px; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.85rem;">
+                        <div style="font-size: 1.6rem;">📊</div>
+                        <div>
+                            <strong style="color: #a5b4fc; font-size: 1rem; display: block; font-weight: 700;">${escapeHtml(report.title)}</strong>
+                            <span style="font-size: 0.85rem; color: #94a3b8;">${escapeHtml(report.introduction)}</span>
+                        </div>
+                    </div>
+                    ${findingsHtml}
+                </div>
+            `;
         }
 
-        function formatAnalysisForApp(html) {
-            if (!html) return '';
-            let text = normalizeAnalysisText(html);
-            let blocks = text.split('\n\n').map(b => b.trim()).filter(Boolean);
-            let appLines = [];
-
-            blocks.forEach(block => {
-                let matchNum = block.match(/^(\d+)[\.\)]\s*(.*)/s);
-                if (matchNum) {
-                    appLines.push(`■ Tip ${matchNum[1]}:\n${matchNum[2].replace(/\n/g, ' ')}`);
-                } else if (block.startsWith('•') || block.startsWith('-') || block.startsWith('*')) {
-                    appLines.push(`• ${block.replace(/^[\*\-\•]\s*/, '').replace(/\n/g, ' ')}`);
-                } else {
-                    appLines.push(block.replace(/\n/g, ' '));
-                }
+        function formatAnalysisForApp(rawOrReport) {
+            let report = typeof rawOrReport === 'object' && rawOrReport.findings ? rawOrReport : parseGraphAnalysisReport(rawOrReport);
+            const lines = [];
+            report.findings.forEach(f => {
+                lines.push(`■ Tip ${f.number}: ${f.heading}\n${f.body}`);
             });
-
-            return appLines.join('\n\n');
+            return lines.join('\n\n');
         }
 
-        async function sendGraphAnalysisToApp() {
-            const btn = document.getElementById('btn-send-to-app');
-            const icon = document.getElementById('send-to-app-icon');
-            const text = document.getElementById('send-to-app-text');
-            if (!btn || !cachedGraphAnalysis) return;
-
-            btn.disabled = true;
-            if (text) text.textContent = 'Saving to Tabs...';
-            if (icon) icon.textContent = '⏳';
-
-            try {
-                if (!currentGraphAnalysisId) {
-                    currentGraphAnalysisId = `graph_report_${Date.now()}`;
-                }
-                if (!currentGraphAnalysisRequestId) {
-                    currentGraphAnalysisRequestId = `req_graph_report_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-                }
-
-                const cleanText = formatAnalysisForApp(cachedGraphAnalysis);
-                const response = await authenticatedFetch(`${API_BASE}/api/sync/insights`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        insights: [{
-                            id: currentGraphAnalysisId,
-                            requestId: currentGraphAnalysisRequestId,
-                            text: cleanText,
-                            type: 'Graph Analysis Report',
-                            timestamp: Date.now()
-                        }]
-                    })
-                });
-
-                const data = await response.json().catch(() => null);
-
-                if (!response.ok) {
-                    const serverErrorMsg = data?.error || (data?.items && data.items[0]?.message) || 'Sync server error';
-                    throw new Error(serverErrorMsg);
-                }
-
-                const itemStatus = data?.items?.[0];
-                if (itemStatus && itemStatus.status === 'error') {
-                    throw new Error(itemStatus.message || 'Saved with errors');
-                }
-
-                if (text) text.textContent = 'Saved to Tabs!';
-                if (icon) icon.textContent = '✅';
-                btn.style.background = 'rgba(74, 222, 128, 0.2)';
-                btn.style.borderColor = 'rgba(74, 222, 128, 0.5)';
-                setTimeout(() => {
-                    btn.disabled = false;
-                    if (text) text.textContent = 'Save to Tabs';
-                    if (icon) icon.textContent = '📱';
-                    btn.style.background = 'rgba(124, 110, 255, 0.15)';
-                    btn.style.borderColor = 'rgba(124, 110, 255, 0.35)';
-                }, 4000);
-            } catch (err) {
-                console.error('Failed to send insight to app:', err);
-                if (text) text.textContent = err.message.includes('expired') ? 'Session Expired' : 'Failed to Save';
-                if (icon) icon.textContent = '❌';
-                setTimeout(() => {
-                    btn.disabled = false;
-                    if (text) text.textContent = 'Save to Tabs';
-                    if (icon) icon.textContent = '📱';
-                }, 3500);
-            }
-        }
+        let cachedReportModel = null;
 
         async function downloadGraphAnalysisReport() {
             if (!cachedGraphAnalysis) return;
@@ -3411,43 +3392,152 @@
             if (btn) btn.disabled = true;
 
             try {
-                // Build a high-quality, professional PDF document container
-                const container = document.createElement('div');
-                container.style.padding = '28px';
-                container.style.fontFamily = "'Outfit', 'Segoe UI', Helvetica, Arial, sans-serif";
-                container.style.color = '#1e293b';
-                container.style.backgroundColor = '#ffffff';
-                container.style.borderRadius = '12px';
+                const report = cachedReportModel || parseGraphAnalysisReport(cachedGraphAnalysis);
+                const { jsPDF } = window.jspdf || {};
 
-                const todayStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-                
-                container.innerHTML = `
-                    <div style="border-bottom: 2px solid #6366f1; padding-bottom: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <h2 style="margin: 0; color: #4f46e5; font-size: 1.5rem; font-weight: 700;">Tabs Wellness Biometric Analysis</h2>
-                            <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.85rem;">Clinical Graph Pattern Summary • ${todayStr}</p>
-                        </div>
-                    </div>
-                    <div style="line-height: 1.6; color: #334155;">
-                        ${cachedGraphAnalysis}
-                    </div>
-                `;
-
-                const opt = {
-                    margin:       [0.5, 0.5, 0.5, 0.5],
-                    filename:     `Tabs_Biometric_Graph_Analysis_${new Date().toISOString().slice(0,10)}.pdf`,
-                    image:        { type: 'jpeg', quality: 0.98 },
-                    html2canvas:  { scale: 2, useCORS: true, logging: false },
-                    jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
-                };
-
-                if (window.html2pdf) {
-                    await window.html2pdf().set(opt).from(container).save();
-                } else {
+                if (!jsPDF) {
                     window.print();
+                    return;
                 }
+
+                // Create A4 Printable PDF Vector Document
+                const doc = new jsPDF({
+                    orientation: 'portrait',
+                    unit: 'pt',
+                    format: 'a4' // 595.28 x 841.89 pt
+                });
+
+                const pageWidth = doc.internal.pageSize.getWidth();
+                const pageHeight = doc.internal.pageSize.getHeight();
+                const margin = 48;
+                const contentWidth = pageWidth - (margin * 2);
+                let y = margin;
+
+                function drawHeader(isContinuation = false) {
+                    doc.setFont("helvetica", "bold");
+                    doc.setFontSize(22);
+                    doc.setTextColor(79, 70, 229); // #4f46e5
+                    doc.text("Tabs", margin, y);
+
+                    y += 18;
+                    doc.setFontSize(14);
+                    doc.setTextColor(30, 41, 59); // #1e293b
+                    doc.text(report.title, margin, y);
+
+                    if (!isContinuation) {
+                        y += 14;
+                        doc.setFont("helvetica", "normal");
+                        doc.setFontSize(10);
+                        doc.setTextColor(100, 116, 139);
+                        doc.text(`Clinical Graph Pattern Summary • Generated ${report.generatedAt}`, margin, y);
+                    }
+
+                    y += 12;
+                    doc.setDrawColor(99, 102, 241);
+                    doc.setLineWidth(1.5);
+                    doc.line(margin, y, margin + contentWidth, y);
+                    y += 20;
+                }
+
+                // Page 1 Header
+                drawHeader(false);
+
+                // Draw Overview / Intro
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(11);
+                doc.setTextColor(79, 70, 229);
+                doc.text("Overview", margin, y);
+                y += 14;
+
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(10);
+                doc.setTextColor(51, 65, 85);
+                const introLines = doc.splitTextToSize(report.introduction, contentWidth);
+                doc.text(introLines, margin, y);
+                y += (introLines.length * 14) + 16;
+
+                // Loop through findings
+                report.findings.forEach(f => {
+                    // Check widow threshold for finding heading + at least 2 lines of body (approx 70pt needed)
+                    if (y + 70 > pageHeight - margin - 40) {
+                        doc.addPage();
+                        y = margin;
+                        drawHeader(true);
+                    }
+
+                    doc.setFont("helvetica", "bold");
+                    doc.setFontSize(11);
+                    doc.setTextColor(79, 70, 229);
+                    doc.text(`Finding ${f.number}`, margin, y);
+                    y += 14;
+
+                    doc.setFontSize(11);
+                    doc.setTextColor(15, 23, 42);
+                    const headingLines = doc.splitTextToSize(f.heading, contentWidth);
+                    doc.text(headingLines, margin, y);
+                    y += (headingLines.length * 14) + 4;
+
+                    doc.setFont("helvetica", "normal");
+                    doc.setFontSize(10);
+                    doc.setTextColor(51, 65, 85);
+
+                    const bodyLines = doc.splitTextToSize(f.body, contentWidth);
+                    bodyLines.forEach(line => {
+                        if (y + 14 > pageHeight - margin - 40) {
+                            doc.addPage();
+                            y = margin;
+                            drawHeader(true);
+
+                            // Subtle continuation label
+                            doc.setFont("helvetica", "italic");
+                            doc.setFontSize(9);
+                            doc.setTextColor(100, 116, 139);
+                            doc.text(`Finding ${f.number} continued...`, margin, y);
+                            y += 14;
+
+                            doc.setFont("helvetica", "normal");
+                            doc.setFontSize(10);
+                            doc.setTextColor(51, 65, 85);
+                        }
+                        doc.text(line, margin, y);
+                        y += 14;
+                    });
+
+                    y += 16; // Space after finding
+                });
+
+                // Check footer position
+                if (y + 50 > pageHeight - margin) {
+                    doc.addPage();
+                    y = margin;
+                    drawHeader(true);
+                }
+
+                y += 10;
+                doc.setDrawColor(226, 232, 240);
+                doc.setLineWidth(1);
+                doc.line(margin, y, margin + contentWidth, y);
+                y += 16;
+
+                doc.setFont("helvetica", "italic");
+                doc.setFontSize(8.5);
+                doc.setTextColor(100, 116, 139);
+                const disclaimerLines = doc.splitTextToSize(`Important note: ${report.disclaimer}`, contentWidth);
+                doc.text(disclaimerLines, margin, y);
+
+                // Add Page X of Y page numbers on each page
+                const totalPages = doc.internal.getNumberOfPages();
+                for (let i = 1; i <= totalPages; i++) {
+                    doc.setPage(i);
+                    doc.setFont("helvetica", "normal");
+                    doc.setFontSize(9);
+                    doc.setTextColor(148, 163, 184);
+                    doc.text(`Page ${i} of ${totalPages}`, pageWidth - margin - 45, pageHeight - 20);
+                }
+
+                doc.save(`Tabs_Biometric_Graph_Analysis_${new Date().toISOString().slice(0,10)}.pdf`);
             } catch (pdfErr) {
-                console.error("PDF generation failed:", pdfErr);
+                console.error("Vector PDF generation failed:", pdfErr);
                 alert("Failed to export PDF report. Printing fallback initialized.");
                 window.print();
             } finally {
