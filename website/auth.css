@@ -1,6 +1,12 @@
-/* ==========================================
-   Tabs Authentication Design System & Layout
-   ========================================== */
+/* ==========================================================================
+   Tabs Authentication Design System & Blade Motion Architecture
+   ========================================================================== */
+
+:root {
+    --blade-angle: 7deg;
+    --blade-anim-duration: 850ms;
+    --blade-easing: cubic-bezier(0.65, 0, 0.35, 1);
+}
 
 .auth-page-wrapper {
     min-height: 100vh;
@@ -13,10 +19,12 @@
     z-index: 1;
 }
 
-/* Split Shell Container */
+/* --------------------------------------------------------------------------
+   Outer Shell: Clipped container with state attributes
+   -------------------------------------------------------------------------- */
 .auth-shell {
     width: 100%;
-    max-width: 1000px;
+    max-width: 1020px;
     min-height: 640px;
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -24,62 +32,154 @@
     overflow: hidden;
     background: #0E0E14;
     box-shadow: 
-        0 30px 80px rgba(0, 0, 0, 0.7),
+        0 30px 80px rgba(0, 0, 0, 0.75),
         0 0 0 1px rgba(255, 255, 255, 0.08);
     position: relative;
     transform: translateZ(0);
+    isolation: isolate;
 }
 
-/* Restrained Diagonal / Curved Seam Divider */
-.auth-shell::before {
-    content: '';
+/* Screen reader announcement utility */
+.sr-only {
     position: absolute;
-    top: -25%;
-    bottom: -25%;
-    left: 45%;
-    width: 100px;
-    background: linear-gradient(135deg, rgba(124, 110, 255, 0.25) 0%, rgba(255, 126, 110, 0.08) 100%);
-    transform: rotate(7deg);
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Full-Card Animated Blade Overlay
+   -------------------------------------------------------------------------- */
+.auth-blade-overlay {
+    position: absolute;
+    top: -30%;
+    bottom: -30%;
+    width: 160%;
+    background: linear-gradient(135deg, #09090E 0%, #151322 45%, #221B3D 75%, #0B0A12 100%);
+    transform: skewX(calc(-1 * var(--blade-angle))) translateX(100%);
+    z-index: 10;
     pointer-events: none;
+    will-change: transform;
+    box-shadow: 
+        -20px 0 60px rgba(124, 110, 255, 0.3),
+        20px 0 60px rgba(0, 0, 0, 0.8),
+        inset 2px 0 0 rgba(255, 255, 255, 0.15),
+        inset -2px 0 0 rgba(124, 110, 255, 0.4);
+}
+
+.blade-inner-glow {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(circle at 50% 50%, rgba(124, 110, 255, 0.18) 0%, transparent 65%);
+}
+
+/* Dynamic Animation Triggers */
+.auth-shell.animating-to-signup .auth-blade-overlay {
+    animation: bladeSweepLeft var(--blade-anim-duration) var(--blade-easing) forwards;
+}
+
+.auth-shell.animating-to-signin .auth-blade-overlay {
+    animation: bladeSweepRight var(--blade-anim-duration) var(--blade-easing) forwards;
+}
+
+@keyframes bladeSweepLeft {
+    0% {
+        transform: skewX(calc(-1 * var(--blade-angle))) translateX(100%);
+    }
+    50% {
+        transform: skewX(calc(-1 * var(--blade-angle))) translateX(0%);
+    }
+    100% {
+        transform: skewX(calc(-1 * var(--blade-angle))) translateX(-100%);
+    }
+}
+
+@keyframes bladeSweepRight {
+    0% {
+        transform: skewX(calc(-1 * var(--blade-angle))) translateX(-100%);
+    }
+    50% {
+        transform: skewX(calc(-1 * var(--blade-angle))) translateX(0%);
+    }
+    100% {
+        transform: skewX(calc(-1 * var(--blade-angle))) translateX(100%);
+    }
+}
+
+/* --------------------------------------------------------------------------
+   Dual Panel Slots (Left & Right)
+   -------------------------------------------------------------------------- */
+.auth-panel {
+    display: flex;
+    flex-direction: column;
+    position: relative;
     z-index: 2;
-    filter: blur(14px);
+    overflow: hidden;
 }
 
-/* Diagonal blade divider line */
-.auth-shell::after {
-    content: '';
-    position: absolute;
-    top: -20%;
-    bottom: -20%;
-    left: 50%;
-    width: 2px;
-    background: linear-gradient(180deg, rgba(255,255,255,0.02) 0%, rgba(124, 110, 255, 0.6) 50%, rgba(255,255,255,0.02) 100%);
-    transform: rotate(6deg);
-    pointer-events: none;
-    z-index: 4;
-}
-
-/* ------------------------------------------
-   Left Panel: Light / Softly Tinted Form Panel
-   ------------------------------------------ */
-.auth-form-panel {
+/* Panel A: Left Side */
+.panel-left {
     background: #FAFAFC;
     color: #12121A;
+}
+
+/* Panel B: Right Side */
+.panel-right {
+    background: linear-gradient(145deg, #0C0C12 0%, #151422 100%);
+    color: #FFFFFF;
+}
+
+/* In signup mode, the backgrounds swap visually to match the new blade position */
+.auth-shell[data-mode="signup"] .panel-left {
+    background: linear-gradient(145deg, #0C0C12 0%, #151422 100%);
+    color: #FFFFFF;
+}
+
+.auth-shell[data-mode="signup"] .panel-right {
+    background: #FAFAFC;
+    color: #12121A;
+}
+
+/* Content Slot Containers inside Panels */
+.panel-content {
     padding: 3rem 2.75rem;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    position: relative;
-    z-index: 3;
-    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+    height: 100%;
+    width: 100%;
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.panel-content.hidden {
+    display: none;
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+}
+
+.auth-shell.animating .panel-content {
+    pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+   Brand Badges & Headers
+   -------------------------------------------------------------------------- */
 .auth-brand-badge {
     display: inline-flex;
     align-items: center;
     gap: 10px;
     text-decoration: none;
-    color: #12121A;
+    color: inherit;
     font-weight: 800;
     font-size: 1.25rem;
     margin-bottom: 1.5rem;
@@ -97,10 +197,11 @@
     margin-bottom: 1.5rem;
 }
 
-.auth-form-header h1 {
+.auth-form-header h1,
+.auth-form-header h2 {
     font-size: 2rem;
     font-weight: 800;
-    color: #12121A;
+    color: inherit;
     letter-spacing: -0.5px;
     margin-bottom: 0.4rem;
     line-height: 1.25;
@@ -112,20 +213,13 @@
     line-height: 1.45;
 }
 
-/* Form Views (Sign In vs Create Account) */
-.auth-view {
+/* --------------------------------------------------------------------------
+   Form Fields & Controls
+   -------------------------------------------------------------------------- */
+.auth-form {
     display: flex;
     flex-direction: column;
     gap: 1.15rem;
-    opacity: 1;
-    transform: translateY(0);
-    transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.auth-view.hidden {
-    display: none;
-    opacity: 0;
-    transform: translateY(12px);
 }
 
 .form-field {
@@ -317,6 +411,7 @@
 /* Form Action Button */
 .auth-submit-btn {
     width: 100%;
+    min-height: 48px;
     padding: 0.88rem;
     background: var(--primary-color);
     color: #FFFFFF;
@@ -398,37 +493,20 @@
     padding: 0 4px;
     text-decoration: underline;
     transition: color 0.2s ease;
+    min-height: 44px;
+    min-width: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .auth-switch-btn:hover {
     color: #5B4EFA;
 }
 
-/* ------------------------------------------
-   Right Panel: Dark Tabs-Branded Supporting Panel
-   ------------------------------------------ */
-.auth-support-panel {
-    background: linear-gradient(145deg, #0C0C12 0%, #151422 100%);
-    padding: 3rem 2.75rem;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    position: relative;
-    overflow: hidden;
-    z-index: 1;
-}
-
-.auth-support-glow {
-    position: absolute;
-    top: 20%;
-    right: -20%;
-    width: 450px;
-    height: 450px;
-    background: radial-gradient(circle, rgba(124, 110, 255, 0.22) 0%, rgba(255, 126, 110, 0.08) 50%, transparent 70%);
-    filter: blur(50px);
-    pointer-events: none;
-}
-
+/* --------------------------------------------------------------------------
+   Supporting Brand Messaging Styles
+   -------------------------------------------------------------------------- */
 .support-content {
     position: relative;
     z-index: 2;
@@ -462,7 +540,6 @@
     background: linear-gradient(135deg, #FFFFFF 0%, #D0C9FF 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
-    transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
 .support-copy {
@@ -471,7 +548,6 @@
     line-height: 1.6;
     font-weight: 400;
     max-width: 400px;
-    transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
 .support-highlights {
@@ -520,9 +596,9 @@
     font-size: 0.82rem;
 }
 
-/* ------------------------------------------
+/* --------------------------------------------------------------------------
    Accessibility Focus States
-   ------------------------------------------ */
+   -------------------------------------------------------------------------- */
 input:focus-visible,
 button:focus-visible,
 a:focus-visible {
@@ -530,50 +606,92 @@ a:focus-visible {
     outline-offset: 2px !important;
 }
 
-/* ------------------------------------------
+/* --------------------------------------------------------------------------
    Reduced Motion Support
-   ------------------------------------------ */
+   -------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
-    *,
-    *::before,
-    *::after {
-        animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
-        scroll-behavior: auto !important;
+    :root {
+        --blade-anim-duration: 0.01ms !important;
+    }
+    
+    .auth-blade-overlay {
+        display: none !important;
+    }
+
+    .panel-content {
+        transition: opacity 0.01ms !important, transform 0.01ms !important;
     }
 }
 
-/* ------------------------------------------
-   Stacked Mobile Layout (No skew, no horizontal animation)
-   ------------------------------------------ */
+/* --------------------------------------------------------------------------
+   Mobile-First Responsive Layout & Vertical Sweep Animation
+   -------------------------------------------------------------------------- */
 @media (max-width: 900px) {
     .auth-page-wrapper {
-        padding: 85px 1rem 2rem 1rem;
+        padding: 80px 1rem 2rem 1rem;
     }
 
     .auth-shell {
         grid-template-columns: 1fr;
         min-height: auto;
         border-radius: 24px;
-        box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5);
+        box-shadow: 0 15px 40px rgba(0, 0, 0, 0.6);
     }
 
-    /* Hide seam and blade dividers on mobile stacked layout */
-    .auth-shell::before,
-    .auth-shell::after {
+    /* Single column panel order: active panel shows form first */
+    .panel-left, .panel-right {
+        min-height: 520px;
+    }
+
+    .auth-shell[data-mode="signin"] .panel-right {
         display: none;
     }
 
-    .auth-form-panel {
-        padding: 2.25rem 1.5rem;
-        order: 1;
+    .auth-shell[data-mode="signup"] .panel-left {
+        display: none;
     }
 
-    .auth-support-panel {
+    .panel-content {
         padding: 2.25rem 1.5rem;
-        order: 2;
-        border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .input-wrapper input {
+        font-size: 16px; /* Prevents auto zoom on mobile browsers */
+        padding: 0.85rem 1rem;
+    }
+
+    /* Vertical Blade Sweep Overlay for Mobile */
+    .auth-blade-overlay {
+        top: 0;
+        left: -30%;
+        bottom: 0;
+        width: 160%;
+        height: 160%;
+        transform: skewY(calc(-1 * var(--blade-angle))) translateY(100%);
+    }
+
+    @keyframes bladeSweepLeft {
+        0% {
+            transform: skewY(calc(-1 * var(--blade-angle))) translateY(100%);
+        }
+        50% {
+            transform: skewY(calc(-1 * var(--blade-angle))) translateY(0%);
+        }
+        100% {
+            transform: skewY(calc(-1 * var(--blade-angle))) translateY(-100%);
+        }
+    }
+
+    @keyframes bladeSweepRight {
+        0% {
+            transform: skewY(calc(-1 * var(--blade-angle))) translateY(-100%);
+        }
+        50% {
+            transform: skewY(calc(-1 * var(--blade-angle))) translateY(0%);
+        }
+        100% {
+            transform: skewY(calc(-1 * var(--blade-angle))) translateY(100%);
+        }
     }
 
     .support-heading {

@@ -14,8 +14,8 @@
     <link rel="icon" type="image/png" href="/tabs_logo.png">
     
     <!-- Base & Dedicated Auth Styles -->
-    <link rel="stylesheet" href="./style.css?v=2.0">
-    <link rel="stylesheet" href="./auth.css?v=2.0">
+    <link rel="stylesheet" href="./style.css?v=3.0">
+    <link rel="stylesheet" href="./auth.css?v=3.0">
 </head>
 
 <body>
@@ -37,22 +37,31 @@
 
     <!-- Main Authentication Shell Container -->
     <div class="auth-page-wrapper">
-        <main class="auth-shell" id="main-content">
+        <main class="auth-shell" id="main-content" data-mode="signin">
             
-            <!-- Left Panel: Light Form Area -->
-            <section class="auth-form-panel" aria-labelledby="auth-form-title">
-                <a href="/" class="auth-brand-badge">
-                    <img src="/tabs_logo.png" alt="Tabs Icon">
-                    <span>Tabs</span>
-                </a>
+            <!-- Animated Blade Overlay Band -->
+            <div class="auth-blade-overlay" id="auth-blade" aria-hidden="true">
+                <div class="blade-inner-glow"></div>
+            </div>
 
-                <!-- Alert Banner for Feedback -->
-                <div id="auth-alert" class="auth-alert-banner" role="alert" aria-live="polite"></div>
+            <!-- Screen reader live announcement area -->
+            <div id="auth-live-announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
-                <!-- View 1: Sign In View -->
-                <div id="signin-view" class="auth-view">
+            <!-- Panel A: Left Side (Sign In Form in signin mode, Supporting Brand Content in signup mode) -->
+            <div class="auth-panel panel-left" id="panel-left">
+                
+                <!-- Sign In Content (Visible in signin mode) -->
+                <div class="panel-content mode-signin-content" id="content-signin-left">
+                    <a href="/" class="auth-brand-badge">
+                        <img src="/tabs_logo.png" alt="Tabs Icon">
+                        <span>Tabs</span>
+                    </a>
+
+                    <!-- Alert Banner for Feedback -->
+                    <div id="auth-alert-signin" class="auth-alert-banner" role="alert" aria-live="polite"></div>
+
                     <div class="auth-form-header">
-                        <h1 id="auth-form-title">Sign In</h1>
+                        <h1 id="auth-form-title-signin" tabindex="-1">Sign In</h1>
                         <p>Access your health context, biometrics, and personalized logs.</p>
                     </div>
 
@@ -89,10 +98,73 @@
                     </form>
                 </div>
 
-                <!-- View 2: Create Account View (Initially Hidden) -->
-                <div id="signup-view" class="auth-view hidden">
+                <!-- Brand Message Content (Visible in signup mode) -->
+                <div class="panel-content mode-signup-content hidden" id="content-signup-left">
+                    <div class="support-content">
+                        <span class="support-badge">Join Tabs</span>
+                        <h2 class="support-heading">Understand what affects your body.</h2>
+                        <p class="support-copy">Bring your symptoms, routines, and health context together in one place.</p>
+
+                        <div class="support-highlights">
+                            <div class="highlight-item">
+                                <div class="highlight-icon">✦</div>
+                                <div class="highlight-text">Personalized AI correlation engine for daily tracking.</div>
+                            </div>
+                            <div class="highlight-item">
+                                <div class="highlight-icon">🔒</div>
+                                <div class="highlight-text">Private, end-to-end encrypted biometric storage.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <footer class="support-footer">
+                        <span>© Tabs Health Systems</span>
+                        <span>Privacy First</span>
+                    </footer>
+                </div>
+
+            </div>
+
+            <!-- Panel B: Right Side (Supporting Brand Content in signin mode, Create Account Form in signup mode) -->
+            <div class="auth-panel panel-right" id="panel-right">
+
+                <!-- Brand Message Content (Visible in signin mode) -->
+                <div class="panel-content mode-signin-content" id="content-signin-right">
+                    <div class="support-content">
+                        <span class="support-badge">Welcome Back</span>
+                        <h2 class="support-heading">Welcome back.</h2>
+                        <p class="support-copy">Your logs, patterns, and health context are ready when you are.</p>
+
+                        <div class="support-highlights">
+                            <div class="highlight-item">
+                                <div class="highlight-icon">✦</div>
+                                <div class="highlight-text">Unified tracking for symptoms, routines, and biometric logs.</div>
+                            </div>
+                            <div class="highlight-item">
+                                <div class="highlight-icon">🔒</div>
+                                <div class="highlight-text">Private, encrypted synchronization across mobile and web.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <footer class="support-footer">
+                        <span>© Tabs Health Systems</span>
+                        <span>Privacy First</span>
+                    </footer>
+                </div>
+
+                <!-- Create Account Content (Visible in signup mode) -->
+                <div class="panel-content mode-signup-content hidden" id="content-signup-right">
+                    <a href="/" class="auth-brand-badge">
+                        <img src="/tabs_logo.png" alt="Tabs Icon">
+                        <span>Tabs</span>
+                    </a>
+
+                    <!-- Alert Banner for Feedback -->
+                    <div id="auth-alert-signup" class="auth-alert-banner" role="alert" aria-live="polite"></div>
+
                     <div class="auth-form-header">
-                        <h2>Create Account</h2>
+                        <h2 id="auth-form-title-signup" tabindex="-1">Create Account</h2>
                         <p>Start tracking your biometrics and daily health patterns.</p>
                     </div>
 
@@ -134,7 +206,7 @@
                         <div class="form-field terms-checkbox-group">
                             <label class="checkbox-label" for="accept-terms">
                                 <input type="checkbox" id="accept-terms" name="acceptTerms" required>
-                                <span class="terms-text">I agree to the <a href="/terms" target="_blank">Terms of Service</a> and <a href="/privacy" target="_blank">Privacy Policy</a></span>
+                                <span class="terms-text">I agree to the <a href="/terms.html" target="_blank">Terms of Service</a> and <a href="/privacy.html" target="_blank">Privacy Policy</a></span>
                             </label>
                             <div id="signup-terms-error" class="field-error" role="alert"></div>
                         </div>
@@ -147,34 +219,8 @@
                         </p>
                     </form>
                 </div>
-            </section>
 
-            <!-- Right Panel: Dark Tabs-Branded Supporting Panel -->
-            <section class="auth-support-panel">
-                <div class="auth-support-glow"></div>
-                
-                <div class="support-content">
-                    <span class="support-badge" id="support-badge">Welcome Back</span>
-                    <h2 class="support-heading" id="support-heading">Welcome back.</h2>
-                    <p class="support-copy" id="support-copy">Your logs, patterns, and health context are ready when you are.</p>
-
-                    <div class="support-highlights">
-                        <div class="highlight-item">
-                            <div class="highlight-icon">✦</div>
-                            <div class="highlight-text">Unified tracking for symptoms, routines, and biometric logs.</div>
-                        </div>
-                        <div class="highlight-item">
-                            <div class="highlight-icon">🔒</div>
-                            <div class="highlight-text">Private, encrypted synchronization across mobile and web.</div>
-                        </div>
-                    </div>
-                </div>
-
-                <footer class="support-footer">
-                    <span>© Tabs Health Systems</span>
-                    <span>Privacy First</span>
-                </footer>
-            </section>
+            </div>
         </main>
     </div>
 
