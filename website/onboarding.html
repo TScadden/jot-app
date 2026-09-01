@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Get Started - Tabs Web Onboarding</title>
+    <meta name="description" content="Prepare your account and health profile for personalized AI insights on Tabs.">
+    <link rel="icon" type="image/png" href="/tabs_logo.png">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="./style.css">
+    <link rel="stylesheet" href="./auth.css">
+    <link rel="stylesheet" href="./onboarding.css">
+</head>
+<body class="auth-page">
+
+    <!-- Top Navigation Header -->
+    <header class="auth-nav">
+        <a href="/" class="auth-logo" aria-label="Tabs Homepage">
+            <img src="/tabs_logo.png" alt="Tabs Logo" class="logo-img">
+            <span class="logo-text">Tabs</span>
+        </a>
+        <div class="auth-nav-right">
+            <button id="logoutBtn" class="nav-link-btn" type="button">Sign Out</button>
+        </div>
+    </header>
+
+    <main class="onboarding-page-wrapper">
+        <div class="onboarding-shell">
+            <!-- Progress Bar Header -->
+            <div class="onboarding-header">
+                <div class="onboarding-top-bar">
+                    <span id="stepCounter" class="onboarding-step-counter">Step 1 of 5</span>
+                    <span id="stepTitleBrief" style="color: var(--text-muted); font-size: 0.85rem; font-weight: 500;">Welcome & Consent</span>
+                </div>
+                <div class="progress-track" role="progressbar" aria-valuemin="1" aria-valuemax="5" aria-valuenow="1" id="progressBar">
+                    <div id="progressFill" class="progress-fill"></div>
+                </div>
+            </div>
+
+            <!-- Onboarding Step Content -->
+            <div class="onboarding-body">
+                <!-- Banner Error / Notice -->
+                <div id="onboardingNotice" class="auth-error-banner hidden" role="alert" style="margin-bottom: 1.5rem;"></div>
+
+                <!-- STEP 1: Welcome & Consent -->
+                <div id="step1" class="onboarding-step">
+                    <div>
+                        <h1 class="step-title">Privacy & Data Consent</h1>
+                        <p class="step-description">Tabs uses your notes and wellness data to calculate health trends and generate personalized AI insights.</p>
+                    </div>
+
+                    <div class="info-card">
+                        <h3>How Tabs handles your health data</h3>
+                        <p>By consenting, you allow Tabs to sync and process your symptoms, biometric metrics (such as heart rate, sleep, and HRV), and logged notes to deliver your personalized dashboards and weekly health summaries.</p>
+                        <div class="sensitivity-badge">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                            Strict Privacy Guarantee
+                        </div>
+                    </div>
+
+                    <div class="info-card">
+                        <p style="font-size: 0.88rem; color: #A0A0B0;">Your personal health information is processed securely for your personalized AI experience and is never sold to third parties. Review our <a href="/terms.html" target="_blank" style="color: var(--primary-color); font-weight: 600;">Terms of Use</a> and <a href="/privacy.html" target="_blank" style="color: var(--primary-color); font-weight: 600;">Privacy Policy</a>.</p>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; align-items: flex-start; margin-top: 0.5rem;">
+                        <input type="checkbox" id="consentCheckbox" style="margin-top: 4px; width: 18px; height: 18px; accent-color: var(--primary-color);">
+                        <label for="consentCheckbox" style="font-size: 0.95rem; color: #FFFFFF; font-weight: 500; cursor: pointer;">
+                            I explicitly consent to Tabs syncing and processing my health-related notes and metrics to generate personalized health summaries and AI insights.
+                        </label>
+                    </div>
+                </div>
+
+                <!-- STEP 2: Health Context ("What brings you to Tabs?") -->
+                <div id="step2" class="onboarding-step hidden">
+                    <div>
+                        <h2 class="step-title">What brings you to Tabs?</h2>
+                        <p class="step-description">Provide context about your current health goals, symptoms, or what you want your AI coach to focus on.</p>
+                    </div>
+
+                    <div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                            <label for="userContextInput" style="font-size: 0.9rem; font-weight: 600; color: #FFFFFF;">Health Context & Goals</label>
+                            <span class="sensitivity-badge" style="margin-top:0;">Encrypted Sync</span>
+                        </div>
+                        <textarea id="userContextInput" class="context-textarea" maxlength="1500" placeholder="e.g. I want to track my sleep quality, understand migraine triggers, and log daily energy levels..."></textarea>
+                        <div class="word-count-bar" style="margin-top: 0.5rem;">
+                            <span id="contextFeedback">Provide at least 10 words for better AI personalization.</span>
+                            <span id="wordCounter">0 / 100 words</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- STEP 3: Conditions & Optional Medications -->
+                <div id="step3" class="onboarding-step hidden">
+                    <div>
+                        <h2 class="step-title">Conditions & Medications</h2>
+                        <p class="step-description">Adding diagnosed conditions or active medications helps suggest relevant symptoms to track. (Optional)</p>
+                    </div>
+
+                    <!-- Conditions Section -->
+                    <div>
+                        <h3 style="font-size: 1rem; font-weight: 700; color: #FFFFFF; margin-bottom: 0.5rem;">Diagnosed or Suspected Conditions</h3>
+                        <div class="item-search-wrapper" style="margin-bottom: 0.75rem;">
+                            <svg class="search-icon-inside" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            <input type="text" id="conditionSearch" class="item-search-input" placeholder="Search or add custom condition..." maxlength="100">
+                        </div>
+                        <div id="conditionsList" class="tags-chip-container">
+                            <!-- Populated dynamically via JS -->
+                        </div>
+                    </div>
+
+                    <!-- Medications Section -->
+                    <div style="margin-top: 1rem;">
+                        <h3 style="font-size: 1rem; font-weight: 700; color: #FFFFFF; margin-bottom: 0.5rem;">Current Medications or Supplements</h3>
+                        <div class="item-search-wrapper" style="margin-bottom: 0.75rem;">
+                            <svg class="search-icon-inside" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            <input type="text" id="medicationSearch" class="item-search-input" placeholder="Search or type medication name and press Enter..." maxlength="100">
+                        </div>
+                        <div id="medicationsList" class="tags-chip-container">
+                            <!-- Populated dynamically via JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- STEP 4: Data Connections Explanation -->
+                <div id="step4" class="onboarding-step hidden">
+                    <div>
+                        <h2 class="step-title">Biometric & Device Connections</h2>
+                        <p class="step-description">Tabs seamlessly connects with health wear devices like Fitbit and Google Health Connect on mobile.</p>
+                    </div>
+
+                    <div class="info-card">
+                        <h3>Mobile Sensors & Integration</h3>
+                        <p>Biometric metrics (heart rate, sleep stages, continuous blood pressure) are synced directly through the Tabs mobile app.</p>
+                        <p style="margin-top: 0.75rem; color: #C0B7FF; font-size: 0.88rem;">Note: Mobile-only hardware permissions (such as live step sensors and background heart rate alerts) can be connected after downloading the mobile app.</p>
+                    </div>
+
+                    <div class="info-card" style="background: rgba(124, 110, 255, 0.05); border-color: rgba(124, 110, 255, 0.2);">
+                        <h3 style="color: var(--primary-color);">Web Portal Capability</h3>
+                        <p>Your web context and manual entries will instantly sync across all your devices once logged in.</p>
+                    </div>
+                </div>
+
+                <!-- STEP 5: Final Review & Confirmation -->
+                <div id="step5" class="onboarding-step hidden">
+                    <div>
+                        <h2 class="step-title">Review & Finish Setup</h2>
+                        <p class="step-description">Verify your profile setup before activating your personalized AI engine.</p>
+                    </div>
+
+                    <div class="info-card">
+                        <h3 style="margin-bottom: 0.8rem;">Profile Summary</h3>
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem; font-size: 0.92rem;">
+                            <div>
+                                <strong style="color: #FFFFFF;">Data Processing Consent:</strong>
+                                <span id="summaryConsent" style="color: #4CAF50; font-weight: 600;">Granted</span>
+                            </div>
+                            <div>
+                                <strong style="color: #FFFFFF;">Health Context:</strong>
+                                <p id="summaryContext" style="color: #A0A0B0; margin-top: 2px; font-style: italic;">No context provided.</p>
+                            </div>
+                            <div>
+                                <strong style="color: #FFFFFF;">Selected Conditions:</strong>
+                                <span id="summaryConditions" style="color: #A0A0B0;">None</span>
+                            </div>
+                            <div>
+                                <strong style="color: #FFFFFF;">Medications:</strong>
+                                <span id="summaryMedications" style="color: #A0A0B0;">None</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Final Completion State (Hidden initially) -->
+                    <div id="successBox" class="info-card hidden" style="background: rgba(76, 175, 80, 0.1); border-color: rgba(76, 175, 80, 0.3); text-align: center;">
+                        <h3 style="color: #4CAF50; font-size: 1.3rem;">🎉 Setup Complete!</h3>
+                        <p style="margin-top: 0.4rem; color: #E0E0E0;">Your Tabs account is prepared and ready for smart health logging.</p>
+                        <div class="success-actions">
+                            <a href="/dashboard.html" class="nav-btn nav-btn-next" style="text-decoration: none; text-align: center; display: inline-block;">Open My Dashboard</a>
+                            <a href="https://play.google.com" target="_blank" class="nav-btn nav-btn-back" style="text-decoration: none; text-align: center; display: inline-block;">Get the Mobile App</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer Action Bar -->
+            <div class="onboarding-footer" id="footerBar">
+                <button id="prevBtn" class="nav-btn nav-btn-back" type="button" style="visibility: hidden;">Back</button>
+                <div style="display: flex; gap: 10px;">
+                    <button id="skipBtn" class="nav-btn nav-btn-skip hidden" type="button">Skip for now</button>
+                    <button id="nextBtn" class="nav-btn nav-btn-next" type="button">Continue</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script type="module" src="./onboarding.ts"></script>
+</body>
+</html>

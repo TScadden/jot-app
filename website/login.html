@@ -5,156 +5,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tabs | Account Authentication</title>
+    <meta name="description" content="Sign in or create a Tabs account to seamlessly log, track, and understand your health patterns and biometrics.">
+    
+    <!-- Typography & Branding -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="./style.css?v=1.9">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="icon" type="image/png" href="/tabs_logo.png">
-    <style>
-        .auth-container {
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 100px 2rem 40px 2rem;
-            position: relative;
-        }
-
-        .auth-card {
-            width: 100%;
-            max-width: 440px;
-            padding: 3rem 2.5rem;
-            border-radius: 28px;
-            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6);
-            display: flex;
-            flex-direction: column;
-        }
-
-        .auth-header {
-            text-align: center;
-            margin-bottom: 2rem;
-        }
-
-        .auth-header h1 {
-            font-size: 2.25rem;
-            font-weight: 800;
-            margin-bottom: 0.5rem;
-        }
-
-        .auth-header p {
-            color: var(--text-muted);
-            font-size: 0.95rem;
-        }
-
-        .form-group {
-            margin-bottom: 1.5rem;
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-
-        .form-group label {
-            font-size: 0.9rem;
-            font-weight: 600;
-            color: var(--text-muted);
-            padding-left: 0.25rem;
-        }
-
-        .form-group input {
-            width: 100%;
-            padding: 1rem 1.25rem;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid var(--glass-border);
-            border-radius: 12px;
-            color: var(--text-main);
-            font-family: 'Outfit', sans-serif;
-            font-size: 1rem;
-            outline: none;
-            transition: var(--transition);
-        }
-
-        .form-group input:focus {
-            border-color: var(--primary-color);
-            background: rgba(255, 255, 255, 0.05);
-            box-shadow: 0 0 12px rgba(124, 110, 255, 0.25);
-        }
-
-        .auth-actions {
-            margin-top: 1.5rem;
-            display: flex;
-            flex-direction: column;
-            gap: 1.25rem;
-        }
-
-        .auth-btn {
-            width: 100%;
-            padding: 1rem;
-            border: none;
-            cursor: pointer;
-            font-family: 'Outfit', sans-serif;
-            font-size: 1.05rem;
-        }
-
-        .toggle-text {
-            text-align: center;
-            font-size: 0.9rem;
-            color: var(--text-muted);
-        }
-
-        .toggle-text span {
-            color: var(--primary-color);
-            cursor: pointer;
-            font-weight: 600;
-            margin-left: 0.25rem;
-        }
-
-        .toggle-text span:hover {
-            text-decoration: underline;
-        }
-
-        .message-box {
-            padding: 1rem;
-            border-radius: 12px;
-            margin-bottom: 1.5rem;
-            font-size: 0.9rem;
-            font-weight: 500;
-            display: none;
-            line-height: 1.4;
-        }
-
-        .message-box.error {
-            display: block;
-            background: rgba(255, 94, 98, 0.1);
-            border: 1px solid rgba(255, 94, 98, 0.3);
-            color: #FF5E62;
-        }
-
-        .message-box.success {
-            display: block;
-            background: rgba(78, 205, 196, 0.1);
-            border: 1px solid rgba(78, 205, 196, 0.3);
-            color: #4ECDC4;
-        }
-
-        .forgot-link {
-            align-self: flex-end;
-            font-size: 0.85rem;
-            color: var(--text-muted);
-            margin-top: -0.75rem;
-            margin-bottom: 1rem;
-        }
-
-        .forgot-link:hover {
-            color: var(--primary-color);
-            text-decoration: underline;
-        }
-    </style>
+    
+    <!-- Base & Dedicated Auth Styles -->
+    <link rel="stylesheet" href="./style.css?v=2.0">
+    <link rel="stylesheet" href="./auth.css?v=2.0">
 </head>
 
 <body>
+    <!-- Top Navigation Bar -->
     <nav class="glass">
         <div class="container nav-content">
-            <a href="/" class="logo">
+            <a href="/" class="logo" id="nav-logo">
                 <img src="/tabs_logo.png" alt="Tabs Logo" class="app-icon">
                 <span>Tabs</span>
             </a>
@@ -167,112 +35,151 @@
         </div>
     </nav>
 
-    <div class="auth-container">
-        <div class="auth-card glass">
-            <div class="auth-header">
-                <h1 id="auth-title">Welcome Back</h1>
-                <p id="auth-subtitle">Log in to view your synchronised wellness logs.</p>
-            </div>
+    <!-- Main Authentication Shell Container -->
+    <div class="auth-page-wrapper">
+        <main class="auth-shell" id="main-content">
+            
+            <!-- Left Panel: Light Form Area -->
+            <section class="auth-form-panel" aria-labelledby="auth-form-title">
+                <a href="/" class="auth-brand-badge">
+                    <img src="/tabs_logo.png" alt="Tabs Icon">
+                    <span>Tabs</span>
+                </a>
 
-            <div id="alert-box" class="message-box"></div>
+                <!-- Alert Banner for Feedback -->
+                <div id="auth-alert" class="auth-alert-banner" role="alert" aria-live="polite"></div>
 
-            <form id="auth-form" onsubmit="handleAuth(event)">
-                <div class="form-group">
-                    <label for="email">Email Address</label>
-                    <input type="email" id="email" placeholder="you@example.com" required autocomplete="email">
+                <!-- View 1: Sign In View -->
+                <div id="signin-view" class="auth-view">
+                    <div class="auth-form-header">
+                        <h1 id="auth-form-title">Sign In</h1>
+                        <p>Access your health context, biometrics, and personalized logs.</p>
+                    </div>
+
+                    <form id="signin-form" class="auth-form" novalidate>
+                        <div class="form-field">
+                            <label for="signin-email">Email Address</label>
+                            <div class="input-wrapper">
+                                <input type="email" id="signin-email" name="email" placeholder="you@example.com" required autocomplete="email">
+                            </div>
+                        </div>
+
+                        <div class="form-field">
+                            <label for="signin-password">Password</label>
+                            <div class="input-wrapper">
+                                <input type="password" id="signin-password" name="password" placeholder="••••••••" required autocomplete="current-password">
+                                <button type="button" class="toggle-password-btn" id="toggle-signin-password" aria-label="Show password">Show</button>
+                            </div>
+                        </div>
+
+                        <div class="form-options-bar">
+                            <label class="checkbox-label" for="remember-me">
+                                <input type="checkbox" id="remember-me" name="rememberMe" checked>
+                                <span>Remember me</span>
+                            </label>
+                            <a href="/reset-password" class="forgot-pass-link" id="forgot-password-link">Forgot password?</a>
+                        </div>
+
+                        <button type="submit" class="auth-submit-btn" id="signin-submit-btn">Sign In</button>
+
+                        <p class="auth-switch-text">
+                            New to Tabs?
+                            <button type="button" class="auth-switch-btn" id="toggle-to-register">Create an account</button>
+                        </p>
+                    </form>
                 </div>
 
-                <div class="form-group">
-                    <label for="password">Password</label>
-                    <input type="password" id="password" placeholder="••••••••" required minlength="8">
+                <!-- View 2: Create Account View (Initially Hidden) -->
+                <div id="signup-view" class="auth-view hidden">
+                    <div class="auth-form-header">
+                        <h2>Create Account</h2>
+                        <p>Start tracking your biometrics and daily health patterns.</p>
+                    </div>
+
+                    <form id="signup-form" class="auth-form" novalidate>
+                        <div class="form-field">
+                            <label for="signup-email">Email Address</label>
+                            <div class="input-wrapper">
+                                <input type="email" id="signup-email" name="email" placeholder="you@example.com" required autocomplete="email">
+                            </div>
+                            <div id="signup-email-error" class="field-error" role="alert"></div>
+                        </div>
+
+                        <div class="form-field">
+                            <label for="signup-password">Password</label>
+                            <div class="input-wrapper">
+                                <input type="password" id="signup-password" name="password" placeholder="At least 8 characters" required autocomplete="new-password">
+                                <button type="button" class="toggle-password-btn" id="toggle-signup-password" aria-label="Show password">Show</button>
+                            </div>
+                        </div>
+
+                        <div class="form-field">
+                            <label for="signup-confirm-password">Confirm Password</label>
+                            <div class="input-wrapper">
+                                <input type="password" id="signup-confirm-password" name="confirmPassword" placeholder="Repeat your password" required autocomplete="new-password">
+                                <button type="button" class="toggle-password-btn" id="toggle-signup-confirm-password" aria-label="Show password">Show</button>
+                            </div>
+                            <div id="signup-confirm-error" class="field-error" role="alert"></div>
+                        </div>
+
+                        <!-- Live Password Requirements Checklist -->
+                        <div class="password-requirements" aria-live="polite">
+                            <div class="requirements-title">Password must contain:</div>
+                            <ul class="requirements-list">
+                                <li id="req-minlength" class="req-item">At least 8 characters</li>
+                                <li id="req-letternumber" class="req-item">Letters & numbers</li>
+                            </ul>
+                        </div>
+
+                        <div class="form-field terms-checkbox-group">
+                            <label class="checkbox-label" for="accept-terms">
+                                <input type="checkbox" id="accept-terms" name="acceptTerms" required>
+                                <span class="terms-text">I agree to the <a href="/terms" target="_blank">Terms of Service</a> and <a href="/privacy" target="_blank">Privacy Policy</a></span>
+                            </label>
+                            <div id="signup-terms-error" class="field-error" role="alert"></div>
+                        </div>
+
+                        <button type="submit" class="auth-submit-btn" id="signup-submit-btn">Create Account</button>
+
+                        <p class="auth-switch-text">
+                            Already have an account?
+                            <button type="button" class="auth-switch-btn" id="toggle-to-signin">Sign In</button>
+                        </p>
+                    </form>
+                </div>
+            </section>
+
+            <!-- Right Panel: Dark Tabs-Branded Supporting Panel -->
+            <section class="auth-support-panel">
+                <div class="auth-support-glow"></div>
+                
+                <div class="support-content">
+                    <span class="support-badge" id="support-badge">Welcome Back</span>
+                    <h2 class="support-heading" id="support-heading">Welcome back.</h2>
+                    <p class="support-copy" id="support-copy">Your logs, patterns, and health context are ready when you are.</p>
+
+                    <div class="support-highlights">
+                        <div class="highlight-item">
+                            <div class="highlight-icon">✦</div>
+                            <div class="highlight-text">Unified tracking for symptoms, routines, and biometric logs.</div>
+                        </div>
+                        <div class="highlight-item">
+                            <div class="highlight-icon">🔒</div>
+                            <div class="highlight-text">Private, encrypted synchronization across mobile and web.</div>
+                        </div>
+                    </div>
                 </div>
 
-                <a href="/reset-password" class="forgot-link" id="forgot-pass-link">Forgot Password?</a>
-
-                <div class="auth-actions">
-                    <button type="submit" class="btn-primary auth-btn" id="submit-btn">Log In</button>
-                    <p class="toggle-text" id="toggle-wrapper">
-                        Don't have an account? <span onclick="toggleMode()">Register</span>
-                    </p>
-                </div>
-            </form>
-        </div>
-        <div class="hero-bg">
-            <div class="glow" style="top: 20%; right: 30%; width: 400px; height: 400px;"></div>
-        </div>
+                <footer class="support-footer">
+                    <span>© Tabs Health Systems</span>
+                    <span>Privacy First</span>
+                </footer>
+            </section>
+        </main>
     </div>
 
-    <script>
-        // Check if already logged in
-        if (localStorage.getItem('token')) {
-            window.location.href = '/dashboard';
-        }
-
-        let isLoginMode = true;
-
-        function toggleMode() {
-            const alertBox = document.getElementById('alert-box');
-            alertBox.textContent = 'To ensure your biometrics are synchronized correctly, new accounts must be registered inside the Tabs mobile app. Please download the app to sign up.';
-            alertBox.className = 'message-box error';
-            alertBox.style.display = 'block';
-        }
-
-
-        async function handleAuth(e) {
-            e.preventDefault();
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            const alertBox = document.getElementById('alert-box');
-            const submitBtn = document.getElementById('submit-btn');
-
-            alertBox.style.display = 'none';
-            alertBox.className = 'message-box';
-
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Signing In...';
-
-            const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:3000' : 'https://api.jottracker.com';
-            const endpoint = `${API_BASE}/api/auth/login`;
-
-            try {
-                const response = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password })
-                });
-
-                const data = await response.json();
-
-                if (response.ok) {
-                    alertBox.textContent = 'Login successful! Redirecting...';
-                    alertBox.className = 'message-box success';
-                    alertBox.style.display = 'block';
-                    
-                    localStorage.setItem('token', data.token);
-                    localStorage.setItem('userId', data.userId);
-                    localStorage.setItem('email', data.email);
-                    localStorage.setItem('nickname', data.nickname || 'User');
-                    localStorage.setItem('tag', data.tag || '00000');
-
-                    setTimeout(() => {
-                        window.location.href = '/dashboard';
-                    }, 1000);
-                } else {
-                    alertBox.textContent = data.error || 'Authentication failed. Please try again.';
-                    alertBox.className = 'message-box error';
-                    alertBox.style.display = 'block';
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = 'Log In';
-                }
-            } catch (err) {
-                alertBox.textContent = 'Error securely connecting to the server.';
-                alertBox.className = 'message-box error';
-                alertBox.style.display = 'block';
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Log In';
-            }
-        }
-    </script>
+    <!-- Application Script -->
+    <script type="module" src="./auth.ts"></script>
 </body>
 
 </html>
