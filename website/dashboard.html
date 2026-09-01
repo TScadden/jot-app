@@ -12,6 +12,26 @@
     <link rel="icon" type="image/png" href="/tabs_logo.png">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script>
+        // Block multi-touch pinch zoom & gesture zooming on mobile iOS Safari / Chrome
+        document.addEventListener('touchmove', function(e) {
+            if (e.touches && e.touches.length > 1) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+
+        document.addEventListener('gesturestart', function(e) {
+            e.preventDefault();
+        }, { passive: false });
+
+        document.addEventListener('gesturechange', function(e) {
+            e.preventDefault();
+        }, { passive: false });
+
+        document.addEventListener('gestureend', function(e) {
+            e.preventDefault();
+        }, { passive: false });
+    </script>
     <style>
         /* Prevent text selection globally except in input fields/textareas */
         * {
@@ -1496,14 +1516,16 @@
 
     <script>
         const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:3000' : 'https://api.jottracker.com';
-        const token = localStorage.getItem('token');
+        const getSessionVal = (key) => sessionStorage.getItem(key) || localStorage.getItem(key);
+        
+        const token = getSessionVal('token');
         if (!token) {
-            window.location.href = '/login';
+            window.location.href = '/login.html';
         }
 
         // Set up welcome greeting
-        const nickname = localStorage.getItem('nickname') || 'User';
-        const tag = localStorage.getItem('tag') || '00000';
+        const nickname = getSessionVal('nickname') || 'User';
+        const tag = getSessionVal('tag') || '00000';
         document.getElementById('user-display-name').textContent = `${nickname} #${tag}`;
 
         let globalSyncData = null;
@@ -1742,8 +1764,9 @@
         }
 
         function handleLogout() {
+            sessionStorage.clear();
             localStorage.clear();
-            window.location.href = '/login';
+            window.location.href = '/login.html';
         }
 
         // Back to top button visibility and action

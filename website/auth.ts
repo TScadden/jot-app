@@ -21,9 +21,26 @@ export const getApiBaseUrl = (): string => {
     return 'https://api.jottracker.com';
 };
 
+export const getItem = (key: string): string | null => {
+    return sessionStorage.getItem(key) || localStorage.getItem(key);
+};
+
+export const setItem = (key: string, value: string, usePersistent: boolean = false): void => {
+    if (usePersistent) {
+        localStorage.setItem(key, value);
+    } else {
+        sessionStorage.setItem(key, value);
+    }
+};
+
+export const clearSession = (): void => {
+    sessionStorage.clear();
+    localStorage.clear();
+};
+
 export const refreshSessionIfNeeded = async (): Promise<string | null> => {
-    const token = localStorage.getItem('token');
-    const refreshToken = localStorage.getItem('refreshToken');
+    const token = getItem('token');
+    const refreshToken = getItem('refreshToken');
 
     if (!token && !refreshToken) return null;
 
@@ -43,8 +60,9 @@ export const refreshSessionIfNeeded = async (): Promise<string | null> => {
 
             if (refreshRes.ok) {
                 const data = await refreshRes.json();
-                localStorage.setItem('token', data.token);
-                if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
+                const usePersistent = !!localStorage.getItem('token');
+                setItem('token', data.token, usePersistent);
+                if (data.refreshToken) setItem('refreshToken', data.refreshToken, usePersistent);
                 return data.token;
             }
         }
@@ -52,8 +70,7 @@ export const refreshSessionIfNeeded = async (): Promise<string | null> => {
         return token;
     }
 
-    localStorage.removeItem('token');
-    localStorage.removeItem('refreshToken');
+    clearSession();
     return null;
 };
 
@@ -237,15 +254,23 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Authentication Success Handler
     const handleAuthSuccess = (data: AuthResponse, isNewRegistration: boolean = false) => {
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('userId', data.userId);
-        localStorage.setItem('email', data.email);
-        if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
-        if (data.nickname) localStorage.setItem('nickname', data.nickname);
-        if (data.tag) localStorage.setItem('tag', data.tag);
+        const rememberMeInput = document.getElementById('signin-remember') as HTMLInputElement | null;
+        const remember = rememberMeInput ? rememberMeInput.checked : false;
+        const storage = remember ? localStorage : sessionStorage;
+
+        // Clear any previous items across both storages
+        localStorage.clear();
+        sessionStorage.clear();
+
+        storage.setItem('token', data.token);
+        storage.setItem('userId', data.userId);
+        storage.setItem('email', data.email);
+        if (data.refreshToken) storage.setItem('refreshToken', data.refreshToken);
+        if (data.nickname) storage.setItem('nickname', data.nickname);
+        if (data.tag) storage.setItem('tag', data.tag);
 
         const onboardingComplete = data.onboardingComplete === true;
-        localStorage.setItem('onboardingComplete', onboardingComplete ? 'true' : 'false');
+        storage.setItem('onboardingComplete', onboardingComplete ? 'true' : 'false');
 
         showAlert('Authentication successful! Redirecting...', 'success', isNewRegistration);
 
