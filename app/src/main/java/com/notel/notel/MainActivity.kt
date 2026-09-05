@@ -19,11 +19,8 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.Outline
-import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.unit.Density
-import androidx.compose.ui.geometry.Size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.foundation.BorderStroke
@@ -55,24 +52,6 @@ import com.notel.notel.ui.viewmodel.BodyLoadViewModel
 import com.notel.notel.ui.viewmodel.FitbitViewModel
 import dagger.hilt.android.AndroidEntryPoint
 import androidx.glance.appwidget.updateAll
-
-// Custom Bowtie shape for the main button
-val BowtieShape = object : Shape {
-    override fun createOutline(size: Size, layoutDirection: androidx.compose.ui.unit.LayoutDirection, density: Density): Outline {
-        val path = Path().apply {
-            moveTo(size.width * 0.25f, 0f)
-            lineTo(size.width * 0.75f, 0f)
-            lineTo(size.width, size.height * 0.25f)
-            lineTo(size.width, size.height * 0.75f)
-            lineTo(size.width * 0.75f, size.height)
-            lineTo(size.width * 0.25f, size.height)
-            lineTo(0f, size.height * 0.75f)
-            lineTo(0f, size.height * 0.25f)
-            close()
-        }
-        return Outline.Generic(path)
-    }
-}
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -665,27 +644,36 @@ class MainActivity : ComponentActivity() {
                     val isLoginRoute = currentRoute?.startsWith("login") == true
                     val baseRoute = currentRoute?.substringBefore("?")
                     if (baseRoute !in hideNavRoutes && !isFileViewer && !isLoginRoute && currentRoute != null) {
+                        val pillHeight = if (showNavLabels) 58.dp else 52.dp
+                        val centerButtonOuterSize = 56.dp
+                        val centerButtonOffset = 12.dp
+
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .align(Alignment.BottomCenter)
-                                .padding(start = 24.dp, end = 24.dp, bottom = 12.dp)
-                                .navigationBarsPadding()
+                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                                .navigationBarsPadding(),
+                            contentAlignment = Alignment.BottomCenter
                         ) {
+                            // Glass Pill Navigation Bar
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(48.dp)
+                                    .height(pillHeight)
                                     .liquidGlass(
                                         shape = RoundedCornerShape(32.dp),
                                         color = NotelSurface,
-                                        alpha = 0.9f,
-                                        showBorder = true
+                                        alpha = 0.92f,
+                                        showBorder = true,
+                                        borderWidth = 1.dp
                                     )
                             ) {
                                 Row(
-                                    modifier = Modifier.fillMaxSize(),
-                                    horizontalArrangement = Arrangement.SpaceAround,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceEvenly,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     NavIcon(
@@ -701,58 +689,72 @@ class MainActivity : ComponentActivity() {
                                                     restoreState = true
                                                 }
                                             }
-                                        }
+                                        },
+                                        modifier = Modifier.weight(1f)
                                     )
                                     NavIcon(
                                         icon = Icons.Default.Assignment,
                                         label = "Tools",
                                         isSelected = currentRoute == "info",
                                         showLabel = showNavLabels,
-                                        onClick = { if (!isReorderingTiles) navController.navigate("info") }
+                                        onClick = { if (!isReorderingTiles) navController.navigate("info") },
+                                        modifier = Modifier.weight(1f)
                                     )
-                                    // Center Pencil Button — no label, always purple, slightly larger
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.Center,
-                                        modifier = Modifier
-                                            .clickable {
-                                                if (!isReorderingTiles && currentRoute != "quick_log") {
-                                                    navController.navigate("quick_log") {
-                                                        popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                                        launchSingleTop = true
-                                                        restoreState = true
-                                                    }
-                                                }
-                                            }
-                                            .padding(horizontal = 12.dp, vertical = 4.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Edit,
-                                            contentDescription = "New Note",
-                                            tint = NotelPrimary,
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                        if (showNavLabels) {
-                                            Text(
-                                                text = "",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontSize = 9.sp
-                                            )
-                                        }
-                                    }
+
+                                    // Center Spacer placeholder for raised action button
+                                    Spacer(modifier = Modifier.weight(1.2f))
+
                                     NavIcon(
                                         icon = Icons.Default.Favorite,
                                         label = "Heart",
                                         isSelected = currentRoute == "fitbit",
                                         showLabel = showNavLabels,
-                                        onClick = { if (!isReorderingTiles) navController.navigate("fitbit") }
+                                        onClick = { if (!isReorderingTiles) navController.navigate("fitbit") },
+                                        modifier = Modifier.weight(1f)
                                     )
                                     NavIcon(
                                         icon = Icons.Default.Settings,
                                         label = "Settings",
                                         isSelected = currentRoute == "settings",
                                         showLabel = showNavLabels,
-                                        onClick = { if (!isReorderingTiles) navController.navigate("settings") }
+                                        onClick = { if (!isReorderingTiles) navController.navigate("settings") },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+
+                            // Raised Center "New Note" Circular Action Button
+                            Surface(
+                                onClick = {
+                                    if (!isReorderingTiles && currentRoute != "quick_log") {
+                                        navController.navigate("quick_log") {
+                                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
+                                    }
+                                },
+                                shape = CircleShape,
+                                color = NotelSurface,
+                                shadowElevation = 8.dp,
+                                border = BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.25f)),
+                                modifier = Modifier
+                                    .align(Alignment.Center)
+                                    .offset(y = -centerButtonOffset)
+                                    .size(centerButtonOuterSize)
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(4.dp)
+                                        .background(NotelPrimary, CircleShape)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "New Note",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(24.dp)
                                     )
                                 }
                             }
@@ -993,27 +995,37 @@ fun NavIcon(
     label: String,
     isSelected: Boolean,
     showLabel: Boolean = true,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-        modifier = Modifier.clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 4.dp)
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 4.dp),
+        contentAlignment = Alignment.Center
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            tint = if (isSelected) NotelPrimary else NotelTextSecondary,
-            modifier = Modifier.size(20.dp)
-        )
-        if (showLabel) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                fontSize = 9.sp,
-                color = if (isSelected) NotelPrimary else NotelTextSecondary,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = if (isSelected) NotelPrimary else NotelTextSecondary,
+                modifier = Modifier.size(22.dp)
             )
+            if (showLabel) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = 10.sp,
+                    color = if (isSelected) NotelPrimary else NotelTextSecondary,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                    maxLines = 1
+                )
+            }
         }
     }
 }
