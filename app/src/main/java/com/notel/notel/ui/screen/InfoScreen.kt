@@ -356,27 +356,24 @@ fun InfoTileCard(
     val isAiGated = tile.id == "health_coach" || tile.id == "tips_and_tricks"
     val isLocked = isAiGated && !isUnlimited
     val isBpTile = tile.id == "blood_pressure"
-    val isBpAvailable = isBpTile && bloodPressureState is com.notel.notel.data.repository.BloodPressureTileState.Available
-    val isBpDisabled = isBpTile && !isBpAvailable
 
     val cardShape = RoundedCornerShape(20.dp)
 
     val borderColor = when {
         isBeingDragged -> NotelPrimary
         isEditMode -> NotelPrimary.copy(alpha = 0.45f)
-        isBpDisabled -> Color.Gray.copy(alpha = 0.2f)
         else -> NotelPrimary.copy(alpha = 0.15f)
     }
 
-    val isClickable = !isEditMode && (!isBpTile || isBpAvailable)
+    val isClickable = !isEditMode
 
     val subtitleText = if (isBpTile) {
         when (bloodPressureState) {
             is com.notel.notel.data.repository.BloodPressureTileState.Checking -> "Checking..."
-            is com.notel.notel.data.repository.BloodPressureTileState.HealthConnectUnavailable -> "Health Connect unavailable"
-            is com.notel.notel.data.repository.BloodPressureTileState.PermissionRequired -> "Permission required"
-            is com.notel.notel.data.repository.BloodPressureTileState.NoData -> "No readings found"
-            is com.notel.notel.data.repository.BloodPressureTileState.Error -> "Unable to load"
+            is com.notel.notel.data.repository.BloodPressureTileState.HealthConnectUnavailable -> "Tap to log / view"
+            is com.notel.notel.data.repository.BloodPressureTileState.PermissionRequired -> "Tap to log / view"
+            is com.notel.notel.data.repository.BloodPressureTileState.NoData -> "Tap to log / view"
+            is com.notel.notel.data.repository.BloodPressureTileState.Error -> "Tap to log / view"
             is com.notel.notel.data.repository.BloodPressureTileState.Available -> "${bloodPressureState.latestReading.systolic}/${bloodPressureState.latestReading.diastolic} mmHg"
         }
     } else tile.description
@@ -386,7 +383,7 @@ fun InfoTileCard(
             .fillMaxWidth()
             .aspectRatio(1f)
             .clip(cardShape)
-            .background(if (isBpDisabled) NotelSurface.copy(alpha = 0.6f) else NotelSurface)
+            .background(NotelSurface)
             .border(
                 width = if (isBeingDragged) 2.dp else 1.dp,
                 color = borderColor,
@@ -410,7 +407,7 @@ fun InfoTileCard(
                         "lists" -> onListsClick()
                         "notes" -> onNotesClick()
                         "project_focus" -> onProjectFocusClick()
-                        "blood_pressure" -> if (isBpAvailable) onBloodPressureClick()
+                        "blood_pressure" -> onBloodPressureClick()
                     }
                 }
             }
@@ -419,7 +416,7 @@ fun InfoTileCard(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer(alpha = if (isLocked || isBpDisabled) 0.55f else 1f),
+                .graphicsLayer(alpha = if (isLocked) 0.55f else 1f),
             verticalArrangement = Arrangement.SpaceBetween,
             horizontalAlignment = Alignment.Start
         ) {
@@ -428,13 +425,13 @@ fun InfoTileCard(
                 modifier = Modifier
                     .size(42.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(if (isBpDisabled) Color.Gray.copy(alpha = 0.15f) else NotelPrimary.copy(alpha = 0.12f)),
+                    .background(NotelPrimary.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = tile.icon,
                     contentDescription = null,
-                    tint = if (isBpDisabled) Color.Gray else NotelPrimary,
+                    tint = NotelPrimary,
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -443,7 +440,7 @@ fun InfoTileCard(
             Column {
                 Text(
                     text = tile.title,
-                    color = if (isBpDisabled) NotelTextSecondary else NotelTextPrimary,
+                    color = NotelTextPrimary,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     lineHeight = 19.sp

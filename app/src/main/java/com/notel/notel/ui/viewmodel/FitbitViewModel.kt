@@ -197,7 +197,7 @@ class FitbitViewModel @Inject constructor(
 
     fun refreshBloodPressureState() {
         viewModelScope.launch {
-            val repo = com.notel.notel.data.repository.BloodPressureRepository(healthConnectManager)
+            val repo = com.notel.notel.data.repository.BloodPressureRepository(healthConnectManager, preferences)
             val bpState = repo.getTileState()
             _state.update { it.copy(bloodPressureState = bpState) }
         }

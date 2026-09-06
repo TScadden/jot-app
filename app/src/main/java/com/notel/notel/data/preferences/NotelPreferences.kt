@@ -145,6 +145,12 @@ class NotelPreferences @Inject constructor(
         val TODAY_SECTION_ORDER = stringPreferencesKey("today_section_order") // comma separated list
         val TODAY_PLAN_EXPANDED = booleanPreferencesKey("today_plan_expanded")
         val WHAT_CHANGED_EXPANDED = booleanPreferencesKey("what_changed_expanded")
+        val MANUAL_BLOOD_PRESSURE_LOGS = stringPreferencesKey("manual_blood_pressure_logs")
+    }
+
+    val manualBloodPressureLogs: Flow<String> = context.dataStore.data.map { it[MANUAL_BLOOD_PRESSURE_LOGS] ?: "[]" }
+    suspend fun setManualBloodPressureLogs(jsonStr: String) {
+        context.dataStore.edit { it[MANUAL_BLOOD_PRESSURE_LOGS] = jsonStr }
     }
 
     val todayPlanExpanded: Flow<Boolean> = context.dataStore.data.map { it[TODAY_PLAN_EXPANDED] ?: true }

@@ -353,12 +353,9 @@ class WeeklySnapshotRepository @Inject constructor(
     }
 
     private suspend fun getBloodPressureSnapshotResult(dates: List<LocalDate>, dateStrs: List<String>, dayLabels: List<String>): SnapshotReadResult<WeeklySnapshotMetricData> {
-        val hasPermission = try { healthConnectManager.hasBloodPressurePermission() } catch (e: Exception) { false }
-        if (!hasPermission) {
-            return SnapshotReadResult.PermissionRequired
-        }
-
-        val bpRecords = try { healthConnectManager.readBloodPressureRecords(days = 10) } catch (e: Exception) { emptyList() }
+        val bpRepo = BloodPressureRepository(healthConnectManager, preferences)
+        val bpRecords = try { bpRepo.getAllRecords() } catch (e: Exception) { emptyList() }
+        
         if (bpRecords.isEmpty()) {
             val emptyPoints = dateStrs.zip(dayLabels).map { DailySnapshotPoint(it.first, it.second, null) }
             val data = WeeklySnapshotMetricData("Blood Pressure", "mmHg", emptyPoints, "No blood pressure records found", isAvailable = false, emptyMessage = "No blood pressure records found")

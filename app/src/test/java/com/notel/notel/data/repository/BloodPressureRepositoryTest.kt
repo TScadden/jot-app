@@ -99,8 +99,8 @@ class BloodPressureRepositoryTest {
 
         val records = repo.getRecords()
         assertEquals(3, records.size)
-        assertEquals(120, records[0].systolic)
-        assertEquals(80, records[0].diastolic)
+        assertEquals(135, records[0].systolic)
+        assertEquals(88, records[0].diastolic)
     }
 
     @Test
