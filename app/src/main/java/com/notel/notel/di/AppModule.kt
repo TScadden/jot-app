@@ -18,6 +18,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 import com.notel.notel.data.healthconnect.HealthConnectManager
+import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.remote.AuthInterceptor
 import com.notel.notel.data.remote.TabsApi
 
@@ -134,4 +135,17 @@ object AppModule {
     @Singleton
     fun provideHealthConnectManager(@ApplicationContext context: Context): HealthConnectManager =
         HealthConnectManager(context)
+
+    @Provides
+    @Singleton
+    fun provideBloodPressureRepository(
+        healthConnectManager: HealthConnectManager,
+        @ApplicationContext context: Context,
+        syncManager: com.notel.notel.data.sync.SyncManager
+    ): com.notel.notel.data.repository.BloodPressureRepository =
+        com.notel.notel.data.repository.BloodPressureRepository(
+            dataSource = healthConnectManager,
+            preferences = NotelPreferences(context),
+            syncManager = syncManager
+        )
 }

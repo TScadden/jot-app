@@ -509,7 +509,6 @@ class MainActivity : ComponentActivity() {
                         }
                         composable("blood_pressure") {
                             com.notel.notel.ui.screen.BloodPressureScreen(
-                                syncManager = syncManager,
                                 onBack = { navController.popBackStack() }
                             )
                         }

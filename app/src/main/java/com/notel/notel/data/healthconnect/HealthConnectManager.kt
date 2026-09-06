@@ -925,7 +925,9 @@ class HealthConnectManager(private val context: Context) : com.notel.notel.data.
                 BloodPressureUiRecord(
                     systolic = record.systolic.inMillimetersOfMercury.toInt(),
                     diastolic = record.diastolic.inMillimetersOfMercury.toInt(),
-                    timeEpochMs = record.time.toEpochMilli()
+                    timeEpochMs = record.time.toEpochMilli(),
+                    id = "hc_${record.metadata.id.ifEmpty { "${record.time.toEpochMilli()}" }}",
+                    source = BloodPressureSource.HEALTH_CONNECT
                 )
             }.sortedByDescending { it.timeEpochMs }
         } catch (e: Exception) {
@@ -934,10 +936,18 @@ class HealthConnectManager(private val context: Context) : com.notel.notel.data.
     }
 }
 
+enum class BloodPressureSource {
+    HEALTH_CONNECT,
+    MANUAL
+}
+
+@Serializable
 data class BloodPressureUiRecord(
     val systolic: Int,
     val diastolic: Int,
-    val timeEpochMs: Long
+    val timeEpochMs: Long,
+    val id: String = "manual_${timeEpochMs}_${systolic}_${diastolic}",
+    val source: BloodPressureSource = BloodPressureSource.MANUAL
 )
 
 private class HeartSample(val time: Long, val bpm: Int, val hour: Int)

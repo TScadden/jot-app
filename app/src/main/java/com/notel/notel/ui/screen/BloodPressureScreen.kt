@@ -10,63 +10,40 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.notel.notel.data.healthconnect.BloodPressureSource
 import com.notel.notel.data.healthconnect.BloodPressureUiRecord
-import com.notel.notel.data.preferences.NotelPreferences
-import com.notel.notel.data.repository.BloodPressureRepository
+import com.notel.notel.data.repository.HealthConnectStatus
 import com.notel.notel.ui.theme.*
-import com.notel.notel.ui.viewmodel.FitbitViewModel
-import kotlinx.coroutines.launch
+import com.notel.notel.ui.viewmodel.BloodPressureViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BloodPressureScreen(
-    viewModel: FitbitViewModel = hiltViewModel(),
-    syncManager: com.notel.notel.data.sync.SyncManager? = null,
+    viewModel: BloodPressureViewModel = hiltViewModel(),
     onBack: () -> Unit
 ) {
-    val context = LocalContext.current
-    val prefs = remember { NotelPreferences(context) }
-    val repo = remember { BloodPressureRepository(viewModel.healthConnectManager, prefs, syncManager) }
-    val scope = rememberCoroutineScope()
+    val uiState by viewModel.uiState.collectAsState()
 
-    var isRefreshing by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
-
     var systolicInput by remember { mutableStateOf("") }
     var diastolicInput by remember { mutableStateOf("") }
     var selectedTimeMs by remember { mutableStateOf(System.currentTimeMillis()) }
+    var validationError by remember { mutableStateOf<String?>(null) }
 
-    val manualLogsJson by prefs.manualBloodPressureLogs.collectAsState(initial = "[]")
-
-    val recordsState = produceState<List<BloodPressureUiRecord>>(initialValue = emptyList(), key1 = manualLogsJson, key2 = isRefreshing) {
-        val fetched = repo.getRecords()
-        value = fetched.sortedByDescending { it.timeEpochMs }
-    }
-    val records = recordsState.value
-    val isLoading = recordsState.value.isEmpty() && isRefreshing
-
-    fun loadData() {
-        scope.launch {
-            viewModel.refreshBloodPressureState()
-            val fetched = repo.getRecords()
-            isRefreshing = false
-        }
-    }
-
-    val latestRecord = records.firstOrNull()
+    val latestRecord = uiState.records.firstOrNull()
 
     Scaffold(
         containerColor = NotelBackground,
@@ -79,10 +56,7 @@ fun BloodPressureScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        isRefreshing = true
-                        loadData()
-                    }) {
+                    IconButton(onClick = { viewModel.loadData(isRefresh = true) }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = NotelTextSecondary)
                     }
                 },
@@ -95,6 +69,8 @@ fun BloodPressureScreen(
                     systolicInput = ""
                     diastolicInput = ""
                     selectedTimeMs = System.currentTimeMillis()
+                    validationError = null
+                    viewModel.clearSaveError()
                     showAddDialog = true
                 },
                 containerColor = NotelPrimary,
@@ -111,13 +87,63 @@ fun BloodPressureScreen(
                 .padding(padding)
                 .padding(horizontal = 16.dp)
         ) {
-            if (isLoading || isRefreshing) {
+            if (uiState.isLoading && uiState.records.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = NotelPrimary)
                 }
             } else {
                 Column(modifier = Modifier.fillMaxSize()) {
                     Spacer(Modifier.height(8.dp))
+
+                    // Diagnostic status notice for Health Connect
+                    when (uiState.hcStatus) {
+                        is HealthConnectStatus.PermissionRequired -> {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = NotelSurfaceHigh,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFFFB74D), modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        "Health Connect permission needed to sync automatic device readings.",
+                                        fontSize = 12.sp,
+                                        color = NotelTextSecondary
+                                    )
+                                }
+                            }
+                        }
+                        is HealthConnectStatus.Error -> {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = NotelSurfaceHigh,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFE57373), modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        "Health Connect query issue. Showing manual readings.",
+                                        fontSize = 12.sp,
+                                        color = NotelTextSecondary
+                                    )
+                                }
+                            }
+                        }
+                        else -> {}
+                    }
+
                     // Spotlight Card for latest reading
                     Surface(
                         shape = RoundedCornerShape(20.dp),
@@ -152,11 +178,15 @@ fun BloodPressureScreen(
                                     val sdf = SimpleDateFormat("MMM d, yyyy · h:mm a", Locale.getDefault())
                                     sdf.format(Date(latestRecord.timeEpochMs))
                                 }
-                                Text(
-                                    text = dateStr,
-                                    color = NotelTextSecondary.copy(alpha = 0.8f),
-                                    fontSize = 12.sp
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = dateStr,
+                                        color = NotelTextSecondary.copy(alpha = 0.8f),
+                                        fontSize = 12.sp
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    SourceChip(source = latestRecord.source)
+                                }
                             } else {
                                 Text(
                                     text = "-- / --",
@@ -176,6 +206,8 @@ fun BloodPressureScreen(
                                         systolicInput = ""
                                         diastolicInput = ""
                                         selectedTimeMs = System.currentTimeMillis()
+                                        validationError = null
+                                        viewModel.clearSaveError()
                                         showAddDialog = true
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary)
@@ -195,7 +227,7 @@ fun BloodPressureScreen(
                         modifier = Modifier.padding(bottom = 12.dp)
                     )
 
-                    if (records.isEmpty()) {
+                    if (uiState.records.isEmpty()) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -215,7 +247,7 @@ fun BloodPressureScreen(
                             contentPadding = PaddingValues(bottom = 140.dp),
                             modifier = Modifier.fillMaxSize()
                         ) {
-                            items(records) { item ->
+                            items(uiState.records, key = { it.id }) { item ->
                                 Surface(
                                     shape = RoundedCornerShape(16.dp),
                                     color = NotelSurface,
@@ -246,6 +278,7 @@ fun BloodPressureScreen(
                                                 fontSize = 12.sp
                                             )
                                         }
+                                        SourceChip(source = item.source)
                                     }
                                 }
                             }
@@ -300,13 +333,24 @@ fun BloodPressureScreen(
                 }
 
                 AlertDialog(
-                    onDismissRequest = { showAddDialog = false },
+                    onDismissRequest = { if (!uiState.isSaving) showAddDialog = false },
                     title = { Text("Log Blood Pressure", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
                     text = {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            if (validationError != null || uiState.saveErrorMessage != null) {
+                                Text(
+                                    text = validationError ?: uiState.saveErrorMessage ?: "",
+                                    color = Color(0xFFE57373),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
                             OutlinedTextField(
                                 value = systolicInput,
-                                onValueChange = { systolicInput = it },
+                                onValueChange = {
+                                    systolicInput = it
+                                    validationError = null
+                                },
                                 label = { Text("Systolic (top / high)") },
                                 placeholder = { Text("120") },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -319,7 +363,10 @@ fun BloodPressureScreen(
                             )
                             OutlinedTextField(
                                 value = diastolicInput,
-                                onValueChange = { diastolicInput = it },
+                                onValueChange = {
+                                    diastolicInput = it
+                                    validationError = null
+                                },
                                 label = { Text("Diastolic (bottom / low)") },
                                 placeholder = { Text("80") },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -330,7 +377,7 @@ fun BloodPressureScreen(
                                     unfocusedBorderColor = NotelTextSecondary.copy(alpha = 0.5f)
                                 )
                             )
-                            
+
                             Spacer(Modifier.height(4.dp))
                             Surface(
                                 onClick = { showDatePicker = true },
@@ -357,22 +404,30 @@ fun BloodPressureScreen(
                             onClick = {
                                 val sys = systolicInput.toIntOrNull()
                                 val dia = diastolicInput.toIntOrNull()
-                                if (sys != null && dia != null && sys > 0 && dia > 0) {
-                                    showAddDialog = false
-                                    scope.launch {
-                                        isRefreshing = true
-                                        repo.addManualRecord(sys, dia, selectedTimeMs)
-                                        isRefreshing = false
+                                if (sys == null || sys <= 0 || dia == null || dia <= 0) {
+                                    validationError = "Please enter valid systolic and diastolic values"
+                                } else {
+                                    validationError = null
+                                    viewModel.saveManualRecord(sys, dia, selectedTimeMs) {
+                                        showAddDialog = false
                                     }
                                 }
                             },
+                            enabled = !uiState.isSaving,
                             colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary)
                         ) {
-                            Text("Save")
+                            if (uiState.isSaving) {
+                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            } else {
+                                Text("Save")
+                            }
                         }
                     },
                     dismissButton = {
-                        TextButton(onClick = { showAddDialog = false }) {
+                        TextButton(
+                            onClick = { showAddDialog = false },
+                            enabled = !uiState.isSaving
+                        ) {
                             Text("Cancel", color = NotelTextSecondary)
                         }
                     },
@@ -382,4 +437,25 @@ fun BloodPressureScreen(
         }
     }
 }
+
+@Composable
+private fun SourceChip(source: BloodPressureSource) {
+    val (label, bgColor, textColor) = when (source) {
+        BloodPressureSource.HEALTH_CONNECT -> Triple("Health Connect", Color(0xFF1E3A8A), Color(0xFF93C5FD))
+        BloodPressureSource.MANUAL -> Triple("Manual", Color(0xFF064E3B), Color(0xFF6EE7B7))
+    }
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = bgColor
+    ) {
+        Text(
+            text = label,
+            color = textColor,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
+    }
+}
+
 

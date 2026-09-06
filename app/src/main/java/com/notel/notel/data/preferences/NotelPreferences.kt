@@ -30,9 +30,16 @@ import android.util.Base64
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "notel_prefs")
 
 @Singleton
-class NotelPreferences @Inject constructor(
-    @ApplicationContext private val context: Context
+open class NotelPreferences(
+    @ApplicationContext private val context: Context,
+    private val customDataStore: DataStore<Preferences>? = null
 ) {
+    @Inject
+    constructor(@ApplicationContext context: Context) : this(context, null)
+
+    private val dataStore: DataStore<Preferences> by lazy {
+        customDataStore ?: context.dataStore
+    }
     companion object {
         val AUTH_TOKEN = stringPreferencesKey("auth_token")
         val REFRESH_TOKEN = stringPreferencesKey("refresh_token")
@@ -148,9 +155,9 @@ class NotelPreferences @Inject constructor(
         val MANUAL_BLOOD_PRESSURE_LOGS = stringPreferencesKey("manual_blood_pressure_logs")
     }
 
-    val manualBloodPressureLogs: Flow<String> = context.dataStore.data.map { it[MANUAL_BLOOD_PRESSURE_LOGS] ?: "[]" }
-    suspend fun setManualBloodPressureLogs(jsonStr: String) {
-        context.dataStore.edit { it[MANUAL_BLOOD_PRESSURE_LOGS] = jsonStr }
+    open val manualBloodPressureLogs: Flow<String> = dataStore.data.map { it[MANUAL_BLOOD_PRESSURE_LOGS] ?: "[]" }
+    open suspend fun setManualBloodPressureLogs(jsonStr: String) {
+        dataStore.edit { it[MANUAL_BLOOD_PRESSURE_LOGS] = jsonStr }
     }
 
     val todayPlanExpanded: Flow<Boolean> = context.dataStore.data.map { it[TODAY_PLAN_EXPANDED] ?: true }
