@@ -94,7 +94,8 @@ fun BloodPressureScreen(
                     showAddDialog = true
                 },
                 containerColor = NotelPrimary,
-                contentColor = Color.White
+                contentColor = Color.White,
+                modifier = Modifier.padding(bottom = 80.dp, end = 8.dp)
             ) {
                 Icon(Icons.Default.Add, contentDescription = "Log Blood Pressure")
             }
