@@ -43,8 +43,6 @@ fun BloodPressureScreen(
     val scope = rememberCoroutineScope()
 
     var isRefreshing by remember { mutableStateOf(false) }
-    var records by remember { mutableStateOf<List<BloodPressureUiRecord>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
     var showAddDialog by remember { mutableStateOf(false) }
 
     var systolicInput by remember { mutableStateOf("") }
@@ -53,22 +51,19 @@ fun BloodPressureScreen(
 
     val manualLogsJson by prefs.manualBloodPressureLogs.collectAsState(initial = "[]")
 
+    val recordsState = produceState<List<BloodPressureUiRecord>>(initialValue = emptyList(), key1 = manualLogsJson, key2 = isRefreshing) {
+        val fetched = repo.getRecords()
+        value = fetched.sortedByDescending { it.timeEpochMs }
+    }
+    val records = recordsState.value
+    val isLoading = recordsState.value.isEmpty() && isRefreshing
+
     fun loadData() {
         scope.launch {
             viewModel.refreshBloodPressureState()
             val fetched = repo.getRecords()
-            records = fetched.sortedByDescending { it.timeEpochMs }
-            isLoading = false
             isRefreshing = false
         }
-    }
-
-    LaunchedEffect(Unit) {
-        loadData()
-    }
-
-    LaunchedEffect(manualLogsJson) {
-        loadData()
     }
 
     val latestRecord = records.firstOrNull()
@@ -364,10 +359,10 @@ fun BloodPressureScreen(
                                 val dia = diastolicInput.toIntOrNull()
                                 if (sys != null && dia != null && sys > 0 && dia > 0) {
                                     showAddDialog = false
-                                    isLoading = true
                                     scope.launch {
+                                        isRefreshing = true
                                         repo.addManualRecord(sys, dia, selectedTimeMs)
-                                        loadData()
+                                        isRefreshing = false
                                     }
                                 }
                             },
