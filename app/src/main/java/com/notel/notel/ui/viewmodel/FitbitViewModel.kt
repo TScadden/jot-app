@@ -82,6 +82,7 @@ data class FitbitState(
 class FitbitViewModel @Inject constructor(
     private val preferences: NotelPreferences,
     val healthConnectManager: HealthConnectManager,
+    val healthConnectCoordinator: com.notel.notel.data.healthconnect.HealthConnectCoordinator,
     private val lifecycleTracker: com.notel.notel.util.AppLifecycleTracker,
     private val tabsApi: com.notel.notel.data.remote.TabsApi,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
@@ -361,11 +362,11 @@ class FitbitViewModel @Inject constructor(
              _state.update { it.copy(isSpikesLoading = true) }
              launch {
                   try {
-                      // 1. Fetch LAST 7 DAYS first (super fast!)
-                      val histHR7 = try { healthConnectManager.readHistoricalHeartRate(7) } catch(e: Exception) { emptyList() }
-                      val histSpikes7 = try { healthConnectManager.readHistoricalHeartRateWithSpikes(7) } catch(e: Exception) { emptyList() }
-                      val histSleep7 = try { healthConnectManager.readHistoricalSleep(7) } catch(e: Exception) { emptyList() }
-                      val histCal7 = try { healthConnectManager.readHistoricalCalories(7) } catch(e: Exception) { emptyList() }
+                      // 1. Fetch LAST 7 DAYS first (super fast & deduplicated via coordinator!)
+                      val histHR7 = try { healthConnectCoordinator.getHeartRateHistory(7) } catch(e: Exception) { emptyList() }
+                      val histSpikes7 = try { healthConnectCoordinator.getHrSpikesHistory(7) } catch(e: Exception) { emptyList() }
+                      val histSleep7 = try { healthConnectCoordinator.getSleepHistory(7) } catch(e: Exception) { emptyList() }
+                      val histCal7 = try { healthConnectCoordinator.getCaloriesHistory(7) } catch(e: Exception) { emptyList() }
 
                       _state.update { currentState ->
                           currentState.copy(

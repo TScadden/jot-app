@@ -118,6 +118,7 @@ class NotelPreferences @Inject constructor(
         val STABLE_USER_ID = stringPreferencesKey("stable_user_id")
         val RECONNECT_REQUIRED = booleanPreferencesKey("reconnect_required")
         val SELECTED_WEEKLY_SNAPSHOT_GRAPH = stringPreferencesKey("selected_weekly_snapshot_graph")
+        val WEEKLY_SNAPSHOT_CACHE = stringPreferencesKey("weekly_snapshot_cache")
         val WEEKLY_SCORE = intPreferencesKey("weekly_score")
         val SHARE_DATA_WITH_FRIENDS = booleanPreferencesKey("share_data_with_friends")
         val TODAY_SLEEP_MINS = intPreferencesKey("today_sleep_mins")
@@ -493,6 +494,16 @@ class NotelPreferences @Inject constructor(
     val selectedWeeklySnapshotMetric: Flow<com.notel.notel.data.model.WeeklySnapshotMetric> = context.dataStore.data.map { prefs ->
         val raw = prefs[SELECTED_WEEKLY_SNAPSHOT_GRAPH]
         com.notel.notel.data.model.WeeklySnapshotMetric.fromKeyOrDisplayName(raw)
+    }
+
+    val weeklySnapshotCache: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[WEEKLY_SNAPSHOT_CACHE] ?: "{}"
+    }
+
+    suspend fun setWeeklySnapshotCache(json: String) {
+        context.dataStore.edit { prefs ->
+            prefs[WEEKLY_SNAPSHOT_CACHE] = json
+        }
     }
 
     suspend fun setSelectedWeeklySnapshotGraph(metric: String) {

@@ -103,13 +103,12 @@ class WeeklySnapshotViewModel @Inject constructor(
             isInitialized = true
             lastHomeRefreshTimeMs = nowMs
             lastHomeRefreshDate = todayDate
-            checkBloodPressureAvailability()
             loadMetricDataTyped(_selectedMetric.value, isExplicitRefresh = forceFreshness)
         }
     }
 
     fun checkBloodPressureAvailability() {
-        viewModelScope.launch {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val list = mutableListOf(
                 WeeklySnapshotMetric.SLEEP_HOURS,
                 WeeklySnapshotMetric.RESTING_HEART_RATE,
@@ -120,13 +119,9 @@ class WeeklySnapshotViewModel @Inject constructor(
             )
             var bpAvailable = false
             try {
-                val hasBpPermission = healthConnectManager.hasBloodPressurePermission()
-                if (hasBpPermission) {
-                    val bpRecords = healthConnectManager.readBloodPressureRecords(days = 10)
-                    if (bpRecords.isNotEmpty()) {
-                        list.add(WeeklySnapshotMetric.BLOOD_PRESSURE)
-                        bpAvailable = true
-                    }
+                bpAvailable = healthConnectManager.hasBloodPressurePermission()
+                if (bpAvailable) {
+                    list.add(WeeklySnapshotMetric.BLOOD_PRESSURE)
                 }
             } catch (e: Exception) {
                 // Safeguard against Health Connect exceptions
@@ -309,7 +304,7 @@ class WeeklySnapshotViewModel @Inject constructor(
 
         loadJob = viewModelScope.launch {
             try {
-                val result = kotlinx.coroutines.withTimeout(5000L) {
+                val result = kotlinx.coroutines.withTimeout(15000L) {
                     weeklySnapshotRepository.get7DaySnapshotTyped(
                         metric = metric,
                         targetToday = timeProvider.today(),
@@ -408,6 +403,7 @@ class WeeklySnapshotViewModel @Inject constructor(
                             _newUiState.update {
                                 it.copy(
                                     selectedMetric = metric,
+                                    metricData = retainedData ?: it.metricData,
                                     isInitialLoading = false,
                                     isRefreshing = false,
                                     errorMessage = errMsg
@@ -427,6 +423,7 @@ class WeeklySnapshotViewModel @Inject constructor(
                     _newUiState.update {
                         it.copy(
                             selectedMetric = metric,
+                            metricData = retainedData ?: it.metricData,
                             isInitialLoading = false,
                             isRefreshing = false,
                             errorMessage = errMsg
@@ -447,6 +444,7 @@ class WeeklySnapshotViewModel @Inject constructor(
                     _newUiState.update {
                         it.copy(
                             selectedMetric = metric,
+                            metricData = retainedData ?: it.metricData,
                             isInitialLoading = false,
                             isRefreshing = false,
                             errorMessage = errMsg

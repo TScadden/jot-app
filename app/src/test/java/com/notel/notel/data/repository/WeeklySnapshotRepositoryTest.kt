@@ -116,6 +116,29 @@ class WeeklySnapshotRepositoryTest {
     }
 
     @Test
+    fun testPartialHistoricalDataVisibleWhenTodayIsMissing() {
+        val (dates, dateStrsAndLabels) = aggregator.get7DayDates()
+        val (dateStrs, dayLabels) = dateStrsAndLabels
+
+        // Raw history only has data for past 6 days (2026-08-21 to 2026-08-26), today (2026-08-27) is missing
+        val rawHistory = listOf(
+            "2026-08-21" to 420,
+            "2026-08-22" to 440,
+            "2026-08-23" to 480,
+            "2026-08-24" to 450,
+            "2026-08-25" to 460,
+            "2026-08-26" to 470
+        )
+
+        val result = aggregator.aggregateSleep(dateStrs, dayLabels, rawHistory)
+        assertEquals("Sleep Hours", result.metricName)
+        assertEquals(6, result.points.count { it.value != null })
+        assertNull("Today (2026-08-27) must remain null, not zero or fabricated", result.points[6].value)
+        assertEquals(7.0f, result.points[0].value) // 420 mins / 60 = 7.0h
+        assertTrue(result.averageOrTotalText.startsWith("7-Day Avg:"))
+    }
+
+    @Test
     fun testProductionDestinationMapping() {
         assertEquals("sleep", WeeklySnapshotDestinationMapper.mapMetricToDestination("Sleep Hours"))
         assertEquals("fitbit", WeeklySnapshotDestinationMapper.mapMetricToDestination("Resting Heart Rate"))

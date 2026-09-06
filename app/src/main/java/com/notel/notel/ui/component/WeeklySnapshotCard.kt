@@ -211,17 +211,55 @@ fun WeeklySnapshotCard(
             // Content States
             when (state) {
                 is WeeklySnapshotState.Loading -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(160.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(
-                            color = NotelPrimary,
-                            modifier = Modifier.size(24.dp),
-                            strokeWidth = 2.dp
-                        )
+                    if (state.retainedData != null) {
+                        Column {
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 6.dp),
+                                color = NotelSurfaceHigh.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, GlassBorder)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Syncing latest data...",
+                                        color = NotelPrimary,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    CircularProgressIndicator(
+                                        color = NotelPrimary,
+                                        modifier = Modifier.size(12.dp),
+                                        strokeWidth = 1.5.dp
+                                    )
+                                }
+                            }
+                            SnapshotDataContent(
+                                metricData = state.retainedData,
+                                selectedIndex = selectedPointIndex,
+                                onSelectIndex = { selectedPointIndex = it }
+                            )
+                        }
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(140.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                color = NotelPrimary,
+                                modifier = Modifier.size(24.dp),
+                                strokeWidth = 2.dp
+                            )
+                        }
                     }
                 }
                 is WeeklySnapshotState.ReadyEmpty -> {
@@ -240,25 +278,65 @@ fun WeeklySnapshotCard(
                     }
                 }
                 is WeeklySnapshotState.Error -> {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(140.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = state.message,
-                            color = MaterialTheme.colorScheme.error,
-                            fontSize = 12.sp,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Button(
-                            onClick = { onSelectMetric(currentMetric) },
-                            colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary.copy(alpha = 0.2f), contentColor = NotelPrimary)
+                    if (state.retainedData != null) {
+                        Column {
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 8.dp),
+                                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f),
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.4f))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = state.message,
+                                        color = MaterialTheme.colorScheme.error,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    TextButton(
+                                        onClick = { if (!isRefreshing) onRefresh() },
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                                    ) {
+                                        Text("Retry", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = NotelPrimary)
+                                    }
+                                }
+                            }
+                            SnapshotDataContent(
+                                metricData = state.retainedData,
+                                selectedIndex = selectedPointIndex,
+                                onSelectIndex = { selectedPointIndex = it }
+                            )
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
                         ) {
-                            Text("Try Again", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = state.message,
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 12.sp,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Button(
+                                onClick = { if (!isRefreshing) onRefresh() },
+                                colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary.copy(alpha = 0.2f), contentColor = NotelPrimary)
+                            ) {
+                                Text("Try Again", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }

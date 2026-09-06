@@ -6,10 +6,12 @@ import com.notel.notel.data.local.entity.LogEntry
 import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.remote.HabitDtoModel
 import com.notel.notel.util.TimeProvider
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -171,6 +173,7 @@ class WeeklySnapshotAggregator(
 @Singleton
 class WeeklySnapshotRepository @Inject constructor(
     private val healthConnectManager: HealthConnectManager,
+    private val healthConnectCoordinator: com.notel.notel.data.healthconnect.HealthConnectCoordinator,
     private val logEntryDao: LogEntryDao,
     private val preferences: NotelPreferences,
     private val habitRepository: HabitRepository,
@@ -181,6 +184,33 @@ class WeeklySnapshotRepository @Inject constructor(
     private val inMemoryCache = java.util.concurrent.ConcurrentHashMap<String, WeeklySnapshotCacheEntry>()
     private val activeRefreshJobs = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.Deferred<SnapshotReadResult<WeeklySnapshotMetricData>>>()
     private val mutex = kotlinx.coroutines.sync.Mutex()
+    private val jsonFormatter = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
+    init {
+        // Load persisted snapshot cache from preferences on startup so app restarts have instant cached data
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val persistedJson = preferences.weeklySnapshotCache.first()
+                if (persistedJson.isNotBlank() && persistedJson != "{}") {
+                    val map = jsonFormatter.decodeFromString<Map<String, WeeklySnapshotMetricData>>(persistedJson)
+                    val today = timeProvider.today()
+                    map.forEach { (stableKey, metricData) ->
+                        val cacheKey = MetricCacheKey(stableKey, today)
+                        inMemoryCache[stableKey] = WeeklySnapshotCacheEntry(
+                            key = cacheKey,
+                            metricData = metricData,
+                            timestampMs = System.currentTimeMillis(),
+                            readClassification = if (metricData.points.any { it.value != null }) "SUCCESS" else "NO_DATA",
+                            startDate = today.minusDays(6),
+                            endDate = today
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore background cache load errors
+            }
+        }
+    }
 
     fun getCachedSnapshot(metric: com.notel.notel.data.model.WeeklySnapshotMetric, targetToday: LocalDate? = null): WeeklySnapshotMetricData? {
         val today = targetToday ?: timeProvider.today()
@@ -188,7 +218,8 @@ class WeeklySnapshotRepository @Inject constructor(
         if (entry.key.rangeEndDate == today) {
             return entry.metricData
         }
-        return null
+        // Return cached entry even if from previous day as stale data fallback
+        return entry.metricData
     }
 
     suspend fun get7DaySnapshotTyped(
@@ -225,6 +256,8 @@ class WeeklySnapshotRepository @Inject constructor(
                             startDate = today.minusDays(6),
                             endDate = today
                         )
+                        // Persist to DataStore asynchronously
+                        persistCacheToPreferences()
                     }
                     result
                 } finally {
@@ -233,6 +266,19 @@ class WeeklySnapshotRepository @Inject constructor(
             }
             activeRefreshJobs[metric.stableKey] = deferred
             deferred.await()
+        }
+    }
+
+    private suspend fun persistCacheToPreferences() {
+        try {
+            val exportMap = inMemoryCache.mapValues { it.value.metricData }
+            val serialized = jsonFormatter.encodeToString(
+                kotlinx.serialization.serializer<Map<String, WeeklySnapshotMetricData>>(),
+                exportMap
+            )
+            preferences.setWeeklySnapshotCache(serialized)
+        } catch (e: Exception) {
+            // Ignore persistence errors
         }
     }
 
@@ -258,31 +304,30 @@ class WeeklySnapshotRepository @Inject constructor(
         return try {
             val data = when (metric) {
                 com.notel.notel.data.model.WeeklySnapshotMetric.SLEEP_HOURS -> {
-                    val raw = healthConnectManager.readHistoricalSleep(days = 10, targetDateStr = dateStrs.last())
+                    val raw = healthConnectCoordinator.getSleepHistory(days = 7, targetToday = targetToday)
                     aggregator.aggregateSleep(dateStrs, dayLabels, raw)
                 }
                 com.notel.notel.data.model.WeeklySnapshotMetric.RESTING_HEART_RATE -> {
-                    val raw = healthConnectManager.readHistoricalHeartRate(days = 10)
+                    val raw = healthConnectCoordinator.getHeartRateHistory(days = 7, targetToday = targetToday)
                     aggregator.aggregateRestingHr(dateStrs, dayLabels, raw)
                 }
                 com.notel.notel.data.model.WeeklySnapshotMetric.HR_SPIKES -> {
                     val spikesStr = preferences.historicalHrSpikes.first()
-                    val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
                     val cachedSpikes = try {
                         if (spikesStr.isNotBlank()) {
-                            json.decodeFromString<List<com.notel.notel.data.healthconnect.DailyHeartRateSummary>>(spikesStr)
+                            jsonFormatter.decodeFromString<List<com.notel.notel.data.healthconnect.DailyHeartRateSummary>>(spikesStr)
                         } else null
                     } catch (e: Exception) { null }
 
                     val freshSpikes = try {
-                        healthConnectManager.readHistoricalHeartRateWithSpikes(days = 10)
+                        healthConnectCoordinator.getHrSpikesHistory(days = 7, targetToday = targetToday)
                     } catch (e: Exception) { null }
 
                     val spikes = freshSpikes ?: cachedSpikes
                     aggregator.aggregateHrSpikes(dates, dateStrs, dayLabels, spikes)
                 }
                 com.notel.notel.data.model.WeeklySnapshotMetric.CALORIES -> {
-                    val raw = healthConnectManager.readHistoricalCalories(days = 10)
+                    val raw = healthConnectCoordinator.getCaloriesHistory(days = 7, targetToday = targetToday)
                     aggregator.aggregateCalories(dateStrs, dayLabels, raw)
                 }
                 com.notel.notel.data.model.WeeklySnapshotMetric.LOGS -> {
