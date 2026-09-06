@@ -246,6 +246,46 @@ fun BloodPressureScreen(
             }
 
             if (showAddDialog) {
+                var selectedTimeMs by remember { mutableStateOf(System.currentTimeMillis()) }
+                var showDatePicker by remember { mutableStateOf(false) }
+
+                val formattedDateStr = remember(selectedTimeMs) {
+                    SimpleDateFormat("EEE, MMM d, yyyy · h:mm a", Locale.getDefault()).format(Date(selectedTimeMs))
+                }
+
+                if (showDatePicker) {
+                    val datePickerState = rememberDatePickerState(
+                        initialSelectedDateMillis = selectedTimeMs
+                    )
+                    DatePickerDialog(
+                        onDismissRequest = { showDatePicker = false },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                val sel = datePickerState.selectedDateMillis
+                                if (sel != null) {
+                                    // Preserve time of day if possible or set to current time on selected date
+                                    val calOld = Calendar.getInstance().apply { timeInMillis = selectedTimeMs }
+                                    val calNew = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = sel }
+                                    calOld.set(Calendar.YEAR, calNew.get(Calendar.YEAR))
+                                    calOld.set(Calendar.MONTH, calNew.get(Calendar.MONTH))
+                                    calOld.set(Calendar.DAY_OF_MONTH, calNew.get(Calendar.DAY_OF_MONTH))
+                                    selectedTimeMs = calOld.timeInMillis
+                                }
+                                showDatePicker = false
+                            }) {
+                                Text("OK", color = NotelPrimary)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showDatePicker = false }) {
+                                Text("Cancel", color = NotelTextSecondary)
+                            }
+                        }
+                    ) {
+                        DatePicker(state = datePickerState)
+                    }
+                }
+
                 AlertDialog(
                     onDismissRequest = { showAddDialog = false },
                     title = { Text("Log Blood Pressure", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
@@ -277,6 +317,26 @@ fun BloodPressureScreen(
                                     unfocusedBorderColor = NotelTextSecondary.copy(alpha = 0.5f)
                                 )
                             )
+                            
+                            Spacer(Modifier.height(4.dp))
+                            Surface(
+                                onClick = { showDatePicker = true },
+                                shape = RoundedCornerShape(12.dp),
+                                color = NotelSurfaceHigh,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column {
+                                        Text("Date & Time", fontSize = 11.sp, color = NotelTextSecondary)
+                                        Text(formattedDateStr, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = NotelTextPrimary)
+                                    }
+                                    Text("Change", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = NotelPrimary)
+                                }
+                            }
                         }
                     },
                     confirmButton = {
@@ -288,7 +348,7 @@ fun BloodPressureScreen(
                                     showAddDialog = false
                                     isLoading = true
                                     scope.launch {
-                                        repo.addManualRecord(sys, dia)
+                                        repo.addManualRecord(sys, dia, selectedTimeMs)
                                         loadData()
                                     }
                                 }
