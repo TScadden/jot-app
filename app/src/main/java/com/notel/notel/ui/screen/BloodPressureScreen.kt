@@ -49,6 +49,8 @@ fun BloodPressureScreen(
     var systolicInput by remember { mutableStateOf("") }
     var diastolicInput by remember { mutableStateOf("") }
 
+    val manualLogsJson by prefs.manualBloodPressureLogs.collectAsState(initial = "[]")
+
     fun loadData() {
         scope.launch {
             viewModel.refreshBloodPressureState()
@@ -60,6 +62,10 @@ fun BloodPressureScreen(
     }
 
     LaunchedEffect(Unit) {
+        loadData()
+    }
+
+    LaunchedEffect(manualLogsJson) {
         loadData()
     }
 
@@ -254,8 +260,16 @@ fun BloodPressureScreen(
                 }
 
                 if (showDatePicker) {
+                    val initialUtcMillis = remember(selectedTimeMs) {
+                        val localCal = Calendar.getInstance().apply { timeInMillis = selectedTimeMs }
+                        val utcCal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+                            clear()
+                            set(localCal.get(Calendar.YEAR), localCal.get(Calendar.MONTH), localCal.get(Calendar.DAY_OF_MONTH))
+                        }
+                        utcCal.timeInMillis
+                    }
                     val datePickerState = rememberDatePickerState(
-                        initialSelectedDateMillis = selectedTimeMs
+                        initialSelectedDateMillis = initialUtcMillis
                     )
                     DatePickerDialog(
                         onDismissRequest = { showDatePicker = false },
