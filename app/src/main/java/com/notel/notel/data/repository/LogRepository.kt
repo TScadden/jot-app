@@ -1331,6 +1331,25 @@ class LogRepository @Inject constructor(
             dailyMap[s.date] = current.copy(spikes = s.spikeCount)
         }
 
+        // ── SECTION 3: Blood Pressure Logs (Manual + Health Connect) ───────────
+        try {
+            val bpRepo = BloodPressureRepository(healthConnectManager, preferences)
+            val bpRecords = bpRepo.getAllRecords().filter { it.timeEpochMs >= System.currentTimeMillis() - (daysLimit.toLong() * 24 * 60 * 60 * 1000) }
+            if (bpRecords.isNotEmpty()) {
+                val sdf = java.text.SimpleDateFormat("MMM d, yyyy · h:mm a", java.util.Locale.US)
+                summary.append("\nBLOOD PRESSURE LOGS (${bpRecords.size} readings):\n")
+                summary.append("Format: Date/Time | Systolic/Diastolic mmHg | Source\n")
+                bpRecords.take(30).forEach { bp ->
+                    val dateFormatted = sdf.format(java.util.Date(bp.timeEpochMs))
+                    val sourceLabel = if (bp.source == com.notel.notel.data.healthconnect.BloodPressureSource.MANUAL) "Manual Log" else "Health Connect"
+                    summary.append("- $dateFormatted: ${bp.systolic}/${bp.diastolic} mmHg ($sourceLabel)\n")
+                }
+                summary.append("\n")
+            }
+        } catch (e: Exception) {
+            // Non-fatal if blood pressure read fails
+        }
+
         val sortedDates = dailyMap.keys.sortedDescending()
         val historyTitle = if (last30DaysOnly) "DETAILED DAILY HISTORY (Last 30 Days)" else "DETAILED DAILY HISTORY (Full History - Last 180 Days)"
         summary.append("$historyTitle:\n")

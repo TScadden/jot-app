@@ -69,25 +69,45 @@ class BloodPressureViewModel @Inject constructor(
         selectedTimeMs: Long,
         onSuccess: () -> Unit
     ) {
+        val newRecord = BloodPressureUiRecord(
+            systolic = systolic,
+            diastolic = diastolic,
+            timeEpochMs = selectedTimeMs,
+            id = "manual_${selectedTimeMs}_${systolic}_${diastolic}",
+            source = com.notel.notel.data.healthconnect.BloodPressureSource.MANUAL
+        )
+
+        // Optimistically insert reading into UI state immediately so screen updates with zero delay
+        _uiState.update { current ->
+            val updated = (listOf(newRecord) + current.records)
+                .distinctBy { it.id }
+                .sortedByDescending { it.timeEpochMs }
+            current.copy(
+                records = updated,
+                hasManualReadings = true,
+                isSaving = false,
+                saveErrorMessage = null
+            )
+        }
+        onSuccess()
+
         viewModelScope.launch {
-            _uiState.update { it.copy(isSaving = true, saveErrorMessage = null) }
             when (val saveResult = repository.addManualRecord(systolic, diastolic, selectedTimeMs)) {
                 is SaveResult.Success -> {
+                    // Update state with final merged data from repository
+                    _uiState.update { current ->
+                        current.copy(
+                            records = saveResult.records,
+                            hasManualReadings = true
+                        )
+                    }
+                }
+                is SaveResult.Failure -> {
+                    // Rollback optimistic update if persistence failed
                     val fetchResult = repository.getFetchResult()
                     _uiState.update { current ->
                         current.copy(
-                            isSaving = false,
                             records = fetchResult.records,
-                            hasManualReadings = fetchResult.hasManualReadings,
-                            saveErrorMessage = null
-                        )
-                    }
-                    onSuccess()
-                }
-                is SaveResult.Failure -> {
-                    _uiState.update {
-                        it.copy(
-                            isSaving = false,
                             saveErrorMessage = saveResult.errorMessage
                         )
                     }
@@ -97,6 +117,15 @@ class BloodPressureViewModel @Inject constructor(
     }
 
     fun deleteManualRecord(recordId: String) {
+        // Optimistically remove the record instantly from UI state so the user sees immediate deletion
+        _uiState.update { current ->
+            val remainingRecords = current.records.filterNot { it.id == recordId }
+            current.copy(
+                records = remainingRecords,
+                hasManualReadings = remainingRecords.any { it.source == com.notel.notel.data.healthconnect.BloodPressureSource.MANUAL }
+            )
+        }
+
         viewModelScope.launch {
             when (val result = repository.deleteManualRecord(recordId)) {
                 is SaveResult.Success -> {
@@ -109,8 +138,14 @@ class BloodPressureViewModel @Inject constructor(
                     }
                 }
                 is SaveResult.Failure -> {
+                    // Restore records if backend/storage deletion failed
+                    val fetchResult = repository.getFetchResult()
                     _uiState.update { current ->
-                        current.copy(errorMessage = result.errorMessage)
+                        current.copy(
+                            records = fetchResult.records,
+                            hasManualReadings = fetchResult.hasManualReadings,
+                            errorMessage = result.errorMessage
+                        )
                     }
                 }
             }
