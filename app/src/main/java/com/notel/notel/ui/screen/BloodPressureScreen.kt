@@ -8,6 +8,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
@@ -44,6 +45,8 @@ fun BloodPressureScreen(
     var validationError by remember { mutableStateOf<String?>(null) }
 
     val latestRecord = uiState.records.firstOrNull()
+
+    var recordToDelete by remember { mutableStateOf<BloodPressureUiRecord?>(null) }
 
     Scaffold(
         containerColor = NotelBackground,
@@ -248,9 +251,15 @@ fun BloodPressureScreen(
                             modifier = Modifier.fillMaxSize()
                         ) {
                             items(uiState.records, key = { it.id }) { item ->
+                                val isManual = item.source == BloodPressureSource.MANUAL
                                 Surface(
                                     shape = RoundedCornerShape(16.dp),
                                     color = NotelSurface,
+                                    onClick = {
+                                        if (isManual) {
+                                            recordToDelete = item
+                                        }
+                                    },
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Row(
@@ -278,13 +287,58 @@ fun BloodPressureScreen(
                                                 fontSize = 12.sp
                                             )
                                         }
-                                        SourceChip(source = item.source)
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            SourceChip(source = item.source)
+                                            if (isManual) {
+                                                Spacer(Modifier.width(8.dp))
+                                                IconButton(
+                                                    onClick = { recordToDelete = item },
+                                                    modifier = Modifier.size(24.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = androidx.compose.material.icons.Icons.Default.Delete,
+                                                        contentDescription = "Delete record",
+                                                        tint = NotelTextSecondary
+                                                    )
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
+            }
+
+            if (recordToDelete != null) {
+                val item = recordToDelete!!
+                AlertDialog(
+                    onDismissRequest = { recordToDelete = null },
+                    title = { Text("Delete Manual Reading?", color = NotelTextPrimary) },
+                    text = {
+                        Text(
+                            "Are you sure you want to delete this reading (${item.systolic}/${item.diastolic} mmHg)? This action cannot be undone.",
+                            color = NotelTextSecondary
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                viewModel.deleteManualRecord(item.id)
+                                recordToDelete = null
+                            }
+                        ) {
+                            Text("Delete", color = Color(0xFFE57373), fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { recordToDelete = null }) {
+                            Text("Cancel", color = NotelTextSecondary)
+                        }
+                    },
+                    containerColor = NotelSurface
+                )
             }
 
             if (showAddDialog) {

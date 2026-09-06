@@ -119,6 +119,44 @@ class BloodPressureRepository(
         return SaveResult.Success(updatedRecords)
     }
 
+    suspend fun deleteManualRecord(recordId: String): SaveResult {
+        if (preferences == null) {
+            return SaveResult.Failure("Local preferences not available")
+        }
+
+        val currentManual = getManualRecords().toMutableList()
+        val recordToDelete = currentManual.find { it.id == recordId }
+
+        if (recordToDelete == null) {
+            logW("Manual record with id $recordId not found for deletion")
+            return SaveResult.Failure("Record not found or is managed by Health Connect")
+        }
+
+        if (recordToDelete.source != BloodPressureSource.MANUAL) {
+            return SaveResult.Failure("Cannot delete records synced from Health Connect")
+        }
+
+        currentManual.removeAll { it.id == recordId }
+
+        try {
+            val encoded = json.encodeToString(currentManual)
+            preferences.setManualBloodPressureLogs(encoded)
+            logD("Successfully deleted manual record $recordId from DataStore")
+        } catch (e: Exception) {
+            logE("Failed to update DataStore after manual record deletion", e)
+            return SaveResult.Failure(e.message ?: "Failed to update storage")
+        }
+
+        try {
+            syncManager?.pushProfileData()
+        } catch (e: Exception) {
+            logW("Non-blocking profile sync push failed after manual BP deletion", e)
+        }
+
+        val updatedRecords = fetchRecordsInternal().records
+        return SaveResult.Success(updatedRecords)
+    }
+
     private suspend fun fetchRecordsInternal(): BloodPressureFetchResult {
         var hcStatus: HealthConnectStatus = HealthConnectStatus.Available
         var hcRecords: List<BloodPressureUiRecord> = emptyList()

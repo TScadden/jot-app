@@ -96,6 +96,27 @@ class BloodPressureViewModel @Inject constructor(
         }
     }
 
+    fun deleteManualRecord(recordId: String) {
+        viewModelScope.launch {
+            when (val result = repository.deleteManualRecord(recordId)) {
+                is SaveResult.Success -> {
+                    val fetchResult = repository.getFetchResult()
+                    _uiState.update { current ->
+                        current.copy(
+                            records = fetchResult.records,
+                            hasManualReadings = fetchResult.hasManualReadings
+                        )
+                    }
+                }
+                is SaveResult.Failure -> {
+                    _uiState.update { current ->
+                        current.copy(errorMessage = result.errorMessage)
+                    }
+                }
+            }
+        }
+    }
+
     fun clearSaveError() {
         _uiState.update { it.copy(saveErrorMessage = null) }
     }
