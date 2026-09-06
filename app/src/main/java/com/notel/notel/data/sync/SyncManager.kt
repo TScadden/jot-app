@@ -411,7 +411,8 @@ class SyncManager @Inject constructor(
                     habitReminderEnabled = preferences.habitReminderEnabled.first(),
                     projectReminderEnabled = preferences.projectReminderEnabled.first(),
                     eventReminderEnabled = preferences.eventReminderEnabled.first(),
-                    infoTileOrder = preferences.infoTileOrder.first().let { if (it.isBlank()) null else it }
+                    infoTileOrder = preferences.infoTileOrder.first().let { if (it.isBlank()) null else it },
+                    manualBloodPressureLogs = preferences.manualBloodPressureLogs.first().let { if (it.isBlank() || it == "[]") null else it }
                 )
             )
             if (response.isSuccessful) {
@@ -684,6 +685,15 @@ class SyncManager @Inject constructor(
                     profile.projectReminderEnabled?.let { preferences.setProjectReminderEnabled(it) }
                     profile.eventReminderEnabled?.let { preferences.setEventReminderEnabled(it) }
                     profile.infoTileOrder?.let { if (it.isNotBlank()) preferences.setInfoTileOrder(it) }
+                    profile.manualBloodPressureLogs?.let { serverJson ->
+                        if (serverJson.isNotBlank() && serverJson != "[]") {
+                            val localJson = preferences.manualBloodPressureLogs.first()
+                            val localList = try { if (localJson.isNotBlank() && localJson != "[]") Json.decodeFromString<List<com.notel.notel.data.healthconnect.BloodPressureUiRecord>>(localJson) else emptyList() } catch (e: Exception) { emptyList() }
+                            val serverList = try { Json.decodeFromString<List<com.notel.notel.data.healthconnect.BloodPressureUiRecord>>(serverJson) } catch (e: Exception) { emptyList() }
+                            val merged = (localList + serverList).distinctBy { it.timeEpochMs }.sortedByDescending { it.timeEpochMs }
+                            preferences.setManualBloodPressureLogs(Json.encodeToString(merged))
+                        }
+                    }
                     // C. Restore AI Context/Doctor's Notes (with Smarter Merging for counters)
                     profile.eventCounters?.let { serverJson ->
                         if (serverJson.isNotBlank()) {

@@ -34,11 +34,12 @@ import java.util.*
 @Composable
 fun BloodPressureScreen(
     viewModel: FitbitViewModel = hiltViewModel(),
+    syncManager: com.notel.notel.data.sync.SyncManager? = null,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
     val prefs = remember { NotelPreferences(context) }
-    val repo = remember { BloodPressureRepository(viewModel.healthConnectManager, prefs) }
+    val repo = remember { BloodPressureRepository(viewModel.healthConnectManager, prefs, syncManager) }
     val scope = rememberCoroutineScope()
 
     var isRefreshing by remember { mutableStateOf(false) }

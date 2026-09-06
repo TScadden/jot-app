@@ -24,7 +24,8 @@ interface BloodPressureDataSource {
 
 class BloodPressureRepository(
     private val dataSource: BloodPressureDataSource,
-    private val preferences: NotelPreferences? = null
+    private val preferences: NotelPreferences? = null,
+    private val syncManager: com.notel.notel.data.sync.SyncManager? = null
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -53,6 +54,7 @@ class BloodPressureRepository(
         if (preferences != null) {
             try {
                 preferences.setManualBloodPressureLogs(json.encodeToString(current))
+                syncManager?.pushProfileData()
             } catch (e: Exception) { /* ignore */ }
         }
         return getAllRecords()

@@ -276,7 +276,8 @@ data class SyncProfileRequest(
     val habitReminderEnabled: Boolean? = null,
     val projectReminderEnabled: Boolean? = null,
     val eventReminderEnabled: Boolean? = null,
-    val infoTileOrder: String? = null
+    val infoTileOrder: String? = null,
+    val manualBloodPressureLogs: String? = null
 )
 
 @Serializable
@@ -361,7 +362,8 @@ data class ProfileDtoModel(
     val habitReminderEnabled: Boolean? = null,
     val projectReminderEnabled: Boolean? = null,
     val eventReminderEnabled: Boolean? = null,
-    val infoTileOrder: String? = null
+    val infoTileOrder: String? = null,
+    val manualBloodPressureLogs: String? = null
 )
 
 @Serializable

@@ -58,6 +58,9 @@ class MainActivity : ComponentActivity() {
     @javax.inject.Inject
     lateinit var habitRepository: com.notel.notel.data.repository.HabitRepository
 
+    @javax.inject.Inject
+    lateinit var syncManager: com.notel.notel.data.sync.SyncManager
+
     val selectWidgetAppWidgetIdState = mutableStateOf(-1)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -505,7 +508,10 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         composable("blood_pressure") {
-                            com.notel.notel.ui.screen.BloodPressureScreen(onBack = { navController.popBackStack() })
+                            com.notel.notel.ui.screen.BloodPressureScreen(
+                                syncManager = syncManager,
+                                onBack = { navController.popBackStack() }
+                            )
                         }
                         composable("body_info") {
                             BodyInfoScreen(onBack = { navController.popBackStack() })
