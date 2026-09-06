@@ -263,13 +263,12 @@ fun BloodPressureScreen(
                             TextButton(onClick = {
                                 val sel = datePickerState.selectedDateMillis
                                 if (sel != null) {
-                                    // Preserve time of day if possible or set to current time on selected date
-                                    val calOld = Calendar.getInstance().apply { timeInMillis = selectedTimeMs }
-                                    val calNew = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = sel }
-                                    calOld.set(Calendar.YEAR, calNew.get(Calendar.YEAR))
-                                    calOld.set(Calendar.MONTH, calNew.get(Calendar.MONTH))
-                                    calOld.set(Calendar.DAY_OF_MONTH, calNew.get(Calendar.DAY_OF_MONTH))
-                                    selectedTimeMs = calOld.timeInMillis
+                                    val utcCal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = sel }
+                                    val localCal = Calendar.getInstance().apply { timeInMillis = selectedTimeMs }
+                                    localCal.set(Calendar.YEAR, utcCal.get(Calendar.YEAR))
+                                    localCal.set(Calendar.MONTH, utcCal.get(Calendar.MONTH))
+                                    localCal.set(Calendar.DAY_OF_MONTH, utcCal.get(Calendar.DAY_OF_MONTH))
+                                    selectedTimeMs = localCal.timeInMillis
                                 }
                                 showDatePicker = false
                             }) {
