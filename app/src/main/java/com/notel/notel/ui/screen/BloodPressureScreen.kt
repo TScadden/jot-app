@@ -48,6 +48,7 @@ fun BloodPressureScreen(
 
     var systolicInput by remember { mutableStateOf("") }
     var diastolicInput by remember { mutableStateOf("") }
+    var selectedTimeMs by remember { mutableStateOf(System.currentTimeMillis()) }
 
     val manualLogsJson by prefs.manualBloodPressureLogs.collectAsState(initial = "[]")
 
@@ -97,6 +98,7 @@ fun BloodPressureScreen(
                 onClick = {
                     systolicInput = ""
                     diastolicInput = ""
+                    selectedTimeMs = System.currentTimeMillis()
                     showAddDialog = true
                 },
                 containerColor = NotelPrimary,
@@ -174,7 +176,12 @@ fun BloodPressureScreen(
                                 )
                                 Spacer(Modifier.height(8.dp))
                                 Button(
-                                    onClick = { showAddDialog = true },
+                                    onClick = {
+                                        systolicInput = ""
+                                        diastolicInput = ""
+                                        selectedTimeMs = System.currentTimeMillis()
+                                        showAddDialog = true
+                                    },
                                     colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary)
                                 ) {
                                     Text("Log Reading")
@@ -209,7 +216,7 @@ fun BloodPressureScreen(
                     } else {
                         LazyColumn(
                             verticalArrangement = Arrangement.spacedBy(10.dp),
-                            contentPadding = PaddingValues(bottom = 100.dp),
+                            contentPadding = PaddingValues(bottom = 140.dp),
                             modifier = Modifier.fillMaxSize()
                         ) {
                             items(records) { item ->
@@ -234,7 +241,7 @@ fun BloodPressureScreen(
                                             )
                                             Spacer(Modifier.height(4.dp))
                                             val timeFormatted = remember(item.timeEpochMs) {
-                                                val sdf = SimpleDateFormat("EEE, MMM d · h:mm a", Locale.getDefault())
+                                                val sdf = SimpleDateFormat("EEE, MMM d, yyyy · h:mm a", Locale.getDefault())
                                                 sdf.format(Date(item.timeEpochMs))
                                             }
                                             Text(
@@ -252,7 +259,6 @@ fun BloodPressureScreen(
             }
 
             if (showAddDialog) {
-                var selectedTimeMs by remember { mutableStateOf(System.currentTimeMillis()) }
                 var showDatePicker by remember { mutableStateOf(false) }
 
                 val formattedDateStr = remember(selectedTimeMs) {
@@ -279,9 +285,7 @@ fun BloodPressureScreen(
                                 if (sel != null) {
                                     val utcCal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = sel }
                                     val localCal = Calendar.getInstance().apply { timeInMillis = selectedTimeMs }
-                                    localCal.set(Calendar.YEAR, utcCal.get(Calendar.YEAR))
-                                    localCal.set(Calendar.MONTH, utcCal.get(Calendar.MONTH))
-                                    localCal.set(Calendar.DAY_OF_MONTH, utcCal.get(Calendar.DAY_OF_MONTH))
+                                    localCal.set(utcCal.get(Calendar.YEAR), utcCal.get(Calendar.MONTH), utcCal.get(Calendar.DAY_OF_MONTH))
                                     selectedTimeMs = localCal.timeInMillis
                                 }
                                 showDatePicker = false
