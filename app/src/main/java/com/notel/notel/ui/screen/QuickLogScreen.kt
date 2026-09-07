@@ -136,16 +136,55 @@ fun QuickLogScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        val hasTypedText = state.manualText.trim().isNotBlank()
                         OutlinedTextField(
                             value = state.manualText,
                             onValueChange = viewModel::updateManualText,
                             modifier = Modifier.weight(1f),
                             placeholder = { Text("Add optional details about these symptoms…", color = NotelTextSecondary, fontSize = 13.sp) },
                             trailingIcon = {
-                                IconButton(onClick = {
-                                    voiceLogLauncher.launch(Intent(context, com.notel.notel.VoiceLogActivity::class.java))
-                                }) {
-                                    Icon(Icons.Default.Mic, null, tint = activeCatColor)
+                                AnimatedContent(
+                                    targetState = state.isSaving to hasTypedText,
+                                    transitionSpec = { fadeIn() togetherWith fadeOut() },
+                                    label = "TrailingIconTransition"
+                                ) { (isSaving, isTyped) ->
+                                    if (isSaving) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(48.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(18.dp),
+                                                color = activeCatColor,
+                                                strokeWidth = 2.dp
+                                            )
+                                        }
+                                    } else if (isTyped) {
+                                        IconButton(
+                                            onClick = { viewModel.saveEntry() },
+                                            modifier = Modifier.size(48.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Add,
+                                                contentDescription = "Log typed note",
+                                                tint = activeCatColor
+                                            )
+                                        }
+                                    } else {
+                                        IconButton(
+                                            onClick = {
+                                                voiceLogLauncher.launch(Intent(context, com.notel.notel.VoiceLogActivity::class.java))
+                                            },
+                                            modifier = Modifier.size(48.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Mic,
+                                                contentDescription = "Voice Input",
+                                                tint = activeCatColor
+                                            )
+                                        }
+                                    }
                                 }
                             },
                             shape = RoundedCornerShape(16.dp),
