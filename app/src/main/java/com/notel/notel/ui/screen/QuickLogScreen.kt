@@ -92,7 +92,7 @@ fun QuickLogScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "Home",
+                        "Quick Log",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = NotelTextPrimary
@@ -109,312 +109,312 @@ fun QuickLogScreen(
                     }
                 }
             )
-        },
-        bottomBar = {
-            Surface(
-                color = NotelSurface,
-                tonalElevation = 8.dp,
-                shadowElevation = 8.dp,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .windowInsetsPadding(WindowInsets.navigationBars)
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
-                ) {
-                    Button(
-                        onClick = { viewModel.saveEntry() },
-                        enabled = state.isLogEnabled,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = activeCatColor,
-                            disabledContainerColor = activeCatColor.copy(alpha = 0.35f),
-                            contentColor = Color.White,
-                            disabledContentColor = Color.White.copy(alpha = 0.5f)
-                        )
-                    ) {
-                        if (state.isSaving) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(22.dp),
-                                color = Color.White,
-                                strokeWidth = 2.5.dp
-                            )
-                        } else {
-                            Text(
-                                text = "Log",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-            }
         }
     ) { padding ->
-        LazyColumn(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .imePadding(),
-            contentPadding = PaddingValues(
-                top = padding.calculateTopPadding(),
-                bottom = 160.dp
-            )
+                .padding(top = padding.calculateTopPadding())
         ) {
-            item {
-                // ── Manual Text Field ─────────────────────────────
-                val context = androidx.compose.ui.platform.LocalContext.current
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = state.manualText,
-                        onValueChange = viewModel::updateManualText,
-                        modifier = Modifier.weight(1f),
-                        placeholder = { Text("Add note details (optional)…", color = NotelTextSecondary, fontSize = 13.sp) },
-                        trailingIcon = {
-                            IconButton(onClick = {
-                                voiceLogLauncher.launch(Intent(context, com.notel.notel.VoiceLogActivity::class.java))
-                            }) {
-                                Icon(Icons.Default.Mic, null, tint = activeCatColor)
-                            }
-                        },
-                        shape = RoundedCornerShape(16.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = activeCatColor,
-                            unfocusedBorderColor = activeCatColor.copy(alpha = 0.25f),
-                            focusedTextColor = NotelTextPrimary,
-                            unfocusedTextColor = NotelTextPrimary,
-                            cursorColor = activeCatColor,
-                            unfocusedContainerColor = NotelSurface,
-                            focusedContainerColor = NotelSurface
-                        )
-                    )
-
-                    IconButton(
-                        onClick = { viewModel.repeatLastEntry() },
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(NotelSurface)
-                            .border(1.dp, NotelPrimary.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
-                    ) {
-                        Icon(Icons.Default.Replay, contentDescription = "Repeat Last Entry", tint = NotelPrimary)
-                    }
-                }
-
-                // ── All Categories ──────────────────────────────────────────────
-                Text(
-                    "Categories",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = NotelTextPrimary,
-                    modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp)
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .imePadding(),
+                contentPadding = PaddingValues(
+                    top = 8.dp,
+                    bottom = 180.dp
                 )
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(state.categories, key = { it.stableKey }) { cat ->
-                        CategoryChip(
-                            category = cat,
-                            isSelected = cat.id == state.selectedCategory?.id,
-                            onClick = { viewModel.selectCategory(cat) },
-                            onLongClick = if (cat.stableKey != "general" && !cat.isDefault) { { viewModel.requestDeleteCategory(cat) } } else null
+            ) {
+                item {
+                    // ── Manual Text Field ─────────────────────────────
+                    val context = androidx.compose.ui.platform.LocalContext.current
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = state.manualText,
+                            onValueChange = viewModel::updateManualText,
+                            modifier = Modifier.weight(1f),
+                            placeholder = { Text("Add optional details about these symptoms…", color = NotelTextSecondary, fontSize = 13.sp) },
+                            trailingIcon = {
+                                IconButton(onClick = {
+                                    voiceLogLauncher.launch(Intent(context, com.notel.notel.VoiceLogActivity::class.java))
+                                }) {
+                                    Icon(Icons.Default.Mic, null, tint = activeCatColor)
+                                }
+                            },
+                            shape = RoundedCornerShape(16.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = activeCatColor,
+                                unfocusedBorderColor = activeCatColor.copy(alpha = 0.25f),
+                                focusedTextColor = NotelTextPrimary,
+                                unfocusedTextColor = NotelTextPrimary,
+                                cursorColor = activeCatColor,
+                                unfocusedContainerColor = NotelSurface,
+                                focusedContainerColor = NotelSurface
+                            )
                         )
-                    }
-                    item {
-                        Box(
+
+                        IconButton(
+                            onClick = { viewModel.repeatLastEntry() },
                             modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(14.dp))
                                 .background(NotelSurface)
-                                .border(
-                                    width = 1.dp,
-                                    color = NotelPrimary.copy(alpha = 0.25f),
-                                    shape = RoundedCornerShape(12.dp)
-                                )
-                                .clickable { viewModel.showAddCategoryDialog() }
-                                .padding(horizontal = 16.dp, vertical = 10.dp)
+                                .border(1.dp, NotelPrimary.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Add, null, tint = NotelPrimary, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text(
-                                    text = "ADD",
-                                    color = NotelTextSecondary,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 0.5.sp
-                                )
-                            }
+                            Icon(Icons.Default.Replay, contentDescription = "Repeat Last Entry", tint = NotelPrimary)
                         }
                     }
-                }
 
-                // ── Recent Suggestions Drawer ───────────────────────────────────────
-                if (state.recentSuggestions.isNotEmpty()) {
+                    // ── All Categories ──────────────────────────────────────────────
                     Text(
-                        "RECENT SUGGESTIONS",
-                        fontSize = 11.sp,
+                        "Categories",
+                        style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        color = NotelTextSecondary,
-                        modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp),
-                        letterSpacing = 0.5.sp
+                        color = NotelTextPrimary,
+                        modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp)
                     )
                     LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(state.recentSuggestions) { entry ->
+                        items(state.categories, key = { it.stableKey }) { cat ->
+                            CategoryChip(
+                                category = cat,
+                                isSelected = cat.id == state.selectedCategory?.id,
+                                onClick = { viewModel.selectCategory(cat) },
+                                onLongClick = if (cat.stableKey != "general" && !cat.isDefault) { { viewModel.requestDeleteCategory(cat) } } else null
+                            )
+                        }
+                        item {
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(12.dp))
-                                    .background(NotelSurfaceHigh)
-                                    .border(1.dp, NotelSurfaceHigh.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                                    .clickable { viewModel.logFromRecent(entry) }
-                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                                    .background(NotelSurface)
+                                    .border(
+                                        width = 1.dp,
+                                        color = NotelPrimary.copy(alpha = 0.25f),
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                                    .clickable { viewModel.showAddCategoryDialog() }
+                                    .padding(horizontal = 16.dp, vertical = 10.dp)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.History, null, tint = NotelTextSecondary, modifier = Modifier.size(14.dp))
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(entry.body.take(25), color = NotelTextPrimary, fontSize = 12.sp)
+                                    Icon(Icons.Default.Add, null, tint = NotelPrimary, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        text = "ADD",
+                                        color = NotelTextSecondary,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.5.sp
+                                    )
                                 }
                             }
                         }
                     }
-                }
 
-                // ── Smart Action Card ──────────────────────────────────────────────
-                state.smartAction?.let { action ->
-                    SmartActionCard(
-                        action = action,
-                        onDismiss = viewModel::dismissSmartAction,
-                        onAccept = {
-                            viewModel.acceptSmartAction(action)
+                    // ── Recent Suggestions Drawer ───────────────────────────────────────
+                    if (state.recentSuggestions.isNotEmpty()) {
+                        Text(
+                            "RECENT SUGGESTIONS",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NotelTextSecondary,
+                            modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp),
+                            letterSpacing = 0.5.sp
+                        )
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(state.recentSuggestions) { entry ->
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(NotelSurfaceHigh)
+                                        .border(1.dp, NotelSurfaceHigh.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                        .clickable { viewModel.logFromRecent(entry) }
+                                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.History, null, tint = NotelTextSecondary, modifier = Modifier.size(14.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(entry.body.take(25), color = NotelTextPrimary, fontSize = 12.sp)
+                                    }
+                                }
+                            }
                         }
-                    )
-                }
-            }
+                    }
 
-            item {
-                // ── AI Chip Tray ──────────────────────────────────────────────
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                ) {
-                    when {
-                        !state.isUnlimited -> Column(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text("Standard Access", color = NotelTextSecondary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            Spacer(Modifier.height(8.dp))
-                            TextButton(onClick = onNavigateToMembership) {
-                                Text("Click here to start Free Trial", color = NotelPrimary, fontWeight = FontWeight.Bold)
+                    // ── Smart Action Card ──────────────────────────────────────────────
+                    state.smartAction?.let { action ->
+                        SmartActionCard(
+                            action = action,
+                            onDismiss = viewModel::dismissSmartAction,
+                            onAccept = {
+                                viewModel.acceptSmartAction(action)
                             }
-                        }
-                        state.isLoadingChips -> Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                GlassySpinner(size = 48.dp)
-                                Spacer(Modifier.height(12.dp))
-                                Text("Getting suggestions…", color = NotelTextSecondary, fontSize = 14.sp)
-                            }
-                        }
-                        state.chipsError != null -> Column(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(state.chipsError!!, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                            Spacer(Modifier.height(12.dp))
-                            TextButton(onClick = { viewModel.fetchSuggestions(forceRefresh = true) }) {
-                                Text("Retry", color = NotelPrimary, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                        !state.autoAiSuggestions && state.chips.isEmpty() -> Column(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text("No suggestions loaded", color = NotelTextSecondary, fontSize = 12.sp)
-                            Spacer(Modifier.height(8.dp))
-                            TextButton(onClick = { viewModel.fetchSuggestions(forceRefresh = true) }) {
-                                Text("Load Suggestions", color = NotelPrimary, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                        else -> ChipGrid(
-                            chips = state.chips,
-                            selected = state.selectedChips,
-                            categoryColor = activeCatColor,
-                            onToggle = viewModel::toggleChip
                         )
                     }
                 }
-            }
 
-            item {
-                // ── Productivity Layer / Combo Preview ────────────────────────
-                AnimatedVisibility(
-                    visible = state.manualText.isBlank() && state.selectedChips.isEmpty(),
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
-                ) {
-                    var isProductivityExpanded by remember { mutableStateOf(false) }
-                    Column {
-                        // Removed Counter Clock / Event Bubble
-                    }
-                }
-            }
-
-            item {
-                AnimatedVisibility(
-                    visible = state.selectedChips.isNotEmpty(),
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
-                ) {
-                    Column {
-                        GlassyCard(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp),
-                            color = NotelSurface
-                        ) {
-                            Text(
-                                text = "Composed Logging Phrase",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = NotelTextSecondary
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = buildString {
-                                    if (state.composedText.isNotBlank()) append(state.composedText)
-                                    if (state.manualText.isNotBlank()) {
-                                        if (isNotEmpty()) append(" — ")
-                                        append(state.manualText)
-                                    }
-                                },
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = NotelTextPrimary,
-                                fontWeight = FontWeight.Medium
+                item {
+                    // ── AI Chip Tray ──────────────────────────────────────────────
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                    ) {
+                        when {
+                            !state.isUnlimited -> Column(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text("Standard Access", color = NotelTextSecondary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(8.dp))
+                                TextButton(onClick = onNavigateToMembership) {
+                                    Text("Click here to start Free Trial", color = NotelPrimary, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            state.isLoadingChips -> Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    GlassySpinner(size = 48.dp)
+                                    Spacer(Modifier.height(12.dp))
+                                    Text("Getting suggestions…", color = NotelTextSecondary, fontSize = 14.sp)
+                                }
+                            }
+                            state.chipsError != null -> Column(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(state.chipsError!!, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                                Spacer(Modifier.height(12.dp))
+                                TextButton(onClick = { viewModel.fetchSuggestions(forceRefresh = true) }) {
+                                    Text("Retry", color = NotelPrimary, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            !state.autoAiSuggestions && state.chips.isEmpty() -> Column(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text("No suggestions loaded", color = NotelTextSecondary, fontSize = 12.sp)
+                                Spacer(Modifier.height(8.dp))
+                                TextButton(onClick = { viewModel.fetchSuggestions(forceRefresh = true) }) {
+                                    Text("Load Suggestions", color = NotelPrimary, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            else -> ChipGrid(
+                                chips = state.chips,
+                                selected = state.selectedChips,
+                                categoryColor = activeCatColor,
+                                onToggle = viewModel::toggleChip
                             )
                         }
-                        Spacer(Modifier.height(12.dp))
                     }
                 }
-            }
 
-            item {
-                Spacer(Modifier.height(12.dp))
-            }
+                item {
+                    // ── Productivity Layer / Combo Preview ────────────────────────
+                    AnimatedVisibility(
+                        visible = state.manualText.isBlank() && state.selectedChips.isEmpty(),
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        var isProductivityExpanded by remember { mutableStateOf(false) }
+                        Column {
+                            // Removed Counter Clock / Event Bubble
+                        }
+                    }
+                }
 
-        } // Closes LazyColumn
+                item {
+                    AnimatedVisibility(
+                        visible = state.selectedChips.isNotEmpty() || state.manualText.trim().isNotBlank(),
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        Column {
+                            GlassyCard(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp),
+                                color = NotelSurface
+                            ) {
+                                Text(
+                                    text = "Your quick note",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = NotelTextSecondary
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = buildString {
+                                        if (state.composedText.isNotBlank()) append(state.composedText)
+                                        if (state.manualText.isNotBlank()) {
+                                            if (isNotEmpty()) append(" — ")
+                                            append(state.manualText.trim())
+                                        }
+                                    },
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = NotelTextPrimary,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                            Spacer(Modifier.height(12.dp))
+                        }
+                    }
+                }
+
+                item {
+                    // Sticky / Bottom Action Button positioned directly within content scrollable area above dock
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Button(
+                            onClick = { viewModel.saveEntry() },
+                            enabled = state.isLogEnabled,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = activeCatColor,
+                                disabledContainerColor = activeCatColor.copy(alpha = 0.35f),
+                                contentColor = Color.White,
+                                disabledContentColor = Color.White.copy(alpha = 0.5f)
+                            )
+                        ) {
+                            if (state.isSaving) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(22.dp),
+                                    color = Color.White,
+                                    strokeWidth = 2.5.dp
+                                )
+                            } else {
+                                Text(
+                                    text = "Log Quick Note",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    Spacer(Modifier.height(12.dp))
+                }
+
+            } // Closes LazyColumn
+        }
 
         // ── Overlays (Placed outside scroll area) ───────────────────────
 
