@@ -69,10 +69,6 @@ object AppModule {
     fun provideMedicationDao(db: NotelDatabase): com.notel.notel.data.local.dao.MedicationDao =
         db.medicationDao()
 
-    @Provides
-    @Singleton
-    fun providePinnedTemplateDao(db: NotelDatabase): com.notel.notel.data.local.dao.PinnedTemplateDao =
-        db.pinnedTemplateDao()
 
     @Provides
     @Singleton
@@ -148,4 +144,12 @@ object AppModule {
             preferences = NotelPreferences(context),
             syncManager = syncManager
         )
+
+    @Provides
+    @Singleton
+    fun provideConditionRepository(
+        preferences: NotelPreferences,
+        syncManagerProvider: javax.inject.Provider<com.notel.notel.data.sync.SyncManager>
+    ): com.notel.notel.data.repository.ConditionRepository =
+        com.notel.notel.data.repository.ConditionRepository(preferences, syncManagerProvider)
 }

@@ -39,6 +39,7 @@ class SettingsViewModel @Inject constructor(
     private val database: com.notel.notel.data.local.NotelDatabase,
     private val habitRepository: com.notel.notel.data.repository.HabitRepository,
     private val tabsApi: com.notel.notel.data.remote.TabsApi,
+    val conditionRepository: com.notel.notel.data.repository.ConditionRepository,
     @ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
 
@@ -522,7 +523,15 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    val userConditionsStr = preferences.userConditions.stateIn(
+    val userConditionsList = conditionRepository.conditions.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        emptyList()
+    )
+
+    val userConditionsStr = conditionRepository.conditions.map { list: List<String> ->
+        kotlinx.serialization.json.Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(kotlinx.serialization.serializer<String>()), list)
+    }.stateIn(
         viewModelScope,
         SharingStarted.Lazily,
         "[]"
@@ -530,34 +539,13 @@ class SettingsViewModel @Inject constructor(
 
     fun addUserCondition(condition: String) {
         viewModelScope.launch {
-            val currentJson = preferences.userConditions.first()
-            val list = try {
-                kotlinx.serialization.json.Json.decodeFromString<List<String>>(currentJson).toMutableList()
-            } catch (e: Exception) {
-                mutableListOf()
-            }
-            if (!list.contains(condition)) {
-                list.add(condition)
-                val newJson = kotlinx.serialization.json.Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(kotlinx.serialization.serializer<String>()), list.toList())
-                preferences.setUserConditions(newJson)
-                syncManager.pushProfileData()
-            }
+            conditionRepository.addCondition(condition)
         }
     }
 
     fun removeUserCondition(condition: String) {
         viewModelScope.launch {
-            val currentJson = preferences.userConditions.first()
-            val list = try {
-                kotlinx.serialization.json.Json.decodeFromString<List<String>>(currentJson).toMutableList()
-            } catch (e: Exception) {
-                mutableListOf()
-            }
-            if (list.remove(condition)) {
-                val newJson = kotlinx.serialization.json.Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(kotlinx.serialization.serializer<String>()), list.toList())
-                preferences.setUserConditions(newJson)
-                syncManager.pushProfileData()
-            }
+            conditionRepository.removeCondition(condition)
         }
     }
 

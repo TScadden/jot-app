@@ -1,10 +1,8 @@
 package com.notel.notel.data.repository
 
-import com.notel.notel.data.local.dao.PinnedTemplateDao
 import com.notel.notel.data.local.dao.LogEntryDao
 import com.notel.notel.data.local.dao.CategoryDao
 import com.notel.notel.data.local.dao.MedicationDao
-import com.notel.notel.data.local.entity.PinnedTemplate
 import com.notel.notel.data.local.entity.LogEntry
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -13,30 +11,10 @@ import javax.inject.Singleton
 
 @Singleton
 class TemplateAndDefaultsRepository @Inject constructor(
-    private val pinnedTemplateDao: PinnedTemplateDao,
     private val logEntryDao: LogEntryDao,
     private val categoryDao: CategoryDao,
     private val medicationDao: MedicationDao
 ) {
-    fun getAllPinnedTemplates(): Flow<List<PinnedTemplate>> = pinnedTemplateDao.getAllTemplates()
-
-    suspend fun saveTemplate(template: PinnedTemplate): Long {
-        return pinnedTemplateDao.insertTemplate(template)
-    }
-
-    suspend fun updateTemplate(template: PinnedTemplate) {
-        pinnedTemplateDao.updateTemplate(template)
-    }
-
-    suspend fun deleteTemplate(template: PinnedTemplate) {
-        pinnedTemplateDao.deleteTemplate(template)
-    }
-
-    suspend fun reorderTemplates(templates: List<PinnedTemplate>) {
-        templates.forEachIndexed { index, t ->
-            pinnedTemplateDao.updateTemplate(t.copy(sortOrder = index))
-        }
-    }
 
     suspend fun getDeduplicatedRecentSuggestions(limit: Int = 10): List<LogEntry> {
         val raw = logEntryDao.getRecentEntriesAll(limit * 3)

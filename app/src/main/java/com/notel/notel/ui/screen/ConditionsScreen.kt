@@ -15,6 +15,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.collectAsState
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,44 +47,24 @@ import javax.inject.Inject
 
 @HiltViewModel
 class ConditionsViewModel @Inject constructor(
-    private val preferences: NotelPreferences,
-    private val syncManager: SyncManager
+    private val conditionRepository: com.notel.notel.data.repository.ConditionRepository
 ) : ViewModel() {
 
-    val selectedConditions = mutableStateListOf<String>()
-
-    init {
-        viewModelScope.launch {
-            val jsonStr = preferences.userConditions.first()
-            if (jsonStr.isNotBlank()) {
-                try {
-                    val list = Json.decodeFromString<List<String>>(jsonStr)
-                    selectedConditions.clear()
-                    selectedConditions.addAll(list)
-                } catch (e: Exception) {
-                    // Ignore parse error
-                }
-            }
-        }
-    }
+    val selectedConditions = conditionRepository.conditions.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        emptyList()
+    )
 
     fun addCondition(condition: String) {
-        if (!selectedConditions.contains(condition)) {
-            selectedConditions.add(condition)
-            saveAndSync()
+        viewModelScope.launch {
+            conditionRepository.addCondition(condition)
         }
     }
 
     fun removeCondition(condition: String) {
-        selectedConditions.remove(condition)
-        saveAndSync()
-    }
-
-    private fun saveAndSync() {
         viewModelScope.launch {
-            val jsonStr = Json.encodeToString(selectedConditions.toList())
-            preferences.setUserConditions(jsonStr)
-            syncManager.pushProfileData()
+            conditionRepository.removeCondition(condition)
         }
     }
 }
@@ -95,6 +78,7 @@ fun ConditionsScreen(
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var isSearching by remember { mutableStateOf(false) }
+    val selectedConditions by viewModel.selectedConditions.collectAsState()
 
     val filteredConditions = remember(searchQuery) {
         if (searchQuery.isBlank()) {
@@ -171,7 +155,7 @@ fun ConditionsScreen(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     items(filteredConditions) { condition ->
-                        val isSelected = viewModel.selectedConditions.contains(condition)
+                        val isSelected = selectedConditions.any { it.equals(condition, ignoreCase = true) }
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -313,7 +297,7 @@ fun ConditionsScreen(
                                     }
                                 }
 
-                                if (viewModel.selectedConditions.isNotEmpty()) {
+                                if (selectedConditions.isNotEmpty()) {
                                     Spacer(Modifier.height(16.dp))
                                     Column(
                                         modifier = Modifier
@@ -322,7 +306,7 @@ fun ConditionsScreen(
                                             .verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        viewModel.selectedConditions.forEach { condition ->
+                                        selectedConditions.forEach { condition ->
                                             Row(
                                                 modifier = Modifier
                                                     .fillMaxWidth()

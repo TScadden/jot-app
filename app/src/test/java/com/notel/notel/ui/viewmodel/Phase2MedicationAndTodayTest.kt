@@ -1,67 +1,14 @@
 package com.notel.notel.ui.viewmodel
 
 import com.notel.notel.data.local.entity.Medication
-import com.notel.notel.data.local.entity.PinnedTemplate
 import com.notel.notel.data.local.entity.Reminder
 import com.notel.notel.data.local.entity.ScheduledDoseOccurrence
 import com.notel.notel.data.remote.HabitDtoModel
-import com.notel.notel.util.QuickAddParser
 import org.junit.Assert.*
 import org.junit.Test
 import java.time.LocalDate
 
 class Phase2MedicationAndTodayTest {
-
-    @Test
-    fun medicationWithoutDosage_parsesWithoutInventingOrInferringDosage() {
-        val input = "Took Advil"
-        val parsed = QuickAddParser.parse(input)
-        
-        assertEquals(1, parsed.size)
-        val proposal = parsed.first()
-        assertEquals("MEDICATION", proposal.type)
-        assertNull("Dosage must be null when not explicitly provided", proposal.dosage)
-    }
-
-    @Test
-    fun explicitDosageParsing_extractsDosageOnlyWhenSuppliedInText() {
-        val input = "Took 20mg Advil"
-        val parsed = QuickAddParser.parse(input)
-
-        assertEquals(1, parsed.size)
-        val proposal = parsed.first()
-        assertEquals("MEDICATION", proposal.type)
-        assertEquals("20mg", proposal.dosage)
-    }
-
-    @Test
-    fun noHistoricalDosageInference_retainsNullDosageForMedicationProposals() {
-        val proposal = com.notel.notel.util.ParsedProposal(
-            type = "MEDICATION",
-            categorySlug = "medication",
-            title = "Took Aspirin",
-            detailText = "",
-            dosage = null,
-            confidence = 0.8f,
-            sourceText = "Took Aspirin"
-        )
-
-        assertNull("Dosage must not be automatically inferred from history", proposal.dosage)
-    }
-
-    @Test
-    fun oneTapMedicationTemplate_logsDirectlyWithoutForcingConfirmation() {
-        val medicationTemplate = PinnedTemplate(
-            id = 10L,
-            title = "Daily Tylenol",
-            categorySlug = "medication",
-            body = "Took 500mg Tylenol",
-            isMedication = true
-        )
-
-        assertTrue(medicationTemplate.isMedication)
-        assertEquals("Took 500mg Tylenol", medicationTemplate.body)
-    }
 
     @Test
     fun undoMedicationLog_resetsLastLoggedEntryIdAndSaveSuccess() {

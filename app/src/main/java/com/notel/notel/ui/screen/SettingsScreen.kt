@@ -3141,14 +3141,7 @@ fun SettingsScreen(
 
             // Conditions section
             var isConditionsExpanded by remember { mutableStateOf(false) }
-            val userConditionsStr by viewModel.userConditionsStr.collectAsState()
-            val userConditionsList = remember(userConditionsStr) {
-                try {
-                    kotlinx.serialization.json.Json.decodeFromString<List<String>>(userConditionsStr)
-                } catch (e: Exception) {
-                    emptyList()
-                }
-            }
+            val userConditionsList by viewModel.userConditionsList.collectAsState()
             var showAddConditionDialog by remember { mutableStateOf(false) }
             var conditionSearchQuery by remember { mutableStateOf("") }
 

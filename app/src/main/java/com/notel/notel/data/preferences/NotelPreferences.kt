@@ -384,10 +384,10 @@ open class NotelPreferences(
         prefs[USER_CONTEXT] ?: ""
     }
 
-    val userConditions: Flow<String> = context.dataStore.data.map { prefs ->
+    open val userConditions: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[USER_CONDITIONS] ?: "[]"
     }
-    suspend fun setUserConditions(conditionsJson: String) {
+    open suspend fun setUserConditions(conditionsJson: String) {
         context.dataStore.edit { it[USER_CONDITIONS] = conditionsJson }
     }
 

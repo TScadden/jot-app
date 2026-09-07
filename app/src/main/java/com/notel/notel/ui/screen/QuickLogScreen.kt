@@ -109,6 +109,50 @@ fun QuickLogScreen(
                     }
                 }
             )
+        },
+        bottomBar = {
+            Surface(
+                color = NotelSurface,
+                tonalElevation = 8.dp,
+                shadowElevation = 8.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .windowInsetsPadding(WindowInsets.navigationBars)
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
+                    Button(
+                        onClick = { viewModel.saveEntry() },
+                        enabled = state.isLogEnabled,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = activeCatColor,
+                            disabledContainerColor = activeCatColor.copy(alpha = 0.35f),
+                            contentColor = Color.White,
+                            disabledContentColor = Color.White.copy(alpha = 0.5f)
+                        )
+                    ) {
+                        if (state.isSaving) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(22.dp),
+                                color = Color.White,
+                                strokeWidth = 2.5.dp
+                            )
+                        } else {
+                            Text(
+                                text = "Log",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
         }
     ) { padding ->
         LazyColumn(
@@ -135,18 +179,12 @@ fun QuickLogScreen(
                         value = state.manualText,
                         onValueChange = viewModel::updateManualText,
                         modifier = Modifier.weight(1f),
-                        placeholder = { Text("Universal Quick-Add (e.g. 200mg Advil, 6/10 headache)…", color = NotelTextSecondary, fontSize = 13.sp) },
+                        placeholder = { Text("Add note details (optional)…", color = NotelTextSecondary, fontSize = 13.sp) },
                         trailingIcon = {
-                            if (state.manualText.isNotBlank()) {
-                                IconButton(onClick = { viewModel.parseAndShowProposals() }) {
-                                    Icon(Icons.Default.AutoAwesome, "Parse Input", tint = activeCatColor)
-                                }
-                            } else {
-                                IconButton(onClick = {
-                                    voiceLogLauncher.launch(Intent(context, com.notel.notel.VoiceLogActivity::class.java))
-                                }) {
-                                    Icon(Icons.Default.Mic, null, tint = activeCatColor)
-                                }
+                            IconButton(onClick = {
+                                voiceLogLauncher.launch(Intent(context, com.notel.notel.VoiceLogActivity::class.java))
+                            }) {
+                                Icon(Icons.Default.Mic, null, tint = activeCatColor)
                             }
                         },
                         shape = RoundedCornerShape(16.dp),
@@ -215,100 +253,6 @@ fun QuickLogScreen(
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     letterSpacing = 0.5.sp
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // ── Pinned Templates Drawer ─────────────────────────────────────────
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "PINNED TEMPLATES",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = NotelPrimary,
-                        letterSpacing = 0.5.sp
-                    )
-                    IconButton(
-                        onClick = { viewModel.openTemplateManager() },
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            if (state.pinnedTemplates.isEmpty()) Icons.Default.Add else Icons.Default.Tune,
-                            contentDescription = if (state.pinnedTemplates.isEmpty()) "Create Template" else "Manage Templates",
-                            tint = NotelPrimary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-                if (state.pinnedTemplates.isNotEmpty()) {
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(state.pinnedTemplates) { t ->
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(NotelSurface)
-                                    .border(1.dp, NotelPrimary.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
-                                    .clickable { viewModel.logFromTemplate(t) }
-                                    .padding(horizontal = 14.dp, vertical = 8.dp)
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        if (t.isMedication) Icons.Default.Medication else Icons.Default.PushPin,
-                                        null,
-                                        tint = NotelPrimary,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(t.title, color = NotelTextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 4.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(NotelSurface)
-                            .border(1.dp, NotelPrimary.copy(alpha = 0.15f), RoundedCornerShape(14.dp))
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Save common entries for one-tap logging.",
-                            color = NotelTextSecondary,
-                            fontSize = 12.sp,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(NotelPrimary.copy(alpha = 0.15f))
-                                .clickable { viewModel.openCreateTemplateDialog() }
-                                .padding(horizontal = 10.dp, vertical = 6.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Add, null, tint = NotelPrimary, modifier = Modifier.size(12.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text(
-                                    "Create template",
-                                    color = NotelPrimary,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
                                 )
                             }
                         }
@@ -788,297 +732,6 @@ fun QuickLogScreen(
             }
         }
 
-        // Proposal Confirmation Dialog
-        if (state.showProposalConfirmation) {
-            Dialog(onDismissRequest = { viewModel.dismissProposals() }) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(NotelSurface)
-                        .border(1.dp, NotelPrimary.copy(alpha = 0.2f), RoundedCornerShape(22.dp))
-                        .padding(20.dp)
-                ) {
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = NotelPrimary, modifier = Modifier.size(22.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Confirm Parsed Proposals", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = NotelTextPrimary)
-                        }
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            "Review and adjust the extracted entry items before saving:",
-                            color = NotelTextSecondary,
-                            fontSize = 13.sp
-                        )
-                        Spacer(Modifier.height(16.dp))
-
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 300.dp)
-                                .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            state.proposals.forEachIndexed { index, proposal ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(NotelSurfaceHigh)
-                                        .padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = proposal.intent.name,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 12.sp,
-                                            color = NotelPrimary
-                                        )
-                                        Spacer(Modifier.height(2.dp))
-                                        Text(
-                                            text = proposal.summaryText,
-                                            fontSize = 14.sp,
-                                            color = NotelTextPrimary
-                                        )
-                                    }
-                                    IconButton(onClick = { viewModel.removeProposal(index) }) {
-                                        Icon(Icons.Default.Close, contentDescription = "Remove item", tint = NotelTextSecondary, modifier = Modifier.size(18.dp))
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(Modifier.height(20.dp))
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            GlassyButton(
-                                onClick = { viewModel.confirmProposals() },
-                                modifier = Modifier.fillMaxWidth(),
-                                containerColor = NotelPrimary,
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
-                            ) {
-                                Text("Confirm & Save", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            }
-                            
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                GlassyButton(
-                                    onClick = { viewModel.dismissProposals() },
-                                    modifier = Modifier.weight(1f),
-                                    containerColor = NotelSurfaceHigh,
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
-                                ) {
-                                    Text("Cancel", color = NotelTextPrimary, fontSize = 13.sp, maxLines = 1)
-                                }
-
-                                GlassyButton(
-                                    onClick = {
-                                        viewModel.saveProposalsAsTemplates()
-                                        viewModel.confirmProposals()
-                                    },
-                                    modifier = Modifier.weight(1.4f),
-                                    containerColor = NotelSurfaceHigh,
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
-                                ) {
-                                    Text("Save + Template", color = NotelPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // ── Template Management Dialog ──────────────────────────────────────
-        if (state.showTemplateManagementDialog) {
-            Dialog(onDismissRequest = { viewModel.closeTemplateManager() }) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(NotelSurface)
-                        .border(1.dp, NotelPrimary.copy(alpha = 0.2f), RoundedCornerShape(22.dp))
-                        .padding(20.dp)
-                ) {
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Tune, contentDescription = null, tint = NotelPrimary, modifier = Modifier.size(22.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Manage Pinned Templates", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = NotelTextPrimary)
-                        }
-                        Spacer(Modifier.height(16.dp))
-
-                        if (state.pinnedTemplates.isEmpty()) {
-                            Text("Save common entries for one-tap logging.", color = NotelTextSecondary, fontSize = 14.sp)
-                            Spacer(Modifier.height(12.dp))
-                            GlassyButton(
-                                onClick = { viewModel.openCreateTemplateDialog() },
-                                modifier = Modifier.fillMaxWidth(),
-                                containerColor = NotelPrimary.copy(alpha = 0.2f)
-                            ) {
-                                Icon(Icons.Default.Add, null, tint = NotelPrimary, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("Create Template", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
-                            }
-                        } else {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(max = 300.dp)
-                                    .verticalScroll(rememberScrollState()),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                state.pinnedTemplates.forEach { t ->
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(NotelSurfaceHigh)
-                                            .padding(10.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            if (t.isMedication) Icons.Default.Medication else Icons.Default.PushPin,
-                                            null,
-                                            tint = NotelPrimary,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(Modifier.width(8.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(t.title, color = NotelTextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                            Text(t.body, color = NotelTextSecondary, fontSize = 11.sp, maxLines = 1)
-                                        }
-                                        IconButton(onClick = { viewModel.reorderTemplate(t, moveUp = true) }, modifier = Modifier.size(24.dp)) {
-                                            Icon(Icons.Default.KeyboardArrowUp, "Move Up", tint = NotelTextSecondary, modifier = Modifier.size(16.dp))
-                                        }
-                                        IconButton(onClick = { viewModel.reorderTemplate(t, moveUp = false) }, modifier = Modifier.size(24.dp)) {
-                                            Icon(Icons.Default.KeyboardArrowDown, "Move Down", tint = NotelTextSecondary, modifier = Modifier.size(16.dp))
-                                        }
-                                        IconButton(onClick = { viewModel.openEditTemplate(t) }, modifier = Modifier.size(24.dp)) {
-                                            Icon(Icons.Default.Edit, "Edit", tint = NotelPrimary, modifier = Modifier.size(16.dp))
-                                        }
-                                        IconButton(onClick = { viewModel.requestDeleteTemplate(t) }, modifier = Modifier.size(24.dp)) {
-                                            Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
-                                        }
-                                    }
-                                }
-                            }
-                            Spacer(Modifier.height(12.dp))
-                            GlassyButton(
-                                onClick = { viewModel.openCreateTemplateDialog() },
-                                modifier = Modifier.fillMaxWidth(),
-                                containerColor = NotelPrimary.copy(alpha = 0.2f)
-                            ) {
-                                Icon(Icons.Default.Add, null, tint = NotelPrimary, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("Add New Template", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
-                            }
-                        }
-
-                        Spacer(Modifier.height(20.dp))
-                        GlassyButton(
-                            onClick = { viewModel.closeTemplateManager() },
-                            modifier = Modifier.fillMaxWidth(),
-                            containerColor = NotelSurfaceHigh
-                        ) { Text("Close", color = NotelTextPrimary) }
-                    }
-                }
-            }
-        }
-
-        // ── Template Edit / Create Dialog ──────────────────────────────────
-        if (state.showTemplateEditDialog && state.templateToEdit != null) {
-            val template = state.templateToEdit!!
-            val isNew = template.id == 0L
-            var titleText by remember(template) { mutableStateOf(template.title) }
-            var bodyText by remember(template) { mutableStateOf(template.body) }
-            var isMed by remember(template) { mutableStateOf(template.isMedication) }
-
-            Dialog(onDismissRequest = { viewModel.closeTemplateManager() }) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(NotelSurface)
-                        .border(1.dp, NotelPrimary.copy(alpha = 0.2f), RoundedCornerShape(22.dp))
-                        .padding(20.dp)
-                ) {
-                    Column {
-                        Text(if (isNew) "Create Template" else "Edit Template", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = NotelTextPrimary)
-                        Spacer(Modifier.height(12.dp))
-                        OutlinedTextField(
-                            value = titleText,
-                            onValueChange = { titleText = it },
-                            label = { Text("Title", color = NotelTextSecondary) },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        OutlinedTextField(
-                            value = bodyText,
-                            onValueChange = { bodyText = it },
-                            label = { Text("Body Text", color = NotelTextSecondary) },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(checked = isMed, onCheckedChange = { isMed = it })
-                            Text("Requires Medication Confirmation", color = NotelTextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                        Text(
-                            "When enabled, tapping this template opens a confirmation dialog to verify dosage before saving instead of logging instantly.",
-                            color = NotelTextSecondary,
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(start = 32.dp, top = 2.dp)
-                        )
-                        Spacer(Modifier.height(16.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            GlassyButton(
-                                onClick = { viewModel.closeTemplateManager() },
-                                modifier = Modifier.weight(1f),
-                                containerColor = NotelSurfaceHigh
-                            ) { Text("Cancel", color = NotelTextPrimary) }
-
-                            GlassyButton(
-                                onClick = { viewModel.saveEditedTemplate(titleText, bodyText, template.categorySlug, isMed) },
-                                modifier = Modifier.weight(1f),
-                                containerColor = NotelPrimary
-                            ) { Text(if (isNew) "Create" else "Save Changes", color = Color.White, fontWeight = FontWeight.Bold) }
-                        }
-                    }
-                }
-            }
-        }
-
-        // ── Delete Template Confirmation Dialog ─────────────────────────────
-        state.templateToDelete?.let { template ->
-            AlertDialog(
-                onDismissRequest = { viewModel.dismissDeleteTemplate() },
-                title = { Text("Delete Template?", color = NotelTextPrimary) },
-                text = { Text("Are you sure you want to delete template '${template.title}'? This will not delete historical log entries.", color = NotelTextSecondary) },
-                confirmButton = {
-                    TextButton(onClick = { viewModel.confirmDeleteTemplate() }) {
-                        Text("Delete", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { viewModel.dismissDeleteTemplate() }) {
-                        Text("Cancel", color = NotelTextPrimary)
-                    }
-                },
-                containerColor = NotelSurface,
-                shape = RoundedCornerShape(16.dp)
-            )
-        }
     }
 }
 

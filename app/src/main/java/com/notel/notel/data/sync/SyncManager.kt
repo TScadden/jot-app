@@ -40,6 +40,7 @@ class SyncManager @Inject constructor(
     private val healthConnectManager: com.notel.notel.data.healthconnect.HealthConnectManager,
     private val logRepositoryProvider: javax.inject.Provider<com.notel.notel.data.repository.LogRepository>,
     private val reportGeneratorProvider: javax.inject.Provider<com.notel.notel.util.ReportGenerator>,
+    private val conditionRepositoryProvider: javax.inject.Provider<com.notel.notel.data.repository.ConditionRepository>,
     @ApplicationContext private val context: Context
 ) {
     private val tag = "SyncManager"
@@ -576,7 +577,11 @@ class SyncManager @Inject constructor(
                             preferences.setUserContext(serverCtx)
                         }
                     }
-                    profile.conditions?.let { if (it.isNotBlank()) preferences.setUserConditions(it) }
+                    profile.conditions?.let { serverCondRaw ->
+                        if (serverCondRaw.isNotBlank()) {
+                            conditionRepositoryProvider.get().mergeServerConditions(serverCondRaw)
+                        }
+                    }
                     profile.knowledgeBase?.let { if (it.isNotBlank()) preferences.setKnowledgeBase(it) }
                     profile.professionalUpdates?.let { if (it.isNotBlank()) preferences.setProfessionalUpdates(it) }
                     profile.processedFiles?.let { if (it.isNotBlank()) preferences.setProcessedFiles(it) }

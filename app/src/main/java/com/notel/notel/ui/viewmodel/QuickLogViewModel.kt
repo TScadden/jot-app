@@ -46,6 +46,7 @@ data class QuickLogUiState(
     val retryAfterSeconds: Int = 0,
     val isSaving: Boolean = false,
     val saveSuccess: Boolean = false,
+    val saveError: String? = null,
     // AI Advice
     val isLoadingAdvice: Boolean = false,
     val advice: String? = null,
@@ -75,20 +76,12 @@ data class QuickLogUiState(
     val isValidatingCategory: Boolean = false,
     val categoryToDelete: Category? = null,
     val isOffline: Boolean = false,
-    // Universal Add Proposal Confirmation State
-    val quickAddInput: String = "",
-    val proposals: List<com.notel.notel.util.ParsedProposal> = emptyList(),
-    val showProposalConfirmation: Boolean = false,
     val recentSuggestions: List<com.notel.notel.data.local.entity.LogEntry> = emptyList(),
-    val pinnedTemplates: List<com.notel.notel.data.local.entity.PinnedTemplate> = emptyList(),
-    val historicalDefaultText: String? = null,
-    // Template Management Dialog State
-    val showTemplateManagementDialog: Boolean = false,
-    val showTemplateEditDialog: Boolean = false,
-    val templateToEdit: com.notel.notel.data.local.entity.PinnedTemplate? = null,
-    val templateToDelete: com.notel.notel.data.local.entity.PinnedTemplate? = null,
     val lastLoggedEntryId: Long? = null
-)
+) {
+    val isLogEnabled: Boolean
+        get() = !isSaving && (selectedChips.isNotEmpty() || manualText.trim().isNotBlank())
+}
 
 @HiltViewModel
 class QuickLogViewModel @Inject constructor(
@@ -153,11 +146,7 @@ class QuickLogViewModel @Inject constructor(
                 }
             }
         }
-        viewModelScope.launch {
-            templateRepository.getAllPinnedTemplates().collect { templates ->
-                _uiState.update { it.copy(pinnedTemplates = templates) }
-            }
-        }
+
         viewModelScope.launch {
             val recents = templateRepository.getDeduplicatedRecentSuggestions(10)
             _uiState.update { it.copy(recentSuggestions = recents) }
@@ -328,61 +317,79 @@ class QuickLogViewModel @Inject constructor(
     fun updateManualText(text: String) = _uiState.update { it.copy(manualText = text) }
 
     fun saveEntry() {
-        val state = _uiState.value
-        val category = state.selectedCategory ?: return
+        val snapshot = _uiState.value
+        if (snapshot.isSaving || !snapshot.isLogEnabled) return
+
+        val category = snapshot.selectedCategory ?: return
+        val selectedTiles = snapshot.selectedChips
+        val trimmedText = snapshot.manualText.trim()
+
         val body = buildString {
-            if (state.composedText.isNotBlank()) append(state.composedText)
-            if (state.manualText.isNotBlank()) {
-                if (isNotEmpty()) append(" — ")
-                append(state.manualText)
+            if (selectedTiles.isNotEmpty()) {
+                append(selectedTiles.joinToString(" · "))
             }
-        }.ifBlank { return }
+            if (trimmedText.isNotBlank()) {
+                if (isNotEmpty()) append(" — ")
+                append(trimmedText)
+            }
+        }
+        if (body.isBlank()) return
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isSaving = true) }
-            
-            // Default to General category if no tiles/chips added
-            val finalCategoryId = if (state.selectedChips.isEmpty()) {
+            _uiState.update { it.copy(isSaving = true, saveError = null) }
+
+            val finalCategoryId = if (selectedTiles.isEmpty()) {
                 categoryRepository.findCategoryIdBySlug("general", defaultId = 7)
             } else category.id
-            
-            // Mark today as logged
-            val todayStr = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
-            val updatedDays = (state.loggedDays + todayStr).distinct()
-            preferences.setLoggedDays(Json.encodeToString(updatedDays))
-            
-            // Immediately recalculate streak so UI updates
-            preferences.updateStreak()
 
-            val savedId = logRepository.insertEntry(
-                LogEntry(
-                    categoryId = finalCategoryId,
-                    body = body,
-                    chips = Json.encodeToString(state.selectedChips),
-                    manualText = "", // No longer storing redundant manual text separately
-                    source = if (state.selectedChips.isNotEmpty()) "Combined" else "Manual"
+            try {
+                // Mark today as logged
+                val todayStr = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
+                val updatedDays = (snapshot.loggedDays + todayStr).distinct()
+                preferences.setLoggedDays(Json.encodeToString(updatedDays))
+                preferences.updateStreak()
+
+                val savedId = logRepository.insertEntry(
+                    LogEntry(
+                        categoryId = finalCategoryId,
+                        body = body,
+                        chips = Json.encodeToString(selectedTiles),
+                        manualText = "",
+                        source = if (selectedTiles.isNotEmpty()) "Combined" else "Manual"
+                    )
                 )
-            )
-            
-            // Invalidate cache for this category so next fetch reflects the new entry
-            chipCache.remove(category.id)
-            _uiState.update {
-                it.copy(
-                    isSaving = false,
-                    saveSuccess = true,
-                    lastLoggedEntryId = savedId,
-                    selectedChips = emptyList(),
-                    composedText = "",
-                    manualText = ""
-                )
+
+                chipCache.remove(category.id)
+                _uiState.update {
+                    it.copy(
+                        isSaving = false,
+                        saveSuccess = true,
+                        saveError = null,
+                        lastLoggedEntryId = savedId,
+                        selectedChips = emptyList(),
+                        composedText = "",
+                        manualText = ""
+                    )
+                }
+                _eventFlow.emit(QuickLogEvent.EntryLogged(entryId = savedId, message = "Entry logged"))
+                calculateSmartRanking()
+
+                try {
+                    syncManager.pushEntries()
+                    syncManager.pushProfileData()
+                } catch (syncErr: Exception) {
+                    // Sync failure does not remove locally saved entry
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isSaving = false,
+                        saveSuccess = false,
+                        saveError = e.message ?: "Failed to save log entry locally"
+                    )
+                }
+                _eventFlow.emit(QuickLogEvent.SaveFailed(message = e.message ?: "Failed to save log entry"))
             }
-            _eventFlow.emit(QuickLogEvent.EntryLogged(entryId = savedId, message = "Entry logged"))
-            calculateSmartRanking()
-            
-            // Final push to ensure profile data (logged days, counters) is updated
-            // Lightweight push — only send the new entries and updated profile (for streaks/logged days)
-            syncManager.pushEntries()
-            syncManager.pushProfileData()
         }
     }
 
@@ -704,186 +711,6 @@ class QuickLogViewModel @Inject constructor(
             .distinctBy { it.lowercase() }
     }
 
-    // ── Universal Quick-Add & Proposals ─────────────────────────────────────
-    fun updateQuickAddInput(input: String) {
-        _uiState.update { it.copy(quickAddInput = input) }
-    }
-
-    fun parseAndShowProposals(input: String? = null) {
-        val raw = input ?: _uiState.value.manualText.ifBlank { _uiState.value.quickAddInput }
-        if (raw.isBlank()) return
-
-        viewModelScope.launch {
-            val parsed = com.notel.notel.util.QuickAddParser.parse(raw)
-            val updated = parsed.map { proposal ->
-                var dosage = proposal.dosage
-                var intensity = proposal.intensity
-                var catSlug = proposal.intent.name.lowercase()
-
-                if (proposal.intent.name == "SYMPTOM" && intensity.isNullOrBlank()) {
-                    intensity = templateRepository.getHistoricalIntensityForSymptom(proposal.summaryText)
-                }
-                val historicalCatSlug = templateRepository.getLastCategorySlugForEntryType(proposal.summaryText)
-                if (historicalCatSlug != null) {
-                    catSlug = historicalCatSlug
-                }
-
-                proposal.copy(
-                    dosage = dosage,
-                    intensity = intensity
-                )
-            }
-
-            _uiState.update {
-                it.copy(
-                    proposals = updated,
-                    showProposalConfirmation = true
-                )
-            }
-        }
-    }
-
-    fun openTemplateManager() = _uiState.update { it.copy(showTemplateManagementDialog = true) }
-    fun closeTemplateManager() = _uiState.update { it.copy(showTemplateManagementDialog = false, showTemplateEditDialog = false, templateToEdit = null, templateToDelete = null) }
-
-    fun openCreateTemplateDialog() {
-        val defaultSlug = _uiState.value.selectedCategory?.slug ?: "general"
-        _uiState.update {
-            it.copy(
-                showTemplateEditDialog = true,
-                templateToEdit = com.notel.notel.data.local.entity.PinnedTemplate(
-                    id = 0L,
-                    title = "",
-                    categorySlug = defaultSlug,
-                    body = "",
-                    sortOrder = 0,
-                    isMedication = false
-                )
-            )
-        }
-    }
-
-    fun openEditTemplate(template: com.notel.notel.data.local.entity.PinnedTemplate) {
-        _uiState.update { it.copy(showTemplateEditDialog = true, templateToEdit = template) }
-    }
-
-    fun saveEditedTemplate(updatedTitle: String, updatedBody: String, updatedSlug: String, isMedication: Boolean) {
-        val current = _uiState.value.templateToEdit ?: return
-        if (current.id == 0L) {
-            val title = updatedTitle.ifBlank { "New Template" }
-            val body = updatedBody.ifBlank { title }
-            pinTemplate(title = title, categorySlug = updatedSlug, body = body, isMedication = isMedication)
-            _uiState.update { it.copy(showTemplateEditDialog = false, templateToEdit = null) }
-        } else {
-            viewModelScope.launch {
-                templateRepository.updateTemplate(
-                    current.copy(
-                        title = updatedTitle.ifBlank { current.title },
-                        body = updatedBody.ifBlank { current.body },
-                        categorySlug = updatedSlug,
-                        isMedication = isMedication
-                    )
-                )
-                _uiState.update { it.copy(showTemplateEditDialog = false, templateToEdit = null) }
-            }
-        }
-    }
-
-    fun requestDeleteTemplate(template: com.notel.notel.data.local.entity.PinnedTemplate) {
-        _uiState.update { it.copy(templateToDelete = template) }
-    }
-
-    fun confirmDeleteTemplate() {
-        val template = _uiState.value.templateToDelete ?: return
-        viewModelScope.launch {
-            templateRepository.deleteTemplate(template)
-            _uiState.update { it.copy(templateToDelete = null) }
-        }
-    }
-
-    fun dismissDeleteTemplate() {
-        _uiState.update { it.copy(templateToDelete = null) }
-    }
-
-    fun pinTemplate(title: String, categorySlug: String, body: String, isMedication: Boolean = false) {
-        viewModelScope.launch {
-            val maxSort = _uiState.value.pinnedTemplates.maxOfOrNull { it.sortOrder } ?: 0
-            templateRepository.saveTemplate(
-                com.notel.notel.data.local.entity.PinnedTemplate(
-                    title = title,
-                    categorySlug = categorySlug,
-                    body = body,
-                    sortOrder = maxSort + 1,
-                    isMedication = isMedication
-                )
-            )
-        }
-    }
-
-    fun saveProposalsAsTemplates() {
-        val state = _uiState.value
-        viewModelScope.launch {
-            state.proposals.forEach { proposal ->
-                val catSlug = proposal.intent.name.lowercase()
-                val isMed = proposal.intent.name == "MEDICATION"
-                templateRepository.saveTemplate(
-                    com.notel.notel.data.local.entity.PinnedTemplate(
-                        title = proposal.summaryText.take(20),
-                        categorySlug = catSlug,
-                        body = proposal.summaryText,
-                        isMedication = isMed
-                    )
-                )
-            }
-        }
-    }
-
-    fun deleteTemplate(template: com.notel.notel.data.local.entity.PinnedTemplate) {
-        viewModelScope.launch {
-            templateRepository.deleteTemplate(template)
-        }
-    }
-
-    fun reorderTemplate(template: com.notel.notel.data.local.entity.PinnedTemplate, moveUp: Boolean) {
-        viewModelScope.launch {
-            val list = _uiState.value.pinnedTemplates.sortedBy { it.sortOrder }.toMutableList()
-            val index = list.indexOfFirst { it.id == template.id }
-            if (index == -1) return@launch
-            val targetIndex = if (moveUp) index - 1 else index + 1
-            if (targetIndex in list.indices) {
-                val temp = list[index]
-                list[index] = list[targetIndex]
-                list[targetIndex] = temp
-                // Re-assign sort orders
-                val updatedList = list.mapIndexed { idx, item -> item.copy(sortOrder = idx) }
-                templateRepository.reorderTemplates(updatedList)
-            }
-        }
-    }
-
-    fun logFromTemplate(template: com.notel.notel.data.local.entity.PinnedTemplate) {
-        viewModelScope.launch {
-            val catId = categoryRepository.findCategoryIdBySlug(template.categorySlug, defaultId = 7)
-            val newId = logRepository.insertEntry(
-                LogEntry(
-                    id = 0L,
-                    categoryId = catId,
-                    body = template.body,
-                    chips = template.chipsJson,
-                    manualText = "",
-                    source = "Pinned Template"
-                )
-            )
-            _uiState.update { 
-                it.copy(
-                    saveSuccess = true,
-                    lastLoggedEntryId = newId
-                ) 
-            }
-            _eventFlow.emit(QuickLogEvent.EntryLogged(entryId = newId, message = if (template.isMedication) "Medication logged" else "Entry logged"))
-        }
-    }
-
     fun logFromRecent(entry: LogEntry) {
         viewModelScope.launch {
             val newId = logRepository.insertEntry(
@@ -917,75 +744,6 @@ class QuickLogViewModel @Inject constructor(
                 ) 
             }
             _eventFlow.emit(QuickLogEvent.EntryUndone(message = "Entry removed"))
-        }
-    }
-
-    fun updateProposal(index: Int, updated: com.notel.notel.util.ParsedProposal) {
-        val current = _uiState.value.proposals.toMutableList()
-        if (index in current.indices) {
-            current[index] = updated
-            _uiState.update { it.copy(proposals = current) }
-        }
-    }
-
-    fun removeProposal(index: Int) {
-        val current = _uiState.value.proposals.toMutableList()
-        if (index in current.indices) {
-            current.removeAt(index)
-            _uiState.update { it.copy(proposals = current) }
-        }
-    }
-
-    fun dismissProposals() {
-        _uiState.update { it.copy(showProposalConfirmation = false, proposals = emptyList()) }
-    }
-
-    fun confirmProposals() {
-        val state = _uiState.value
-        val proposalsToSave = state.proposals
-        if (proposalsToSave.isEmpty()) {
-            dismissProposals()
-            return
-        }
-
-        viewModelScope.launch {
-            _uiState.update { it.copy(isSaving = true) }
-            var lastCreatedId: Long = 0L
-            for (proposal in proposalsToSave) {
-                val catSlug = proposal.intent.name.lowercase()
-                val catId = categoryRepository.findCategoryIdBySlug(catSlug, defaultId = 7)
-                lastCreatedId = logRepository.insertEntry(
-                    LogEntry(
-                        categoryId = catId,
-                        body = proposal.summaryText,
-                        chips = "[]",
-                        manualText = "",
-                        source = "Universal Quick-Add"
-                    )
-                )
-            }
-
-            val todayStr = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
-            val updatedDays = (state.loggedDays + todayStr).distinct()
-            preferences.setLoggedDays(Json.encodeToString(updatedDays))
-            preferences.updateStreak()
-
-            _uiState.update {
-                it.copy(
-                    isSaving = false,
-                    saveSuccess = true,
-                    lastLoggedEntryId = lastCreatedId,
-                    showProposalConfirmation = false,
-                    proposals = emptyList(),
-                    quickAddInput = "",
-                    manualText = ""
-                )
-            }
-            if (lastCreatedId != 0L) {
-                _eventFlow.emit(QuickLogEvent.EntryLogged(entryId = lastCreatedId, message = "Entry logged"))
-            }
-            syncManager.pushEntries()
-            syncManager.pushProfileData()
         }
     }
 
