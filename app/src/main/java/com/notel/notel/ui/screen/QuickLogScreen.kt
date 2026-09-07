@@ -336,7 +336,7 @@ fun QuickLogScreen(
 
                 item {
                     AnimatedVisibility(
-                        visible = state.selectedChips.isNotEmpty() || state.manualText.trim().isNotBlank(),
+                        visible = state.selectedChips.isNotEmpty() || state.manualText.trim().isNotBlank() || state.saveError != null,
                         enter = fadeIn() + expandVertically(),
                         exit = fadeOut() + shrinkVertically()
                     ) {
@@ -347,64 +347,91 @@ fun QuickLogScreen(
                                     .padding(horizontal = 16.dp),
                                 color = NotelSurface
                             ) {
-                                Text(
-                                    text = "Your quick note",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = NotelTextSecondary
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = buildString {
-                                        if (state.composedText.isNotBlank()) append(state.composedText)
-                                        if (state.manualText.isNotBlank()) {
-                                            if (isNotEmpty()) append(" — ")
-                                            append(state.manualText.trim())
-                                        }
-                                    },
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = NotelTextPrimary,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                            Spacer(Modifier.height(12.dp))
-                        }
-                    }
-                }
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    // Card Header Row: Label on left, compact Log button on top-right
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "Your quick note",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = NotelTextSecondary
+                                        )
 
-                item {
-                    // Sticky / Bottom Action Button positioned directly within content scrollable area above dock
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                    ) {
-                        Button(
-                            onClick = { viewModel.saveEntry() },
-                            enabled = state.isLogEnabled,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(52.dp),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = activeCatColor,
-                                disabledContainerColor = activeCatColor.copy(alpha = 0.35f),
-                                contentColor = Color.White,
-                                disabledContentColor = Color.White.copy(alpha = 0.5f)
-                            )
-                        ) {
-                            if (state.isSaving) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(22.dp),
-                                    color = Color.White,
-                                    strokeWidth = 2.5.dp
-                                )
-                            } else {
-                                Text(
-                                    text = "Log Quick Note",
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                        Button(
+                                            onClick = { viewModel.saveEntry() },
+                                            enabled = state.isLogEnabled,
+                                            modifier = Modifier
+                                                .widthIn(min = 72.dp, max = 88.dp)
+                                                .height(36.dp)
+                                                .defaultMinSize(minWidth = 72.dp, minHeight = 48.dp),
+                                            shape = RoundedCornerShape(18.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = activeCatColor,
+                                                disabledContainerColor = activeCatColor.copy(alpha = 0.35f),
+                                                contentColor = Color.White,
+                                                disabledContentColor = Color.White.copy(alpha = 0.5f)
+                                            )
+                                        ) {
+                                            if (state.isSaving) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(16.dp),
+                                                    color = Color.White,
+                                                    strokeWidth = 2.dp
+                                                )
+                                            } else {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Check,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(14.dp),
+                                                        tint = Color.White
+                                                    )
+                                                    Text(
+                                                        text = "Log",
+                                                        fontSize = 13.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    // Full available width composed phrase
+                                    Text(
+                                        text = buildString {
+                                            if (state.composedText.isNotBlank()) append(state.composedText)
+                                            if (state.manualText.isNotBlank()) {
+                                                if (isNotEmpty()) append(" — ")
+                                                append(state.manualText.trim())
+                                            }
+                                        },
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = NotelTextPrimary,
+                                        fontWeight = FontWeight.Medium,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+
+                                    if (state.saveError != null) {
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            text = state.saveError!!,
+                                            color = MaterialTheme.colorScheme.error,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                }
                             }
+                            Spacer(Modifier.height(16.dp))
                         }
                     }
                 }
