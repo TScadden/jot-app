@@ -10,6 +10,7 @@
 
 .auth-page-wrapper {
     min-height: 100vh;
+    min-height: 100dvh; /* Progressive enhancement: excludes dynamic browser chrome */
     width: 100%;
     display: flex;
     justify-content: center;
@@ -276,6 +277,12 @@
     font-weight: 600;
     cursor: pointer;
     padding: 4px 8px;
+    /* Minimum 44×44 px touch target */
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     border-radius: 6px;
     transition: color 0.2s ease, background 0.2s ease;
 }

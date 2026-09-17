@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tabs | Wellness Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,26 +13,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    <script>
-        // Block multi-touch pinch zoom & gesture zooming on mobile iOS Safari / Chrome
-        document.addEventListener('touchmove', function(e) {
-            if (e.touches && e.touches.length > 1) {
-                e.preventDefault();
-            }
-        }, { passive: false });
 
-        document.addEventListener('gesturestart', function(e) {
-            e.preventDefault();
-        }, { passive: false });
-
-        document.addEventListener('gesturechange', function(e) {
-            e.preventDefault();
-        }, { passive: false });
-
-        document.addEventListener('gestureend', function(e) {
-            e.preventDefault();
-        }, { passive: false });
-    </script>
     <style>
         /* Prevent text selection globally except in input fields/textareas */
         * {
@@ -52,6 +33,7 @@
             padding-top: 140px !important;
             padding-bottom: 60px !important;
             min-height: 100vh;
+            min-height: 100dvh; /* Progressive enhancement */
         }
 
         .dashboard-header {
@@ -1214,6 +1196,49 @@
         .graph-analysis-body p {
             color: rgba(255, 255, 255, 0.85);
             margin-bottom: 0.75rem;
+        }
+
+        /* AI modal: narrow-screen sizing and footer stacking */
+        #graph-analysis-modal .modal-card {
+            /* Safe-area-aware max height using dvh where supported */
+            max-height: min(
+                88vh,
+                calc(100dvh
+                    - env(safe-area-inset-top, 0px)
+                    - env(safe-area-inset-bottom, 0px)
+                    - 24px)
+            );
+        }
+
+        @media (max-width: 480px) {
+            #graph-analysis-modal .modal-card {
+                width: calc(100% - 24px);
+            }
+
+            /* Stack Save / Download / Close vertically, full width */
+            #graph-analysis-modal [style*="justify-content: space-between"] {
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 0.6rem !important;
+            }
+
+            #graph-analysis-modal [style*="justify-content: space-between"] > * {
+                width: 100% !important;
+                justify-content: center !important;
+            }
+
+            /* Keep the inner action button group stacked too */
+            #graph-analysis-modal [style*="display: flex"][style*="align-items: center"] {
+                flex-direction: column !important;
+                align-items: stretch !important;
+                width: 100% !important;
+            }
+
+            #btn-send-to-app,
+            #btn-download-report {
+                width: 100% !important;
+                justify-content: center !important;
+            }
         }
     </style>
 </head>

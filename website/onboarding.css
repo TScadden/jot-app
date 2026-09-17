@@ -4,6 +4,7 @@
 
 .onboarding-page-wrapper {
     min-height: 100vh;
+    min-height: 100dvh; /* Progressive enhancement: excludes dynamic browser chrome */
     width: 100%;
     display: flex;
     justify-content: center;
@@ -209,6 +210,8 @@
     align-items: center;
     gap: 8px;
     padding: 6px 14px;
+    /* Minimum 44 px touch target height */
+    min-height: 44px;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 50px;
@@ -234,7 +237,9 @@
 
 /* Action Footer Navigation */
 .onboarding-footer {
-    padding: 1.5rem 2.5rem 2rem 2.5rem;
+    padding: 1.5rem 2.5rem;
+    /* Ensure the footer clears the iOS home indicator */
+    padding-bottom: max(2rem, calc(env(safe-area-inset-bottom, 0px) + 1.5rem));
     border-top: 1px solid rgba(255, 255, 255, 0.06);
     display: flex;
     justify-content: space-between;

@@ -178,17 +178,24 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     if (sliderImages.length > 0) {
-        startSlider();
+        const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-        // Add click events to dots
-        dots.forEach((dot, index) => {
-            dot.addEventListener('click', () => {
-                if (currentImageIndex !== index) {
-                    showImage(index);
-                    startSlider(); // Restart the clock
-                }
+        if (prefersReducedMotion) {
+            // Reduced-motion: keep the first slide visible, do not start the auto-advance interval
+            showImage(0);
+        } else {
+            startSlider();
+
+            // Add click events to dots
+            dots.forEach((dot, index) => {
+                dot.addEventListener('click', () => {
+                    if (currentImageIndex !== index) {
+                        showImage(index);
+                        startSlider(); // Restart the clock
+                    }
+                });
             });
-        });
+        }
     }
 
     // Mobile Navigation Toggle

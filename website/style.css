@@ -68,6 +68,8 @@ nav {
     height: 80px;
     display: flex;
     align-items: center;
+    /* Account for iOS notch / status bar */
+    padding-top: env(safe-area-inset-top, 0px);
 }
 
 nav.glass {
@@ -115,12 +117,14 @@ nav.glass {
     display: none;
     flex-direction: column;
     justify-content: space-between;
-    width: 30px;
-    height: 21px;
+    /* Minimum 44×44 px touch target (WCAG 2.5.5) */
+    min-width: 44px;
+    min-height: 44px;
     background: transparent;
     border: none;
     cursor: pointer;
-    padding: 0;
+    /* Centre the 30×21 icon inside the larger hit area */
+    padding: 11px 7px;
     z-index: 1001;
 }
 
@@ -698,6 +702,11 @@ footer {
 }
 
 @media (max-width: 768px) {
+    /* Reduce container horizontal padding on narrow phones */
+    .container {
+        padding: 0 1.25rem;
+    }
+
     .hero-grid {
         grid-template-columns: 1fr;
         text-align: center;
@@ -795,6 +804,34 @@ footer {
     .legend-item {
         font-size: 0.8rem;
         padding: 0.2rem 0.4rem;
+    }
+}
+
+/* =====================================================================
+   Reduced Motion — stop decorative animations and slider transitions
+   ===================================================================== */
+@media (prefers-reduced-motion: reduce) {
+    /* Stop the hero phone float animation */
+    .floating-phone {
+        animation: none !important;
+    }
+
+    /* Disable cross-fade transitions on hero slider images */
+    .hero-slider .screenshot {
+        transition: none !important;
+    }
+
+    /* Suppress the glow parallax animation added by mousemove */
+    .hero-bg .glow {
+        transition: none !important;
+        transform: none !important;
+    }
+
+    /* General: cut all non-essential transitions globally on this page */
+    .feature-card,
+    .btn-primary,
+    .btn-secondary {
+        transition: none !important;
     }
 }
 
