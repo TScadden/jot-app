@@ -460,8 +460,12 @@
             .focus-content-wrapper {
                 height: auto !important;
                 min-height: 100%;
-                padding: 4.5rem 1rem 3rem 1rem !important;
+                padding: calc(env(safe-area-inset-top, 0px) + 125px) 1rem 3rem 1rem !important;
                 gap: 1.5rem !important;
+                transform: none !important;
+            }
+            .focus-content-wrapper.scroll-align-top {
+                padding-top: calc(env(safe-area-inset-top, 0px) + 125px) !important;
             }
             .focus-active-tests-row {
                 display: none !important;
