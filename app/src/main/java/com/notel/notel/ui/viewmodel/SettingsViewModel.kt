@@ -427,6 +427,34 @@ class SettingsViewModel @Inject constructor(
         } catch (e: Exception) { emptyList() }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery = _searchQuery.asStateFlow()
+
+    fun setSearchQuery(query: String) {
+        _searchQuery.value = query
+    }
+
+    val conditionsAndMedicationsCount: StateFlow<Int> = combine(
+        conditionRepository.conditions,
+        medications
+    ) { conditions, meds ->
+        conditions.size + meds.size
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val connectedAppsCount: StateFlow<Int> = combine(
+        healthConnectConnected,
+        preferences.fitbitToken,
+        googleCalendarConnected,
+        googleAccountConnected
+    ) { hc, fitbitToken, cal, google ->
+        var count = 0
+        if (hc) count++
+        if (fitbitToken.isNotBlank()) count++
+        if (cal) count++
+        if (google) count++
+        if (count == 0) 1 else count
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 1)
+
     val reportReadyEvent = logRepository.reportReadyEvent
     val aiInsightReadyEvent = logRepository.aiInsightReadyEvent
 

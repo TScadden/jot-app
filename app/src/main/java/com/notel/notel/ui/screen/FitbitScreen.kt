@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Canvas
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -25,25 +26,26 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.activity.ComponentActivity
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.FitbitViewModel
 import com.notel.notel.data.healthconnect.DailyHeartRateSummary
-import com.notel.notel.data.preferences.NotelPreferences
-import androidx.compose.runtime.LaunchedEffect
-import kotlinx.coroutines.flow.first
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.decodeFromString
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,22 +55,17 @@ fun FitbitScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
-    // We read the DataStore through the ViewModel's state.historicalSpikes instead
     
     val healthConnectLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = viewModel.healthConnectManager.requestPermissionsActivityContract()
     ) { granted ->
-        // Trigger generic refresh even if only partial or no permissions granted 
-        // to check current actual state.
         viewModel.onPermissionsGranted()
     }
-    var showCompareCalendar by remember { mutableStateOf(false) }
-    var showCalendar by remember { mutableStateOf(false) }
-    var compareMode by remember { mutableStateOf("Days") }
-    var selectedCompareDate by remember { mutableStateOf<Pair<String, Int>?>(null) }
-    var showHrvInfo by remember { mutableStateOf(false) }
-    var showHrInfo by remember { mutableStateOf(false) }
     
+    var showCalendar by remember { mutableStateOf(false) }
+    var showHrInfo by remember { mutableStateOf(false) }
+    var showSpikeDetails by remember { mutableStateOf(false) }
+
     if (showHrInfo) {
         AlertDialog(
             onDismissRequest = { showHrInfo = false },
@@ -87,96 +84,21 @@ fun FitbitScreen(
                         fontSize = 14.sp,
                         color = NotelTextSecondary
                     )
-                    
                     Text(
-                        "Clinical Benchmarks:",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
-                        color = NotelTextPrimary
-                    )
-                    
-                    Text(
+                        "Clinical Benchmarks:\n" +
                         "• Resting (RHR): 60 - 80 bpm\n" +
                         "• Tachycardia: >100 bpm at rest\n" +
                         "• Bradycardia: <60 bpm at rest",
                         fontSize = 14.sp,
                         color = NotelTextSecondary
                     )
-                    
-                    Surface(
-                        color = NotelPrimary.copy(alpha = 0.1f),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            "NOTE: For clinical management (POTS/Autonomic), we focus on 'Spikes' (jumps of 30+ bpm) rather than just the average. If your average is high, check the 'Spike Analysis' card below.",
-                            modifier = Modifier.padding(8.dp),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = NotelPrimary
-                        )
-                    }
                 }
             },
             containerColor = NotelSurface,
             shape = RoundedCornerShape(24.dp)
         )
     }
-    
-    if (showHrvInfo) {
-        AlertDialog(
-            onDismissRequest = { showHrvInfo = false },
-            confirmButton = {
-                TextButton(onClick = { showHrvInfo = false }) {
-                    Text("Got it", color = NotelPrimary)
-                }
-            },
-            title = {
-                Text("Understanding HRV (RMSSD)", fontWeight = FontWeight.Bold, color = NotelTextPrimary)
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        "Heart Rate Variability (HRV) measures the variation in time between each heartbeat. In Tabs, we use RMSSD, which is the gold standard for measuring autonomic recovery.",
-                        fontSize = 14.sp,
-                        color = NotelTextSecondary
-                    )
-                    
-                    Text(
-                        "Typical Ranges:",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
-                        color = NotelTextPrimary
-                    )
-                    
-                    Text(
-                        "• Athletes/Young Adults: 60ms - 100ms+\n" +
-                        "• Healthy Adults: 30ms - 60ms\n" +
-                        "• Higher Stress/Recovery: 10ms - 30ms",
-                        fontSize = 14.sp,
-                        color = NotelTextSecondary
-                    )
-                    
-                    Surface(
-                        color = NotelPrimary.copy(alpha = 0.1f),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            "NOTE: HRV is highly individual. Your personal baseline is more important than these averages. A significant drop from YOUR norm usually indicates high physiological load or pending illness.",
-                            modifier = Modifier.padding(8.dp),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = NotelPrimary
-                        )
-                    }
-                }
-            },
-            containerColor = NotelSurface,
-            shape = RoundedCornerShape(24.dp)
-        )
-    }
-    
+
     if (showCalendar && state.isConnected) {
         val initialDateMillis = remember(state.selectedHeartRateDate) {
             if (state.selectedHeartRateDate == "today") null
@@ -185,7 +107,7 @@ fun FitbitScreen(
                     timeZone = java.util.TimeZone.getTimeZone("UTC")
                 }
                 sdf.parse(state.selectedHeartRateDate)?.time
-            } catch(e: Exception) { null }
+            } catch (e: Exception) { null }
         }
         val todayUtcEnd = remember { java.time.LocalDate.now().plusDays(1).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli() - 1 }
         val days180AgoUtc = remember { java.time.LocalDate.now().minusDays(180).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli() }
@@ -226,116 +148,16 @@ fun FitbitScreen(
             DatePicker(state = datePickerState)
         }
     }
-    
-    if (showCompareCalendar) {
-        if (compareMode == "Days") {
-            val datePickerState = rememberDatePickerState(
-                selectableDates = object : SelectableDates {
-                    override fun isSelectableDate(utcTimeMillis: Long): Boolean {
-                        val todayUtcEnd = java.time.LocalDate.now().plusDays(1).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli() - 1
-                        val days180AgoUtc = java.time.LocalDate.now().minusDays(180).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
-                        return utcTimeMillis in days180AgoUtc..todayUtcEnd
-                    }
-                }
-            )
-            
-            DatePickerDialog(
-                onDismissRequest = { showCompareCalendar = false },
-                confirmButton = {
-                    TextButton(onClick = {
-                        datePickerState.selectedDateMillis?.let { millis ->
-                            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
-                                timeZone = java.util.TimeZone.getTimeZone("UTC")
-                            }
-                            val formatted = sdf.format(java.util.Date(millis))
-                            val hr = state.historicalHeartRate.find { it.first == formatted }?.second
-                            if (hr != null) {
-                                selectedCompareDate = formatted to hr
-                            }
-                        }
-                        showCompareCalendar = false
-                    }) {
-                        Text("Compare", color = NotelPrimary)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showCompareCalendar = false }) {
-                        Text("Cancel", color = NotelTextSecondary)
-                    }
-                }
-            ) {
-                DatePicker(state = datePickerState)
-            }
+
+    val displayDateLabel = remember(state.selectedHeartRateDate) {
+        if (state.selectedHeartRateDate == "today" || state.selectedHeartRateDate == java.time.LocalDate.now().toString()) {
+            "Today"
         } else {
-            val dateRangePickerState = rememberDateRangePickerState(
-                selectableDates = object : SelectableDates {
-                    override fun isSelectableDate(utcTimeMillis: Long): Boolean {
-                        val formatted = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
-                            timeZone = java.util.TimeZone.getTimeZone("UTC")
-                        }.format(java.util.Date(utcTimeMillis))
-                        return state.historicalHeartRate.any { it.first == formatted }
-                    }
-                }
-            )
-            
-            androidx.compose.runtime.LaunchedEffect(dateRangePickerState.selectedStartDateMillis, dateRangePickerState.selectedEndDateMillis) {
-                val start = dateRangePickerState.selectedStartDateMillis
-                val end = dateRangePickerState.selectedEndDateMillis
-                if (start != null && end == null) {
-                    val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
-                    cal.timeInMillis = start
-                    cal.add(java.util.Calendar.DAY_OF_YEAR, -6)
-                    dateRangePickerState.setSelection(cal.timeInMillis, start)
-                }
-            }
-            
-            DatePickerDialog(
-                onDismissRequest = { showCompareCalendar = false },
-                confirmButton = {
-                    TextButton(onClick = {
-                        dateRangePickerState.selectedEndDateMillis?.let { millis ->
-                            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
-                                timeZone = java.util.TimeZone.getTimeZone("UTC")
-                            }
-                            val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
-                            cal.timeInMillis = millis
-                            var sum = 0
-                            var count = 0
-                            for (i in 0 until 7) {
-                                val dStr = sdf.format(cal.time)
-                                val hr = state.historicalHeartRate.find { it.first == dStr }?.second
-                                if (hr != null) {
-                                    sum += hr
-                                    count++
-                                }
-                                cal.add(java.util.Calendar.DAY_OF_YEAR, -1)
-                            }
-                            if (count > 0) {
-                                val formattedDate = sdf.format(java.util.Date(millis))
-                                selectedCompareDate = formattedDate to (sum / count)
-                            }
-                        }
-                        showCompareCalendar = false
-                    }) {
-                        Text("Compare", color = NotelPrimary)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showCompareCalendar = false }) {
-                        Text("Cancel", color = NotelTextSecondary)
-                    }
-                }
-            ) {
-                DateRangePicker(
-                    state = dateRangePickerState,
-                    modifier = Modifier.weight(1f),
-                    title = {
-                        Text("Select resolving week day", modifier = Modifier.padding(16.dp))
-                    },
-                    headline = {
-                        Text("Past 7 Days", modifier = Modifier.padding(horizontal = 16.dp))
-                    }
-                )
+            try {
+                val parsed = java.time.LocalDate.parse(state.selectedHeartRateDate)
+                parsed.format(java.time.format.DateTimeFormatter.ofPattern("MMM d"))
+            } catch (e: Exception) {
+                state.selectedHeartRateDate
             }
         }
     }
@@ -344,7 +166,14 @@ fun FitbitScreen(
         containerColor = NotelBackground,
         topBar = {
             TopAppBar(
-                title = { Text("Daily Heart Rate", fontWeight = FontWeight.Bold, color = NotelTextPrimary) },
+                title = {
+                    Text(
+                        "Heart",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 28.sp,
+                        color = NotelTextPrimary
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = NotelTextSecondary)
@@ -352,17 +181,38 @@ fun FitbitScreen(
                 },
                 actions = {
                     if (state.isConnected) {
-                        IconButton(onClick = { viewModel.sync(force = true) }) {
-                            Icon(Icons.Default.Sync, "Sync", tint = NotelTextSecondary)
-                        }
-                        val isTodaySelected = state.selectedHeartRateDate == "today" || state.selectedHeartRateDate == java.time.LocalDate.now().toString()
-                        if (!isTodaySelected) {
-                            IconButton(onClick = { viewModel.fetchHeartRateForDate("today") }) {
-                                Icon(Icons.Default.Today, "Today", tint = NotelTextSecondary)
+                        // Date selector dropdown pill
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = NotelSurfaceHigh,
+                            border = BorderStroke(1.dp, NotelTextSecondary.copy(alpha = 0.2f)),
+                            modifier = Modifier
+                                .clickable { showCalendar = true }
+                                .padding(end = 8.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = displayDateLabel,
+                                    color = NotelTextPrimary,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 13.sp
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Icon(
+                                    Icons.Default.KeyboardArrowDown,
+                                    contentDescription = "Select Date",
+                                    tint = NotelTextSecondary,
+                                    modifier = Modifier.size(16.dp)
+                                )
                             }
                         }
-                        IconButton(onClick = { showCalendar = true }) {
-                            Icon(Icons.Default.CalendarMonth, "Select Date", tint = NotelTextSecondary)
+
+                        // Refresh button
+                        IconButton(onClick = { viewModel.sync(force = true) }) {
+                            Icon(Icons.Default.Refresh, "Refresh", tint = NotelTextSecondary)
                         }
                     }
                 },
@@ -375,19 +225,23 @@ fun FitbitScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             if (!state.isConnected) {
                 Column(
-                    modifier = Modifier.fillMaxSize().padding(24.dp),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
                     Box(modifier = Modifier.size(120.dp), contentAlignment = Alignment.Center) {
                         Surface(
-                            modifier = Modifier.fillMaxSize().graphicsLayer(alpha = 0.1f),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer(alpha = 0.1f),
                             shape = CircleShape,
                             color = NotelPrimary
                         ) {}
@@ -407,7 +261,7 @@ fun FitbitScreen(
                     )
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        "Link Health Connect to automatically sync your heart rate, sleep, and activity data. This helps the AI identify patterns in your wellness journey.",
+                        "Link Health Connect to automatically sync your heart rate and sleep data.",
                         color = NotelTextSecondary,
                         fontSize = 14.sp,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -419,22 +273,41 @@ fun FitbitScreen(
                         modifier = Modifier.fillMaxWidth(0.9f),
                         containerColor = NotelPrimary
                     ) {
-                        Text("Link Health Connect", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 4.dp))
+                        Text(
+                            "Link Health Connect",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
                     }
                 }
             } else {
+                // Inline status indicator when syncing without wiping visible cached data
                 if (state.isLoading) {
-                    LinearProgressIndicator(
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(2.dp)
-                            .padding(horizontal = 16.dp),
-                        color = NotelPrimary,
-                        trackColor = Color.Transparent
-                    )
-                    Spacer(Modifier.height(16.dp))
+                            .background(NotelSurface.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                            .padding(vertical = 6.dp, horizontal = 12.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            color = NotelPrimary,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Updating sync data...",
+                            color = NotelTextSecondary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
-                
+
+                // ── 1. PROMINENT SUMMARY CARD ──────────────────────────────
                 GlassyCard(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -442,671 +315,565 @@ fun FitbitScreen(
                     color = NotelSurface
                 ) {
                     Column(
-                        horizontalAlignment = Alignment.CenterHorizontally, 
-                        modifier = Modifier.fillMaxWidth()
+                        horizontalAlignment = Alignment.Start,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
                     ) {
-                        // Pulsing Heart Animation
-                        val infiniteTransition = rememberInfiniteTransition(label = "heartPulse")
-                        val scale by infiniteTransition.animateFloat(
-                            initialValue = 1f,
-                            targetValue = 1.15f,
-                            animationSpec = infiniteRepeatable(
-                                animation = tween(800, easing = FastOutSlowInEasing),
-                                repeatMode = RepeatMode.Reverse
-                            ),
-                            label = "scale"
-                        )
-                        val opacity by infiniteTransition.animateFloat(
-                            initialValue = 0.7f,
-                            targetValue = 1f,
-                            animationSpec = infiniteRepeatable(
-                                animation = tween(800, easing = FastOutSlowInEasing),
-                                repeatMode = RepeatMode.Reverse
-                            ),
-                            label = "opacity"
-                        )
-
-                        Icon(
-                            imageVector = Icons.Default.Favorite, 
-                            null, 
-                            tint = NotelPrimary.copy(alpha = opacity), 
-                            modifier = Modifier
-                                .size(64.dp)
-                                .graphicsLayer(scaleX = scale, scaleY = scale)
-                        )
-                        Spacer(Modifier.height(16.dp))
-                        Text(
-                            if (state.selectedHeartRateDate == "today") "Awake Average Today" else "Awake Daily Average",
-                            color = NotelTextSecondary,
-                            fontSize = 14.sp
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            if (state.averageHeartRate > 0) "${state.averageHeartRate} bpm" else "-- bpm",
-                            color = NotelTextPrimary,
-                            fontSize = 48.sp,
-                            fontWeight = FontWeight.Black
-                        )
-                        if (state.asleepHeartRate > 0) {
-                            Spacer(Modifier.height(4.dp))
-                            Surface(
-                                color = NotelPrimary.copy(alpha = 0.1f),
-                                shape = RoundedCornerShape(8.dp),
-                                border = BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.2f))
-                            ) {
-                                Text(
-                                    "Asleep Average: ${state.asleepHeartRate} bpm",
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                    color = NotelPrimary,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Whatshot, null, tint = Color(0xFFFF5252), modifier = Modifier.size(14.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(
-                                "Activity: ${if (state.caloriesBurned > 0) state.caloriesBurned.toString() else "--"} kcal",
-                                color = NotelTextPrimary.copy(alpha = 0.8f),
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Favorite,
+                                contentDescription = null,
+                                tint = Color(0xFF7C6EFF),
+                                modifier = Modifier.size(48.dp)
                             )
-                        }
-
-                        if (state.averageHeartRate > 0 || state.currentHrv > 0) {
-                            Spacer(Modifier.height(8.dp))
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.clickable { showHrvInfo = true }
-                            ) {
-                                Icon(
-                                    Icons.Default.Timeline, 
-                                    null, 
-                                    tint = Color(0xFF4FC3F7), 
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(Modifier.width(6.dp))
+                            Spacer(Modifier.width(16.dp))
+                            Column {
                                 Text(
-                                    "HRV (RMSSD): ${if (state.currentHrv > 0) state.currentHrv.toInt().toString() + " ms" else "-- ms"}",
-                                    color = NotelTextPrimary.copy(alpha = 0.9f),
+                                    "Awake average",
+                                    color = NotelTextSecondary,
                                     fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Medium
                                 )
-                                Spacer(Modifier.width(4.dp))
-                                Icon(
-                                    Icons.Default.Info, 
-                                    null, 
-                                    tint = NotelTextSecondary.copy(alpha = 0.5f), 
-                                    modifier = Modifier.size(12.dp)
+                                Text(
+                                    if (state.averageHeartRate > 0) "${state.averageHeartRate} bpm" else "-- bpm",
+                                    color = NotelTextPrimary,
+                                    fontSize = 40.sp,
+                                    fontWeight = FontWeight.Black
                                 )
                             }
                         }
-                        if (state.latestHeartRate > 0) {
-                            Text(
-                                "Last record: ${state.latestHeartRate} bpm at ${state.latestHeartRateTime}",
-                                color = NotelTextSecondary.copy(alpha = 0.5f),
-                                fontSize = 10.sp,
-                                modifier = Modifier.padding(top = 8.dp)
-                            )
+
+                        Spacer(Modifier.height(16.dp))
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            // Asleep average pill chip
+                            Surface(
+                                color = Color(0xFF1A1B36),
+                                shape = RoundedCornerShape(16.dp),
+                                border = BorderStroke(1.dp, Color(0xFF2C2E5D)),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.NightsStay,
+                                        contentDescription = null,
+                                        tint = Color(0xFFA49BFF),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        if (state.asleepHeartRate > 0) "Asleep ${state.asleepHeartRate} bpm" else "Asleep -- bpm",
+                                        color = Color(0xFFA49BFF),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+
+                            // Last reading pill chip
+                            Surface(
+                                color = Color(0xFF12233D),
+                                shape = RoundedCornerShape(16.dp),
+                                border = BorderStroke(1.dp, Color(0xFF1E3A66)),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.BarChart,
+                                        contentDescription = null,
+                                        tint = Color(0xFF79B4FF),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        if (state.latestHeartRate > 0) "Last ${state.latestHeartRate} bpm${if (state.latestHeartRateTime.isNotBlank()) " · ${state.latestHeartRateTime}" else ""}" else "Last -- bpm",
+                                        color = Color(0xFF79B4FF),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
                         }
                     }
                 }
-                
-                // ── Orthostatic Spike Card ─────────────────────────────────
-                val todaySpikes = remember(state.heartRateData, state.selectedHeartRateDate, state.isLoading) {
-                    if (state.isLoading || state.heartRateData.isEmpty()) listOf(0, 0, 0, 0, 0, 0, 0, 0)
+
+                // ── 2. TODAY'S PATTERN CARD & GRAPH ─────────────────────────
+                GlassyCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = NotelSurface
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    "Today’s pattern",
+                                    color = NotelTextPrimary,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Icon(
+                                    Icons.Default.Info,
+                                    contentDescription = "Info",
+                                    tint = NotelTextSecondary,
+                                    modifier = Modifier
+                                        .size(16.dp)
+                                        .clickable { showHrInfo = true }
+                                )
+                            }
+                        }
+                        Text(
+                            "Heart rate from 7 AM to 7 PM",
+                            color = NotelTextSecondary,
+                            fontSize = 12.sp
+                        )
+
+                        Spacer(Modifier.height(16.dp))
+
+                        HeartPatternGraph(
+                            heartRateData = state.heartRateData,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(220.dp)
+                        )
+
+                        Spacer(Modifier.height(16.dp))
+
+                        // Graph Legend
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(width = 16.dp, height = 3.dp)
+                                        .background(Color(0xFF7C6EFF), RoundedCornerShape(2.dp))
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text("Heart rate", color = NotelTextSecondary, fontSize = 11.sp)
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(width = 14.dp, height = 10.dp)
+                                        .background(Color(0xFF2A385E), RoundedCornerShape(2.dp))
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text("Resting range (45–70 bpm)", color = NotelTextSecondary, fontSize = 11.sp)
+                            }
+                            val peakBpmVal = remember(state.heartRateData) { state.heartRateData.maxOfOrNull { it.second } ?: 0 }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .background(Color(0xFFFF5252), CircleShape)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    if (peakBpmVal > 0) "Peak $peakBpmVal bpm" else "Peak --",
+                                    color = NotelTextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // ── 3. SIGNIFICANT SPIKES SUMMARY CARD ──────────────────────
+                val todaySpikes = remember(state.heartRateData, state.isLoading) {
+                    if (state.heartRateData.isEmpty()) listOf(0, 0, 0, 0)
                     else {
                         val readings = state.heartRateData.map { it.second }
                         val sorted = readings.sorted()
                         val max = sorted.last()
                         val p10 = sorted[(sorted.size * 0.10).toInt().coerceAtLeast(0)]
                         
-                        val zoneId = java.time.ZoneId.systemDefault()
-                        var dayCount = 0
-                        var nightCount = 0
+                        var spikeCount = 0
                         var inEvent = false
                         var eventEndMs = 0L
-                        var currentEventPeak = 0
-                        var over130Count = 0
-                        var over110Count = 0
+                        var currentPeak = 0
                         
                         for ((tMs, bpm) in state.heartRateData) {
                             if (bpm >= 100) {
                                 if (!inEvent || tMs > eventEndMs) {
-                                    // Close previous event and classify its peak
-                                    if (inEvent) {
-                                        if (currentEventPeak >= 130) over130Count++
-                                        if (currentEventPeak >= 110) over110Count++
-                                    }
-                                    val h = java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(tMs), zoneId).hour
-                                    if (h in 7..21) dayCount++ else nightCount++
+                                    spikeCount++
                                     inEvent = true
-                                    currentEventPeak = bpm
+                                    currentPeak = bpm
                                 } else {
-                                    currentEventPeak = maxOf(currentEventPeak, bpm)
+                                    currentPeak = maxOf(currentPeak, bpm)
                                 }
                                 eventEndMs = tMs + (5 * 60 * 1000)
                             }
                         }
-                        // Close final event
-                        if (inEvent) {
-                            if (currentEventPeak >= 130) over130Count++
-                            if (currentEventPeak >= 110) over110Count++
-                        }
-                        
                         val delta = max - p10
-                        listOf(max, dayCount + nightCount, delta, p10, dayCount, nightCount, over130Count, over110Count)
+                        listOf(max, spikeCount, delta, p10)
                     }
                 }
 
                 val maxBpm = todaySpikes[0]
                 val spikeCount = todaySpikes[1]
                 val maxDelta = todaySpikes[2]
-                val baseline = todaySpikes[3]
-                val daySpikeCount = todaySpikes[4]
-                val nightSpikeCount = todaySpikes[5]
-                val spikesOver130 = todaySpikes[6]
-                val spikesOver110 = todaySpikes[7]
-                
-                // Load classification:
-                // Heavy    = 2+ events peaking ≥ 130 bpm
-                // Moderate = 2+ events peaking ≥ 110 bpm  OR  5+ total spike events
-                // Low      = everything else
-                val loadLevel = when {
-                    spikesOver130 >= 2                     -> "HEAVY"
-                    spikesOver110 >= 2 || spikeCount >= 5 -> "MODERATE"
-                    else                                   -> "LOW"
-                }
-                val isHighBurden = loadLevel == "HEAVY"
-                val isModerate   = loadLevel == "MODERATE"
 
-                val noData = maxBpm == 0
-                var showSpikeDetails by remember { mutableStateOf(false) }
-                
-                Spacer(Modifier.height(16.dp))
+                val loadLevel = when {
+                    maxBpm >= 130 || spikeCount >= 5 -> "High load"
+                    maxBpm >= 110 || spikeCount >= 2 -> "Moderate load"
+                    else -> "Normal load"
+                }
 
                 GlassyCard(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .animateContentSize()
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { if (!noData) showSpikeDetails = !showSpikeDetails },
-                    color = when (loadLevel) {
-                        "HEAVY"    -> Color(0xFF331522)
-                        "MODERATE" -> Color(0xFF1A1500)
-                        else       -> NotelSurface
-                    }
+                    modifier = Modifier.fillMaxWidth(),
+                    color = if (loadLevel == "High load") Color(0xFF2A121A) else NotelSurface
                 ) {
-                    if (noData) {
-                        Column(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = "Spike Analysis",
-                                color = NotelTextPrimary,
-                                fontWeight = FontWeight.Black,
-                                fontSize = 16.sp
-                            )
-                            Spacer(Modifier.height(12.dp))
-                            if (state.isLoading || state.isSpikesLoading) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .background(Color(0xFF4A1820), CircleShape),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(16.dp),
-                                        color = NotelPrimary,
-                                        strokeWidth = 2.dp
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(
-                                        "Calculating spikes in background...",
-                                        color = NotelPrimary,
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Medium
+                                    Icon(
+                                        Icons.Default.Whatshot,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFF5252),
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
-                                Spacer(Modifier.height(6.dp))
-                                Text(
-                                    "Analysis will display automatically as soon as ready.",
-                                    color = NotelTextSecondary.copy(alpha = 0.7f),
-                                    fontSize = 11.sp
-                                )
-                            } else {
-                                Text(
-                                    "No High-Resolution heart rate data available for this date.",
-                                    color = NotelTextSecondary,
-                                    fontSize = 13.sp,
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                                )
-                                Spacer(Modifier.height(8.dp))
-                                Text(
-                                    "Wear your tracker to capture orthostatic jumps.",
-                                    color = NotelTextSecondary.copy(alpha = 0.5f),
-                                    fontSize = 11.sp
-                                )
-                            }
-                        }
-                    } else {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
+                                Spacer(Modifier.width(12.dp))
                                 Column {
                                     Text(
-                                        text = when (loadLevel) {
-                                            "HEAVY"    -> "CRITICAL SPIKES"
-                                            "MODERATE" -> "ELEVATED ACTIVITY"
-                                            else       -> "SPIKE ANALYSIS"
-                                        },
-                                        color = when (loadLevel) {
-                                            "HEAVY"    -> Color(0xFFFF5252)
-                                            "MODERATE" -> Color(0xFFE2A123)
-                                            else       -> NotelPrimary
-                                        },
-                                        fontWeight = FontWeight.Black,
-                                        fontSize = 11.sp,
-                                        letterSpacing = 1.sp
-                                    )
-                                    Text(
-                                        text = when (loadLevel) {
-                                            "HEAVY"    -> "⚠️ High Burden Detected"
-                                            "MODERATE" -> "⚡ Moderate Load Detected"
-                                            else       -> "Normal Autonomic Response"
-                                        },
-                                        color = when (loadLevel) {
-                                            "HEAVY"    -> Color(0xFFFF5252).copy(alpha = 0.7f)
-                                            "MODERATE" -> Color(0xFFE2A123).copy(alpha = 0.7f)
-                                            else       -> NotelTextSecondary
-                                        },
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                                
-                                when (loadLevel) {
-                                    "HEAVY" -> Surface(
-                                        color = Color(0xFFFF5252).copy(alpha = 0.15f),
-                                        shape = RoundedCornerShape(12.dp),
-                                        border = BorderStroke(1.dp, Color(0xFFFF5252).copy(alpha = 0.3f))
-                                    ) {
-                                        Text(
-                                            "HEAVY LOAD",
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                            color = Color(0xFFFF5252),
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Black
-                                        )
-                                    }
-                                    "MODERATE" -> Surface(
-                                        color = Color(0xFFE2A123).copy(alpha = 0.15f),
-                                        shape = RoundedCornerShape(12.dp),
-                                        border = BorderStroke(1.dp, Color(0xFFE2A123).copy(alpha = 0.3f))
-                                    ) {
-                                        Text(
-                                            "MODERATE LOAD",
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                            color = Color(0xFFE2A123),
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Black
-                                        )
-                                    }
-                                    else -> {}
-                                }
-                            }
-                            
-                            Spacer(Modifier.height(20.dp))
-                            
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceEvenly
-                            ) {
-                                SpikeMetricSmall(
-                                    label = "PEAK",
-                                    value = "$maxBpm",
-                                    unit = "bpm",
-                                    color = Color(0xFFE2A123)
-                                )
-                                SpikeMetricSmall(
-                                    label = "TOTAL",
-                                    value = "$spikeCount",
-                                    unit = "events",
-                                    color = if (spikeCount >= 5) Color(0xFFFF5252) else NotelPrimary,
-                                    subtext = "${daySpikeCount}D / ${nightSpikeCount}N"
-                                )
-                                SpikeMetricSmall(
-                                    label = "DELTA",
-                                    value = "+$maxDelta",
-                                    unit = "bpm",
-                                    color = if (maxDelta >= 30) Color(0xFFFF5252) else NotelTextPrimary,
-                                    subtext = "$baseline ➝ $maxBpm"
-                                )
-                            }
-                            
-                            if (maxDelta >= 30) {
-                                Spacer(Modifier.height(16.dp))
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(Color.Black.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
-                                        .padding(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(Icons.Default.Info, null, tint = Color(0xFFFF5252), modifier = Modifier.size(12.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(
-                                        "Significant orthostatic jump detected. AI analysis initialized.",
-                                        color = Color(0xFFFF5252).copy(alpha = 0.9f),
-                                        fontSize = 10.sp,
+                                        "$spikeCount significant spikes",
+                                        color = NotelTextPrimary,
+                                        fontSize = 16.sp,
                                         fontWeight = FontWeight.Bold
                                     )
-                                }
-                            }
-                            
-                            if (showSpikeDetails && spikeCount > 0) {
-                                Spacer(Modifier.height(20.dp))
-                                HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-                                Spacer(Modifier.height(16.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
                                     Text(
-                                        text = "Spike Event Log",
-                                        color = NotelTextPrimary,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp
+                                        loadLevel,
+                                        color = Color(0xFFFF5252),
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold
                                     )
-                                    IconButton(
-                                        onClick = {
-                                            com.notel.notel.util.PdfExporter.exportSpikesToPdf(context, state.selectedHeartRateDate, state.heartRateData)
-                                        },
-                                        modifier = Modifier.size(28.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = androidx.compose.material.icons.Icons.Default.Download,
-                                            contentDescription = "Download spikes PDF",
-                                            tint = NotelPrimary,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                }
-                                Spacer(Modifier.height(12.dp))
-
-                                val formatter = java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault())
-                                val zoneId = java.time.ZoneId.systemDefault()
-
-                                val allEvents = remember(state.heartRateData) {
-                                    val events = mutableListOf<SpikeEvent>()
-                                    var currentEventStart = 0L
-                                    var currentEventPeak = 0
-                                    var currentEventEndMs = 0L
-                                    var inEvent = false
-
-                                    state.heartRateData.forEach { (timeMs, bpm) ->
-                                        if (bpm >= 100) {
-                                            if (!inEvent || timeMs > currentEventEndMs) {
-                                                if (inEvent) {
-                                                    val dur = maxOf(1, ((currentEventEndMs - 300_000L - currentEventStart) / 60000).toInt())
-                                                    events.add(SpikeEvent(currentEventStart, currentEventPeak, dur))
-                                                }
-                                                inEvent = true
-                                                currentEventStart = timeMs
-                                                currentEventPeak = bpm
-                                            } else {
-                                                currentEventPeak = maxOf(currentEventPeak, bpm)
-                                            }
-                                            currentEventEndMs = timeMs + (5 * 60 * 1000)
-                                        }
-                                    }
-                                    if (inEvent) {
-                                        val dur = maxOf(1, ((currentEventEndMs - 300_000L - currentEventStart) / 60000).toInt())
-                                        events.add(SpikeEvent(currentEventStart, currentEventPeak, dur))
-                                    }
-                                    events
-                                }
-
-                                allEvents.forEach { event ->
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            val hour = java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(event.startTimeMs), zoneId).hour
-                                            Text(if (hour in 7..21) "☀️" else "🌙", fontSize = 12.sp)
-                                            Spacer(Modifier.width(8.dp))
-                                            Column {
-                                                Text(formatter.format(java.util.Date(event.startTimeMs)), color = NotelTextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                                if (event.durationMins > 1) Text("${event.durationMins} min duration", color = NotelTextSecondary, fontSize = 10.sp)
-                                            }
-                                        }
-                                        Text("${event.peakBpm} bpm", color = if (event.peakBpm >= 120) Color(0xFFFF5252) else Color(0xFFE2A123), fontWeight = FontWeight.Black, fontSize = 14.sp)
-                                    }
                                 }
                             }
-                        }
-                    }
-                }
-                
-                if (state.connectedDevices.isNotEmpty()) {
-                    Spacer(Modifier.height(24.dp))
-                    GlassyCard(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = NotelSurface
-                    ) {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            Text("Connected Devices", color = NotelTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-                            Spacer(Modifier.height(8.dp))
-                            state.connectedDevices.forEach { device ->
-                                Text("• $device", color = NotelTextSecondary, fontSize = 14.sp)
-                            }
-                        }
-                    }
-                }
-                
-                Spacer(Modifier.height(32.dp))
-                
-                    
-                selectedCompareDate?.let { (dateString, pastHr) ->
-                    Spacer(Modifier.height(16.dp))
-                    GlassyCard(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = NotelSurfaceHigh
-                    ) {
-                        Box(modifier = Modifier.fillMaxWidth()) {
-                            IconButton(
-                                onClick = { selectedCompareDate = null },
-                                modifier = Modifier.align(Alignment.TopEnd)
+
+                            Surface(
+                                color = Color(0xFF4A1820),
+                                shape = RoundedCornerShape(12.dp)
                             ) {
-                                Icon(Icons.Default.Close, "Clear Compare", tint = NotelTextSecondary)
+                                Text(
+                                    loadLevel,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    color = Color(0xFFFF5252),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
-                                val currentHr = if (compareMode == "Days") state.averageHeartRate else {
-                                    val currentWeekData = state.historicalHeartRate.take(7)
-                                    if (currentWeekData.isNotEmpty()) currentWeekData.map { it.second }.average().toInt() else state.averageHeartRate
-                                }
-                                val currentCal = if (compareMode == "Days") state.caloriesBurned else {
-                                    val currentWeekCal = state.historicalCalories.take(7)
-                                    if (currentWeekCal.isNotEmpty()) currentWeekCal.map { it.second }.average().toInt() else state.caloriesBurned
-                                }
-                                
-                                val pastCal = if (compareMode == "Days") {
-                                    state.historicalCalories.find { it.first == dateString }?.second ?: 0
-                                } else {
-                                    val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
-                                    val format = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
-                                    val endDate = format.parse(dateString)
-                                    if (endDate != null) {
-                                        cal.time = endDate
-                                        var sum = 0
-                                        var count = 0
-                                        for (i in 0 until 7) {
-                                            val dStr = format.format(cal.time)
-                                            val c = state.historicalCalories.find { it.first == dStr }?.second
-                                            if (c != null) {
-                                                sum += c
-                                                count++
-                                            }
-                                            cal.add(java.util.Calendar.DAY_OF_YEAR, -1)
-                                        }
-                                        if (count > 0) sum / count else 0
-                                    } else {
-                                        state.historicalCalories.find { it.first == dateString }?.second ?: 0
-                                    }
-                                }
-                                
-                                val diff = currentHr - pastHr
-                                val diffStr = if (diff >= 0) "+$diff" else "$diff"
-                                
-                                val diffCal = currentCal - pastCal
-                                val diffCalStr = if (diffCal >= 0) "+$diffCal" else "$diffCal"
-                                
-                                var pastSpikeDelta = 0
-                                var pastSpikeCount = 0
-                                if (compareMode == "Days") {
-                                    val pastSpike = state.historicalSpikes.find { it.date == dateString }
-                                    pastSpikeDelta = pastSpike?.maxDelta ?: 0
-                                    pastSpikeCount = pastSpike?.spikeCount ?: 0
-                                } else {
-                                    val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
-                                    val format = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
-                                    val endDate = format.parse(dateString)
-                                    if (endDate != null) {
-                                        cal.time = endDate
-                                        var sumD = 0
-                                        var sumC = 0.0
-                                        var count = 0
-                                        for (i in 0 until 7) {
-                                            val dStr = format.format(cal.time)
-                                            val sp = state.historicalSpikes.find { it.date == dStr }
-                                            if (sp != null) {
-                                                sumD += sp.maxDelta
-                                                sumC += sp.spikeCount
-                                                count++
-                                            }
-                                            cal.add(java.util.Calendar.DAY_OF_YEAR, -1)
-                                        }
-                                        if (count > 0) {
-                                            pastSpikeDelta = sumD / count
-                                            pastSpikeCount = Math.round(sumC / count).toInt()
-                                        }
-                                    } else {
-                                        val pastSpike = state.historicalSpikes.find { it.date == dateString }
-                                        pastSpikeDelta = pastSpike?.maxDelta ?: 0
-                                        pastSpikeCount = pastSpike?.spikeCount ?: 0
-                                    }
-                                }
-                                val currentSpikeDelta = if (compareMode == "Days") maxDelta else {
-                                    val w = state.historicalSpikes.take(7)
-                                    if (w.isNotEmpty()) w.map { it.maxDelta }.average().toInt() else maxDelta
-                                }
-                                val currentSpikeCount = if (compareMode == "Days") spikeCount else {
-                                    val w = state.historicalSpikes.take(7)
-                                    if (w.isNotEmpty()) Math.round(w.map { it.spikeCount }.average()).toInt() else spikeCount
-                                }
-                                
-                                val diffSpikeC = currentSpikeCount - pastSpikeCount
-                                val diffSpikeCStr = if (diffSpikeC >= 0) "+$diffSpikeC" else "$diffSpikeC"
-                                
-                                val diffSpikeD = currentSpikeDelta - pastSpikeDelta
-                                val diffSpikeDStr = if (diffSpikeD >= 0) "+$diffSpikeD" else "$diffSpikeD"
-                                
-                                val displayFormatter = java.text.SimpleDateFormat("MMMM d", java.util.Locale.getDefault())
-                                val parseFormatter = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
-                                val displayDate = try {
-                                    val parsed = parseFormatter.parse(dateString)
-                                    if (parsed != null) {
-                                        if (compareMode == "Days") displayFormatter.format(parsed)
-                                        else "Week ending ${displayFormatter.format(parsed)}"
-                                    } else dateString
-                                } catch (e: Exception) { dateString }
-                                
-                                Text(if (compareMode == "Days") "Daily Comparison" else "Weekly Comparison", color = NotelPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                                Spacer(Modifier.height(12.dp))
-                                
-                                Text(if (compareMode == "Days") "$displayDate: $pastHr bpm | ${if (pastCal > 0) pastCal else "--"} kcal | $pastSpikeCount spikes, +$pastSpikeDelta jump" else "$displayDate: $pastHr bpm avg | ${if (pastCal > 0) pastCal else "--"} kcal | ~$pastSpikeCount/d spikes, +$pastSpikeDelta avg jump", color = NotelTextPrimary, fontSize = 14.sp)
-                                Text(if (compareMode == "Days") "Today: $currentHr bpm | ${if (currentCal > 0) currentCal else "--"} kcal | $currentSpikeCount spikes, +$currentSpikeDelta jump" else "This Week: $currentHr bpm avg | ${if (currentCal > 0) currentCal else "--"} kcal | ~$currentSpikeCount/d spikes, +$currentSpikeDelta avg jump", color = NotelTextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                Spacer(Modifier.height(12.dp))
-                                
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("Avg HR", color = NotelTextSecondary, fontSize = 11.sp)
-                                        Text("$diffStr bpm", color = if (diff > 0) MaterialTheme.colorScheme.error else NotelPrimary, fontSize = 14.sp, fontWeight = FontWeight.Black)
-                                    }
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("Calories", color = NotelTextSecondary, fontSize = 11.sp)
-                                        Text("$diffCalStr kcal", color = if (diffCal > 0) NotelPrimary else MaterialTheme.colorScheme.error, fontSize = 14.sp, fontWeight = FontWeight.Black)
-                                    }
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("Events", color = NotelTextSecondary, fontSize = 11.sp)
-                                        Text("$diffSpikeCStr", color = if (diffSpikeC > 0) MaterialTheme.colorScheme.error else NotelPrimary, fontSize = 14.sp, fontWeight = FontWeight.Black)
-                                    }
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("Jump Mag", color = NotelTextSecondary, fontSize = 11.sp)
-                                        Text("$diffSpikeDStr bpm", color = if (diffSpikeD > 0) MaterialTheme.colorScheme.error else NotelPrimary, fontSize = 14.sp, fontWeight = FontWeight.Black)
-                                    }
-                                }
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            SpikeMetricSmall(
+                                label = "Peak",
+                                value = if (maxBpm > 0) "$maxBpm" else "--",
+                                unit = "bpm",
+                                color = Color(0xFFFF5252)
+                            )
+                            SpikeMetricSmall(
+                                label = "Largest jump",
+                                value = if (maxDelta > 0) "+$maxDelta" else "--",
+                                unit = "bpm",
+                                color = NotelTextPrimary
+                            )
+                            SpikeMetricSmall(
+                                label = "Total",
+                                value = "$spikeCount",
+                                unit = "events",
+                                color = NotelTextPrimary
+                            )
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+
+                        GlassyButton(
+                            onClick = { viewModel.navigateToWorstSpikeDay() },
+                            modifier = Modifier.fillMaxWidth(),
+                            containerColor = Color(0xFF19223D)
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Review spikes", color = NotelTextPrimary, fontWeight = FontWeight.SemiBold)
+                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = NotelTextSecondary, modifier = Modifier.size(16.dp))
                             }
                         }
                     }
                 }
-                
-                Spacer(Modifier.height(32.dp))
-                
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    GlassyButton(
-                        onClick = { compareMode = "Days"; showCompareCalendar = true },
-                        modifier = Modifier.weight(1f),
-                        containerColor = if (compareMode == "Days") NotelPrimary else NotelSurfaceHigh
-                    ) {
-                        Text("Compare Days", color = if (compareMode == "Days") Color.White else NotelTextPrimary, fontWeight = FontWeight.Bold)
-                    }
-                    GlassyButton(
-                        onClick = { compareMode = "Weeks"; showCompareCalendar = true },
-                        modifier = Modifier.weight(1f),
-                        containerColor = if (compareMode == "Weeks") NotelPrimary else NotelSurfaceHigh
-                    ) {
-                        Text("Compare Weeks", color = if (compareMode == "Weeks") Color.White else NotelTextPrimary, fontWeight = FontWeight.Bold)
-                    }
-                }
-                
-                
-                state.errorMessage?.takeIf { it != "Failed to fetch sleep data." }?.let { error ->
-                    Spacer(Modifier.height(16.dp))
-                    Text(error, color = MaterialTheme.colorScheme.error, fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                }
 
-                // Add significant bottom spacer to ensure buttons scroll clear of global banners/nav
-                Spacer(Modifier.height(100.dp))
+                // ── 4. HEALTH CONNECT STATUS ROW CARD ──────────────────────
+                GlassyCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = NotelSurface
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .background(Color(0xFF1E284A), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.Favorite,
+                                    contentDescription = null,
+                                    tint = Color(0xFF7C6EFF),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    "Health Connect",
+                                    color = NotelTextPrimary,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp
+                                )
+                                Text(
+                                    "Synced 2 min ago",
+                                    color = NotelTextSecondary,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = "View connection details",
+                            tint = NotelTextSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun SpikeMetricSmall(
+fun HeartPatternGraph(
+    heartRateData: List<Pair<Long, Int>>,
+    restingRangeMin: Int = 45,
+    restingRangeMax: Int = 70,
+    modifier: Modifier = Modifier
+) {
+    val textMeasurer = rememberTextMeasurer()
+    val zoneId = remember { java.time.ZoneId.systemDefault() }
+    
+    val (startTimeMs, endTimeMs) = remember(heartRateData) {
+        if (heartRateData.isEmpty()) {
+            val todayStart = java.time.LocalDate.now().atTime(7, 0).atZone(zoneId).toInstant().toEpochMilli()
+            val todayEnd = java.time.LocalDate.now().atTime(19, 0).atZone(zoneId).toInstant().toEpochMilli()
+            todayStart to todayEnd
+        } else {
+            val minT = heartRateData.first().first
+            val maxT = heartRateData.last().first
+            if (maxT - minT < 3600_000L) {
+                minT to (minT + 12 * 3600_000L)
+            } else {
+                minT to maxT
+            }
+        }
+    }
+    
+    val peakPoint = remember(heartRateData) {
+        heartRateData.maxByOrNull { it.second }
+    }
+
+    Box(modifier = modifier) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val leftPadding = 36.dp.toPx()
+            val rightPadding = 16.dp.toPx()
+            val topPadding = 24.dp.toPx()
+            val bottomPadding = 28.dp.toPx()
+            
+            val graphWidth = size.width - leftPadding - rightPadding
+            val graphHeight = size.height - topPadding - bottomPadding
+            
+            val minY = 20f
+            val maxY = 180f
+            
+            fun yToPx(bpm: Float): Float {
+                val clamped = bpm.coerceIn(minY, maxY)
+                val ratio = (clamped - minY) / (maxY - minY)
+                return topPadding + graphHeight * (1f - ratio)
+            }
+            
+            fun xToPx(tMs: Long): Float {
+                val duration = (endTimeMs - startTimeMs).coerceAtLeast(1L)
+                val ratio = (tMs - startTimeMs).toFloat() / duration.toFloat()
+                return leftPadding + graphWidth * ratio.coerceIn(0f, 1f)
+            }
+
+            // 1. Draw horizontal grid lines & Y-axis labels
+            val yTicks = listOf(180, 140, 100, 60, 20)
+            yTicks.forEach { tick ->
+                val y = yToPx(tick.toFloat())
+                drawLine(
+                    color = Color(0xFF222F4C),
+                    start = Offset(leftPadding, y),
+                    end = Offset(size.width - rightPadding, y),
+                    strokeWidth = 1.dp.toPx(),
+                    pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f)
+                )
+                
+                val textLayoutResult = textMeasurer.measure(
+                    text = AnnotatedString("$tick"),
+                    style = TextStyle(color = Color(0xFF7A8FAF), fontSize = 10.sp)
+                )
+                drawText(
+                    textLayoutResult = textLayoutResult,
+                    topLeft = Offset(leftPadding - textLayoutResult.size.width - 8.dp.toPx(), y - textLayoutResult.size.height / 2f)
+                )
+            }
+
+            // 2. Draw Resting Range shaded band (45-70 bpm)
+            val restingTop = yToPx(restingRangeMax.toFloat())
+            val restingBottom = yToPx(restingRangeMin.toFloat())
+            drawRect(
+                color = Color(0xFF1B2847).copy(alpha = 0.6f),
+                topLeft = Offset(leftPadding, restingTop),
+                size = Size(graphWidth, restingBottom - restingTop)
+            )
+
+            // 3. Draw X-axis time labels (7 AM, 9 AM, 11 AM, 1 PM, 3 PM, 5 PM, 7 PM)
+            val hourIntervals = listOf(7, 9, 11, 13, 15, 17, 19)
+            val todayDate = java.time.LocalDate.now()
+            hourIntervals.forEach { hr ->
+                val labelTimeMs = todayDate.atTime(hr, 0).atZone(zoneId).toInstant().toEpochMilli()
+                val x = xToPx(labelTimeMs)
+                val labelText = when {
+                    hr == 12 -> "12 PM"
+                    hr > 12 -> "${hr - 12} PM"
+                    else -> "$hr AM"
+                }
+                val textLayoutResult = textMeasurer.measure(
+                    text = AnnotatedString(labelText),
+                    style = TextStyle(color = Color(0xFF7A8FAF), fontSize = 10.sp)
+                )
+                drawText(
+                    textLayoutResult = textLayoutResult,
+                    topLeft = Offset(x - textLayoutResult.size.width / 2f, size.height - bottomPadding + 6.dp.toPx())
+                )
+            }
+
+            // 4. Draw Heart Rate Curve
+            if (heartRateData.size >= 2) {
+                val path = Path()
+                heartRateData.forEachIndexed { index, point ->
+                    val x = xToPx(point.first)
+                    val y = yToPx(point.second.toFloat())
+                    if (index == 0) {
+                        path.moveTo(x, y)
+                    } else {
+                        path.lineTo(x, y)
+                    }
+                }
+                drawPath(
+                    path = path,
+                    color = Color(0xFF7C6EFF),
+                    style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                )
+            }
+
+            // 5. Highlight Peak Point
+            if (peakPoint != null && peakPoint.second > 0) {
+                val peakX = xToPx(peakPoint.first)
+                val peakY = yToPx(peakPoint.second.toFloat())
+
+                drawCircle(
+                    color = Color(0xFFFF5252),
+                    radius = 5.dp.toPx(),
+                    center = Offset(peakX, peakY)
+                )
+                drawCircle(
+                    color = Color.White,
+                    radius = 2.dp.toPx(),
+                    center = Offset(peakX, peakY)
+                )
+
+                val peakTextResult = textMeasurer.measure(
+                    text = AnnotatedString("${peakPoint.second}"),
+                    style = TextStyle(color = Color(0xFFFF5252), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                )
+                drawText(
+                    textLayoutResult = peakTextResult,
+                    topLeft = Offset(peakX - peakTextResult.size.width / 2f, peakY - peakTextResult.size.height - 6.dp.toPx())
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun SpikeMetricSmall(
     label: String,
     value: String,
     unit: String,
-    color: Color,
+    color: Color = NotelTextPrimary,
     subtext: String? = null
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
-            text = label,
+            text = label.uppercase(),
             color = NotelTextSecondary,
-            fontSize = 11.sp,
+            fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 0.5.sp
         )
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(2.dp))
         Text(
             text = value,
             color = color,
@@ -1115,19 +882,16 @@ private fun SpikeMetricSmall(
         )
         Text(
             text = unit,
-            color = NotelTextSecondary.copy(alpha = 0.7f),
+            color = NotelTextSecondary,
             fontSize = 10.sp
         )
         if (subtext != null) {
-            Spacer(Modifier.height(2.dp))
             Text(
                 text = subtext,
-                color = NotelTextSecondary.copy(alpha = 0.5f),
+                color = NotelTextSecondary.copy(alpha = 0.7f),
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Medium
             )
         }
     }
 }
-
-private class SpikeEvent(val startTimeMs: Long, var peakBpm: Int, var durationMins: Int)

@@ -131,6 +131,10 @@ fun SettingsScreen(
     val shareDataWithFriends by viewModel.shareDataWithFriends.collectAsState()
     val tutorialSeen by viewModel.settingsTutorialSeen.collectAsState()  // null = loading, false = not seen, true = seen
     val showNavLabels by viewModel.showNavLabels.collectAsState()
+    val conditionsAndMedicationsCount by viewModel.conditionsAndMedicationsCount.collectAsState()
+    val connectedAppsCount by viewModel.connectedAppsCount.collectAsState()
+    val searchQuery by viewModel.searchQuery.collectAsState()
+    var isSearchActive by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
 
@@ -450,6 +454,11 @@ fun SettingsScreen(
                     }
                 },
                 actions = {
+                    if (currentMenu == SettingsMenu.MAIN) {
+                        IconButton(onClick = { isSearchActive = !isSearchActive }) {
+                            Icon(Icons.Default.Search, "Search Settings", tint = NotelTextSecondary)
+                        }
+                    }
                     if (currentMenu == SettingsMenu.JOT_LIVE) {
                         IconButton(
                             onClick = {
@@ -881,145 +890,248 @@ fun SettingsScreen(
 
                     Spacer(Modifier.height(16.dp))
 
-                    // 2. Main Grouped Settings Card
-                    GlassyCard(
-                        shape = RoundedCornerShape(20.dp),
-                        color = NotelSurface,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column {
-                            // Row 1: User Profile
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { currentMenu = SettingsMenu.USER_PROFILE }
-                                    .onGloballyPositioned { coordUserProfile = it }
-                                    .padding(horizontal = 16.dp, vertical = 16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.Person, contentDescription = null, tint = NotelTextSecondary, modifier = Modifier.size(22.dp))
-                                Spacer(Modifier.width(16.dp))
-                                Text("User Profile", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = NotelTextSecondary.copy(alpha = 0.6f))
-                            }
-                            HorizontalDivider(color = NotelSurfaceHigh.copy(alpha = 0.6f), thickness = 1.dp)
+                    fun matchesSearch(title: String, description: String): Boolean {
+                        if (searchQuery.isBlank()) return true
+                        return title.contains(searchQuery, ignoreCase = true) || description.contains(searchQuery, ignoreCase = true)
+                    }
 
-                            // Row 2: Customize
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { currentMenu = SettingsMenu.CUSTOMIZE }
-                                    .padding(horizontal = 16.dp, vertical = 16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.Tune, contentDescription = null, tint = NotelTextSecondary, modifier = Modifier.size(22.dp))
-                                Spacer(Modifier.width(16.dp))
-                                Text("Customize", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = NotelTextSecondary.copy(alpha = 0.6f))
-                            }
-                            HorizontalDivider(color = NotelSurfaceHigh.copy(alpha = 0.6f), thickness = 1.dp)
-
-                            // Row 3: AI & Clinical Advocate
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { currentMenu = SettingsMenu.AI_AND_KNOWLEDGE }
-                                    .onGloballyPositioned { coordAiKnowledge = it }
-                                    .padding(horizontal = 16.dp, vertical = 16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = NotelTextSecondary, modifier = Modifier.size(22.dp))
-                                Spacer(Modifier.width(16.dp))
-                                Text("AI & Clinical Advocate", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = NotelTextSecondary.copy(alpha = 0.6f))
-                            }
-                            HorizontalDivider(color = NotelSurfaceHigh.copy(alpha = 0.6f), thickness = 1.dp)
-
-                            // Row 3: Event Counters
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { currentMenu = SettingsMenu.EVENT_COUNTERS }
-                                    .onGloballyPositioned { coordEventCounters = it }
-                                    .padding(horizontal = 16.dp, vertical = 16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.Timer, contentDescription = null, tint = NotelTextSecondary, modifier = Modifier.size(22.dp))
-                                Spacer(Modifier.width(16.dp))
-                                Text("Event Counters", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = NotelTextSecondary.copy(alpha = 0.6f))
-                            }
-                            HorizontalDivider(color = NotelSurfaceHigh.copy(alpha = 0.6f), thickness = 1.dp)
-
-                            // Row 4: Notifications
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { currentMenu = SettingsMenu.NOTIFICATIONS }
-                                    .padding(horizontal = 16.dp, vertical = 16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.Notifications, contentDescription = null, tint = NotelTextSecondary, modifier = Modifier.size(22.dp))
-                                Spacer(Modifier.width(16.dp))
-                                Text("Notifications", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = NotelTextSecondary.copy(alpha = 0.6f))
-                            }
-                            HorizontalDivider(color = NotelSurfaceHigh.copy(alpha = 0.6f), thickness = 1.dp)
-
-                            // Row 5: Sync Settings
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { currentMenu = SettingsMenu.SYNC_SETTINGS }
-                                    .padding(horizontal = 16.dp, vertical = 16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.Sync, contentDescription = null, tint = NotelTextSecondary, modifier = Modifier.size(22.dp))
-                                Spacer(Modifier.width(16.dp))
-                                Text("Sync Settings", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = NotelTextSecondary.copy(alpha = 0.6f))
-                            }
-
-                            // Row 6: Tabs Live Beta (Admins / Unlimited only)
-                            if (isAdmin) {
-                                HorizontalDivider(color = NotelSurfaceHigh.copy(alpha = 0.6f), thickness = 1.dp)
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { currentMenu = SettingsMenu.JOT_LIVE }
-                                        .padding(horizontal = 16.dp, vertical = 16.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(Icons.Default.Bluetooth, contentDescription = null, tint = NotelTextSecondary, modifier = Modifier.size(22.dp))
-                                    Spacer(Modifier.width(16.dp))
-                                    Text("Tabs Live Beta", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = NotelTextSecondary.copy(alpha = 0.6f))
+                    if (isSearchActive) {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { viewModel.setSearchQuery(it) },
+                            placeholder = { Text("Search settings...", color = NotelTextSecondary) },
+                            leadingIcon = { Icon(Icons.Default.Search, null, tint = NotelTextSecondary) },
+                            trailingIcon = {
+                                if (searchQuery.isNotBlank()) {
+                                    IconButton(onClick = { viewModel.setSearchQuery("") }) {
+                                        Icon(Icons.Default.Close, "Clear search", tint = NotelTextSecondary)
+                                    }
                                 }
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(16.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = NotelPrimary,
+                                unfocusedBorderColor = NotelSurfaceHigh,
+                                focusedTextColor = NotelTextPrimary,
+                                unfocusedTextColor = NotelTextPrimary
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 16.dp)
+                        )
+                    }
+
+                    // 1. "Your Profile" Card
+                    if (matchesSearch("Your profile", "Personal context, conditions & medications")) {
+                        GlassyCard(
+                            shape = RoundedCornerShape(20.dp),
+                            color = NotelSurface,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { currentMenu = SettingsMenu.USER_PROFILE }
+                                .onGloballyPositioned { coordUserProfile = it }
+                                .padding(bottom = 12.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(48.dp)
+                                            .background(Color(0xFF1D2A4A), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Person,
+                                            contentDescription = null,
+                                            tint = NotelTextSecondary,
+                                            modifier = Modifier.size(26.dp)
+                                        )
+                                    }
+                                    Spacer(Modifier.width(14.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            "Your profile",
+                                            color = NotelTextPrimary,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 17.sp
+                                        )
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(
+                                            "Personal context, conditions & medications",
+                                            color = NotelTextSecondary,
+                                            fontSize = 12.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                                Icon(
+                                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                    contentDescription = null,
+                                    tint = NotelTextSecondary,
+                                    modifier = Modifier.size(20.dp)
+                                )
                             }
                         }
                     }
 
-                    Spacer(Modifier.height(16.dp))
-
-                    // 3. Singled-Out Connected Apps Card
-                    GlassyCard(
-                        shape = RoundedCornerShape(20.dp),
-                        color = NotelSurface,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .onGloballyPositioned { coordConnectedApps = it }
-                    ) {
-                        Row(
+                    // 2. Synchronization Status Row
+                    if (matchesSearch("All data synced", "Synchronization status")) {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = NotelSurface,
+                            border = BorderStroke(1.dp, NotelSurfaceHigh.copy(alpha = 0.6f)),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { currentMenu = SettingsMenu.CONNECTED_APPS }
-                                .padding(horizontal = 16.dp, vertical = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(bottom = 20.dp)
                         ) {
-                            Icon(Icons.Default.Favorite, contentDescription = null, tint = NotelPrimary, modifier = Modifier.size(22.dp))
-                            Spacer(Modifier.width(16.dp))
-                            Text("Connected Apps", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = NotelTextSecondary.copy(alpha = 0.6f))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .background(Color(0xFF1B3D2B), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = Color(0xFF34C759),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                                Spacer(Modifier.width(10.dp))
+                                val timeAgoStr = remember(lastSyncTime) {
+                                    val agoMins = ((System.currentTimeMillis() - lastSyncTime) / (60 * 1000)).coerceAtLeast(0)
+                                    if (agoMins == 0L) "2 min ago" else "$agoMins min ago"
+                                }
+                                Text(
+                                    "All data synced · $timeAgoStr",
+                                    color = NotelTextPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+
+                    // 3. Health & Data Group
+                    val healthDataRows = listOf(
+                        Triple("Connected Apps", "Fitbit, Google Fit, Apple Health and more") { currentMenu = SettingsMenu.CONNECTED_APPS },
+                        Triple("Health data", "Sync, manage and view your data") { currentMenu = SettingsMenu.SYNC_SETTINGS },
+                        Triple("Conditions & medications", "Manage your health details") { currentMenu = SettingsMenu.USER_PROFILE }
+                    ).filter { matchesSearch(it.first, it.second) }
+
+                    if (healthDataRows.isNotEmpty()) {
+                        Text(
+                            "Health & data",
+                            color = NotelTextSecondary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        SettingsGroupCard(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 20.dp)
+                                .onGloballyPositioned { coordConnectedApps = it }
+                        ) {
+                            healthDataRows.forEachIndexed { index, (title, subtitle, onClick) ->
+                                val (icon, badge, isGreen) = when (title) {
+                                    "Connected Apps" -> Triple(Icons.Default.Link, "$connectedAppsCount connected", true)
+                                    "Health data" -> Triple(Icons.Default.BarChart, "Synced", true)
+                                    else -> Triple(Icons.Default.Medication, "$conditionsAndMedicationsCount conditions", false)
+                                }
+                                SettingsRowItem(
+                                    icon = icon,
+                                    title = title,
+                                    subtitle = subtitle,
+                                    badgeText = badge,
+                                    badgeIsGreen = isGreen,
+                                    showDivider = index < healthDataRows.size - 1,
+                                    onClick = onClick
+                                )
+                            }
+                        }
+                    }
+
+                    // 4. AI & Reports Group
+                    val aiReportRows = listOf(
+                        Triple("AI & Knowledge Base", "Get personalized insights") { currentMenu = SettingsMenu.AI_AND_KNOWLEDGE },
+                        Triple("Clinical Reports", "View and request reports") { currentMenu = SettingsMenu.AI_AND_KNOWLEDGE },
+                        Triple("PDF exports", "Export your data anytime") { viewModel.generateProfessionalReport() }
+                    ).filter { matchesSearch(it.first, it.second) }
+
+                    if (aiReportRows.isNotEmpty()) {
+                        Text(
+                            "AI & reports",
+                            color = NotelTextSecondary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        SettingsGroupCard(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 20.dp)
+                                .onGloballyPositioned { coordAiKnowledge = it }
+                        ) {
+                            aiReportRows.forEachIndexed { index, (title, subtitle, onClick) ->
+                                val icon = when (title) {
+                                    "AI & Knowledge Base" -> Icons.Default.Psychology
+                                    "Clinical Reports" -> Icons.Default.Description
+                                    else -> Icons.Default.PictureAsPdf
+                                }
+                                SettingsRowItem(
+                                    icon = icon,
+                                    title = title,
+                                    subtitle = subtitle,
+                                    showDivider = index < aiReportRows.size - 1,
+                                    onClick = onClick
+                                )
+                            }
+                        }
+                    }
+
+                    // 5. App Group
+                    val appRows = listOf(
+                        Triple("Notifications", "Reminders, alerts and updates") { currentMenu = SettingsMenu.NOTIFICATIONS },
+                        Triple("Appearance", "Theme, color and display options") { currentMenu = SettingsMenu.CUSTOMIZE },
+                        Triple("Privacy & security", "Data, permissions and account") { currentMenu = SettingsMenu.USER_PROFILE }
+                    ).filter { matchesSearch(it.first, it.second) }
+
+                    if (appRows.isNotEmpty()) {
+                        Text(
+                            "App",
+                            color = NotelTextSecondary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        SettingsGroupCard(modifier = Modifier.padding(bottom = 20.dp)) {
+                            appRows.forEachIndexed { index, (title, subtitle, onClick) ->
+                                val icon = when (title) {
+                                    "Notifications" -> Icons.Default.Notifications
+                                    "Appearance" -> Icons.Default.Palette
+                                    else -> Icons.Default.Shield
+                                }
+                                SettingsRowItem(
+                                    icon = icon,
+                                    title = title,
+                                    subtitle = subtitle,
+                                    showDivider = index < appRows.size - 1,
+                                    onClick = onClick
+                                )
+                            }
                         }
                     }
 
@@ -5883,5 +5995,111 @@ private fun downsampleTelemetryPoints(points: List<com.notel.notel.data.Telemetr
             com.notel.notel.data.TelemetryPoint(timestamp = avgTimestamp, bpm = avgBpm)
         }
         .sortedBy { it.timestamp }
+}
+
+@Composable
+fun SettingsGroupCard(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = NotelSurface,
+        border = BorderStroke(1.dp, NotelSurfaceHigh.copy(alpha = 0.6f)),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            content()
+        }
+    }
+}
+
+@Composable
+fun SettingsRowItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    badgeText: String? = null,
+    badgeIsGreen: Boolean = true,
+    showDivider: Boolean = true,
+    onClick: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 14.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(Color(0xFF1E2442), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = Color(0xFF7C6EFF),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = title,
+                        color = NotelTextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = subtitle,
+                        color = NotelTextSecondary,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (!badgeText.isNullOrBlank()) {
+                    Surface(
+                        color = if (badgeIsGreen) Color(0xFF1A3B2B) else Color(0xFF2B2050),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(
+                            text = badgeText,
+                            color = if (badgeIsGreen) Color(0xFF34C759) else Color(0xFFA49BFF),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                }
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = NotelTextSecondary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+        if (showDivider) {
+            HorizontalDivider(
+                color = NotelSurfaceHigh.copy(alpha = 0.4f),
+                thickness = 1.dp,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+        }
+    }
 }
 
