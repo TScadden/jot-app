@@ -292,6 +292,86 @@ class GeminiService @Inject constructor(
         }
     }
 
+    suspend fun getMedicalReportSummaryFromSnapshot(
+        snapshot: com.notel.notel.data.model.ClinicalReportData
+    ): Result<String> {
+        return try {
+            val dateSpanText = "REPORT RANGE: ${snapshot.range.type.name} (${snapshot.range.durationDays} days)"
+            val profileText = buildString {
+                append("Profile Stats: Age ${snapshot.userAge}, Height ${snapshot.userHeight}cm, Weight ${snapshot.userWeight}lbs, Gender ${snapshot.userGender}\n")
+                if (snapshot.conditions.isNotEmpty()) {
+                    append("Medical Conditions: ${snapshot.conditions.joinToString(", ")}\n")
+                }
+                if (snapshot.medications.isNotEmpty()) {
+                    append("Active Medications: ${snapshot.medications.joinToString(", ") { "${it.name} ${it.dose} (${it.frequency})" }}\n")
+                }
+            }
+
+            val healthSummary = buildString {
+                if (snapshot.heartRateSeries.isNotEmpty()) {
+                    val avgHr = snapshot.heartRateSeries.map { it.second }.average().toInt()
+                    append("Avg Heart Rate: $avgHr bpm across ${snapshot.heartRateSeries.size} days. ")
+                }
+                if (snapshot.sleepSeries.isNotEmpty()) {
+                    val avgSleepHours = snapshot.sleepSeries.map { it.second / 60f }.average()
+                    append("Avg Sleep: ${String.format(java.util.Locale.US, "%.1f", avgSleepHours)} hrs/night across ${snapshot.sleepSeries.size} days. ")
+                }
+                if (snapshot.heartRateSpikes.isNotEmpty()) {
+                    val totalSpikes = snapshot.heartRateSpikes.sumOf { it.spikeCount }
+                    append("Total HR Spikes: $totalSpikes recorded. ")
+                }
+                if (snapshot.bloodPressureSeries.isNotEmpty()) {
+                    val sysAvg = snapshot.bloodPressureSeries.map { it.systolic }.average().toInt()
+                    val diaAvg = snapshot.bloodPressureSeries.map { it.diastolic }.average().toInt()
+                    append("Blood Pressure Avg: $sysAvg/$diaAvg mmHg across ${snapshot.bloodPressureSeries.size} readings.")
+                }
+            }
+
+            val enrichedContext = "${snapshot.userContext}\n\n$dateSpanText\n$profileText"
+            
+            // Privacy-safe telemetry logging
+            android.util.Log.d(
+                "GeminiService",
+                "[AI_REPORT_REQUEST] Sending snapshot request: ${snapshot.logEntries.size} logs, " +
+                        "${snapshot.conditions.size} conditions, ${snapshot.medications.size} meds, " +
+                        "${snapshot.heartRateSeries.size} HR days, ${snapshot.bloodPressureSeries.size} BP logs."
+            )
+
+            val response = tabsApi.getReport(
+                AiRequest(
+                    entries = snapshot.logEntries.toDto(),
+                    categories = snapshot.categoriesMap,
+                    userContext = enrichedContext,
+                    fitbitData = healthSummary
+                )
+            )
+            val result = response.body()?.result
+            if (response.isSuccessful && result != null) {
+                Result.success(result)
+            } else {
+                val errorBody = response.errorBody()?.string()
+                var errorMessage = "Unknown API Error"
+                if (errorBody != null) {
+                    try {
+                        val json = org.json.JSONObject(errorBody)
+                        if (json.has("error")) {
+                            errorMessage = json.getString("error")
+                        } else if (json.has("message")) {
+                            errorMessage = json.getString("message")
+                        } else {
+                            errorMessage = errorBody
+                        }
+                    } catch (e: Exception) {
+                        errorMessage = errorBody
+                    }
+                }
+                Result.failure(IOException(errorMessage))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun getWeeklyRecap(
         recentEntries: List<LogEntry>,
         categories: Map<Int, String>,

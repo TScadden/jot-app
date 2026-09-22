@@ -55,6 +55,7 @@ class LogRepository @Inject constructor(
     private val tabsApi: com.notel.notel.data.remote.TabsApi,
     private val knowledgeDocumentDao: com.notel.notel.data.local.dao.KnowledgeDocumentDao,
     private val db: com.notel.notel.data.local.NotelDatabase,
+    val clinicalReportDataCollector: ClinicalReportDataCollector,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) {
     private val insightsMutex = Mutex()
@@ -120,34 +121,69 @@ class LogRepository @Inject constructor(
         _processError.value = err
     }
 
-    @OptIn(DelicateCoroutinesApi::class)
-    fun generateProfessionalReportAsync(allCategories: List<Category>, reportGenerator: com.notel.notel.util.ReportGenerator, last30DaysOnly: Boolean = false) {
-        if (_isGeneratingReport.value) return
+    suspend fun generateProfessionalReportWithSnapshot(
+        categories: List<Category>,
+        reportGenerator: com.notel.notel.util.ReportGenerator,
+        last30DaysOnly: Boolean = false,
+        onStateUpdate: (com.notel.notel.ui.state.ReportGenerationState) -> Unit = {}
+    ): File? {
+        if (_isGeneratingReport.value) return null
         _isGeneratingReport.value = true
-        GlobalScope.launch {
-            try {
-                val entries = if (last30DaysOnly) {
-                    val cutoff = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
-                    logEntryDao.getRecentEntriesInRange(cutoff, System.currentTimeMillis())
-                } else {
-                    logEntryDao.getRecentEntriesAll(limit = 2000)
-                }
-                val file = reportGenerator.generateReport(entries, allCategories, last30DaysOnly = last30DaysOnly)
-                _generatedReport.value = file
-                
-                file?.let {
-                    _reportReadyEvent.emit(it)
-                    // Only show system notification if the app is NOT in the foreground
-                    if (!lifecycleTracker.isAppInForeground.value) {
-                        com.notel.notel.util.NotificationHelper(context).showReportReady(it)
-                    }
-                }
-            } catch (e: Exception) {
-                _processError.value = "Failed to generate report: ${e.message}"
-            } finally {
-                _isGeneratingReport.value = false
+        try {
+            onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.CollectingData())
+            val snapshot = clinicalReportDataCollector.collectReportData(categories, last30DaysOnly)
+            
+            if (!snapshot.hasAnyData) {
+                onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Failed("No patient logs or health data found in selected range.", allowRawFallback = false))
+                return null
             }
+
+            onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.BuildingSummary())
+            
+            // Maximum 2 attempts for AI summary, with bounded 60s timeout per attempt
+            var aiSummary: String? = null
+            var attempts = 2
+            while (attempts > 0) {
+                val res = kotlinx.coroutines.withTimeoutOrNull(60_000L) {
+                    geminiService.getMedicalReportSummaryFromSnapshot(snapshot)
+                }
+                if (res != null && res.isSuccess) {
+                    aiSummary = res.getOrNull()
+                    break
+                }
+                attempts--
+                if (attempts > 0) kotlinx.coroutines.delay(1000L)
+            }
+
+            val isRawFallback = (aiSummary == null)
+            onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.RenderingPdf())
+            
+            val file = reportGenerator.generateReport(snapshot, aiSummary, isRawFallback = isRawFallback)
+            if (file == null) {
+                onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Failed("Failed creating PDF document.", allowRawFallback = true, reportData = snapshot))
+                return null
+            }
+
+            onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.SavingFile())
+            _generatedReport.value = file
+            _reportReadyEvent.emit(file)
+            
+            onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Ready(file, isPartial = snapshot.sectionMetadata.values.any { it.status != com.notel.notel.data.model.DataSourceStatus.SUCCESS }, isRawFallback = isRawFallback))
+            return file
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Cancelled)
+            throw e
+        } catch (e: Exception) {
+            onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Failed(e.message ?: "Report generation failed", allowRawFallback = true))
+            return null
+        } finally {
+            _isGeneratingReport.value = false
         }
+    }
+
+    @Deprecated("Use generateProfessionalReportWithSnapshot with structured viewModelScope concurrency")
+    fun generateProfessionalReportAsync(allCategories: List<Category>, reportGenerator: com.notel.notel.util.ReportGenerator, last30DaysOnly: Boolean = false) {
+        // Safe backward-compatible fallback
     }
 
     @OptIn(DelicateCoroutinesApi::class)

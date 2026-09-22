@@ -2004,23 +2004,19 @@ fun SettingsScreen(
                         fontSize = 12.sp
                     )
                     
-                    val isGenerating by viewModel.isGeneratingReport.collectAsState()
-                    val generatedFile by viewModel.generatedReport.collectAsState()
+                    val reportState by viewModel.reportGenerationState.collectAsState()
                     val hasLogs = viewModel.allLogs.collectAsState().value.isNotEmpty()
                     val isDeepBusy by viewModel.isGeneratingDeepResearch.collectAsState()
                     val isProtocolBusy by viewModel.isGeneratingWeeklyRecap.collectAsState()
                     
-                    val isAnyAiBusy = isGenerating || isDeepBusy || isProtocolBusy
                     var activeReportType by remember { mutableStateOf<String?>(null) }
-                    
-                    LaunchedEffect(isGenerating) {
-                        if (!isGenerating) {
-                            activeReportType = null
-                        }
-                    }
+                    val isGenerating = reportState.isProcessing
+                    val isAnyBusy = isGenerating || isDeepBusy || isProtocolBusy
 
-                    LaunchedEffect(generatedFile) {
-                        generatedFile?.let { file ->
+                    LaunchedEffect(reportState) {
+                        val currentState = reportState
+                        if (currentState is com.notel.notel.ui.state.ReportGenerationState.Ready) {
+                            val file = currentState.file
                             val uri = androidx.core.content.FileProvider.getUriForFile(
                                 context,
                                 "${context.packageName}.provider",
@@ -2031,9 +2027,71 @@ fun SettingsScreen(
                                 putExtra(android.content.Intent.EXTRA_STREAM, uri)
                                 addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
-                            context.startActivity(android.content.Intent.createChooser(intent, "Share Professional Report"))
-                            viewModel.resetGeneratedReport()
+                            context.startActivity(android.content.Intent.createChooser(intent, "Share Clinical Audit Report"))
+                            viewModel.resetReportGenerationState()
+                            activeReportType = null
+                        } else if (!currentState.isProcessing) {
+                            activeReportType = null
                         }
+                    }
+
+                    if (reportState.isProcessing) {
+                        val stageLabel = when (val s = reportState) {
+                            is com.notel.notel.ui.state.ReportGenerationState.CollectingData -> s.stageLabel
+                            is com.notel.notel.ui.state.ReportGenerationState.RefreshingHealthData -> s.stageLabel
+                            is com.notel.notel.ui.state.ReportGenerationState.BuildingSummary -> s.stageLabel
+                            is com.notel.notel.ui.state.ReportGenerationState.RenderingPdf -> s.stageLabel
+                            is com.notel.notel.ui.state.ReportGenerationState.SavingFile -> s.stageLabel
+                            else -> "Generating report..."
+                        }
+                        
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                GlassySpinner(size = 18.dp)
+                                Spacer(Modifier.width(10.dp))
+                                Text(stageLabel, color = NotelPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            TextButton(onClick = { viewModel.cancelReportGeneration() }) {
+                                Text("Cancel Report Generation", color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
+
+                    if (reportState is com.notel.notel.ui.state.ReportGenerationState.Failed) {
+                        val failedState = reportState as com.notel.notel.ui.state.ReportGenerationState.Failed
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp)
+                        ) {
+                            Text(
+                                "Report Failed: ${failedState.message}",
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 12.sp
+                            )
+                            if (failedState.allowRawFallback) {
+                                Spacer(Modifier.height(4.dp))
+                                TextButton(
+                                    onClick = {
+                                        val is30Days = (activeReportType == "month")
+                                        viewModel.generateProfessionalReport(last30DaysOnly = is30Days, forceRawFallback = true)
+                                    }
+                                ) {
+                                    Text("Generate Raw Data Report (Without AI)", color = NotelPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
                     }
 
                     Row(
@@ -2041,13 +2099,15 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         val isFullGenerating = isGenerating && activeReportType == "full"
+                        val isMonthGenerating = isGenerating && activeReportType == "month"
+
                         GlassyButton(
                             onClick = {
                                 activeReportType = "full"
                                 viewModel.generateProfessionalReport(last30DaysOnly = false)
                             },
                             modifier = Modifier.weight(1f).fillMaxHeight(),
-                            enabled = !isAnyAiBusy && hasLogs,
+                            enabled = !isAnyBusy && hasLogs,
                             containerColor = NotelSurfaceHigh
                         ) {
                             if (isFullGenerating) {
@@ -2056,27 +2116,26 @@ fun SettingsScreen(
                                 Icon(
                                     Icons.Default.PictureAsPdf,
                                     null,
-                                    tint = if (!isAnyAiBusy && hasLogs) NotelPrimary else NotelTextSecondary.copy(alpha = 0.4f),
+                                    tint = if (!isAnyBusy && hasLogs) NotelPrimary else NotelTextSecondary.copy(alpha = 0.4f),
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(Modifier.width(6.dp))
                                 Text(
                                     "Full Audit",
-                                    color = if (!isAnyAiBusy && hasLogs) NotelTextPrimary else NotelTextSecondary.copy(alpha = 0.4f),
+                                    color = if (!isAnyBusy && hasLogs) NotelTextPrimary else NotelTextSecondary.copy(alpha = 0.4f),
                                     fontSize = 12.sp,
                                     maxLines = 1
                                 )
                             }
                         }
 
-                        val isMonthGenerating = isGenerating && activeReportType == "month"
                         GlassyButton(
                             onClick = {
                                 activeReportType = "month"
                                 viewModel.generateProfessionalReport(last30DaysOnly = true)
                             },
                             modifier = Modifier.weight(1f).fillMaxHeight(),
-                            enabled = !isAnyAiBusy && hasLogs,
+                            enabled = !isAnyBusy && hasLogs,
                             containerColor = NotelSurfaceHigh
                         ) {
                             if (isMonthGenerating) {
@@ -2085,13 +2144,13 @@ fun SettingsScreen(
                                 Icon(
                                     Icons.Default.PictureAsPdf,
                                     null,
-                                    tint = if (!isAnyAiBusy && hasLogs) NotelPrimary else NotelTextSecondary.copy(alpha = 0.4f),
+                                    tint = if (!isAnyBusy && hasLogs) NotelPrimary else NotelTextSecondary.copy(alpha = 0.4f),
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(Modifier.width(6.dp))
                                 Text(
                                     "This Month",
-                                    color = if (!isAnyAiBusy && hasLogs) NotelTextPrimary else NotelTextSecondary.copy(alpha = 0.4f),
+                                    color = if (!isAnyBusy && hasLogs) NotelTextPrimary else NotelTextSecondary.copy(alpha = 0.4f),
                                     fontSize = 12.sp,
                                     maxLines = 1
                                 )
@@ -2117,28 +2176,28 @@ fun SettingsScreen(
                         GlassyButton(
                             onClick = { viewModel.generateDeepResearch() },
                             modifier = Modifier.weight(1f).fillMaxHeight(),
-                            enabled = !isAnyAiBusy && hasLogs,
+                            enabled = !isAnyBusy && hasLogs,
                             containerColor = NotelSurfaceHigh
                         ) {
                             if (isDeepBusy) GlassySpinner(size = 18.dp)
                             else {
-                                Icon(Icons.Default.Search, null, tint = if (!isAnyAiBusy && hasLogs) NotelPrimary else NotelTextSecondary.copy(alpha = 0.4f), modifier = Modifier.size(18.dp))
+                                Icon(Icons.Default.Search, null, tint = if (!isAnyBusy && hasLogs) NotelPrimary else NotelTextSecondary.copy(alpha = 0.4f), modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text("Deep Audit", color = if (!isAnyAiBusy && hasLogs) NotelTextPrimary else NotelTextSecondary.copy(alpha = 0.4f), fontSize = 12.sp, maxLines = 1)
+                                Text("Deep Audit", color = if (!isAnyBusy && hasLogs) NotelTextPrimary else NotelTextSecondary.copy(alpha = 0.4f), fontSize = 12.sp, maxLines = 1)
                             }
                         }
 
                         GlassyButton(
                             onClick = { viewModel.generateWeeklyRecap() },
                             modifier = Modifier.weight(1f).fillMaxHeight(),
-                            enabled = !isAnyAiBusy && hasLogs,
+                            enabled = !isAnyBusy && hasLogs,
                             containerColor = NotelSurfaceHigh
                         ) {
                             if (isProtocolBusy) GlassySpinner(size = 18.dp)
                             else {
-                                Icon(Icons.Default.AssignmentTurnedIn, null, tint = if (!isAnyAiBusy && hasLogs) NotelPrimary else NotelTextSecondary.copy(alpha = 0.4f), modifier = Modifier.size(18.dp))
+                                Icon(Icons.Default.AssignmentTurnedIn, null, tint = if (!isAnyBusy && hasLogs) NotelPrimary else NotelTextSecondary.copy(alpha = 0.4f), modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text("Weekly Recap", color = if (!isAnyAiBusy && hasLogs) NotelTextPrimary else NotelTextSecondary.copy(alpha = 0.4f), fontSize = 11.sp, maxLines = 1, softWrap = false)
+                                Text("Weekly Recap", color = if (!isAnyBusy && hasLogs) NotelTextPrimary else NotelTextSecondary.copy(alpha = 0.4f), fontSize = 11.sp, maxLines = 1, softWrap = false)
                             }
                         }
                     }

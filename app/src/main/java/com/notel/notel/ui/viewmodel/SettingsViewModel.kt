@@ -771,8 +771,50 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun generateProfessionalReport(last30DaysOnly: Boolean = false) {
-        logRepository.generateProfessionalReportAsync(categories.value, reportGenerator, last30DaysOnly = last30DaysOnly)
+    private val _reportGenerationState = MutableStateFlow<com.notel.notel.ui.state.ReportGenerationState>(com.notel.notel.ui.state.ReportGenerationState.Idle)
+    val reportGenerationState = _reportGenerationState.asStateFlow()
+
+    private var reportJob: kotlinx.coroutines.Job? = null
+
+    fun generateProfessionalReport(last30DaysOnly: Boolean = false, forceRawFallback: Boolean = false) {
+        reportJob?.cancel()
+        reportJob = viewModelScope.launch {
+            try {
+                if (forceRawFallback) {
+                    _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.CollectingData("Collecting patient data for Raw Data report...")
+                    val snapshot = logRepository.clinicalReportDataCollector.collectReportData(categories.value, last30DaysOnly)
+                    _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.RenderingPdf("Rendering Raw Data PDF...")
+                    val file = reportGenerator.generateReport(snapshot, aiSummary = null, isRawFallback = true)
+                    if (file != null) {
+                        _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Ready(file, isRawFallback = true)
+                    } else {
+                        _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Failed("Failed generating Raw Data report file.")
+                    }
+                } else {
+                    logRepository.generateProfessionalReportWithSnapshot(
+                        categories = categories.value,
+                        reportGenerator = reportGenerator,
+                        last30DaysOnly = last30DaysOnly,
+                        onStateUpdate = { state -> _reportGenerationState.value = state }
+                    )
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Cancelled
+            } catch (e: Exception) {
+                _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Failed(e.message ?: "Report generation failed", allowRawFallback = true)
+            }
+        }
+    }
+
+    fun cancelReportGeneration() {
+        reportJob?.cancel()
+        reportJob = null
+        _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Cancelled
+        logRepository.resetGeneratedReport()
+    }
+
+    fun resetReportGenerationState() {
+        _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Idle
     }
 
     fun generateWeeklyRecap() {

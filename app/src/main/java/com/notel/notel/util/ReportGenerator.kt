@@ -56,88 +56,139 @@ class ReportGenerator @Inject constructor(
      * Generates a professional health report as a PDF.
      * Consolidates logs and asks Gemini for a natural language summary first.
      */
-    suspend fun generateReport(allEntries: List<LogEntry>, categories: List<com.notel.notel.data.local.entity.Category>, last30DaysOnly: Boolean = false): File? {
+    @Inject lateinit var dataCollector: com.notel.notel.data.repository.ClinicalReportDataCollector
+
+    /**
+     * Backward-compatible overload for generateReport
+     */
+    suspend fun generateReport(
+        allEntries: List<LogEntry>,
+        categories: List<com.notel.notel.data.local.entity.Category>,
+        last30DaysOnly: Boolean = false
+    ): File? {
+        val snapshot = dataCollector.collectReportData(categories, last30DaysOnly)
         val summaryResult = logRepository.getMedicalReportSummary(categories, last30DaysOnly = last30DaysOnly)
-        val summary = summaryResult.getOrDefault("Clinical summary unavailable. Analysis based on raw logs.")
-        val catMap = categories.associate { it.id to it.name }
+        val summary = summaryResult.getOrNull()
+        return generateReport(snapshot, summary, isRawFallback = (summary == null))
+    }
+
+    /**
+     * Generates a professional clinical health report as a PDF using an immutable snapshot.
+     */
+    suspend fun generateReport(
+        snapshot: com.notel.notel.data.model.ClinicalReportData,
+        aiSummary: String? = null,
+        isRawFallback: Boolean = false
+    ): File? {
+        if (!snapshot.hasAnyData) {
+            android.util.Log.w("ReportGenerator", "Snapshot contains no data. Refusing to generate empty report PDF.")
+            return null
+        }
+
+        val effectiveSummary = when {
+            !aiSummary.isNullOrBlank() -> aiSummary
+            isRawFallback -> "[SECTION] RAW CLINICAL LOG SUMMARY\n[BOLD]Notice:[BOLD] AI summary generation was unavailable or non-responsive. The following report compiles raw longitudinal patient entries and measured biometrics snapshot directly.\n\n[SECTION] PATIENT OVERVIEW\n• Total Recorded Entries: ${snapshot.logEntries.size}\n• Active Conditions: ${if (snapshot.conditions.isNotEmpty()) snapshot.conditions.joinToString(", ") else "None listed"}\n• Active Medications: ${if (snapshot.medications.isNotEmpty()) snapshot.medications.joinToString(", ") { "${it.name} ${it.dose}" } else "None listed"}"
+            else -> "Clinical summary unavailable. Analysis based on raw snapshot data."
+        }
 
         val pdfDocument = PdfDocument()
-        val paint = Paint()
         val titlePaint = Paint().apply {
             color = Color.rgb(33, 33, 33)
-            textSize = 24f
+            textSize = 22f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            isAntiAlias = true
         }
         val sectionPaint = Paint().apply {
-            color = Color.rgb(0, 102, 204) // Professional Blue
-            textSize = 18f
+            color = Color.rgb(0, 102, 204)
+            textSize = 16f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            isAntiAlias = true
         }
         val bodyPaint = Paint().apply {
             color = Color.rgb(66, 66, 66)
-            textSize = 12f
+            textSize = 11f
+            isAntiAlias = true
         }
         val boldBodyPaint = Paint().apply {
             color = Color.BLACK
-            textSize = 12f
+            textSize = 11f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            isAntiAlias = true
         }
         val italicBodyPaint = Paint().apply {
             color = Color.BLACK
-            textSize = 12f
+            textSize = 11f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.ITALIC)
+            isAntiAlias = true
         }
         val linePaint = Paint().apply {
             color = Color.LTGRAY
             strokeWidth = 1f
+            isAntiAlias = true
+        }
+        val metaPaint = Paint().apply {
+            color = Color.GRAY
+            textSize = 9f
+            isAntiAlias = true
         }
 
-        val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create() // A4 size
+        val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create() // A4
         var page = pdfDocument.startPage(pageInfo)
         var canvas = page.canvas
 
-        var y = 60f
-        val margin = 50f
-        val contentWidth = 495f
+        var y = 50f
+        val margin = 45f
+        val contentWidth = 505f
 
-        canvas.drawText("Tabs — Clinical Longitudinal Report", margin, y, titlePaint)
+        // Header
+        canvas.drawText("Tabs — Clinical Audit Report", margin, y, titlePaint)
         y += 12f
         canvas.drawLine(margin, y, margin + contentWidth, y, linePaint)
-        y += 28f
+        y += 20f
         
-        canvas.drawText("Patient Report Generated: ${SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(Date())}", margin, y, bodyPaint)
-        y += 40f
+        val rangeLabel = if (snapshot.range.type == com.notel.notel.data.model.ClinicalReportRangeType.LAST_30_DAYS) "30-Day Audit" else "Full Audit"
+        val genTimeStr = SimpleDateFormat("MMM dd, yyyy - hh:mm a", Locale.getDefault()).format(Date(snapshot.generationTimestamp))
+        canvas.drawText("Report Range: $rangeLabel (${snapshot.range.durationDays} Days) • Generated: $genTimeStr", margin, y, metaPaint)
+        y += 16f
 
-        // Advanced Parsing Logic
-        val rawLines = summary.split("\n")
+        if (isRawFallback) {
+            val alertPaint = Paint().apply {
+                color = Color.rgb(200, 50, 50)
+                textSize = 10f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                isAntiAlias = true
+            }
+            canvas.drawText("⚠️ RAW DATA REPORT — AI ANALYSIS UNAVAILABLE AT GENERATION TIME", margin, y, alertPaint)
+            y += 18f
+        }
+
+        // Profile & Summary Text Rendering
+        val rawLines = effectiveSummary.split("\n")
         rawLines.forEach { line ->
-            if (y > 780) { // New Page
+            if (y > 780f) {
                 pdfDocument.finishPage(page)
                 page = pdfDocument.startPage(pageInfo)
                 canvas = page.canvas
-                y = 60f
+                y = 50f
             }
 
             when {
                 line.contains("[SECTION]") -> {
-                    y += 15f
+                    y += 12f
                     val cleanSection = line.replace("[SECTION]", "").replace("[BOLD]", "").replace("*", "").replace("#", "").trim()
-                    
                     val wrappedSections = wrapText(cleanSection, contentWidth, sectionPaint)
                     wrappedSections.forEach { sectionPart ->
-                        if (y > 780) {
+                        if (y > 780f) {
                             pdfDocument.finishPage(page)
                             page = pdfDocument.startPage(pageInfo)
                             canvas = page.canvas
-                            y = 60f
+                            y = 50f
                         }
                         canvas.drawText(sectionPart, margin, y, sectionPaint)
-                        y += 22f
+                        y += 20f
                     }
-                    
-                    y -= 14f // Back up a bit for the underline
-                    canvas.drawLine(margin, y, margin + 80f, y, sectionPaint.apply { strokeWidth = 2f })
-                    y += 25f
+                    canvas.drawLine(margin, y - 6f, margin + 60f, y - 6f, Paint(sectionPaint).apply { strokeWidth = 2f })
+                    y += 16f
                 }
                 line.contains("[BULLET]") -> {
                     val cleanBullet = line.replace("[BULLET]", "").replace("*", "").trim().removePrefix("-").trim()
@@ -147,7 +198,7 @@ class ReportGenerator @Inject constructor(
                         canvas = page.canvas
                         canvas
                     }
-                    y += 8f
+                    y += 6f
                 }
                 else -> {
                     y = drawFormattedLine(line, margin, y, contentWidth, canvas, bodyPaint, boldBodyPaint, italicBodyPaint) {
@@ -156,158 +207,119 @@ class ReportGenerator @Inject constructor(
                         canvas = page.canvas
                         canvas
                     }
-                    y += 8f
+                    y += 6f
                 }
             }
         }
 
-        y += 30f
-        if (y < 750) {
-            canvas.drawLine(margin, y, margin + contentWidth, y, linePaint)
-            y += 25f
-            canvas.drawText("Disclaimer: This report is generated by AI based on personal logs and should be reviewed by a medical professional.", margin, y, bodyPaint.apply { textSize = 9f; color = Color.GRAY })
+        // Section: Data Availability & Freshness Summary
+        y += 20f
+        if (y > 720f) {
+            pdfDocument.finishPage(page)
+            page = pdfDocument.startPage(pageInfo)
+            canvas = page.canvas
+            y = 50f
+        }
+
+        canvas.drawText("Data Availability & Source Freshness", margin, y, sectionPaint)
+        y += 18f
+        canvas.drawLine(margin, y - 6f, margin + contentWidth, y - 6f, linePaint)
+        y += 12f
+
+        snapshot.sectionMetadata.forEach { (key, meta) ->
+            if (y > 780f) {
+                pdfDocument.finishPage(page)
+                page = pdfDocument.startPage(pageInfo)
+                canvas = page.canvas
+                y = 50f
+            }
+            val statusText = when (meta.status) {
+                com.notel.notel.data.model.DataSourceStatus.SUCCESS -> "Available (${meta.recordCount} records)"
+                com.notel.notel.data.model.DataSourceStatus.NO_DATA -> "No records found in range"
+                com.notel.notel.data.model.DataSourceStatus.PERMISSION_DENIED -> "Permission missing"
+                com.notel.notel.data.model.DataSourceStatus.UNAVAILABLE -> "Health Connect unavailable"
+                com.notel.notel.data.model.DataSourceStatus.TIMED_OUT -> "Timed out"
+                com.notel.notel.data.model.DataSourceStatus.ERROR -> "Error: ${meta.message ?: "Unknown"}"
+            }
+            canvas.drawText("• ${key.replaceFirstChar { it.uppercase() }}: $statusText", margin + 10f, y, bodyPaint)
+            y += 15f
         }
 
         pdfDocument.finishPage(page)
 
-        // ── 2. Render Biometrics Charts Page(s) ───────────────────────────
+        // ── 2. Render Biometrics Charts Pages ───────────────────────────────
         try {
-            val insightsStr = preferences.aiInsights.first()
-            val insights = if (insightsStr.isNotBlank()) {
-                try { Json { ignoreUnknownKeys = true }.decodeFromString<List<AiInsight>>(insightsStr) } catch(e: Exception) { emptyList() }
-            } else emptyList()
-
-            var biometricInsights = insights
-                .filter { it.type == "Biometrics" }
-                .sortedWith { a, b ->
-                    val getVersion = { id: String ->
-                        val match = "_v(\\d+)$".toRegex().find(id)
-                        match?.groupValues?.get(1)?.toIntOrNull() ?: 1
-                    }
-                    getVersion(a.id).compareTo(getVersion(b.id))
-                }
-
-            if (last30DaysOnly) {
-                val cutoff = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
-                biometricInsights = biometricInsights.filter { it.timestamp >= cutoff }
-            }
-
             val sdfDate = SimpleDateFormat("yyyy-MM-dd", Locale.US)
             val sdfOut = SimpleDateFormat("MMM d", Locale.US)
-            val dateMap = mutableMapOf<String, BiometricRecord>()
-            val jsonSerializer = Json { ignoreUnknownKeys = true }
-
-            biometricInsights.forEach { insight ->
-                val date = Date(insight.timestamp)
-                val dateKey = sdfDate.format(date)
-                val dateStr = sdfOut.format(date)
-                
-                var metrics: BiometricMetricsJson? = null
+            val formatKeyToLabel = { key: String ->
                 try {
-                    metrics = jsonSerializer.decodeFromString<BiometricMetricsJson>(insight.text)
-                } catch(e: Exception) {
-                    e.printStackTrace()
-                }
-                
-                val existing = dateMap[dateKey] ?: BiometricRecord(
-                    date = dateKey,
-                    dateStr = dateStr,
-                    rawDate = date
-                )
-                
-                dateMap[dateKey] = existing.copy(
-                    sleepMins = metrics?.sleepMins ?: existing.sleepMins,
-                    deepSleepMins = metrics?.deepSleepMins ?: existing.deepSleepMins,
-                    avgHr = metrics?.avgHr ?: existing.avgHr,
-                    hrv = metrics?.hrv ?: existing.hrv,
-                    calories = metrics?.calories ?: existing.calories,
-                    spikes = metrics?.spikes ?: existing.spikes
-                )
+                    val d = sdfDate.parse(key)
+                    if (d != null) sdfOut.format(d) else key
+                } catch (e: Exception) { key }
             }
 
-            allEntries.forEach { entry ->
-                val date = Date(entry.timestamp)
-                val dateKey = sdfDate.format(date)
-                val dateStr = sdfOut.format(date)
-                
-                val existing = dateMap[dateKey] ?: BiometricRecord(
-                    date = dateKey,
-                    dateStr = dateStr,
-                    rawDate = date
-                )
-                existing.jots += 1
-                dateMap[dateKey] = existing
-            }
+            // Build chart series directly from snapshot
+            val sleepData = snapshot.sleepSeries.filter { it.second > 0 }.map { formatKeyToLabel(it.first) to (it.second / 60f) }
+            val hrData = snapshot.heartRateSeries.filter { it.second > 0 }.map { formatKeyToLabel(it.first) to it.second.toFloat() }
+            val hrvData = snapshot.hrvSeries.filter { it.second > 0.0 }.map { formatKeyToLabel(it.first) to it.second.toFloat() }
+            val caloriesData = snapshot.caloriesSeries.filter { it.second > 0 }.map { formatKeyToLabel(it.first) to it.second.toFloat() }
+            val spikesData = snapshot.heartRateSpikes.filter { it.spikeCount > 0 }.map { formatKeyToLabel(it.date) to it.spikeCount.toFloat() }
+            
+            val jotsByDate = snapshot.logEntries.groupBy { sdfDate.format(Date(it.timestamp)) }
+            val jotsData = jotsByDate.map { formatKeyToLabel(it.key) to it.value.size.toFloat() }
 
-            val sortedRecords = dateMap.values.sortedBy { it.rawDate }
+            val bpData = snapshot.bloodPressureSeries.map { formatKeyToLabel(sdfDate.format(Date(it.timeEpochMs))) to it.systolic.toFloat() }
 
-            if (sortedRecords.isNotEmpty()) {
-                // Page 2: Charts (1 to 4)
-                var chartPage1 = pdfDocument.startPage(pageInfo)
-                var chartCanvas1 = chartPage1.canvas
+            // Page 2: Charts (1 to 4)
+            val chartPage1 = pdfDocument.startPage(pageInfo)
+            val chartCanvas1 = chartPage1.canvas
 
-                chartCanvas1.drawText("Longitudinal Biometrics & Tracker Charts", margin, 60f, titlePaint)
-                chartCanvas1.drawLine(margin, 72f, margin + contentWidth, 72f, linePaint)
+            chartCanvas1.drawText("Longitudinal Health Metrics & Charts", margin, 50f, titlePaint)
+            chartCanvas1.drawLine(margin, 62f, margin + contentWidth, 62f, linePaint)
 
-                // 1. Sleep Duration
-                val sleepData = sortedRecords.filter { it.sleepMins > 0 }.map { it.dateStr to it.sleepMins / 60f }
-                drawLineChart(chartCanvas1, "Sleep Duration", sleepData, "#42A5F5", margin, 100f, contentWidth, 140f, "h")
+            drawLineChart(chartCanvas1, "Sleep Duration", sleepData, "#42A5F5", margin, 85f, contentWidth, 140f, "h")
+            drawLineChart(chartCanvas1, "Avg Heart Rate", hrData, "#FF5E62", margin, 255f, contentWidth, 140f, " bpm")
+            drawLineChart(chartCanvas1, "HRV (RMSSD)", hrvData, "#B388FF", margin, 425f, contentWidth, 140f, " ms")
+            drawLineChart(chartCanvas1, "Systolic Blood Pressure", bpData, "#E53935", margin, 595f, contentWidth, 140f, " mmHg")
 
-                // 2. Deep Sleep
-                val deepSleepData = sortedRecords.filter { it.deepSleepMins > 0 }.map { it.dateStr to it.deepSleepMins / 60f }
-                drawLineChart(chartCanvas1, "Deep Sleep", deepSleepData, "#7C6EFF", margin, 270f, contentWidth, 140f, "h")
+            pdfDocument.finishPage(chartPage1)
 
-                // 3. Average Heart Rate
-                val hrData = sortedRecords.filter { it.avgHr > 0 }.map { it.dateStr to it.avgHr.toFloat() }
-                drawLineChart(chartCanvas1, "Avg Heart Rate", hrData, "#FF5E62", margin, 440f, contentWidth, 140f, " bpm")
+            // Page 3: Charts (5 to 7) + Disclaimer
+            val chartPage2 = pdfDocument.startPage(pageInfo)
+            val chartCanvas2 = chartPage2.canvas
 
-                // 4. HRV
-                val hrvData = sortedRecords.filter { it.hrv > 0.0 }.map { it.dateStr to it.hrv.toFloat() }
-                drawLineChart(chartCanvas1, "HRV (RMSSD)", hrvData, "#B388FF", margin, 610f, contentWidth, 140f, " ms")
+            chartCanvas2.drawText("Longitudinal Health Metrics & Charts (Cont.)", margin, 50f, titlePaint)
+            chartCanvas2.drawLine(margin, 62f, margin + contentWidth, 62f, linePaint)
 
-                pdfDocument.finishPage(chartPage1)
+            drawLineChart(chartCanvas2, "Calories Burned", caloriesData, "#FFA726", margin, 85f, contentWidth, 140f, " kcal")
+            drawLineChart(chartCanvas2, "HR Spikes (>=100 BPM)", spikesData, "#E040FB", margin, 255f, contentWidth, 140f, "")
+            drawLineChart(chartCanvas2, "Recorded Patient Notes", jotsData, "#26A69A", margin, 425f, contentWidth, 140f, "")
 
-                // Page 3: Charts (5 to 7) + Disclaimer
-                var chartPage2 = pdfDocument.startPage(pageInfo)
-                var chartCanvas2 = chartPage2.canvas
+            chartCanvas2.drawLine(margin, 650f, margin + contentWidth, 650f, linePaint)
+            chartCanvas2.drawText(
+                "Disclaimer: This report is generated by AI based on personal logs and should be reviewed by a medical professional.",
+                margin,
+                675f,
+                metaPaint
+            )
 
-                chartCanvas2.drawText("Longitudinal Biometrics & Tracker Charts (Cont.)", margin, 60f, titlePaint)
-                chartCanvas2.drawLine(margin, 72f, margin + contentWidth, 72f, linePaint)
-
-                // 5. Calories Burned
-                val caloriesData = sortedRecords.filter { it.calories > 0 }.map { it.dateStr to it.calories.toFloat() }
-                drawLineChart(chartCanvas2, "Calories Burned", caloriesData, "#FFA726", margin, 100f, contentWidth, 140f, " kcal")
-
-                // 6. HR Spikes
-                val spikesData = sortedRecords.filter { it.spikes > 0 }.map { it.dateStr to it.spikes.toFloat() }
-                drawLineChart(chartCanvas2, "HR Spikes", spikesData, "#E040FB", margin, 270f, contentWidth, 140f, "")
-
-                // 7. Number of Tabs
-                val jotsData = sortedRecords.filter { it.jots > 0 }.map { it.dateStr to it.jots.toFloat() }
-                drawLineChart(chartCanvas2, "Number of Tabs", jotsData, "#26A69A", margin, 440f, contentWidth, 140f, "")
-
-                // Disclaimer on bottom of the charts page
-                chartCanvas2.drawLine(margin, 650f, margin + contentWidth, 650f, linePaint)
-                chartCanvas2.drawText(
-                    "Disclaimer: This report is generated by AI based on personal logs and should be reviewed by a medical professional.",
-                    margin,
-                    675f,
-                    bodyPaint.apply { textSize = 9f; color = Color.GRAY }
-                )
-
-                pdfDocument.finishPage(chartPage2)
-            }
+            pdfDocument.finishPage(chartPage2)
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("ReportGenerator", "Failed rendering biometrics chart pages: ${e.message}", e)
         }
 
         val fileName = "Tabs_Report_${SimpleDateFormat("MMM_dd_yyyy", Locale.getDefault()).format(Date())}.pdf"
         val cacheFile = File(context.cacheDir, fileName)
         try {
             pdfDocument.writeTo(FileOutputStream(cacheFile))
-            saveToDownloads(cacheFile, fileName)
+            // Separate Downloads save failure from cache returning
+            try {
+                saveToDownloads(cacheFile, fileName)
+            } catch (e: Exception) {
+                android.util.Log.w("ReportGenerator", "Could not copy PDF to Downloads: ${e.message}")
+            }
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("ReportGenerator", "Failed writing PDF cache file: ${e.message}", e)
             return null
         } finally {
             pdfDocument.close()
