@@ -434,12 +434,16 @@ class SettingsViewModel @Inject constructor(
         _searchQuery.value = query
     }
 
+    val conditionsCount: StateFlow<Int> = conditionRepository.conditions.map { it.size }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val medicationsCount: StateFlow<Int> = medications.map { it.size }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
     val conditionsAndMedicationsCount: StateFlow<Int> = combine(
-        conditionRepository.conditions,
-        medications
-    ) { conditions, meds ->
-        conditions.size + meds.size
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+        conditionsCount,
+        medicationsCount
+    ) { c, m -> c + m }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val connectedAppsCount: StateFlow<Int> = combine(
         healthConnectConnected,

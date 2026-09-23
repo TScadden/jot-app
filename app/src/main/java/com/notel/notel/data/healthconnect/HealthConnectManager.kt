@@ -198,49 +198,55 @@ class HealthConnectManager(private val context: Context) : com.notel.notel.data.
         return granted.contains(HealthPermission.getReadPermission(BloodPressureRecord::class))
     }
 
-    private fun startOfDate(dateStr: String): Instant {
+    private fun getLocalDate(dateStr: String): java.time.LocalDate {
         return try {
-            val zoneId = ZoneId.systemDefault()
-            if (dateStr == "today" || dateStr.isBlank()) {
-                ZonedDateTime.now(zoneId).truncatedTo(ChronoUnit.DAYS).toInstant()
-            } else {
-                val localDate = java.time.LocalDate.parse(dateStr)
-                localDate.atStartOfDay(zoneId).toInstant()
-            }
+            if (dateStr == "today" || dateStr.isBlank()) java.time.LocalDate.now()
+            else java.time.LocalDate.parse(dateStr)
         } catch (e: Exception) {
-            ZonedDateTime.now(ZoneId.systemDefault()).truncatedTo(ChronoUnit.DAYS).toInstant()
+            java.time.LocalDate.now()
         }
     }
 
-    private fun endOfDate(dateStr: String): Instant = startOfDate(dateStr).plus(1, ChronoUnit.DAYS)
+    private fun startOfDate(dateStr: String): Instant {
+        val zoneId = ZoneId.systemDefault()
+        return getLocalDate(dateStr).atStartOfDay(zoneId).toInstant()
+    }
+
+    private fun endOfDate(dateStr: String): Instant {
+        val zoneId = ZoneId.systemDefault()
+        return getLocalDate(dateStr).plusDays(1).atStartOfDay(zoneId).toInstant()
+    }
 
     suspend fun readHeartRateIntraday(dateStr: String): List<Pair<Long, Int>> {
         try {
             val start = startOfDate(dateStr)
             val end = endOfDate(dateStr)
             
-            val response = healthConnectClient.readRecords(
-                ReadRecordsRequest(
-                    recordType = HeartRateRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start, end)
+            val allRecords = mutableListOf<HeartRateRecord>()
+            var pageToken: String? = null
+            do {
+                val response = healthConnectClient.readRecords(
+                    ReadRecordsRequest(
+                        recordType = HeartRateRecord::class,
+                        timeRangeFilter = TimeRangeFilter.between(start, end),
+                        pageToken = pageToken
+                    )
                 )
-            )
+                allRecords.addAll(response.records)
+                pageToken = response.pageToken
+            } while (pageToken != null)
             
-            val zoneId = ZoneId.systemDefault()
-            val filteredRecords = filterRecordsByPackagePriority(response.records) { record ->
-                val zdt = java.time.ZonedDateTime.ofInstant(record.startTime, zoneId)
-                zdt.toLocalDate().toString()
-            }
+            val nonMockRecords = allRecords.filter { getSessionPriority(it.metadata.dataOrigin.packageName) > -100 }
             
             val result = mutableListOf<Pair<Long, Int>>()
-            filteredRecords.forEach { record ->
+            nonMockRecords.forEach { record ->
                 record.samples.forEach { sample ->
                     result.add(sample.time.toEpochMilli() to sample.beatsPerMinute.toInt())
                 }
             }
-            return result.sortedBy { it.first }
+            return result.distinctBy { it.first }.sortedBy { it.first }
         } catch(e: Exception) {
-            return emptyList()
+            throw e
         }
     }
 

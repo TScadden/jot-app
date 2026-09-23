@@ -38,6 +38,7 @@ class SyncManager @Inject constructor(
     private val habitRepository: com.notel.notel.data.repository.HabitRepository,
     private val preferences: NotelPreferences,
     private val healthConnectManager: com.notel.notel.data.healthconnect.HealthConnectManager,
+    private val healthConnectCoordinator: com.notel.notel.data.healthconnect.HealthConnectCoordinator,
     private val logRepositoryProvider: javax.inject.Provider<com.notel.notel.data.repository.LogRepository>,
     private val reportGeneratorProvider: javax.inject.Provider<com.notel.notel.util.ReportGenerator>,
     private val conditionRepositoryProvider: javax.inject.Provider<com.notel.notel.data.repository.ConditionRepository>,
@@ -327,21 +328,21 @@ class SyncManager @Inject constructor(
 
             if (!skipHealthConnect && healthConnectManager.hasBasicPermissions()) {
                 try {
-                    val liveSleep = healthConnectManager.readSleepSession(todayStr)
+                    val liveSleep = healthConnectCoordinator.getSleepSession(todayStr)
                     if (liveSleep != null) {
                         todaySleep = liveSleep.minutesAsleep
                     }
-                    val liveRhr = healthConnectManager.readRestingHeartRate(todayStr)
-                    val liveHr = if (liveRhr != null && liveRhr > 0) {
+                    val liveRhr = healthConnectCoordinator.getRestingHeartRate(todayStr)
+                    val liveHr = if (liveRhr > 0) {
                         liveRhr
                     } else {
-                        val avg = healthConnectManager.readHeartRateAverage(todayStr)
-                        if (avg > 0) avg else 0
+                        val intraday = healthConnectCoordinator.getIntradayHeartRate(todayStr)
+                        if (intraday.isNotEmpty()) intraday.map { it.second }.average().toInt() else 0
                     }
                     if (liveHr > 0) {
                         todayHr = liveHr
                     }
-                    val spikes = healthConnectManager.readHistoricalHeartRateWithSpikes(1)
+                    val spikes = healthConnectCoordinator.getHrSpikesHistory(1)
                     val todaySpikeObj = spikes.find { it.date == todayStr }
                     if (todaySpikeObj != null) {
                         todaySpikeCount = todaySpikeObj.spikeCount
@@ -1055,10 +1056,10 @@ class SyncManager @Inject constructor(
                 } else emptyList()
             } catch (e: Exception) { emptyList() }
 
-            val hrvHistory = try { healthConnectManager.readHeartRateVariability(180) } catch(e: Exception) { emptyList() }
-            val sleepHistory = try { healthConnectManager.readHistoricalSleepWithDeep(180) } catch(e: Exception) { emptyList() }
-            val calorieHistory = try { healthConnectManager.readHistoricalCalories(180) } catch(e: Exception) { emptyList() }
-            val hrHistory = try { healthConnectManager.readHistoricalHeartRate(180) } catch(e: Exception) { emptyList() }
+            val hrvHistory = try { healthConnectCoordinator.getHeartRateVariability(14) } catch(e: Exception) { emptyList() }
+            val sleepHistory = try { healthConnectCoordinator.getSleepHistory(14).map { com.notel.notel.data.healthconnect.DailySleepSummary(it.first, it.second, 0) } } catch(e: Exception) { emptyList() }
+            val calorieHistory = try { healthConnectCoordinator.getCaloriesHistory(14) } catch(e: Exception) { emptyList() }
+            val hrHistory = try { healthConnectCoordinator.getHeartRateHistory(14) } catch(e: Exception) { emptyList() }
             
             val newInsights = mutableListOf<com.notel.notel.data.local.entity.AiInsight>()
             

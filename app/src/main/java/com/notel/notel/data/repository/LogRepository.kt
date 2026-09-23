@@ -48,6 +48,7 @@ class LogRepository @Inject constructor(
     private val geminiService: GeminiService,
     private val preferences: NotelPreferences,
     val healthConnectManager: HealthConnectManager,
+    val healthConnectCoordinator: com.notel.notel.data.healthconnect.HealthConnectCoordinator,
     private val syncManager: SyncManager,
     private val categoryRepository: CategoryRepository,
     private val habitRepository: HabitRepository,
@@ -371,14 +372,13 @@ class LogRepository @Inject constructor(
             emptyList()
         }
 
-        // 1. Fetch Historical Aggregates (42-day window for stable trends/ACWR, spikes cached up to 180 days)
-        val hrvHistory = if (isAvailable) try { healthConnectManager.readHeartRateVariability(42) } catch(e: Exception) { emptyList() } else emptyList()
+        // 1. Fetch Historical Aggregates (14-day window for stable trends/ACWR, deduplicated via coordinator)
+        val hrvHistory = if (isAvailable) try { healthConnectCoordinator.getHeartRateVariability(14) } catch(e: Exception) { emptyList() } else emptyList()
         
-        // Heavy intraday heart rate query: if we already have 150+ cached days, query only the last 7 days and merge
         val historyHr = if (isAvailable) {
             try {
-                val daysToQuery = if (cachedHrList.size >= 150) 7 else 180
-                val freshHr = healthConnectManager.readHistoricalHeartRateWithSpikes(daysToQuery)
+                val daysToQuery = if (cachedHrList.size >= 14) 14 else 30
+                val freshHr = healthConnectCoordinator.getHrSpikesHistory(daysToQuery)
                 val mergedMap = (cachedHrList + freshHr).associateBy { it.date }
                 mergedMap.values.sortedByDescending { it.date }.take(180).sortedBy { it.date }
             } catch(e: Exception) {
@@ -388,8 +388,8 @@ class LogRepository @Inject constructor(
             cachedHrList
         }
 
-        val sleepHistoryRecords = if (isAvailable) try { healthConnectManager.readHistoricalSleep(42, targetDay) } catch(e: Exception) { emptyList() } else emptyList()
-        val calorieHistory = if (isAvailable) try { healthConnectManager.readHistoricalCalories(42) } catch(e: Exception) { emptyList() } else emptyList()
+        val sleepHistoryRecords = if (isAvailable) try { healthConnectCoordinator.getSleepHistory(14) } catch(e: Exception) { emptyList() } else emptyList()
+        val calorieHistory = if (isAvailable) try { healthConnectCoordinator.getCaloriesHistory(14) } catch(e: Exception) { emptyList() } else emptyList()
 
         // UPDATE PREFERENCES TO FIX UI SYNC FOR 7 DAY RECAP
         try {
@@ -1258,14 +1258,14 @@ class LogRepository @Inject constructor(
         if (!hasHealthConnect && fitbitToken.isBlank()) return ""
 
         val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-        val daysLimit = if (last30DaysOnly) 31 else 180
+        val daysLimit = if (last30DaysOnly) 14 else 30
 
         // ── Spike-aware heart rate (POTS/MCAS critical) ───────────────────────
         val spikesJson = preferences.historicalHrSpikes.first()
         val spikeHistory: List<DailyHeartRateSummary> = if (spikesJson.isNotBlank()) {
             try { json.decodeFromString(spikesJson) } catch (e: Exception) { emptyList() }
         } else if (hasHealthConnect) {
-            val fresh = healthConnectManager.readHistoricalHeartRateWithSpikes(daysLimit)
+            val fresh = healthConnectCoordinator.getHrSpikesHistory(daysLimit)
             if (fresh.isNotEmpty()) {
                 preferences.setHistoricalHrSpikes(kotlinx.serialization.json.Json.encodeToString(fresh))
             }
@@ -1275,31 +1275,31 @@ class LogRepository @Inject constructor(
         val heartJson = preferences.historicalHeartRate.first()
         val heartHist = try {
             if (heartJson.isNotBlank()) json.decodeFromString<List<BiomarkerPoint>>(heartJson).map { it.date to it.value }
-            else if (hasHealthConnect) healthConnectManager.readHistoricalHeartRate(180)
+            else if (hasHealthConnect) healthConnectCoordinator.getHeartRateHistory(daysLimit)
             else emptyList()
         } catch (e: Exception) { emptyList() }
 
         val sleepJson = preferences.historicalSleep.first()
         val sleepHist = try {
             if (sleepJson.isNotBlank()) json.decodeFromString<List<BiomarkerPoint>>(sleepJson).map { it.date to it.value }
-            else if (hasHealthConnect) healthConnectManager.readHistoricalSleep(180)
+            else if (hasHealthConnect) healthConnectCoordinator.getSleepHistory(daysLimit)
             else emptyList()
         } catch (e: Exception) { emptyList() }
 
-        val sleepWithDeepHist = try {
-            if (hasHealthConnect) healthConnectManager.readHistoricalSleepWithDeep(180)
+        val sleepWithDeepHist: List<com.notel.notel.data.healthconnect.DailySleepSummary> = try {
+            if (hasHealthConnect) healthConnectCoordinator.getSleepHistory(daysLimit).map { com.notel.notel.data.healthconnect.DailySleepSummary(it.first, it.second, 0) }
             else emptyList()
         } catch (e: Exception) { emptyList() }
 
         val calJson = preferences.historicalCalories.first()
         val calHist = try {
             if (calJson.isNotBlank()) json.decodeFromString<List<BiomarkerPoint>>(calJson).map { it.date to it.value }
-            else if (hasHealthConnect) healthConnectManager.readHistoricalCalories(180)
+            else if (hasHealthConnect) healthConnectCoordinator.getCaloriesHistory(daysLimit)
             else emptyList()
         } catch (e: Exception) { emptyList() }
 
         val hrvHist = try {
-            if (hasHealthConnect) healthConnectManager.readHeartRateVariability(180)
+            if (hasHealthConnect) healthConnectCoordinator.getHeartRateVariability(daysLimit)
             else emptyList()
         } catch (e: Exception) { emptyList() }
 

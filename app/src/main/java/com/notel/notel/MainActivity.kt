@@ -596,7 +596,23 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         composable("fitbit") {
-                            FitbitScreen(viewModel = fitbitViewModel, onBack = { navController.popBackStack() })
+                            FitbitScreen(
+                                viewModel = fitbitViewModel,
+                                onBack = { navController.popBackStack() },
+                                onNavigateToSpikeReview = { navController.navigate("spike_review") },
+                                onNavigateToHealthConnect = { navController.navigate("data_connections") }
+                            )
+                        }
+                        composable("spike_review") {
+                            HeartSpikeReviewScreen(
+                                viewModel = fitbitViewModel,
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+                        composable("conditions_and_medications") {
+                            ConditionsAndMedicationsScreen(
+                                onBack = { navController.popBackStack() }
+                            )
                         }
                         composable("sleep") {
                             SleepScreen(onBack = { navController.popBackStack() })

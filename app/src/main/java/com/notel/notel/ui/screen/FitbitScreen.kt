@@ -47,11 +47,13 @@ import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.FitbitViewModel
 import com.notel.notel.data.healthconnect.DailyHeartRateSummary
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun FitbitScreen(
     viewModel: FitbitViewModel = hiltViewModel(),
-    onBack: () -> Unit
+    onBack: () -> Unit = {},
+    onNavigateToSpikeReview: () -> Unit = {},
+    onNavigateToHealthConnect: () -> Unit = {}
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
@@ -64,7 +66,6 @@ fun FitbitScreen(
     
     var showCalendar by remember { mutableStateOf(false) }
     var showHrInfo by remember { mutableStateOf(false) }
-    var showSpikeDetails by remember { mutableStateOf(false) }
 
     if (showHrInfo) {
         AlertDialog(
@@ -133,7 +134,9 @@ fun FitbitScreen(
                             timeZone = java.util.TimeZone.getTimeZone("UTC")
                         }
                         val formatted = sdf.format(java.util.Date(millis))
-                        viewModel.fetchHeartRateForDate(formatted)
+                        val todayStr = java.time.LocalDate.now().toString()
+                        val targetArg = if (formatted == todayStr) "today" else formatted
+                        viewModel.fetchHeartRateForDate(targetArg)
                     }
                 }) {
                     Text("Select", color = NotelPrimary)
@@ -173,11 +176,6 @@ fun FitbitScreen(
                         fontSize = 28.sp,
                         color = NotelTextPrimary
                     )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = NotelTextSecondary)
-                    }
                 },
                 actions = {
                     if (state.isConnected) {
@@ -375,7 +373,9 @@ fun FitbitScreen(
                                         if (state.asleepHeartRate > 0) "Asleep ${state.asleepHeartRate} bpm" else "Asleep -- bpm",
                                         color = Color(0xFFA49BFF),
                                         fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                     )
                                 }
                             }
@@ -385,7 +385,7 @@ fun FitbitScreen(
                                 color = Color(0xFF12233D),
                                 shape = RoundedCornerShape(16.dp),
                                 border = BorderStroke(1.dp, Color(0xFF1E3A66)),
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.weight(1.2f)
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
@@ -403,7 +403,8 @@ fun FitbitScreen(
                                         color = Color(0xFF79B4FF),
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                     )
                                 }
                             }
@@ -445,7 +446,7 @@ fun FitbitScreen(
                             }
                         }
                         Text(
-                            "Heart rate from 7 AM to 7 PM",
+                            "Heart rate from 12 AM to 11:59 PM",
                             color = NotelTextSecondary,
                             fontSize = 12.sp
                         )
@@ -454,17 +455,18 @@ fun FitbitScreen(
 
                         HeartPatternGraph(
                             heartRateData = state.heartRateData,
+                            selectedDateStr = state.selectedHeartRateDate,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(220.dp)
+                                .height(210.dp)
                         )
 
                         Spacer(Modifier.height(16.dp))
 
-                        // Graph Legend
-                        Row(
+                        // Graph Legend (FlowRow to prevent wrapping text vertically)
+                        FlowRow(
                             horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -632,7 +634,7 @@ fun FitbitScreen(
                         Spacer(Modifier.height(16.dp))
 
                         GlassyButton(
-                            onClick = { viewModel.navigateToWorstSpikeDay() },
+                            onClick = onNavigateToSpikeReview,
                             modifier = Modifier.fillMaxWidth(),
                             containerColor = Color(0xFF19223D)
                         ) {
@@ -650,7 +652,9 @@ fun FitbitScreen(
 
                 // ── 4. HEALTH CONNECT STATUS ROW CARD ──────────────────────
                 GlassyCard(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onNavigateToHealthConnect() },
                     color = NotelSurface
                 ) {
                     Row(
@@ -667,11 +671,10 @@ fun FitbitScreen(
                                     .background(Color(0xFF1E284A), CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(
-                                    Icons.Default.Favorite,
-                                    contentDescription = null,
-                                    tint = Color(0xFF7C6EFF),
-                                    modifier = Modifier.size(20.dp)
+                                androidx.compose.foundation.Image(
+                                    painter = androidx.compose.ui.res.painterResource(id = com.notel.notel.R.drawable.ic_health_connect),
+                                    contentDescription = "Health Connect",
+                                    modifier = Modifier.size(24.dp)
                                 )
                             }
                             Spacer(Modifier.width(12.dp))
@@ -697,6 +700,9 @@ fun FitbitScreen(
                         )
                     }
                 }
+
+                // Extra scroll padding to ensure complete Health Connect card is visible above floating navigation bar
+                Spacer(Modifier.height(72.dp))
             }
         }
     }
@@ -705,27 +711,28 @@ fun FitbitScreen(
 @Composable
 fun HeartPatternGraph(
     heartRateData: List<Pair<Long, Int>>,
-    restingRangeMin: Int = 45,
-    restingRangeMax: Int = 70,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    selectedDateStr: String = "today"
 ) {
     val textMeasurer = rememberTextMeasurer()
     val zoneId = remember { java.time.ZoneId.systemDefault() }
+    val context = LocalContext.current
+    val is24Hour = remember(context) { android.text.format.DateFormat.is24HourFormat(context) }
     
-    val (startTimeMs, endTimeMs) = remember(heartRateData) {
-        if (heartRateData.isEmpty()) {
-            val todayStart = java.time.LocalDate.now().atTime(7, 0).atZone(zoneId).toInstant().toEpochMilli()
-            val todayEnd = java.time.LocalDate.now().atTime(19, 0).atZone(zoneId).toInstant().toEpochMilli()
-            todayStart to todayEnd
-        } else {
-            val minT = heartRateData.first().first
-            val maxT = heartRateData.last().first
-            if (maxT - minT < 3600_000L) {
-                minT to (minT + 12 * 3600_000L)
-            } else {
-                minT to maxT
-            }
+    val targetDate = remember(selectedDateStr) {
+        try {
+            if (selectedDateStr == "today" || selectedDateStr.isBlank()) java.time.LocalDate.now()
+            else java.time.LocalDate.parse(selectedDateStr)
+        } catch(e: Exception) {
+            java.time.LocalDate.now()
         }
+    }
+
+    val defaultStartMs = remember(targetDate) { targetDate.atStartOfDay(zoneId).toInstant().toEpochMilli() }
+    val defaultEndMs = remember(targetDate) { targetDate.atTime(23, 59, 59).atZone(zoneId).toInstant().toEpochMilli() }
+
+    val (startTimeMs, endTimeMs) = remember(targetDate) {
+        defaultStartMs to defaultEndMs
     }
     
     val peakPoint = remember(heartRateData) {
@@ -780,32 +787,56 @@ fun HeartPatternGraph(
             }
 
             // 2. Draw Resting Range shaded band (45-70 bpm)
-            val restingTop = yToPx(restingRangeMax.toFloat())
-            val restingBottom = yToPx(restingRangeMin.toFloat())
+            val restingTop = yToPx(70f)
+            val restingBottom = yToPx(45f)
             drawRect(
                 color = Color(0xFF1B2847).copy(alpha = 0.6f),
                 topLeft = Offset(leftPadding, restingTop),
                 size = Size(graphWidth, restingBottom - restingTop)
             )
 
-            // 3. Draw X-axis time labels (7 AM, 9 AM, 11 AM, 1 PM, 3 PM, 5 PM, 7 PM)
-            val hourIntervals = listOf(7, 9, 11, 13, 15, 17, 19)
-            val todayDate = java.time.LocalDate.now()
+            // 3. Draw X-axis time labels & vertical grid lines across 24h (12 AM to 12 AM next day)
+            val hourIntervals = listOf(0, 6, 12, 18, 24)
             hourIntervals.forEach { hr ->
-                val labelTimeMs = todayDate.atTime(hr, 0).atZone(zoneId).toInstant().toEpochMilli()
+                val labelTimeMs = if (hr == 24) {
+                    targetDate.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
+                } else {
+                    targetDate.atTime(hr, 0).atZone(zoneId).toInstant().toEpochMilli()
+                }
                 val x = xToPx(labelTimeMs)
-                val labelText = when {
-                    hr == 12 -> "12 PM"
-                    hr > 12 -> "${hr - 12} PM"
-                    else -> "$hr AM"
+                
+                // Vertical grid line for time tick
+                drawLine(
+                    color = Color(0xFF1D2A47),
+                    start = Offset(x, topPadding),
+                    end = Offset(x, topPadding + graphHeight),
+                    strokeWidth = 1.dp.toPx(),
+                    pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(4f, 4f), 0f)
+                )
+
+                val labelText = if (is24Hour) {
+                    if (hr == 24) "00:00" else String.format(java.util.Locale.US, "%02d:00", hr)
+                } else {
+                    when {
+                        hr == 0 || hr == 24 -> "12 AM"
+                        hr == 12 -> "12 PM"
+                        hr > 12 -> "${hr - 12} PM"
+                        else -> "$hr AM"
+                    }
                 }
                 val textLayoutResult = textMeasurer.measure(
                     text = AnnotatedString(labelText),
-                    style = TextStyle(color = Color(0xFF7A8FAF), fontSize = 10.sp)
+                    style = TextStyle(color = Color(0xFF7A8FAF), fontSize = 10.sp, fontWeight = FontWeight.Medium)
                 )
+                val textWidth = textLayoutResult.size.width.toFloat()
+                val clampedTextX = (x - textWidth / 2f).coerceIn(
+                    leftPadding,
+                    size.width - rightPadding - textWidth
+                )
+                
                 drawText(
                     textLayoutResult = textLayoutResult,
-                    topLeft = Offset(x - textLayoutResult.size.width / 2f, size.height - bottomPadding + 6.dp.toPx())
+                    topLeft = Offset(clampedTextX, size.height - bottomPadding + 6.dp.toPx())
                 )
             }
 
@@ -850,7 +881,7 @@ fun HeartPatternGraph(
                 )
                 drawText(
                     textLayoutResult = peakTextResult,
-                    topLeft = Offset(peakX - peakTextResult.size.width / 2f, peakY - peakTextResult.size.height - 6.dp.toPx())
+                    topLeft = Offset((peakX - peakTextResult.size.width / 2f).coerceIn(leftPadding, size.width - rightPadding - peakTextResult.size.width), peakY - peakTextResult.size.height - 6.dp.toPx())
                 )
             }
         }
