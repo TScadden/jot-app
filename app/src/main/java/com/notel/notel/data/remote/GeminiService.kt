@@ -342,6 +342,15 @@ class GeminiService @Inject constructor(
             }
 
             val enrichedContext = "${snapshot.userContext}\n\n$dateSpanText\n$profileText"
+
+            // Authoritative per-metric availability so the report model never
+            // invents statistics for metrics whose data could not be retrieved.
+            val availabilityText = snapshot.sectionMetadata.entries.joinToString("; ") { (key, meta) ->
+                val label = key.replaceFirstChar { it.uppercase() }
+                val status = if (meta.status == com.notel.notel.data.model.DataSourceStatus.SUCCESS)
+                    "Available (${meta.recordCount} records)" else "Unavailable"
+                "$label: $status"
+            }
             
             // Privacy-safe telemetry logging
             android.util.Log.d(
@@ -358,7 +367,8 @@ class GeminiService @Inject constructor(
                     userContext = enrichedContext,
                     knowledgeBase = snapshot.knowledgeDocuments.joinToString("\n\n").ifBlank { null },
                     fitbitData = healthSummary,
-                    bodyLoadHistory = snapshot.bodyLoadHistory.ifBlank { null }
+                    bodyLoadHistory = snapshot.bodyLoadHistory.ifBlank { null },
+                    dataAvailability = availabilityText.ifBlank { null }
                 )
             )
             val result = response.body()?.result

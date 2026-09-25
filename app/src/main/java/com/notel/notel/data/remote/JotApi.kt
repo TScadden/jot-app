@@ -27,6 +27,7 @@ data class AiRequest(
     val fitbitData: String? = null,
     val habitData: String? = null,
     val bodyLoadHistory: String? = null,
+    val dataAvailability: String? = null,
     val weatherContext: String? = null,
     val documents: List<ProcessDocumentRequest> = emptyList()
 )
