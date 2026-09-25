@@ -352,8 +352,17 @@ class GeminiService @Inject constructor(
 
             // Authoritative per-metric availability so the report model never
             // invents statistics for metrics whose data could not be retrieved.
+            // Non-biometric sections get source-disambiguated labels
+            // ("Medications (profile list)") so the model never reads a bare
+            // "Medications: Unavailable" as contradicting medication mentions in
+            // user logs. Hardcoded labels only — never derived from user text.
             val availabilityText = snapshot.sectionMetadata.entries.joinToString("; ") { (key, meta) ->
-                val label = key.replaceFirstChar { it.uppercase() }
+                val label = when (key) {
+                    "medications" -> "Medications (profile list)"
+                    "conditions" -> "Conditions (profile list)"
+                    "documents" -> "Documents (knowledge base)"
+                    else -> key.replaceFirstChar { it.uppercase() }
+                }
                 val status = if (meta.status == com.notel.notel.data.model.DataSourceStatus.SUCCESS)
                     "Available (${meta.recordCount} records)" else "Unavailable"
                 "$label: $status"

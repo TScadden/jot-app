@@ -90,9 +90,29 @@ class ClinicalReportDataCollector @Inject constructor(
             try {
                 val medsStr = preferences.medications.first()
                 val meds = if (medsStr.isNotBlank()) {
+                    // The DataStore JSON is always written with the
+                    // com.notel.notel.ui.viewmodel.Medication serializer (id is a UUID
+                    // String) — never the Room entity serializer. Decoding it as the
+                    // entity type threw on the String->Long id coercion, which surfaced
+                    // as a spurious "Medications: Unavailable" with real data behind it.
                     kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-                        .decodeFromString<List<Medication>>(medsStr)
-                        .filter { !it.isDeleted && !it.isArchived }
+                        .decodeFromString<List<com.notel.notel.ui.viewmodel.Medication>>(medsStr)
+                        .filter { !it.isDeleted && it.isPresent }
+                        .map { vm ->
+                            Medication(
+                                uuid = vm.id,
+                                name = vm.name,
+                                dose = vm.dose,
+                                frequency = vm.frequency,
+                                startedDate = vm.startDate.ifBlank { null },
+                                endedDate = if (vm.isPresent || vm.endDate.isBlank()
+                                    || vm.endDate.equals("Present", ignoreCase = true)
+                                ) null else vm.endDate,
+                                isArchived = false,
+                                updatedAt = vm.updatedAt,
+                                isDeleted = vm.isDeleted
+                            )
+                        }
                 } else emptyList()
                 metadataMap["medications"] = SectionMetadata("medications", DataSourceStatus.SUCCESS, meds.size)
                 meds
