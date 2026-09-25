@@ -221,9 +221,11 @@ class ClinicalReportDataCollector @Inject constructor(
                 metadataMap["hrv"] = SectionMetadata("hrv", DataSourceStatus.PERMISSION_DENIED, 0, "Health Connect permissions missing")
                 return@async emptyList()
             }
-            val res = withTimeoutOrNull(20_000L) {
+            // HRV is a dense record type (many readings per night); use the coordinator's
+            // cached read and allow a longer timeout for a cold 180-day fetch.
+            val res = withTimeoutOrNull(60_000L) {
                 try {
-                    healthConnectManager.readHeartRateVariability(days = daysToFetch)
+                    healthConnectCoordinator.getHeartRateVariability(days = daysToFetch, targetDateStr = targetToday.toString())
                 } catch (e: Exception) { null }
             }
             if (res != null && res.isNotEmpty()) {
@@ -236,7 +238,7 @@ class ClinicalReportDataCollector @Inject constructor(
                     metadataMap["hrv"] = SectionMetadata("hrv", DataSourceStatus.SUCCESS, fitbitHrv.size, "Fitbit data")
                     fitbitHrv
                 } else if (res == null) {
-                    metadataMap["hrv"] = SectionMetadata("hrv", DataSourceStatus.TIMED_OUT, 0, "Query timed out after 20s")
+                    metadataMap["hrv"] = SectionMetadata("hrv", DataSourceStatus.TIMED_OUT, 0, "Query timed out after 60s")
                     emptyList()
                 } else {
                     metadataMap["hrv"] = SectionMetadata("hrv", DataSourceStatus.NO_DATA, 0)
