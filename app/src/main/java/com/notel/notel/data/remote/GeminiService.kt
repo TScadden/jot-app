@@ -334,6 +334,13 @@ class GeminiService @Inject constructor(
                 if (snapshot.hrvSeries.isNotEmpty()) {
                     val avgHrv = snapshot.hrvSeries.map { it.second }.average()
                     append("Avg HRV (RMSSD): ${String.format(java.util.Locale.US, "%.1f", avgHrv)} ms across ${snapshot.hrvSeries.size} days. ")
+                    // Per-date sensor values: give the model real measurements to cite
+                    // for correlation analysis instead of reaching for free-text log
+                    // mentions (e.g. a note reading "HRV 54" when no sensor data exists).
+                    val perDateHrv = snapshot.hrvSeries.joinToString("; ") { (date, value) ->
+                        "$date: ${String.format(java.util.Locale.US, "%.1f", value)} ms"
+                    }
+                    append("HRV (RMSSD) by date (sensor data): $perDateHrv. ")
                 }
                 if (snapshot.deepSleepSeries.isNotEmpty()) {
                     val avgDeepSleepHours = snapshot.deepSleepSeries.map { it.second / 60f }.average()
