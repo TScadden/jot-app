@@ -735,7 +735,10 @@ class HealthConnectManager(private val context: Context) : com.notel.notel.data.
     suspend fun readHeartRateVariability(days: Int = 1, targetDateStr: String? = null): List<Pair<String, Double>> = withContext(Dispatchers.IO) {
         try {
             val end = if (targetDateStr != null) endOfDate(targetDateStr) else ZonedDateTime.now(ZoneId.systemDefault()).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
-            val start = if (targetDateStr != null) startOfDate(targetDateStr) else end.minus(days.toLong(), ChronoUnit.DAYS)
+            // NB: when anchored to a target date, go back (days - 1) full days so the
+            // range covers `days` days ending on the target date (previously `days`
+            // was ignored in this branch and only the target day was read).
+            val start = if (targetDateStr != null) startOfDate(targetDateStr).minus((days - 1).toLong(), ChronoUnit.DAYS) else end.minus(days.toLong(), ChronoUnit.DAYS)
             
             val records = mutableListOf<HeartRateVariabilityRmssdRecord>()
             var pageToken: String? = null
