@@ -13,6 +13,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.*
 import java.time.LocalDate
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -134,6 +136,7 @@ class ClinicalReportDataCollector @Inject constructor(
         // 7. Health Connect metrics
         val hasHcPermissions = healthConnectManager.hasAllPermissions()
         val targetToday = LocalDate.now()
+        val minDateStr = targetToday.minusDays((daysToFetch - 1).toLong()).toString()
 
         val sleepDeferred = async {
             if (!hasHcPermissions) {
@@ -177,12 +180,22 @@ class ClinicalReportDataCollector @Inject constructor(
             val res = withTimeoutOrNull(20_000L) {
                 healthConnectCoordinator.getCaloriesHistory(days = daysToFetch, targetToday = targetToday)
             }
-            if (res != null) {
-                metadataMap["calories"] = SectionMetadata("calories", if (res.isNotEmpty()) DataSourceStatus.SUCCESS else DataSourceStatus.NO_DATA, res.size)
+            if (res != null && res.isNotEmpty()) {
+                metadataMap["calories"] = SectionMetadata("calories", DataSourceStatus.SUCCESS, res.size)
                 res
             } else {
-                metadataMap["calories"] = SectionMetadata("calories", DataSourceStatus.TIMED_OUT, 0, "Query timed out after 20s")
-                emptyList()
+                // Fallback: Fitbit API calorie history cached in preferences by FitbitViewModel
+                val fitbitCals = readFitbitCachedCalories(minDateStr)
+                if (fitbitCals.isNotEmpty()) {
+                    metadataMap["calories"] = SectionMetadata("calories", DataSourceStatus.SUCCESS, fitbitCals.size, "Fitbit data")
+                    fitbitCals
+                } else if (res == null) {
+                    metadataMap["calories"] = SectionMetadata("calories", DataSourceStatus.TIMED_OUT, 0, "Query timed out after 20s")
+                    emptyList()
+                } else {
+                    metadataMap["calories"] = SectionMetadata("calories", DataSourceStatus.NO_DATA, 0)
+                    emptyList()
+                }
             }
         }
 
@@ -213,11 +226,41 @@ class ClinicalReportDataCollector @Inject constructor(
                     healthConnectManager.readHeartRateVariability(days = daysToFetch)
                 } catch (e: Exception) { null }
             }
-            if (res != null) {
-                metadataMap["hrv"] = SectionMetadata("hrv", if (res.isNotEmpty()) DataSourceStatus.SUCCESS else DataSourceStatus.NO_DATA, res.size)
+            if (res != null && res.isNotEmpty()) {
+                metadataMap["hrv"] = SectionMetadata("hrv", DataSourceStatus.SUCCESS, res.size)
                 res
             } else {
-                metadataMap["hrv"] = SectionMetadata("hrv", DataSourceStatus.TIMED_OUT, 0, "Query timed out after 20s")
+                // Fallback: Fitbit Web API daily HRV (RMSSD) time series
+                val fitbitHrv = withTimeoutOrNull(20_000L) { fetchHrvFromFitbit(minDateStr, targetToday.toString()) }
+                if (!fitbitHrv.isNullOrEmpty()) {
+                    metadataMap["hrv"] = SectionMetadata("hrv", DataSourceStatus.SUCCESS, fitbitHrv.size, "Fitbit data")
+                    fitbitHrv
+                } else if (res == null) {
+                    metadataMap["hrv"] = SectionMetadata("hrv", DataSourceStatus.TIMED_OUT, 0, "Query timed out after 20s")
+                    emptyList()
+                } else {
+                    metadataMap["hrv"] = SectionMetadata("hrv", DataSourceStatus.NO_DATA, 0)
+                    emptyList()
+                }
+            }
+        }
+
+        val deepSleepDeferred = async {
+            if (!hasHcPermissions) {
+                metadataMap["deepSleep"] = SectionMetadata("deepSleep", DataSourceStatus.PERMISSION_DENIED, 0, "Health Connect permissions missing")
+                return@async emptyList()
+            }
+            val res = withTimeoutOrNull(20_000L) {
+                try {
+                    healthConnectManager.readHistoricalSleepWithDeep(days = daysToFetch)
+                } catch (e: Exception) { null }
+            }
+            if (res != null) {
+                val mapped = res.filter { it.deepMinutes > 0 }.map { it.date to it.deepMinutes }
+                metadataMap["deepSleep"] = SectionMetadata("deepSleep", if (mapped.isNotEmpty()) DataSourceStatus.SUCCESS else DataSourceStatus.NO_DATA, mapped.size)
+                mapped
+            } else {
+                metadataMap["deepSleep"] = SectionMetadata("deepSleep", DataSourceStatus.TIMED_OUT, 0, "Query timed out after 20s")
                 emptyList()
             }
         }
@@ -234,6 +277,7 @@ class ClinicalReportDataCollector @Inject constructor(
         val calList = caloriesDeferred.await()
         val spikesList = spikesDeferred.await()
         val hrvList = hrvDeferred.await()
+        val deepSleepList = deepSleepDeferred.await()
 
         val catMap = allCategories.associate { it.id to it.name }
 
@@ -252,7 +296,7 @@ class ClinicalReportDataCollector @Inject constructor(
             knowledgeDocuments = docs,
             heartRateSeries = hrList,
             sleepSeries = sleepList,
-            deepSleepSeries = emptyList(),
+            deepSleepSeries = deepSleepList,
             caloriesSeries = calList,
             hrvSeries = hrvList,
             heartRateSpikes = spikesList,
@@ -260,6 +304,53 @@ class ClinicalReportDataCollector @Inject constructor(
             bodyLoadHistory = "",
             sectionMetadata = metadataMap.toMap()
         )
+    }
+
+    /**
+     * Fallback: Fitbit API calorie history cached in preferences by FitbitViewModel
+     * (6-month time series from the Fitbit Web API). Used when Health Connect
+     * has no calorie records.
+     */
+    private suspend fun readFitbitCachedCalories(minDate: String): List<Pair<String, Int>> {
+        return try {
+            val raw = preferences.historicalCalories.first()
+            if (raw.isBlank()) return emptyList()
+            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+            json.decodeFromString<List<BiomarkerPoint>>(raw)
+                .filter { it.date >= minDate && it.value > 0 }
+                .map { it.date to it.value }
+                .sortedBy { it.first }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    /**
+     * Fallback: Fitbit Web API daily HRV (RMSSD) time series. Used when Health
+     * Connect has no HRV records (e.g. wearables that don't sync HRV to HC).
+     */
+    private suspend fun fetchHrvFromFitbit(startDate: String, endDate: String): List<Pair<String, Double>> {
+        return try {
+            val token = preferences.fitbitToken.first()
+            if (token.isBlank()) return emptyList()
+            val client = okhttp3.OkHttpClient()
+            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+            val request = okhttp3.Request.Builder()
+                .url("https://api.fitbit.com/1/user/-/hrv/date/$startDate/$endDate.json")
+                .header("Authorization", "Bearer $token")
+                .build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return emptyList()
+                val body = response.body?.string() ?: return emptyList()
+                val root = json.parseToJsonElement(body).jsonObject
+                root["hrv"]?.jsonArray?.mapNotNull { el ->
+                    val obj = el.jsonObject
+                    val date = obj["dateTime"]?.jsonPrimitive?.content ?: return@mapNotNull null
+                    val rmssd = obj["value"]?.jsonObject
+                        ?.get("dailyRmssd")?.jsonPrimitive?.doubleOrNull
+                        ?: return@mapNotNull null
+                    date to rmssd
+                } ?: emptyList()
+            }
+        } catch (e: Exception) { emptyList() }
     }
 }
 
