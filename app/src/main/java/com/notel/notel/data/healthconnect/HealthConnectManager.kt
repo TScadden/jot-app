@@ -741,18 +741,25 @@ class HealthConnectManager(private val context: Context) : com.notel.notel.data.
             val start = if (targetDateStr != null) startOfDate(targetDateStr).minus((days - 1).toLong(), ChronoUnit.DAYS) else end.minus(days.toLong(), ChronoUnit.DAYS)
             
             val records = mutableListOf<HeartRateVariabilityRmssdRecord>()
-            var pageToken: String? = null
-            do {
-                val pageResponse = healthConnectClient.readRecords(
-                    ReadRecordsRequest(
-                        recordType = HeartRateVariabilityRmssdRecord::class,
-                        timeRangeFilter = TimeRangeFilter.between(start, end),
-                        pageToken = pageToken
+            // HRV is a dense record type; one 180-day read can stall past the
+            // caller's timeout. Fetch in ~31-day windows and merge.
+            var windowEnd = end
+            while (windowEnd.isAfter(start)) {
+                val windowStart = windowEnd.minus(31, ChronoUnit.DAYS).let { if (it.isBefore(start)) start else it }
+                var pageToken: String? = null
+                do {
+                    val pageResponse = healthConnectClient.readRecords(
+                        ReadRecordsRequest(
+                            recordType = HeartRateVariabilityRmssdRecord::class,
+                            timeRangeFilter = TimeRangeFilter.between(windowStart, windowEnd),
+                            pageToken = pageToken
+                        )
                     )
-                )
-                records.addAll(pageResponse.records)
-                pageToken = pageResponse.pageToken
-            } while (pageToken != null)
+                    records.addAll(pageResponse.records)
+                    pageToken = pageResponse.pageToken
+                } while (pageToken != null)
+                windowEnd = windowStart
+            }
             
             val formatter = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
                 timeZone = java.util.TimeZone.getTimeZone(java.time.ZoneId.systemDefault())
