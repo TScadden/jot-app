@@ -191,7 +191,8 @@ class ReportGenerator @Inject constructor(
                     y += 16f
                 }
                 line.contains("[BULLET]") -> {
-                    val cleanBullet = line.replace("[BULLET]", "").replace("*", "").trim().removePrefix("-").trim()
+                    // Strip markdown the model may emit (##, ###, *) from every line, not just section headers.
+                    val cleanBullet = line.replace("[BULLET]", "").replace("*", "").replace("#", "").trim().removePrefix("-").trim()
                     y = drawFormattedLine("• $cleanBullet", margin + 15f, y, contentWidth - 15f, canvas, bodyPaint, boldBodyPaint, italicBodyPaint) {
                         pdfDocument.finishPage(page)
                         page = pdfDocument.startPage(pageInfo)
@@ -201,7 +202,7 @@ class ReportGenerator @Inject constructor(
                     y += 6f
                 }
                 else -> {
-                    y = drawFormattedLine(line, margin, y, contentWidth, canvas, bodyPaint, boldBodyPaint, italicBodyPaint) {
+                    y = drawFormattedLine(line.replace("#", ""), margin, y, contentWidth, canvas, bodyPaint, boldBodyPaint, italicBodyPaint) {
                         pdfDocument.finishPage(page)
                         page = pdfDocument.startPage(pageInfo)
                         canvas = page.canvas
@@ -233,13 +234,15 @@ class ReportGenerator @Inject constructor(
                 canvas = page.canvas
                 y = 50f
             }
+            // Map every status to clean clinical wording. Raw exception text and
+            // transport-level terms (e.g. "Timed out") must never reach the report.
             val statusText = when (meta.status) {
                 com.notel.notel.data.model.DataSourceStatus.SUCCESS -> "Available (${meta.recordCount} records)"
-                com.notel.notel.data.model.DataSourceStatus.NO_DATA -> "No records found in range"
-                com.notel.notel.data.model.DataSourceStatus.PERMISSION_DENIED -> "Permission missing"
-                com.notel.notel.data.model.DataSourceStatus.UNAVAILABLE -> "Health Connect unavailable"
-                com.notel.notel.data.model.DataSourceStatus.TIMED_OUT -> "Timed out"
-                com.notel.notel.data.model.DataSourceStatus.ERROR -> "Error: ${meta.message ?: "Unknown"}"
+                com.notel.notel.data.model.DataSourceStatus.NO_DATA -> "No data recorded"
+                com.notel.notel.data.model.DataSourceStatus.PERMISSION_DENIED -> "Unavailable — permission not granted"
+                com.notel.notel.data.model.DataSourceStatus.UNAVAILABLE -> "Unavailable — data could not be retrieved"
+                com.notel.notel.data.model.DataSourceStatus.TIMED_OUT -> "Unavailable — data could not be retrieved"
+                com.notel.notel.data.model.DataSourceStatus.ERROR -> "Unavailable — data could not be retrieved"
             }
             canvas.drawText("• ${key.replaceFirstChar { it.uppercase() }}: $statusText", margin + 10f, y, bodyPaint)
             y += 15f
@@ -258,17 +261,20 @@ class ReportGenerator @Inject constructor(
                 } catch (e: Exception) { key }
             }
 
-            // Build chart series directly from snapshot
-            val sleepData = snapshot.sleepSeries.filter { it.second > 0 }.map { formatKeyToLabel(it.first) to (it.second / 60f) }
-            val hrData = snapshot.heartRateSeries.filter { it.second > 0 }.map { formatKeyToLabel(it.first) to it.second.toFloat() }
-            val hrvData = snapshot.hrvSeries.filter { it.second > 0.0 }.map { formatKeyToLabel(it.first) to it.second.toFloat() }
-            val caloriesData = snapshot.caloriesSeries.filter { it.second > 0 }.map { formatKeyToLabel(it.first) to it.second.toFloat() }
-            val spikesData = snapshot.heartRateSpikes.filter { it.spikeCount > 0 }.map { formatKeyToLabel(it.date) to it.spikeCount.toFloat() }
-            
-            val jotsByDate = snapshot.logEntries.groupBy { sdfDate.format(Date(it.timestamp)) }
+            // Build chart series directly from snapshot.
+            // Date keys are yyyy-MM-dd, so sorting by key orders every chart chronologically.
+            val sleepData = snapshot.sleepSeries.filter { it.second > 0 }.sortedBy { it.first }.map { formatKeyToLabel(it.first) to (it.second / 60f) }
+            val hrData = snapshot.heartRateSeries.filter { it.second > 0 }.sortedBy { it.first }.map { formatKeyToLabel(it.first) to it.second.toFloat() }
+            val hrvData = snapshot.hrvSeries.filter { it.second > 0.0 }.sortedBy { it.first }.map { formatKeyToLabel(it.first) to it.second.toFloat() }
+            val caloriesData = snapshot.caloriesSeries.filter { it.second > 0 }.sortedBy { it.first }.map { formatKeyToLabel(it.first) to it.second.toFloat() }
+            val spikesData = snapshot.heartRateSpikes.filter { it.spikeCount > 0 }.sortedBy { it.date }.map { formatKeyToLabel(it.date) to it.spikeCount.toFloat() }
+
+            val jotsByDate = snapshot.logEntries.groupBy { sdfDate.format(Date(it.timestamp)) }.toSortedMap()
             val jotsData = jotsByDate.map { formatKeyToLabel(it.key) to it.value.size.toFloat() }
 
-            val bpData = snapshot.bloodPressureSeries.map { formatKeyToLabel(sdfDate.format(Date(it.timeEpochMs))) to it.systolic.toFloat() }
+            val bpData = snapshot.bloodPressureSeries
+                .sortedBy { it.timeEpochMs }
+                .map { formatKeyToLabel(sdfDate.format(Date(it.timeEpochMs))) to it.systolic.toFloat() }
 
             // Page 2: Charts (1 to 4)
             val chartPage1 = pdfDocument.startPage(pageInfo)
@@ -371,10 +377,10 @@ class ReportGenerator @Inject constructor(
         val maxVal = vals.maxOrNull() ?: 0f
         val minVal = vals.minOrNull() ?: 0f
         
-        val minY = if (title.contains("Heart Rate") || title.contains("HRV")) {
-            (minVal - 5f).coerceAtLeast(0f)
-        } else {
-            0f
+        val minY = when {
+            title.contains("Heart Rate") || title.contains("HRV") -> (minVal - 5f).coerceAtLeast(0f)
+            title.contains("Blood Pressure") -> (minVal - 10f).coerceAtLeast(0f)
+            else -> 0f
         }
         val maxY = (maxVal + 5f).coerceAtLeast(minY + 1f)
         val yRange = maxY - minY
@@ -466,14 +472,24 @@ class ReportGenerator @Inject constructor(
             isAntiAlias = true
             textAlign = Paint.Align.CENTER
         }
+        // Draw X-axis Date Labels (max ~6 labels). Skip any label that would collide
+        // with the previously drawn one so overlapping text can't garble (e.g. "MarM1a0r 7").
         val step = (data.size / 5).coerceAtLeast(1)
+        var lastLabelRight = -Float.MAX_VALUE
+        fun drawDateLabel(index: Int) {
+            val label = data[index].first
+            val p = points[index]
+            val halfWidth = xLabelPaint.measureText(label) / 2f
+            if (p.x - halfWidth > lastLabelRight + 4f) {
+                canvas.drawText(label, p.x, chartY + chartH + 12f, xLabelPaint)
+                lastLabelRight = p.x + halfWidth
+            }
+        }
         for (i in data.indices step step) {
-            val p = points[i]
-            canvas.drawText(data[i].first, p.x, chartY + chartH + 12f, xLabelPaint)
+            drawDateLabel(i)
         }
         if ((data.size - 1) % step != 0) {
-            val p = points.last()
-            canvas.drawText(data.last().first, p.x, chartY + chartH + 12f, xLabelPaint)
+            drawDateLabel(data.size - 1)
         }
     }
 

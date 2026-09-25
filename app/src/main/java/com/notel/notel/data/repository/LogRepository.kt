@@ -132,7 +132,10 @@ class LogRepository @Inject constructor(
         _isGeneratingReport.value = true
         try {
             onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.CollectingData())
-            val snapshot = clinicalReportDataCollector.collectReportData(categories, last30DaysOnly)
+            val collected = clinicalReportDataCollector.collectReportData(categories, last30DaysOnly)
+            // The snapshot collector leaves bodyLoadHistory empty; fill it from the AI-insights
+            // store like the legacy report path did so the server actually receives it.
+            val snapshot = collected.copy(bodyLoadHistory = getBodyLoadHistorySummary())
             
             if (!snapshot.hasAnyData) {
                 onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Failed("No patient logs or health data found in selected range.", allowRawFallback = false))

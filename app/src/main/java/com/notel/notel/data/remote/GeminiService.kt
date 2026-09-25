@@ -297,8 +297,10 @@ class GeminiService @Inject constructor(
     ): Result<String> {
         return try {
             val dateSpanText = "REPORT RANGE: ${snapshot.range.type.name} (${snapshot.range.durationDays} days)"
+            // userHeight is stored in inches (see SyncManager's * 2.54f heightCm conversion); convert so the cm label is truthful.
+            val heightCm = String.format(java.util.Locale.US, "%.1f", snapshot.userHeight * 2.54f)
             val profileText = buildString {
-                append("Profile Stats: Age ${snapshot.userAge}, Height ${snapshot.userHeight}cm, Weight ${snapshot.userWeight}lbs, Gender ${snapshot.userGender}\n")
+                append("Profile Stats: Age ${snapshot.userAge}, Height ${heightCm}cm, Weight ${snapshot.userWeight}lbs, Gender ${snapshot.userGender}\n")
                 if (snapshot.conditions.isNotEmpty()) {
                     append("Medical Conditions: ${snapshot.conditions.joinToString(", ")}\n")
                 }
@@ -323,7 +325,19 @@ class GeminiService @Inject constructor(
                 if (snapshot.bloodPressureSeries.isNotEmpty()) {
                     val sysAvg = snapshot.bloodPressureSeries.map { it.systolic }.average().toInt()
                     val diaAvg = snapshot.bloodPressureSeries.map { it.diastolic }.average().toInt()
-                    append("Blood Pressure Avg: $sysAvg/$diaAvg mmHg across ${snapshot.bloodPressureSeries.size} readings.")
+                    append("Blood Pressure Avg: $sysAvg/$diaAvg mmHg across ${snapshot.bloodPressureSeries.size} readings. ")
+                }
+                if (snapshot.caloriesSeries.isNotEmpty()) {
+                    val avgCal = snapshot.caloriesSeries.map { it.second }.average().toInt()
+                    append("Avg Calories: $avgCal kcal/day across ${snapshot.caloriesSeries.size} days. ")
+                }
+                if (snapshot.hrvSeries.isNotEmpty()) {
+                    val avgHrv = snapshot.hrvSeries.map { it.second }.average()
+                    append("Avg HRV (RMSSD): ${String.format(java.util.Locale.US, "%.1f", avgHrv)} ms across ${snapshot.hrvSeries.size} days. ")
+                }
+                if (snapshot.deepSleepSeries.isNotEmpty()) {
+                    val avgDeepSleepHours = snapshot.deepSleepSeries.map { it.second / 60f }.average()
+                    append("Avg Deep Sleep: ${String.format(java.util.Locale.US, "%.1f", avgDeepSleepHours)} hrs/night across ${snapshot.deepSleepSeries.size} days. ")
                 }
             }
 
@@ -342,7 +356,9 @@ class GeminiService @Inject constructor(
                     entries = snapshot.logEntries.toDto(),
                     categories = snapshot.categoriesMap,
                     userContext = enrichedContext,
-                    fitbitData = healthSummary
+                    knowledgeBase = snapshot.knowledgeDocuments.joinToString("\n\n").ifBlank { null },
+                    fitbitData = healthSummary,
+                    bodyLoadHistory = snapshot.bodyLoadHistory.ifBlank { null }
                 )
             )
             val result = response.body()?.result
