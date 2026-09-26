@@ -421,7 +421,7 @@ open class NotelPreferences(
             val updated = (prefs[NOTIFIED_REPORT_IDS] ?: emptySet()) + id
             // Cap the set: the local aiInsights JSON (last 1000) already dedupes
             // old ids via newGraphReports, so old entries here are redundant.
-            prefs[NOTIFIED_REPORT_IDS] = updated.takeLast(100).toSet()
+            prefs[NOTIFIED_REPORT_IDS] = updated.toList().takeLast(100).toSet()
         }
     }
 
