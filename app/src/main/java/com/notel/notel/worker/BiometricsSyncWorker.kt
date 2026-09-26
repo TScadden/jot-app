@@ -47,6 +47,10 @@ class BiometricsSyncWorker @AssistedInject constructor(
                 ExistingPeriodicWorkPolicy.KEEP,
                 request
             )
+
+            // Re-trigger the one-time HR spike backfill if an earlier run was
+            // interrupted; no-op once the backfill is complete.
+            HrSpikeBackfillWorker.schedule(context)
         }
     }
 }

@@ -6,6 +6,7 @@ import androidx.work.*
 import dagger.hilt.android.HiltAndroidApp
 import com.notel.notel.worker.BodyLoadReminderWorker
 import com.notel.notel.worker.BiometricsSyncWorker
+import com.notel.notel.worker.HrSpikeBackfillWorker
 import com.notel.notel.worker.HabitReminderWorker
 import com.notel.notel.worker.ProjectReminderWorker
 import com.notel.notel.service.HrSpikeMonitorService
@@ -43,6 +44,8 @@ class NotelApp : Application(), Configuration.Provider {
         WorkManager.getInstance(this).cancelUniqueWork("cup_reminder")
         scheduleProjectReminder()
         BiometricsSyncWorker.schedule(this)
+        // One-time 180-day HR spike history backfill (no-op once complete).
+        HrSpikeBackfillWorker.schedule(this)
         
         // Start HR Monitor Service safely when app enters foreground
         CoroutineScope(Dispatchers.IO).launch {

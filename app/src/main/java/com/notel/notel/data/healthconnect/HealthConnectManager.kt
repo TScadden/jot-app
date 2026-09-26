@@ -399,14 +399,19 @@ class HealthConnectManager(private val context: Context) : com.notel.notel.data.
         }
     }
 
-    /** Reads raw intraday HR samples for the past [days] days and computes
-     *  spike statistics per day — critical for POTS/MCAS users whose daily
+    /** Reads raw intraday HR samples for [days] days ending at [anchorDate] (inclusive)
+     *  and computes spike statistics per day — critical for POTS/MCAS users whose daily
      *  averages appear normal while they experience large orthostatic spikes.
+     *  The window is always [anchorDate - (days-1), anchorDate]; the default anchors
+     *  at today, preserving the historical "last N days" behavior.
      */
-    suspend fun readHistoricalHeartRateWithSpikes(days: Int = 14): List<DailyHeartRateSummary> = withContext(Dispatchers.IO) {
+    suspend fun readHistoricalHeartRateWithSpikes(
+        days: Int = 14,
+        anchorDate: java.time.LocalDate = java.time.LocalDate.now()
+    ): List<DailyHeartRateSummary> = withContext(Dispatchers.IO) {
         try {
             val zoneId = ZoneId.systemDefault()
-            val end = java.time.ZonedDateTime.now(zoneId).plusDays(1).truncatedTo(java.time.temporal.ChronoUnit.DAYS).toInstant()
+            val end = anchorDate.plusDays(1).atStartOfDay(zoneId).toInstant()
             val start = end.minus(days.toLong(), java.time.temporal.ChronoUnit.DAYS)
 
             val results = mutableListOf<DailyHeartRateSummary>()

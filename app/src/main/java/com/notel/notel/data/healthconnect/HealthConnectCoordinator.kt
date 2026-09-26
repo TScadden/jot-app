@@ -659,7 +659,8 @@ class HealthConnectCoordinator @Inject constructor(
     suspend fun getHrSpikesHistory(
         days: Int,
         targetToday: LocalDate = LocalDate.now(),
-        forceRefresh: Boolean = false
+        forceRefresh: Boolean = false,
+        anchorDate: LocalDate = LocalDate.now()
     ): List<DailyHeartRateSummary> = withContext(Dispatchers.IO) {
         val endDate = targetToday
         val startDate = endDate.minusDays((days - 1).toLong())
@@ -688,7 +689,7 @@ class HealthConnectCoordinator @Inject constructor(
                 safeLogD("HealthConnectTiming", "[IPC_START] Reading HR Spikes from HealthConnect: $days days ($startDate..$endDate)")
                 val newJob = async(Dispatchers.IO) {
                     try {
-                        val raw = healthConnectManager.readHistoricalHeartRateWithSpikes(days = days)
+                        val raw = healthConnectManager.readHistoricalHeartRateWithSpikes(days = days, anchorDate = anchorDate)
                         val duration = System.currentTimeMillis() - startTimeMs
                         safeLogD("HealthConnectTiming", "[IPC_SUCCESS] HR Spikes read completed in ${duration}ms, returned ${raw.size} summaries")
                         raw.forEach { summary -> cache.putSpikes(summary) }
