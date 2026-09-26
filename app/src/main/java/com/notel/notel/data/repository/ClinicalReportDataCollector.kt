@@ -198,7 +198,8 @@ class ClinicalReportDataCollector @Inject constructor(
             val merged = raw.sortedBy { it.first }
             when {
                 merged.isNotEmpty() -> {
-                    metadataMap["heartRate"] = SectionMetadata("heartRate", DataSourceStatus.SUCCESS, merged.size)
+                    val msg = if (timedOut) "Partial data: some date ranges timed out" else null
+                    metadataMap["heartRate"] = SectionMetadata("heartRate", DataSourceStatus.SUCCESS, merged.size, msg)
                     merged
                 }
                 timedOut -> {
@@ -259,7 +260,8 @@ class ClinicalReportDataCollector @Inject constructor(
             val merged = raw.distinctBy { it.date }.sortedBy { it.date }
             when {
                 merged.isNotEmpty() -> {
-                    metadataMap["hrSpikes"] = SectionMetadata("hrSpikes", DataSourceStatus.SUCCESS, merged.size)
+                    val msg = if (timedOut) "Partial data: some date ranges timed out" else null
+                    metadataMap["hrSpikes"] = SectionMetadata("hrSpikes", DataSourceStatus.SUCCESS, merged.size, msg)
                     merged
                 }
                 timedOut -> {
@@ -418,10 +420,12 @@ class ClinicalReportDataCollector @Inject constructor(
      * payload JSON carries the day's HRV ({"sleepMins":N,...,"hrv":N,...}).
      */
     private suspend fun readCachedHrv(minDate: String): List<Pair<String, Double>> {
-        return readBiometricsEntries(minDate).mapNotNull { (date, payload) ->
-            val hrv = payload["hrv"]?.jsonPrimitive?.doubleOrNull ?: 0.0
-            if (hrv > 0.0) date to hrv else null
-        }
+        return try {
+            readBiometricsEntries(minDate).mapNotNull { (date, payload) ->
+                val hrv = payload["hrv"]?.jsonPrimitive?.doubleOrNull ?: 0.0
+                if (hrv > 0.0) date to hrv else null
+            }
+        } catch (e: Exception) { emptyList() }
     }
 
     /**
