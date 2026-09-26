@@ -175,6 +175,10 @@ fun CoachScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                // Medical disclaimer sits above all AI coach content
+                item {
+                    com.notel.notel.ui.component.MedicalDisclaimerBanner()
+                }
                 items(messages, key = { it.id }) { message: CoachMessage ->
                     ChatBubble(
                         message = message,

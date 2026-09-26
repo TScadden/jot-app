@@ -55,6 +55,33 @@ fun MembershipOnboardingScreen(
 
     val isUnlimited by settingsViewModel.isUnlimited.collectAsState(initial = false)
 
+    // Dynamic Play pricing (re-read whenever the Play catalog refreshes)
+    val productsTick by settingsViewModel.billingManager.productsVersion.collectAsState(initial = 0L)
+    val monthlyPrice = remember(productsTick) {
+        settingsViewModel.billingManager.getSubscriptionFormattedPrice("jot_membership_monthly")
+    }
+    val yearlyPrice = remember(productsTick) {
+        settingsViewModel.billingManager.getSubscriptionFormattedPrice("jot_membership_yearly")
+    }
+    val monthlyTrialIso = remember(productsTick) {
+        settingsViewModel.billingManager.getFreeTrialPeriodIso("jot_membership_monthly")
+    }
+    val yearlyTrialIso = remember(productsTick) {
+        settingsViewModel.billingManager.getFreeTrialPeriodIso("jot_membership_yearly")
+    }
+    fun trialLabel(iso: String?): String = when (iso) {
+        "P7D" -> "7-day free trial"
+        "P1W" -> "1-week free trial"
+        "P14D" -> "14-day free trial"
+        "P1M" -> "1-month free trial"
+        null -> "Free trial"
+        else -> "Free trial"
+    }
+    val monthlyPlanLine = if (monthlyPrice != null) "${trialLabel(monthlyTrialIso)}, then $monthlyPrice/mo"
+    else "Pricing shown in Google Play"
+    val yearlyPlanLine = if (yearlyPrice != null) "${trialLabel(yearlyTrialIso)}, then $yearlyPrice/yr"
+    else "Pricing shown in Google Play"
+
     // Automatically navigate to loading screen to complete onboarding once user gets premium
     LaunchedEffect(isUnlimited) {
         if (isUnlimited) {
@@ -201,7 +228,7 @@ fun MembershipOnboardingScreen(
                         )
                         Spacer(Modifier.height(2.dp))
                         Text(
-                            text = "7-day free trial, then $5.99/mo",
+                            text = monthlyPlanLine,
                             color = NotelTextSecondary,
                             fontSize = 13.sp
                         )
@@ -260,7 +287,7 @@ fun MembershipOnboardingScreen(
                         )
                         Spacer(Modifier.height(2.dp))
                         Text(
-                            text = "7-day free trial, then $39.99/yr",
+                            text = yearlyPlanLine,
                             color = NotelTextSecondary,
                             fontSize = 13.sp
                         )
@@ -296,8 +323,27 @@ fun MembershipOnboardingScreen(
             ) {
                 Icon(Icons.Default.WorkspacePremium, contentDescription = null, tint = Color.White)
                 Spacer(Modifier.width(8.dp))
-                Text("Start 7-Day Free Trial", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                Text(
+                    if (selectedPlan == "monthly") "Start ${trialLabel(monthlyTrialIso)}" else "Start ${trialLabel(yearlyTrialIso)}",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp
+                )
             }
+
+            Spacer(Modifier.height(10.dp))
+
+            Text(
+                text = buildString {
+                    if (monthlyPrice != null) append("Monthly: ${trialLabel(monthlyTrialIso)}, then $monthlyPrice/mo. ")
+                    if (yearlyPrice != null) append("Yearly: ${trialLabel(yearlyTrialIso)}, then $yearlyPrice/yr. ")
+                    append("Auto-renews until canceled. Billed by Google Play.")
+                },
+                color = NotelTextSecondary.copy(alpha = 0.75f),
+                fontSize = 11.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
 
             Spacer(Modifier.height(12.dp))
 

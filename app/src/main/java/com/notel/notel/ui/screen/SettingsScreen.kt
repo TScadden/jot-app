@@ -552,6 +552,34 @@ fun SettingsScreen(
                         shape = RoundedCornerShape(16.dp),
                         color = NotelSurface
                     ) {
+                        // Dynamic Play pricing (re-read whenever the Play catalog refreshes)
+                        val productsTick by viewModel.billingManager.productsVersion.collectAsState()
+                        val monthlyPrice = remember(productsTick) {
+                            viewModel.billingManager.getSubscriptionFormattedPrice("jot_membership_monthly")
+                        }
+                        val yearlyPrice = remember(productsTick) {
+                            viewModel.billingManager.getSubscriptionFormattedPrice("jot_membership_yearly")
+                        }
+                        val monthlyTrialIso = remember(productsTick) {
+                            viewModel.billingManager.getFreeTrialPeriodIso("jot_membership_monthly")
+                        }
+                        val yearlyTrialIso = remember(productsTick) {
+                            viewModel.billingManager.getFreeTrialPeriodIso("jot_membership_yearly")
+                        }
+                        fun trialLabel(iso: String?): String = when (iso) {
+                            "P7D" -> "7-day free trial"
+                            "P1W" -> "1-week free trial"
+                            "P14D" -> "14-day free trial"
+                            "P1M" -> "1-month free trial"
+                            null -> "Free trial"
+                            else -> "Free trial"
+                        }
+                        val monthlyPlanLine = if (monthlyPrice != null)
+                            "${trialLabel(monthlyTrialIso)}, then $monthlyPrice/mo"
+                        else "Pricing shown in Google Play"
+                        val yearlyPlanLine = if (yearlyPrice != null)
+                            "${trialLabel(yearlyTrialIso)}, then $yearlyPrice/yr"
+                        else "Pricing shown in Google Play"
                         // Status row
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -676,7 +704,7 @@ fun SettingsScreen(
                                         )
                                         Spacer(Modifier.height(2.dp))
                                         Text(
-                                            text = "7-day free trial, then $5.99/mo",
+                                            text = monthlyPlanLine,
                                             color = NotelTextSecondary,
                                             fontSize = 13.sp
                                         )
@@ -735,7 +763,7 @@ fun SettingsScreen(
                                         )
                                         Spacer(Modifier.height(2.dp))
                                         Text(
-                                            text = "7-day free trial, then $39.99/yr",
+                                            text = yearlyPlanLine,
                                             color = NotelTextSecondary,
                                             fontSize = 13.sp
                                         )
@@ -773,17 +801,48 @@ fun SettingsScreen(
                             ) {
                                 Icon(Icons.Default.Star, null, tint = Color.White, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
-                                Text("Start 7-Day Free Trial", color = Color.White, fontWeight = FontWeight.Bold)
+                                Text(
+                                    if (selectedPlan == "monthly") "Start ${trialLabel(monthlyTrialIso)}" else "Start ${trialLabel(yearlyTrialIso)}",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
-                            
-                            Spacer(Modifier.height(12.dp))
-                            
+
+                            Spacer(Modifier.height(10.dp))
+
+                            // Price + trial terms adjacent to the upgrade CTA (dynamic from Play)
                             Text(
-                                text = "Google Play billing applies. Recurring billing. Cancel anytime in Google Play Subscriptions.",
-                                color = NotelTextSecondary.copy(alpha = 0.6f),
+                                text = buildString {
+                                    if (monthlyPrice != null) append("Monthly: ${trialLabel(monthlyTrialIso)}, then $monthlyPrice/mo. ")
+                                    if (yearlyPrice != null) append("Yearly: ${trialLabel(yearlyTrialIso)}, then $yearlyPrice/yr. ")
+                                    append("Auto-renews until canceled. Billed by Google Play.")
+                                },
+                                color = NotelTextSecondary.copy(alpha = 0.75f),
                                 fontSize = 11.sp,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Spacer(Modifier.height(12.dp))
+
+                            // Tappable deep link to the Play Subscriptions center
+                            val selectedProductId = if (selectedPlan == "monthly") "jot_membership_monthly" else "jot_membership_yearly"
+                            Text(
+                                text = "Manage or cancel anytime in Google Play Subscriptions",
+                                color = NotelPrimary,
+                                fontSize = 11.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        try {
+                                            val uri = android.net.Uri.parse(
+                                                "https://play.google.com/store/account/subscriptions?sku=$selectedProductId&package=${context.packageName}"
+                                            )
+                                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, uri)
+                                            context.startActivity(intent)
+                                        } catch (_: Exception) {}
+                                    }
                             )
                         } else {
                             Spacer(Modifier.height(20.dp))
@@ -1066,13 +1125,26 @@ fun SettingsScreen(
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            text = "Terms & Disclosures",
+                            text = "Terms of Use",
                             color = NotelPrimary,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium,
                             modifier = Modifier.clickable {
                                 try {
-                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://jottracker.com/privacy.html"))
+                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://api.jottracker.com/terms.html"))
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {}
+                            }
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = "Privacy Policy",
+                            color = NotelPrimary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.clickable {
+                                try {
+                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://api.jottracker.com/privacy.html"))
                                     context.startActivity(intent)
                                 } catch (_: Exception) {}
                             }
@@ -1370,6 +1442,8 @@ fun SettingsScreen(
             Spacer(Modifier.height(24.dp))
             
             if (currentMenu == SettingsMenu.AI_AND_KNOWLEDGE) {
+                com.notel.notel.ui.component.MedicalDisclaimerBanner()
+                Spacer(Modifier.height(12.dp))
                 if (showProfessionalCheckIn) {
                     val lowerCtx = userContext.lowercase()
                     val lowerKB = knowledgeBase.lowercase()

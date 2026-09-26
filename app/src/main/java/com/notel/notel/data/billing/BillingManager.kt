@@ -90,6 +90,45 @@ class BillingManager @Inject constructor(
 
     private val productDetailsMap = mutableMapOf<String, ProductDetails>()
 
+    // Emitted every time the Play product catalog finishes a refresh, so Compose
+    // can re-read ProductDetails (price/trial strings) instead of using stale values.
+    private val _productsVersion = kotlinx.coroutines.flow.MutableStateFlow(0L)
+    val productsVersion: kotlinx.coroutines.flow.StateFlow<Long> = _productsVersion
+
+    /**
+     * Return the cached [ProductDetails] for a product id, or null if the Play
+     * catalog has not returned it yet. Used by the UI to display dynamic
+     * prices/trial terms from Play Console instead of hardcoded strings.
+     */
+    fun getProductDetails(productId: String): ProductDetails? =
+        synchronized(productDetailsMap) { productDetailsMap[productId] }
+
+    /**
+     * Return the ISO-8601 free-trial billing period (e.g. "P7D") of the first
+     * subscription offer that includes a zero-price phase, or null if none.
+     */
+    fun getFreeTrialPeriodIso(productId: String): String? {
+        val details = getProductDetails(productId) ?: return null
+        return details.subscriptionOfferDetails?.firstNotNullOfOrNull { offer ->
+            offer.pricingPhases.pricingPhaseList
+                .firstOrNull { it.priceAmountMicros == 0L }
+                ?.billingPeriod
+        }
+    }
+
+    /**
+     * Return the formatted price of the recurring (base) phase of the first
+     * subscription offer, or null if unavailable.
+     */
+    fun getSubscriptionFormattedPrice(productId: String): String? {
+        val details = getProductDetails(productId) ?: return null
+        val phases = details.subscriptionOfferDetails?.firstOrNull()?.pricingPhases?.pricingPhaseList
+            ?: return null
+        // The base recurring phase is the last non-free phase; fall back to the last phase.
+        return phases.lastOrNull { it.priceAmountMicros > 0L }?.formattedPrice
+            ?: phases.lastOrNull()?.formattedPrice
+    }
+
     private fun queryAvailableProducts() {
         // Query Subscriptions
         val subsParams = QueryProductDetailsParams.newBuilder()
@@ -101,9 +140,10 @@ class BillingManager @Inject constructor(
                 val productDetailsList = queryProductDetailsResult.productDetailsList ?: emptyList()
                 Log.d(tag, "Query Subscriptions successful. Found ${productDetailsList.size} products")
                 productDetailsList.forEach {
-                    productDetailsMap[it.productId] = it
+                    synchronized(productDetailsMap) { productDetailsMap[it.productId] = it }
                     Log.d(tag, "Found product: ${it.productId} - ${it.name}")
                 }
+                _productsVersion.value = _productsVersion.value + 1
             } else {
                 Log.e(tag, "Query Subscriptions failed: ${billingResult.debugMessage}")
             }
@@ -119,9 +159,10 @@ class BillingManager @Inject constructor(
                 val productDetailsList = queryProductDetailsResult.productDetailsList ?: emptyList()
                 Log.d(tag, "Query In-App Products successful. Found ${productDetailsList.size} products")
                 productDetailsList.forEach {
-                    productDetailsMap[it.productId] = it
+                    synchronized(productDetailsMap) { productDetailsMap[it.productId] = it }
                     Log.d(tag, "Found product: ${it.productId} - ${it.name}")
                 }
+                _productsVersion.value = _productsVersion.value + 1
             } else {
                 Log.e(tag, "Query In-App Products failed: ${billingResult.debugMessage}")
             }
@@ -132,7 +173,7 @@ class BillingManager @Inject constructor(
      * Launch the billing flow for a specific product ID with an optional quantity.
      */
     fun launchPurchaseFlow(activity: Activity, productId: String, quantity: Int = 1) {
-        val productDetails = productDetailsMap[productId]
+        val productDetails = getProductDetails(productId)
         if (productDetails == null) {
             Log.e(tag, "Product details not found for $productId")
             scope.launch { _billingEvents.emit("Product not available in Play Store.") }
@@ -214,7 +255,7 @@ class BillingManager @Inject constructor(
                     
                     // Important: Consume the purchase so it can be bought again
                     // Since these are "Credits", they should be consumable.
-                    val productDetails = productDetailsMap[productId]
+                    val productDetails = getProductDetails(productId)
                     if (productDetails?.productType == BillingClient.ProductType.INAPP) {
                         consumePurchase(purchase)
                     }
