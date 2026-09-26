@@ -819,6 +819,7 @@ class SettingsViewModel @Inject constructor(
                     val file = reportGenerator.generateReport(snapshot, aiSummary = null, isRawFallback = true)
                     if (file != null) {
                         _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Ready(file, isRawFallback = true)
+                        com.notel.notel.util.NotificationHelper(context).showReportReady(file)
                     } else {
                         _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Failed("Failed generating Raw Data report file.")
                     }
@@ -827,7 +828,12 @@ class SettingsViewModel @Inject constructor(
                         categories = categories.value,
                         reportGenerator = reportGenerator,
                         last30DaysOnly = last30DaysOnly,
-                        onStateUpdate = { state -> _reportGenerationState.value = state }
+                        onStateUpdate = { state ->
+                            _reportGenerationState.value = state
+                            if (state is com.notel.notel.ui.state.ReportGenerationState.Ready) {
+                                com.notel.notel.util.NotificationHelper(context).showReportReady(state.file)
+                            }
+                        }
                     )
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
