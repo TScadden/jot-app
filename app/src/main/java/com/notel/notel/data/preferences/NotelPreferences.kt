@@ -72,6 +72,9 @@ open class NotelPreferences(
         val HISTORICAL_HR_SPIKES = stringPreferencesKey("historical_hr_spikes")
         val HR_SPIKE_BACKFILL_COMPLETE = booleanPreferencesKey("hr_spike_backfill_complete")
         val HR_SPIKE_BACKFILL_COMPLETED_AT = longPreferencesKey("hr_spike_backfill_completed_at")
+        val FITBIT_SPIKE_BACKFILL_COMPLETE = booleanPreferencesKey("fitbit_spike_backfill_complete")
+        val FITBIT_SPIKE_BACKFILL_COMPLETED_AT = longPreferencesKey("fitbit_spike_backfill_completed_at")
+        val FITBIT_SPIKE_BACKFILL_DONE_DAYS = stringSetPreferencesKey("fitbit_spike_backfill_done_days")
         val TODAY_AWAKE_AVG_HR = intPreferencesKey("today_awake_avg_hr")
 
         val USER_AGE = intPreferencesKey("user_age")
@@ -486,6 +489,15 @@ open class NotelPreferences(
     val hrSpikeBackfillCompletedAt: Flow<Long> = context.dataStore.data.map { prefs ->
         prefs[HR_SPIKE_BACKFILL_COMPLETED_AT] ?: 0L
     }
+    val fitbitSpikeBackfillComplete: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[FITBIT_SPIKE_BACKFILL_COMPLETE] ?: false
+    }
+    val fitbitSpikeBackfillCompletedAt: Flow<Long> = context.dataStore.data.map { prefs ->
+        prefs[FITBIT_SPIKE_BACKFILL_COMPLETED_AT] ?: 0L
+    }
+    val fitbitSpikeBackfillDoneDays: Flow<Set<String>> = context.dataStore.data.map { prefs ->
+        prefs[FITBIT_SPIKE_BACKFILL_DONE_DAYS] ?: emptySet()
+    }
     val todayAwakeAvgHr: Flow<Int> = context.dataStore.data.map { prefs ->
         prefs[TODAY_AWAKE_AVG_HR] ?: 0
     }
@@ -788,6 +800,17 @@ open class NotelPreferences(
     }
     suspend fun setHrSpikeBackfillCompletedAt(millis: Long) {
         context.dataStore.edit { it[HR_SPIKE_BACKFILL_COMPLETED_AT] = millis }
+    }
+    suspend fun setFitbitSpikeBackfillComplete(done: Boolean) {
+        context.dataStore.edit { it[FITBIT_SPIKE_BACKFILL_COMPLETE] = done }
+    }
+    suspend fun setFitbitSpikeBackfillCompletedAt(millis: Long) {
+        context.dataStore.edit { it[FITBIT_SPIKE_BACKFILL_COMPLETED_AT] = millis }
+    }
+    suspend fun addFitbitSpikeBackfillDoneDay(date: String) {
+        context.dataStore.edit { prefs ->
+            prefs[FITBIT_SPIKE_BACKFILL_DONE_DAYS] = (prefs[FITBIT_SPIKE_BACKFILL_DONE_DAYS] ?: emptySet()) + date
+        }
     }
     suspend fun setTodayAwakeAvgHr(avg: Int) {
         context.dataStore.edit { it[TODAY_AWAKE_AVG_HR] = avg }

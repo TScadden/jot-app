@@ -452,70 +452,11 @@ class HealthConnectManager(private val context: Context) : com.notel.notel.data.
                     pageToken = response.pageToken
                 } while (pageToken != null)
 
-                val threshold = DailyHeartRateSummary.SPIKE_THRESHOLD_BPM
                 chunkByDay.forEach { (date, samples) ->
-                    val sortedSamples = samples.sortedBy { it.time }
-                    val bpmList = sortedSamples.map { it.bpm }.sorted()
-                    val avg = bpmList.average().toInt()
-                    val max = bpmList.last()
-                    val min = bpmList.first()
-                    val p10Index = (bpmList.size * 0.10).toInt().coerceAtLeast(0)
-                    val baseline = bpmList[p10Index]
-                    val maxDelta = max - baseline
-                    
-                    val daytimeSamples = sortedSamples.filter { it.hour in 7..21 }
-                    val awakeAvg = if (daytimeSamples.isNotEmpty()) daytimeSamples.map { it.bpm }.average().toInt() else avg
-
-                    var dayCount = 0
-                    var nightCount = 0
-                    val eventRecords = mutableListOf<SpikeEventRecord>()
-                    var currentEventPeak = 0
-                    var currentEventStart = 0L
-                    var currentEventStartHour = 0
-                    var inEvent = false
-                    var eventEndMs = 0L
-                    
-                    for (s in sortedSamples) {
-                        if (s.bpm >= threshold) {
-                            if (!inEvent || s.time > eventEndMs) {
-                                if (inEvent) {
-                                    val dur = maxOf(1, ((eventEndMs - 300000L - currentEventStart) / 60000L).toInt())
-                                    eventRecords.add(SpikeEventRecord(currentEventPeak, dur, currentEventStart))
-                                    
-                                    if (currentEventStartHour in 7..21) dayCount++ else nightCount++
-                                }
-                                inEvent = true
-                                currentEventStart = s.time
-                                currentEventStartHour = s.hour
-                                currentEventPeak = s.bpm
-                            } else {
-                                currentEventPeak = maxOf(currentEventPeak, s.bpm)
-                            }
-                            eventEndMs = s.time + 300000L
-                        }
-                    }
-                    if (inEvent) {
-                        val dur = maxOf(1, ((eventEndMs - 300000L - currentEventStart) / 60000L).toInt())
-                        eventRecords.add(SpikeEventRecord(currentEventPeak, dur, currentEventStart))
-                        if (currentEventStartHour in 7..21) dayCount++ else nightCount++
-                    }
-
-                    results.add(
-                        DailyHeartRateSummary(
-                            date = date,
-                            avg = avg,
-                            max = max,
-                            min = min,
-                            baseline = baseline,
-                            spikeCount = dayCount + nightCount,
-                            daySpikeCount = dayCount,
-                            nightSpikeCount = nightCount,
-                            awakeAvg = awakeAvg,
-                            maxDelta = maxDelta,
-                            totalReadings = sortedSamples.size,
-                            eventsList = eventRecords
-                        )
-                    )
+                    computeDailyHeartRateSummary(
+                        date = date,
+                        samples = samples.map { it.time to it.bpm }
+                    )?.let { results.add(it) }
                 }
 
                 currentStart = currentEnd
@@ -525,6 +466,93 @@ class HealthConnectManager(private val context: Context) : com.notel.notel.data.
         } catch (e: Exception) {
             emptyList()
         }
+    }
+
+    /**
+     * Shared spike-counting logic: builds a [DailyHeartRateSummary] from one day's
+     * (epochMs, bpm) samples. Extracted verbatim from [readHistoricalHeartRateWithSpikes]
+     * so the Fitbit intraday backfill computes identical summaries.
+     *
+     * Day split: 7am-10pm (hour 7..21) vs 10pm-7am. Baseline is the 10th percentile.
+     * A spike event starts at the first reading >= [DailyHeartRateSummary.SPIKE_THRESHOLD_BPM]
+     * and absorbs subsequent above-threshold readings within 5 minutes.
+     */
+    fun computeDailyHeartRateSummary(
+        date: String,
+        samples: List<Pair<Long, Int>> // (epochMillis, bpm)
+    ): DailyHeartRateSummary? {
+        if (samples.isEmpty()) return null
+        val zoneId = ZoneId.systemDefault()
+        val sortedSamples = samples
+            .map { (time, bpm) ->
+                HeartSample(
+                    time,
+                    bpm,
+                    ZonedDateTime.ofInstant(Instant.ofEpochMilli(time), zoneId).hour
+                )
+            }
+            .sortedBy { it.time }
+
+        val threshold = DailyHeartRateSummary.SPIKE_THRESHOLD_BPM
+        val bpmList = sortedSamples.map { it.bpm }.sorted()
+        val avg = bpmList.average().toInt()
+        val max = bpmList.last()
+        val min = bpmList.first()
+        val p10Index = (bpmList.size * 0.10).toInt().coerceAtLeast(0)
+        val baseline = bpmList[p10Index]
+        val maxDelta = max - baseline
+
+        val daytimeSamples = sortedSamples.filter { it.hour in 7..21 }
+        val awakeAvg = if (daytimeSamples.isNotEmpty()) daytimeSamples.map { it.bpm }.average().toInt() else avg
+
+        var dayCount = 0
+        var nightCount = 0
+        val eventRecords = mutableListOf<SpikeEventRecord>()
+        var currentEventPeak = 0
+        var currentEventStart = 0L
+        var currentEventStartHour = 0
+        var inEvent = false
+        var eventEndMs = 0L
+
+        for (s in sortedSamples) {
+            if (s.bpm >= threshold) {
+                if (!inEvent || s.time > eventEndMs) {
+                    if (inEvent) {
+                        val dur = maxOf(1, ((eventEndMs - 300000L - currentEventStart) / 60000L).toInt())
+                        eventRecords.add(SpikeEventRecord(currentEventPeak, dur, currentEventStart))
+
+                        if (currentEventStartHour in 7..21) dayCount++ else nightCount++
+                    }
+                    inEvent = true
+                    currentEventStart = s.time
+                    currentEventStartHour = s.hour
+                    currentEventPeak = s.bpm
+                } else {
+                    currentEventPeak = maxOf(currentEventPeak, s.bpm)
+                }
+                eventEndMs = s.time + 300000L
+            }
+        }
+        if (inEvent) {
+            val dur = maxOf(1, ((eventEndMs - 300000L - currentEventStart) / 60000L).toInt())
+            eventRecords.add(SpikeEventRecord(currentEventPeak, dur, currentEventStart))
+            if (currentEventStartHour in 7..21) dayCount++ else nightCount++
+        }
+
+        return DailyHeartRateSummary(
+            date = date,
+            avg = avg,
+            max = max,
+            min = min,
+            baseline = baseline,
+            spikeCount = dayCount + nightCount,
+            daySpikeCount = dayCount,
+            nightSpikeCount = nightCount,
+            awakeAvg = awakeAvg,
+            maxDelta = maxDelta,
+            totalReadings = sortedSamples.size,
+            eventsList = eventRecords
+        )
     }
 
     suspend fun readHistoricalHeartRate(days: Int = 180): List<Pair<String, Int>> = withContext(Dispatchers.IO) {

@@ -13,6 +13,7 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import java.time.LocalDate
 import java.util.concurrent.TimeUnit
@@ -161,7 +162,12 @@ class HrSpikeBackfillWorker @AssistedInject constructor(
         val merged = (latest + fresh).associateBy { it.date }.values
             .sortedBy { it.date }
             .takeLast(BACKFILL_DAYS)
-        preferences.setHistoricalHrSpikes(json.encodeToString(merged))
+        // Explicit ListSerializer: the generic chain above leaves Kotlin unable to
+        // infer the reified T for Json.encodeToString(value), which then resolves
+        // to the (SerializationStrategy<T>, T) overload and fails to compile.
+        preferences.setHistoricalHrSpikes(
+            json.encodeToString(ListSerializer(DailyHeartRateSummary.serializer()), merged)
+        )
         return merged
     }
 

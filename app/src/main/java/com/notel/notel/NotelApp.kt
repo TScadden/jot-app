@@ -7,6 +7,7 @@ import dagger.hilt.android.HiltAndroidApp
 import com.notel.notel.worker.BodyLoadReminderWorker
 import com.notel.notel.worker.BiometricsSyncWorker
 import com.notel.notel.worker.HrSpikeBackfillWorker
+import com.notel.notel.worker.FitbitSpikeBackfillWorker
 import com.notel.notel.worker.HabitReminderWorker
 import com.notel.notel.worker.ProjectReminderWorker
 import com.notel.notel.service.HrSpikeMonitorService
@@ -46,6 +47,8 @@ class NotelApp : Application(), Configuration.Provider {
         BiometricsSyncWorker.schedule(this)
         // One-time 180-day HR spike history backfill (no-op once complete).
         HrSpikeBackfillWorker.schedule(this)
+        // One-time 180-day Fitbit intraday HR spike backfill (no-op once complete).
+        FitbitSpikeBackfillWorker.schedule(this)
         
         // Start HR Monitor Service safely when app enters foreground
         CoroutineScope(Dispatchers.IO).launch {

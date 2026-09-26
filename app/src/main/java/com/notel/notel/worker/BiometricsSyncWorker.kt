@@ -48,9 +48,10 @@ class BiometricsSyncWorker @AssistedInject constructor(
                 request
             )
 
-            // Re-trigger the one-time HR spike backfill if an earlier run was
-            // interrupted; no-op once the backfill is complete.
+            // Re-trigger the one-time HR spike backfills if an earlier run was
+            // interrupted; no-op once each backfill is complete.
             HrSpikeBackfillWorker.schedule(context)
+            FitbitSpikeBackfillWorker.schedule(context)
         }
     }
 }
