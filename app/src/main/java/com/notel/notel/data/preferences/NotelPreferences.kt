@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
@@ -54,6 +55,7 @@ open class NotelPreferences(
         val PROFESSIONAL_UPDATES = stringPreferencesKey("professional_updates")
         val LOGGED_DAYS = stringPreferencesKey("logged_days")
         val AI_INSIGHTS = stringPreferencesKey("ai_insights")
+        val NOTIFIED_REPORT_IDS = stringSetPreferencesKey("notified_report_ids")
         val FITBIT_TOKEN = stringPreferencesKey("fitbit_token")
         val FITBIT_REFRESH_TOKEN = stringPreferencesKey("fitbit_refresh_token")
         val FITBIT_CODE_VERIFIER = stringPreferencesKey("fitbit_code_verifier")
@@ -405,6 +407,22 @@ open class NotelPreferences(
 
     val aiInsights: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[AI_INSIGHTS] ?: "[]"
+    }
+
+    // Persistent set of graph-report insight ids that already fired a "PDF done"
+    // notification. Notifying is keyed on first sighting (not on timestamp recency)
+    // so a late pull can never silently skip — and an id can never notify twice.
+    val notifiedReportIds: Flow<Set<String>> = context.dataStore.data.map { prefs ->
+        prefs[NOTIFIED_REPORT_IDS] ?: emptySet()
+    }
+
+    suspend fun markReportNotified(id: String) {
+        context.dataStore.edit { prefs ->
+            val updated = (prefs[NOTIFIED_REPORT_IDS] ?: emptySet()) + id
+            // Cap the set: the local aiInsights JSON (last 1000) already dedupes
+            // old ids via newGraphReports, so old entries here are redundant.
+            prefs[NOTIFIED_REPORT_IDS] = updated.takeLast(100).toSet()
+        }
     }
 
     val fitbitToken: Flow<String> = context.dataStore.data.map { prefs ->

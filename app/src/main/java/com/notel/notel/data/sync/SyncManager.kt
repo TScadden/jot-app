@@ -873,17 +873,35 @@ class SyncManager @Inject constructor(
                     val newGraphReports = insightsList.filter { (it.type == "Graph Analysis Report" || it.id.startsWith("graph_report_")) && it.id !in localIds }
                     // Only trigger new report notifications/events if:
                     // 1. This isn't a fresh sync/restore (i.e. localInsights is not empty)
-                    // AND 2. The report was generated recently (in the last 10 minutes)
-                    if (newGraphReports.isNotEmpty() && localInsights.isNotEmpty()) {
-                        val newestReport = newGraphReports.first()
-                        val isRecent = (System.currentTimeMillis() - newestReport.timestamp) < 10 * 60 * 1000L
-                        if (isRecent) {
-                            try {
-                                val pdfFile = reportGeneratorProvider.get().generateGraphPdfReport("AI Biometric Graph Analysis", newestReport.text)
-                                com.notel.notel.util.NotificationHelper(context).showGraphReportNotification(pdfFile)
-                                logRepositoryProvider.get().notifyNewAiInsight(newestReport)
-                            } catch (e: Exception) {
-                                Log.e(tag, "Failed to trigger report notification: ${e.message}")
+                    //    — kept from the ebae517 logout-leakage fix: a fresh restore must
+                    //    not resurrect another account's / a stale report's notification.
+                    // AND 2. The report was never notified before (persistent notified-ids
+                    //    set, so a late first sighting still notifies once, and an id can
+                    //    never notify twice).
+                    // The 60-minute recency window is retained only as a diagnostic signal;
+                    // notification no longer depends on it.
+                    if (newGraphReports.isNotEmpty()) {
+                        if (localInsights.isEmpty()) {
+                            Log.d(tag, "Skipping graph report notification for ${newGraphReports.size} report(s): fresh sync/restore guard (local insights empty)")
+                        } else {
+                            val notifiedIds = preferences.notifiedReportIds.first()
+                            val pendingReports = newGraphReports.filter { it.id !in notifiedIds }
+                            if (pendingReports.isEmpty()) {
+                                Log.d(tag, "Skipping graph report notification: ${newGraphReports.size} new report(s), all already notified")
+                            } else {
+                                pendingReports.forEach { report ->
+                                    val ageMs = System.currentTimeMillis() - report.timestamp
+                                    val isRecent = ageMs < 60 * 60 * 1000L
+                                    try {
+                                        val pdfFile = reportGeneratorProvider.get().generateGraphPdfReport("AI Biometric Graph Analysis", report.text)
+                                        com.notel.notel.util.NotificationHelper(context).showGraphReportNotification(pdfFile)
+                                        logRepositoryProvider.get().notifyNewAiInsight(report)
+                                        preferences.markReportNotified(report.id)
+                                        Log.d(tag, "Graph report notification sent for ${report.id} (age ${ageMs / 1000}s, within 60-min window: $isRecent)")
+                                    } catch (e: Exception) {
+                                        Log.e(tag, "Failed to trigger report notification for ${report.id}: ${e.message}")
+                                    }
+                                }
                             }
                         }
                     }
