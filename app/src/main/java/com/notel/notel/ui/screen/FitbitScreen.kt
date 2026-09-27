@@ -353,9 +353,9 @@ fun FitbitScreen(
                         ) {
                             // Asleep average pill chip
                             Surface(
-                                color = Color(0xFF1A1B36),
+                                color = if (isLightTheme) NotelSurfaceHigh else LegacyDarkAsleepPill,
                                 shape = RoundedCornerShape(16.dp),
-                                border = BorderStroke(1.dp, Color(0xFF2C2E5D)),
+                                border = BorderStroke(1.dp, if (isLightTheme) NotelBorder else LegacyDarkAsleepPillBorder),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Row(
@@ -365,13 +365,13 @@ fun FitbitScreen(
                                     Icon(
                                         Icons.Default.NightsStay,
                                         contentDescription = null,
-                                        tint = Color(0xFFA49BFF),
+                                        tint = if (isLightTheme) NotelAccent else LegacyDarkAsleepInk,
                                         modifier = Modifier.size(14.dp)
                                     )
                                     Spacer(Modifier.width(6.dp))
                                     Text(
                                         if (state.asleepHeartRate > 0) "Asleep ${state.asleepHeartRate} bpm" else "Asleep -- bpm",
-                                        color = Color(0xFFA49BFF),
+                                        color = if (isLightTheme) NotelAccent else LegacyDarkAsleepInk,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         maxLines = 1,
@@ -382,9 +382,9 @@ fun FitbitScreen(
 
                             // Last reading pill chip
                             Surface(
-                                color = Color(0xFF12233D),
+                                color = if (isLightTheme) NotelSurfaceHigh else LegacyDarkLastPill,
                                 shape = RoundedCornerShape(16.dp),
-                                border = BorderStroke(1.dp, Color(0xFF1E3A66)),
+                                border = BorderStroke(1.dp, if (isLightTheme) NotelBorder else LegacyDarkLastPillBorder),
                                 modifier = Modifier.weight(1.2f)
                             ) {
                                 Row(
@@ -394,13 +394,13 @@ fun FitbitScreen(
                                     Icon(
                                         Icons.Default.BarChart,
                                         contentDescription = null,
-                                        tint = NotelInfo,
+                                        tint = if (isLightTheme) NotelAccent else NotelInfo,
                                         modifier = Modifier.size(14.dp)
                                     )
                                     Spacer(Modifier.width(6.dp))
                                     Text(
                                         if (state.latestHeartRate > 0) "Last ${state.latestHeartRate} bpm${if (state.latestHeartRateTime.isNotBlank()) " · ${state.latestHeartRateTime}" else ""}" else "Last -- bpm",
-                                        color = NotelInfo,
+                                        color = if (isLightTheme) NotelAccent else NotelInfo,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         maxLines = 1,
@@ -548,7 +548,8 @@ fun FitbitScreen(
 
                 GlassyCard(
                     modifier = Modifier.fillMaxWidth(),
-                    color = if (loadLevel == "High load") Color(0xFF2A121A) else NotelSurface
+                    color = if (loadLevel == "High load") NotelErrorTint else NotelSurface,
+                    borderColor = if (loadLevel == "High load") NotelErrorTintBorder else null
                 ) {
                     Column(
                         modifier = Modifier
@@ -564,13 +565,13 @@ fun FitbitScreen(
                                 Box(
                                     modifier = Modifier
                                         .size(36.dp)
-                                        .background(Color(0xFF4A1820), CircleShape),
+                                        .background(NotelErrorTintStrong, CircleShape),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
                                         Icons.Default.Whatshot,
                                         contentDescription = null,
-                                        tint = NotelError,
+                                        tint = NotelErrorTintOn,
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
@@ -592,13 +593,13 @@ fun FitbitScreen(
                             }
 
                             Surface(
-                                color = Color(0xFF4A1820),
+                                color = NotelErrorBadgeFill,
                                 shape = RoundedCornerShape(12.dp)
                             ) {
                                 Text(
                                     loadLevel,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                    color = NotelError,
+                                    color = NotelErrorBadgeText,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -636,15 +637,15 @@ fun FitbitScreen(
                         GlassyButton(
                             onClick = onNavigateToSpikeReview,
                             modifier = Modifier.fillMaxWidth(),
-                            containerColor = Color(0xFF19223D)
+                            containerColor = if (isLightTheme) NotelPrimary else LegacyDarkReviewButton
                         ) {
                             Row(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Review spikes", color = NotelTextPrimary, fontWeight = FontWeight.SemiBold)
-                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = NotelTextSecondary, modifier = Modifier.size(16.dp))
+                                Text("Review spikes", color = if (isLightTheme) NotelOnAccent else NotelTextPrimary, fontWeight = FontWeight.SemiBold)
+                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = if (isLightTheme) NotelOnAccent else NotelTextSecondary, modifier = Modifier.size(16.dp))
                             }
                         }
                     }
@@ -668,7 +669,7 @@ fun FitbitScreen(
                             Box(
                                 modifier = Modifier
                                     .size(40.dp)
-                                    .background(Color(0xFF1E284A), CircleShape),
+                                    .background(if (isLightTheme) NotelSurfaceHigh else LegacyDarkConnectCircle, CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
                                 androidx.compose.foundation.Image(

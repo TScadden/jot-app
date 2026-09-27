@@ -478,6 +478,10 @@ private fun WeeklySnapshotInteractiveCanvas(
     val points = metricData.points
     val isBarChart = metricData.metricName in listOf("HR Spikes", "Calories", "Logs", "Habit Completion")
     val isBpChart = metricData.metricName == "Blood Pressure"
+    // Captured for DrawScope use (@Composable getters can't be called inside Canvas).
+    val gridLineColor = if (isLightTheme) NotelBorder else LegacyDarkGrid
+    val noDataColor = if (isLightTheme) NotelBorder else LegacyDarkNoDataRing
+    val noDataLineColor = if (isLightTheme) NotelTextSecondary.copy(alpha = 0.5f) else LegacyDarkNoDataTick
 
     val lineColor = when (metricData.metricName) {
         "Sleep Hours" -> NotelInfo
@@ -511,7 +515,7 @@ private fun WeeklySnapshotInteractiveCanvas(
             for (i in 0..2) {
                 val y = chartH * (i / 2f)
                 drawLine(
-                    color = Color.White.copy(alpha = 0.06f),
+                    color = gridLineColor,
                     start = Offset(0f, y),
                     end = Offset(width, y),
                     strokeWidth = 1.dp.toPx()
@@ -625,13 +629,13 @@ private fun WeeklySnapshotInteractiveCanvas(
                             // Skip day and draw a subtle "no data" icon indicator on the X axis baseline
                             val noDataY = chartH - 12.dp.toPx()
                             drawCircle(
-                                color = Color.White.copy(alpha = 0.2f),
+                                color = noDataColor,
                                 radius = 3.dp.toPx(),
                                 center = Offset(cx, noDataY),
                                 style = Stroke(width = 1.dp.toPx())
                             )
                             drawLine(
-                                color = Color.White.copy(alpha = 0.25f),
+                                color = noDataLineColor,
                                 start = Offset(cx - 2.dp.toPx(), noDataY),
                                 end = Offset(cx + 2.dp.toPx(), noDataY),
                                 strokeWidth = 1.dp.toPx()

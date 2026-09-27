@@ -1141,7 +1141,7 @@ fun ProjectFocusScreen(
                                     Text("Missed", color = NotelTextSecondary, fontSize = 11.sp)
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Box(Modifier.size(8.dp).background(Color.White.copy(alpha = 0.1f), CircleShape))
+                                    Box(Modifier.size(8.dp).background(if (isLightTheme) NotelBorder else LegacyDarkHairline, CircleShape))
                                     Text("Upcoming", color = NotelTextSecondary, fontSize = 11.sp)
                                 }
                             }
@@ -1154,7 +1154,7 @@ fun ProjectFocusScreen(
                             if (showCancelDialog) {
                                 AlertDialog(
                                     onDismissRequest = { showCancelDialog = false },
-                                    title = { Text("Cancel Experiment", color = Color.White) },
+                                    title = { Text("Cancel Experiment", color = if (isLightTheme) NotelTextPrimary else LegacyDarkOnDark) },
                                     text = { Text("Are you sure you want to cancel this experiment? This will delete all logged progress for it.", color = NotelTextSecondary) },
                                     confirmButton = {
                                         TextButton(
@@ -1168,10 +1168,10 @@ fun ProjectFocusScreen(
                                     },
                                     dismissButton = {
                                         TextButton(onClick = { showCancelDialog = false }) {
-                                            Text("No", color = Color.White)
+                                            Text("No", color = if (isLightTheme) NotelTextPrimary else LegacyDarkOnDark)
                                         }
                                     },
-                                    containerColor = Color(0xFF161622)
+                                    containerColor = if (isLightTheme) NotelSurface else LegacyDarkDialog
                                 )
                             }
 
@@ -1233,7 +1233,7 @@ fun ProjectFocusScreen(
                 title = {
                     Text(
                         text = "About Project Focus",
-                        color = Color.White,
+                        color = if (isLightTheme) NotelTextPrimary else LegacyDarkOnDark,
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp
                     )
@@ -1251,7 +1251,7 @@ fun ProjectFocusScreen(
                         Text("Got it", color = NotelPrimary, fontWeight = FontWeight.Bold)
                     }
                 },
-                containerColor = Color(0xFF161622),
+                containerColor = if (isLightTheme) NotelSurface else LegacyDarkDialog,
                 shape = RoundedCornerShape(24.dp)
             )
         }

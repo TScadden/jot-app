@@ -298,7 +298,8 @@ fun HabitsScreen(
                                     border = BorderStroke(
                                         1.dp,
                                         if (isChecked) NotelPrimary.copy(alpha = 0.3f)
-                                        else Color.White.copy(alpha = 0.05f)
+                                        else if (isLightTheme) NotelBorder
+                                        else LegacyDarkHairlineFaint
                                     )
                                 ) {
                                     Column(

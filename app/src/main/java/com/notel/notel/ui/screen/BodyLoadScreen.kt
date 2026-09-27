@@ -182,8 +182,8 @@ fun BodyLoadScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 6.dp),
                     shape = RoundedCornerShape(12.dp),
-                    color = Color.Black.copy(alpha = 0.3f),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+                    color = if (isLightTheme) NotelSurface else LegacyDarkScrim,
+                    border = BorderStroke(1.dp, if (isLightTheme) NotelBorder else LegacyDarkHairline)
                 ) {
                     Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp)) {
                         Row(
@@ -200,14 +200,14 @@ fun BodyLoadScreen(
                                 Spacer(Modifier.width(4.dp))
                                 Text(
                                     text = if (state.avgHeartRate > 0) "${state.avgHeartRate}" else "--",
-                                    color = Color.White,
+                                    color = if (isLightTheme) NotelTextPrimary else LegacyDarkOnDark,
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
 
                             Spacer(Modifier.width(2.dp))
-                            VerticalDivider(modifier = Modifier.height(16.dp), color = Color.White.copy(alpha = 0.15f))
+                            VerticalDivider(modifier = Modifier.height(16.dp), color = if (isLightTheme) NotelBorder else LegacyDarkDivider)
                             Spacer(Modifier.width(2.dp))
 
                             // Calories
@@ -216,14 +216,14 @@ fun BodyLoadScreen(
                                 Spacer(Modifier.width(4.dp))
                                 Text(
                                     text = if (state.activeCalories > 0) "${state.activeCalories}" else "--",
-                                    color = Color.White,
+                                    color = if (isLightTheme) NotelTextPrimary else LegacyDarkOnDark,
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
 
                             Spacer(Modifier.width(2.dp))
-                            VerticalDivider(modifier = Modifier.height(16.dp), color = Color.White.copy(alpha = 0.15f))
+                            VerticalDivider(modifier = Modifier.height(16.dp), color = if (isLightTheme) NotelBorder else LegacyDarkDivider)
                             Spacer(Modifier.width(2.dp))
 
                             // Logs
@@ -232,14 +232,14 @@ fun BodyLoadScreen(
                                 Spacer(Modifier.width(4.dp))
                                 Text(
                                     text = "${state.jotCountDaily}",
-                                    color = Color.White,
+                                    color = if (isLightTheme) NotelTextPrimary else LegacyDarkOnDark,
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
 
                             Spacer(Modifier.width(2.dp))
-                            VerticalDivider(modifier = Modifier.height(16.dp), color = Color.White.copy(alpha = 0.15f))
+                            VerticalDivider(modifier = Modifier.height(16.dp), color = if (isLightTheme) NotelBorder else LegacyDarkDivider)
                             Spacer(Modifier.width(2.dp))
 
                             // Sleep
@@ -253,7 +253,7 @@ fun BodyLoadScreen(
                                 } else "--"
                                 Text(
                                     text = sleepStr,
-                                    color = Color.White,
+                                    color = if (isLightTheme) NotelTextPrimary else LegacyDarkOnDark,
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold
                                 )

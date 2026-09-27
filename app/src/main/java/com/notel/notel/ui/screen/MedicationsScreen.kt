@@ -682,7 +682,7 @@ fun TopSlideNotificationBanner(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
                 .clickable { onDismiss() },
-            color = Color(0xFF1E293B),
+            color = if (isLightTheme) NotelSurface else LegacyDarkSheet,
             tonalElevation = 8.dp,
             shadowElevation = 8.dp,
             border = androidx.compose.foundation.BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.5f))

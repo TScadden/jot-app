@@ -164,8 +164,8 @@ fun FoodScreen(
             if (errorMessage != null) {
                 item {
                     Surface(
-                        color = Color(0xFF2C1E1E),
-                        border = BorderStroke(1.dp, Color(0xFFD32F2F).copy(alpha = 0.3f)),
+                        color = if (isLightTheme) NotelErrorTint else LegacyDarkFoodErrorSurface,
+                        border = BorderStroke(1.dp, if (isLightTheme) NotelErrorTintBorder else LegacyDarkFoodErrorBorder),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -173,16 +173,16 @@ fun FoodScreen(
                             modifier = Modifier.padding(14.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.Error, null, tint = NotelError)
+                            Icon(Icons.Default.Error, null, tint = NotelErrorTintOn)
                             Spacer(Modifier.width(10.dp))
                             Text(
                                 text = errorMessage ?: "",
-                                color = Color(0xFFFFCDD2),
+                                color = if (isLightTheme) NotelErrorTintOn else LegacyDarkFoodErrorInk,
                                 fontSize = 13.sp,
                                 modifier = Modifier.weight(1f)
                             )
                             IconButton(onClick = { viewModel.clearError() }) {
-                                Icon(Icons.Default.Close, null, tint = Color(0xFFFFCDD2), modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.Close, null, tint = if (isLightTheme) NotelErrorTintOn else LegacyDarkFoodErrorInk, modifier = Modifier.size(16.dp))
                             }
                         }
                     }

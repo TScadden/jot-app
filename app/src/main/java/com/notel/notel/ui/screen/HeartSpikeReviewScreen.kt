@@ -146,7 +146,8 @@ fun HeartSpikeReviewScreen(
             // Summary Header Card
             GlassyCard(
                 modifier = Modifier.fillMaxWidth(),
-                color = if (spikesList.isNotEmpty()) Color(0xFF2A121A) else NotelSurface
+                color = if (spikesList.isNotEmpty()) NotelErrorTint else NotelSurface,
+                borderColor = if (spikesList.isNotEmpty()) NotelErrorTintBorder else null
             ) {
                 Row(
                     modifier = Modifier
@@ -157,13 +158,13 @@ fun HeartSpikeReviewScreen(
                     Box(
                         modifier = Modifier
                             .size(44.dp)
-                            .background(Color(0xFF4A1820), CircleShape),
+                            .background(NotelErrorTintStrong, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             Icons.Default.Whatshot,
                             contentDescription = null,
-                            tint = NotelError,
+                            tint = NotelErrorTintOn,
                             modifier = Modifier.size(24.dp)
                         )
                     }
@@ -248,12 +249,12 @@ fun HeartSpikeReviewScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Surface(
-                                    color = Color(0xFF4A1820),
+                                    color = NotelErrorTintStrong,
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
                                     Text(
                                         "#${index + 1}",
-                                        color = NotelError,
+                                        color = NotelErrorTintOn,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Black,
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)

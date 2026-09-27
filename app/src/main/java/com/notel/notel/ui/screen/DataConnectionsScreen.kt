@@ -192,7 +192,7 @@ fun DataConnectionsScreen(
             ) {
                 Text(
                     "How to connect a tracker",
-                    color = Color.White,
+                    color = NotelTextPrimary,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -231,7 +231,7 @@ fun DataConnectionsScreen(
                 Box(
                     modifier = Modifier
                         .size(64.dp)
-                        .background(Color.White.copy(alpha = 0.05f), CircleShape),
+                        .background(if (isLightTheme) NotelSurfaceHigh else LegacyDarkHairlineFaint, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     app.logo()
@@ -370,7 +370,7 @@ fun ConnectionItem(
             Box(
                 modifier = Modifier
                     .size(44.dp)
-                    .background(Color.White.copy(alpha = 0.05f), CircleShape),
+                    .background(if (isLightTheme) NotelSurfaceHigh else LegacyDarkHairlineFaint, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 logo()

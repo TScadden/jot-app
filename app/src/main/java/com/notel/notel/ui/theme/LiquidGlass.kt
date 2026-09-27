@@ -67,8 +67,10 @@ fun GlassyButton(
         label = "scale"
     )
 
-    val resolvedColor = if (enabled) containerColor else Color(0xFF1E2A3A)
-    val borderColor  = if (enabled) containerColor.copy(alpha = 0.6f) else Color(0xFF253040)
+    val resolvedColor = if (enabled) containerColor
+        else if (isLightTheme) NotelSurfaceHigh else LegacyDarkDisabledButton
+    val borderColor  = if (enabled) containerColor.copy(alpha = 0.6f)
+        else if (isLightTheme) NotelBorder else LegacyDarkDisabledButtonBorder
 
     Surface(
         onClick = onClick,
@@ -96,19 +98,24 @@ fun GlassyButton(
 /**
  * Tile-style card — solid deep-navy background with a subtle cyan border.
  * Drop-in replacement for the old GlassyCard.
+ *
+ * @param borderColor overrides the default primary-tinted hairline (e.g. the
+ * error-tint border on alert cards). Null keeps the legacy default, so dark
+ * mode renders byte-identically.
  */
 @Composable
 fun GlassyCard(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(16.dp),
     color: Color = NotelSurface,
+    borderColor: Color? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Box(
         modifier = modifier
             .clip(shape)
             .background(color)
-            .border(width = 1.dp, color = NotelPrimary.copy(alpha = 0.18f), shape = shape)
+            .border(width = 1.dp, color = borderColor ?: NotelPrimary.copy(alpha = 0.18f), shape = shape)
             .padding(16.dp),
         contentAlignment = Alignment.TopStart
     ) {

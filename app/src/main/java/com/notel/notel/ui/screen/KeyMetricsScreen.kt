@@ -119,7 +119,7 @@ fun KeyMetricsScreen(
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
-                    HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+                    HorizontalDivider(color = if (isLightTheme) NotelBorder else LegacyDarkHairline)
                     Spacer(modifier = Modifier.height(12.dp))
 
                     Row(
@@ -442,8 +442,8 @@ fun MetricTile(
             .fillMaxWidth()
             .height(160.dp),
         shape = RoundedCornerShape(24.dp),
-        color = NotelSurface.copy(alpha = 0.15f),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+        color = if (isLightTheme) NotelSurface else NotelSurface.copy(alpha = 0.15f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (isLightTheme) NotelBorder else LegacyDarkHairlineFaint)
     ) {
         Box(
             modifier = Modifier

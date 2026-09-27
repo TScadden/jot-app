@@ -30,9 +30,21 @@ import com.notel.notel.ui.viewmodel.EntrySyncStatus
 import java.text.SimpleDateFormat
 import java.util.*
 
-// ── Design tokens matching the reference "System Vitals / Climate Core" tile style ──
-private val TileBackground = Color(0xFF0D1428)
-private val TileAccentPurple = Color(0xFF7C6EFF)
+// ── Light-mode polish (Mira spec, 2026-09-27) ─────────────────────────────────
+// This screen used to hardcode the dark "System Vitals" tile palette
+// (TileBackground #0D1428 / TileAccentPurple #7C6EFF). It now resolves through
+// the theme tokens: dark NotelSurface == #0D1428 and dark NotelPrimary ==
+// #7C6EFF, so dark mode renders byte-identically while light mode picks up
+// the light tokens. Only the deviations the spec calls out branch on
+// isLightTheme. remember{} lambdas capture LocalNotelPalette.current as a
+// plain value (theme getters are @Composable and can't be called there).
+
+/** Tag/chip text on light surfaces: darkened base color so it passes AA on the
+ * light tint fill. Dark mode keeps the full base color (legacy rendering). */
+@Composable
+private fun tagContentColor(base: Color): Color =
+    if (isLightTheme) Color(red = base.red * 0.45f, green = base.green * 0.45f, blue = base.blue * 0.45f)
+    else base
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -94,7 +106,7 @@ fun HistoryScreen(
                         Icon(
                             Icons.Default.Sync,
                             contentDescription = "Sync Now / Retry",
-                            tint = if (isSyncing) TileAccentPurple else NotelTextSecondary
+                            tint = if (isSyncing) NotelPrimary else NotelTextSecondary
                         )
                     }
                 },
@@ -126,13 +138,13 @@ fun HistoryScreen(
                 shape = RoundedCornerShape(14.dp),
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = TileAccentPurple,
-                    unfocusedBorderColor = TileAccentPurple.copy(alpha = 0.25f),
+                    focusedBorderColor = NotelPrimary,
+                    unfocusedBorderColor = if (isLightTheme) NotelBorder else NotelPrimary.copy(alpha = 0.25f),
                     focusedTextColor = NotelTextPrimary,
                     unfocusedTextColor = NotelTextPrimary,
-                    cursorColor = TileAccentPurple,
-                    unfocusedContainerColor = TileBackground,
-                    focusedContainerColor = TileBackground
+                    cursorColor = NotelPrimary,
+                    unfocusedContainerColor = NotelSurface,
+                    focusedContainerColor = NotelSurface
                 )
             )
 
@@ -146,10 +158,12 @@ fun HistoryScreen(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(10.dp))
-                            .background(if (isAllSelected) TileAccentPurple else TileBackground)
+                            .background(if (isAllSelected) NotelPrimary else NotelSurface)
                             .border(
                                 width = 1.dp,
-                                color = if (isAllSelected) TileAccentPurple else TileAccentPurple.copy(alpha = 0.25f),
+                                color = if (isAllSelected) NotelPrimary
+                                    else if (isLightTheme) NotelBorder
+                                    else NotelPrimary.copy(alpha = 0.25f),
                                 shape = RoundedCornerShape(10.dp)
                             )
                             .clickable { viewModel.setCategoryFilter(null) }
@@ -157,7 +171,9 @@ fun HistoryScreen(
                     ) {
                         Text(
                             "ALL",
-                            color = if (isAllSelected) Color(0xFF0A0A0E) else NotelTextSecondary,
+                            color = if (isAllSelected) {
+                                if (isLightTheme) NotelOnAccent else LegacyDarkChipInk
+                            } else NotelTextSecondary,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 0.8.sp
@@ -166,14 +182,17 @@ fun HistoryScreen(
                 }
                 items(categories) { cat ->
                     val isSelected = categoryFilter == cat.id
-                    val catColor = remember(cat) {
+                    // Palette captured as a plain value: remember{} forbids @Composable
+                    // calls, so the theme getter cannot be referenced in its lambda.
+                    val palette = LocalNotelPalette.current
+                    val catColor = remember(cat, palette) {
                         try { Color(android.graphics.Color.parseColor(cat.colorHex)) }
-                        catch (e: Exception) { TileAccentPurple }
+                        catch (e: Exception) { palette.primary }
                     }
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(10.dp))
-                            .background(if (isSelected) catColor else TileBackground)
+                            .background(if (isSelected) catColor else NotelSurface)
                             .border(
                                 width = 1.dp,
                                 color = if (isSelected) catColor else catColor.copy(alpha = 0.35f),
@@ -184,7 +203,7 @@ fun HistoryScreen(
                     ) {
                         Text(
                             cat.name.uppercase(),
-                            color = if (isSelected) Color(0xFF0A0A0E) else NotelTextSecondary,
+                            color = if (isSelected) LegacyDarkChipInk else NotelTextSecondary,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 0.8.sp
@@ -198,14 +217,24 @@ fun HistoryScreen(
 
             TabRow(
                 selectedTabIndex = selectedTab,
-                containerColor = TileBackground,
-                contentColor = TileAccentPurple,
+                containerColor = NotelSurface,
+                contentColor = NotelPrimary,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
             ) {
-                Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }) {
+                Tab(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    selectedContentColor = NotelPrimary,
+                    unselectedContentColor = if (isLightTheme) NotelTextSecondary else NotelPrimary
+                ) {
                     Text("LOGS (${entries.size})", modifier = Modifier.padding(vertical = 10.dp), fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
-                Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }) {
+                Tab(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    selectedContentColor = NotelPrimary,
+                    unselectedContentColor = if (isLightTheme) NotelTextSecondary else NotelPrimary
+                ) {
                     Text("AI INSIGHTS (${aiInsightsWithDetails.size})", modifier = Modifier.padding(vertical = 10.dp), fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
             }
@@ -257,8 +286,8 @@ fun HistoryScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(16.dp))
-                                    .background(TileBackground)
-                                    .border(1.dp, TileAccentPurple.copy(alpha = 0.25f), RoundedCornerShape(16.dp))
+                                    .background(NotelSurface)
+                                    .border(1.dp, NotelPrimary.copy(alpha = 0.25f), RoundedCornerShape(16.dp))
                                     .padding(16.dp)
                             ) {
                                 Column {
@@ -269,7 +298,7 @@ fun HistoryScreen(
                                     ) {
                                         Text(
                                             text = item.insight.type.uppercase(),
-                                            color = TileAccentPurple,
+                                            color = NotelPrimary,
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 11.sp
                                         )
@@ -297,7 +326,7 @@ fun HistoryScreen(
                                     Spacer(Modifier.height(6.dp))
                                     Text(
                                         text = sdf.format(Date(item.insight.timestamp)),
-                                        color = TileAccentPurple.copy(alpha = 0.5f),
+                                        color = NotelPrimary.copy(alpha = 0.5f),
                                         fontSize = 10.sp
                                     )
                                 }
@@ -329,14 +358,14 @@ private fun EntryCard(
         } else null
     }
 
-    val accentColor = catColor ?: TileAccentPurple
+    val accentColor = catColor ?: NotelPrimary
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .animateContentSize()
             .clip(RoundedCornerShape(16.dp))
-            .background(TileBackground)
+            .background(NotelSurface)
             .border(
                 width = 1.dp,
                 color = accentColor.copy(alpha = 0.20f),
@@ -382,7 +411,7 @@ private fun EntryCard(
                         ) {
                             Text(
                                 text = category.name.uppercase(),
-                                color = catColor,
+                                color = tagContentColor(catColor),
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 0.8.sp
@@ -395,13 +424,13 @@ private fun EntryCard(
                         Icon(
                             Icons.Default.AutoAwesome,
                             contentDescription = "Voice AI",
-                            tint = TileAccentPurple,
+                            tint = NotelPrimary,
                             modifier = Modifier.size(12.dp)
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(
                             "VOICE AI",
-                            color = TileAccentPurple.copy(alpha = 0.75f),
+                            color = NotelPrimary.copy(alpha = 0.75f),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 0.8.sp
@@ -417,7 +446,7 @@ private fun EntryCard(
                     Icon(
                         Icons.Default.Delete,
                         null,
-                        tint = NotelTextSecondary.copy(alpha = 0.45f),
+                        tint = if (isLightTheme) NotelTextSecondary else NotelTextSecondary.copy(alpha = 0.45f),
                         modifier = Modifier.size(16.dp)
                     )
                 }
@@ -446,7 +475,7 @@ private fun EntryCard(
             ) {
                 Text(
                     text = sdf.format(Date(entry.timestamp)),
-                    color = TileAccentPurple.copy(alpha = 0.55f),
+                    color = if (isLightTheme) NotelTextSecondary else NotelPrimary.copy(alpha = 0.55f),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium,
                     letterSpacing = 0.3.sp
@@ -457,13 +486,13 @@ private fun EntryCard(
                             Icon(
                                 Icons.Default.CloudDone,
                                 contentDescription = "Synced",
-                                tint = TileAccentPurple.copy(alpha = 0.6f),
+                                tint = if (isLightTheme) NotelSuccess else NotelPrimary.copy(alpha = 0.6f),
                                 modifier = Modifier.size(12.dp)
                             )
                             Spacer(Modifier.width(4.dp))
                             Text(
                                 "Synced",
-                                color = TileAccentPurple.copy(alpha = 0.6f),
+                                color = if (isLightTheme) NotelSuccess else NotelPrimary.copy(alpha = 0.6f),
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -537,7 +566,7 @@ private fun EntryCard(
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            containerColor = TileBackground,
+            containerColor = NotelSurface,
             title = { Text("Delete entry?", color = NotelTextPrimary) },
             text = { Text("This cannot be undone.", color = NotelTextSecondary) },
             confirmButton = {

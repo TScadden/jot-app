@@ -255,8 +255,8 @@ fun BodyLoadCard(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 shape = RoundedCornerShape(12.dp),
-                color = Color.Black.copy(alpha = 0.3f),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+                color = if (isLightTheme) NotelSurface else LegacyDarkScrim,
+                border = BorderStroke(1.dp, if (isLightTheme) NotelBorder else LegacyDarkHairline)
             ) {
                 Row(
                     modifier = Modifier
@@ -314,7 +314,7 @@ fun BodyLoadCard(
                         )
                     }
                     
-                    VerticalDivider(modifier = Modifier.height(32.dp).padding(horizontal = 4.dp), color = Color.White.copy(alpha = 0.1f))
+                    VerticalDivider(modifier = Modifier.height(32.dp).padding(horizontal = 4.dp), color = if (isLightTheme) NotelBorder else LegacyDarkHairline)
 
                     // Metrics Row (Always visible)
                     Row(
@@ -334,7 +334,7 @@ fun BodyLoadCard(
                             )
                         }
 
-                        VerticalDivider(modifier = Modifier.height(16.dp), color = Color.White.copy(alpha = 0.05f))
+                        VerticalDivider(modifier = Modifier.height(16.dp), color = if (isLightTheme) NotelBorder else LegacyDarkHairlineFaint)
 
                         // Calories
                         MetricItem(
@@ -343,7 +343,7 @@ fun BodyLoadCard(
                             color = NotelError
                         )
 
-                        VerticalDivider(modifier = Modifier.height(16.dp), color = Color.White.copy(alpha = 0.05f))
+                        VerticalDivider(modifier = Modifier.height(16.dp), color = if (isLightTheme) NotelBorder else LegacyDarkHairlineFaint)
 
                         // Jots
                         MetricItem(
@@ -352,7 +352,7 @@ fun BodyLoadCard(
                             color = NotelSuccess
                         )
 
-                        VerticalDivider(modifier = Modifier.height(16.dp), color = Color.White.copy(alpha = 0.05f))
+                        VerticalDivider(modifier = Modifier.height(16.dp), color = if (isLightTheme) NotelBorder else LegacyDarkHairlineFaint)
 
                         // Sleep
                         MetricItem(
@@ -415,7 +415,7 @@ fun BodyLoadCard(
                     modifier = Modifier.size(34.dp),
                     shape = RoundedCornerShape(8.dp),
                     color = NotelSurfaceHigh.copy(alpha = 0.1f),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+                    border = BorderStroke(1.dp, if (isLightTheme) NotelBorder else LegacyDarkHairlineFaint)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text("🔥${state.currentStreak}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = NotelWarning)
@@ -427,7 +427,7 @@ fun BodyLoadCard(
                     modifier = Modifier.size(34.dp),
                     shape = RoundedCornerShape(8.dp),
                     color = NotelSurfaceHigh.copy(alpha = 0.1f),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+                    border = BorderStroke(1.dp, if (isLightTheme) NotelBorder else LegacyDarkHairlineFaint)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text("🏆${state.bestStreak}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD700))
@@ -547,7 +547,7 @@ fun MetricItem(
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, tint = color, modifier = Modifier.size(16.dp))
         Spacer(Modifier.width(4.dp))
-        Text(value, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        Text(value, color = if (isLightTheme) NotelTextPrimary else LegacyDarkOnDark, fontSize = 15.sp, fontWeight = FontWeight.Bold)
     }
 }
 

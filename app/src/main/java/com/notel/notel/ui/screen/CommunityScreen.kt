@@ -128,7 +128,7 @@ fun CommunityScreen(
                     )
                     // Gray line going across right under the text/topbar
                     HorizontalDivider(
-                        color = Color.White.copy(alpha = 0.08f),
+                        color = if (isLightTheme) NotelBorder else LegacyDarkTopDivider,
                         thickness = 1.dp,
                         modifier = Modifier.fillMaxWidth()
                     )

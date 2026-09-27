@@ -547,8 +547,8 @@ private fun ChatBubble(
                             .widthIn(max = 300.dp)
                             .padding(start = 8.dp),
                         shape = RoundedCornerShape(16.dp),
-                        color = Color.White.copy(alpha = 0.05f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+                        color = if (isLightTheme) NotelSurface else LegacyDarkHairlineFaint,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, if (isLightTheme) NotelBorder else LegacyDarkHairline)
                     ) {
                         Column(
                             modifier = Modifier.padding(14.dp)
@@ -647,8 +647,8 @@ private fun ChatBubble(
                             .widthIn(max = 300.dp)
                             .padding(start = 8.dp),
                         shape = RoundedCornerShape(16.dp),
-                        color = Color.White.copy(alpha = 0.05f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+                        color = if (isLightTheme) NotelSurface else LegacyDarkHairlineFaint,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, if (isLightTheme) NotelBorder else LegacyDarkHairline)
                     ) {
                         Column(
                             modifier = Modifier.padding(14.dp)
@@ -746,8 +746,8 @@ private fun ChatBubble(
                             .widthIn(max = 300.dp)
                             .padding(start = 8.dp),
                         shape = RoundedCornerShape(16.dp),
-                        color = Color.White.copy(alpha = 0.05f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+                        color = if (isLightTheme) NotelSurface else LegacyDarkHairlineFaint,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, if (isLightTheme) NotelBorder else LegacyDarkHairline)
                     ) {
                         Column(
                             modifier = Modifier.padding(14.dp)
@@ -859,8 +859,8 @@ private fun ChatBubble(
                             .widthIn(max = 300.dp)
                             .padding(start = 8.dp),
                         shape = RoundedCornerShape(16.dp),
-                        color = Color.White.copy(alpha = 0.05f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+                        color = if (isLightTheme) NotelSurface else LegacyDarkHairlineFaint,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, if (isLightTheme) NotelBorder else LegacyDarkHairline)
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
                             Row(
@@ -975,8 +975,8 @@ private fun ChatBubble(
                             .widthIn(max = 300.dp)
                             .padding(start = 8.dp),
                         shape = RoundedCornerShape(16.dp),
-                        color = Color.White.copy(alpha = 0.05f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+                        color = if (isLightTheme) NotelSurface else LegacyDarkHairlineFaint,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, if (isLightTheme) NotelBorder else LegacyDarkHairline)
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
                             Row(
@@ -1100,8 +1100,8 @@ private fun ChatBubble(
                             .widthIn(max = 300.dp)
                             .padding(start = 8.dp),
                         shape = RoundedCornerShape(16.dp),
-                        color = Color.White.copy(alpha = 0.05f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+                        color = if (isLightTheme) NotelSurface else LegacyDarkHairlineFaint,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, if (isLightTheme) NotelBorder else LegacyDarkHairline)
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
                             Row(
@@ -1203,8 +1203,8 @@ private fun ChatBubble(
                             .widthIn(max = 300.dp)
                             .padding(start = 8.dp),
                         shape = RoundedCornerShape(16.dp),
-                        color = Color.White.copy(alpha = 0.05f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+                        color = if (isLightTheme) NotelSurface else LegacyDarkHairlineFaint,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, if (isLightTheme) NotelBorder else LegacyDarkHairline)
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
                             Row(
