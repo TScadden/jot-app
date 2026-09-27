@@ -529,5 +529,19 @@ class Phase2MedicationAndTodayTest {
         assertEquals(hour >= 20, eveningItem.isOverdue())
         assertEquals(hour >= 18, dailyItem.isOverdue())
     }
+
+    @Test
+    fun isOverdue_skippedMedication_neverOverdue() {
+        val med = Medication(id = 6L, name = "Vitamin D", dose = "1000 IU", frequency = "Daily")
+
+        val skippedMorning = TodayPlanItem.ScheduledMedication(medication = med, dose = "1000 IU", timeLabel = "Morning", isCompleted = false, status = ActionStatus.SKIPPED)
+        val skippedEvening = TodayPlanItem.ScheduledMedication(medication = med, dose = "1000 IU", timeLabel = "Evening", isCompleted = false, status = ActionStatus.SKIPPED)
+        val skippedDaily = TodayPlanItem.ScheduledMedication(medication = med, dose = "1000 IU", timeLabel = "Daily", isCompleted = false, status = ActionStatus.SKIPPED)
+
+        // Skipping is intentional, not a missed dose — never overdue regardless of time.
+        assertFalse(skippedMorning.isOverdue())
+        assertFalse(skippedEvening.isOverdue())
+        assertFalse(skippedDaily.isOverdue())
+    }
 }
 

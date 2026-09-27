@@ -265,7 +265,9 @@ class TodayViewModel @Inject constructor(
         val remainingCount = planList.count { !it.isCompleted }
         val currentHour = java.time.LocalTime.now().hour
         val overdueCount = planList.count { item ->
-            !item.isCompleted && when (item) {
+            // A skipped dose is an intentional action, not a missed one — never overdue.
+            val isSkippedMed = item is TodayPlanItem.ScheduledMedication && item.status == ActionStatus.SKIPPED
+            !isSkippedMed && !item.isCompleted && when (item) {
                 is TodayPlanItem.ScheduledMedication -> item.timeLabel == "Morning" && currentHour >= 12
                 is TodayPlanItem.ScheduledReminder -> item.reminder.fixedHour < currentHour
                 is TodayPlanItem.ScheduledHabit -> false
@@ -423,6 +425,8 @@ class TodayViewModel @Inject constructor(
 
 fun TodayPlanItem.isOverdue(): Boolean {
     if (isCompleted) return false
+    // A skipped dose is an intentional action, not a missed one — never overdue.
+    if (this is TodayPlanItem.ScheduledMedication && status == ActionStatus.SKIPPED) return false
     val now = java.time.LocalTime.now()
     return when (this) {
         is TodayPlanItem.ScheduledMedication -> {
