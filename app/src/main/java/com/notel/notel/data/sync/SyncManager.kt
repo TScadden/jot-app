@@ -324,7 +324,10 @@ class SyncManager @Inject constructor(
 
             var todaySleep = sleepMap2[todayStr] ?: 0
             var todayHr = hrMap2[todayStr] ?: 0
-            var todaySpikeCount = 0
+            // Nullable: a spike lookup MISS must push null (server COALESCE keeps the
+            // existing value), never 0. 0 is only pushed when a lookup genuinely
+            // returns a spike count (including a real count of 0).
+            var todaySpikeCount: Int? = null
 
             if (!skipHealthConnect && healthConnectManager.hasBasicPermissions()) {
                 try {
@@ -355,7 +358,7 @@ class SyncManager @Inject constructor(
                 val spikesList = try {
                     if (spikesStr.isNotBlank()) json2.decodeFromString<List<com.notel.notel.data.healthconnect.DailyHeartRateSummary>>(spikesStr) else emptyList()
                 } catch(e: Exception) { emptyList() }
-                todaySpikeCount = spikesList.find { it.date == todayStr }?.spikeCount ?: 0
+                todaySpikeCount = spikesList.find { it.date == todayStr }?.spikeCount
             }
 
             // Sleep debt computation
@@ -369,7 +372,11 @@ class SyncManager @Inject constructor(
             preferences.setTodaySleepMins(todaySleep)
             preferences.setTodayAvgHrShared(todayHr)
             preferences.setTodayScore(todayScoreVal)
-            preferences.setTodaySpikes(todaySpikeCount)
+            // Only overwrite the cached spike count when the lookup succeeded; a
+            // miss must not clobber the previously cached (good) value with 0.
+            if (todaySpikeCount != null) {
+                preferences.setTodaySpikes(todaySpikeCount)
+            }
             preferences.setTodaySleepDebt(todaySleepDebtVal)
 
             val response = tabsApi.syncProfile(
