@@ -322,8 +322,11 @@ class SyncManager @Inject constructor(
                 if (sleepStr2.isNotBlank()) json2.decodeFromString<List<com.notel.notel.data.model.BiomarkerPoint>>(sleepStr2).associate { it.date to it.value.toInt() } else emptyMap()
             } catch(e: Exception) { emptyMap() }
 
-            var todaySleep = sleepMap2[todayStr] ?: 0
-            var todayHr = hrMap2[todayStr] ?: 0
+            // Nullable: a sleep/HR lookup MISS must push null (server COALESCE keeps
+            // the existing value), never 0. 0 is only pushed when a lookup
+            // genuinely returns that value.
+            var todaySleep: Int? = sleepMap2[todayStr]
+            var todayHr: Int? = hrMap2[todayStr]
             // Nullable: a spike lookup MISS must push null (server COALESCE keeps the
             // existing value), never 0. 0 is only pushed when a lookup genuinely
             // returns a spike count (including a real count of 0).
@@ -363,14 +366,21 @@ class SyncManager @Inject constructor(
 
             // Sleep debt computation
             val sleepHistoryPairs = sleepMap2.toMutableMap()
-            if (todaySleep > 0) {
-                sleepHistoryPairs[todayStr] = todaySleep
+            val todaySleepVal = todaySleep ?: 0
+            if (todaySleepVal > 0) {
+                sleepHistoryPairs[todayStr] = todaySleepVal
             }
             val todaySleepDebtVal = calculateDebtAtDate(todayStr, sleepHistoryPairs.toList())
             val todayScoreVal = weeklyScoreValue
 
-            preferences.setTodaySleepMins(todaySleep)
-            preferences.setTodayAvgHrShared(todayHr)
+            // Only overwrite the cached sleep/HR values when the lookups succeeded;
+            // a miss must not clobber the previously cached (good) values with 0.
+            if (todaySleep != null) {
+                preferences.setTodaySleepMins(todaySleep)
+            }
+            if (todayHr != null) {
+                preferences.setTodayAvgHrShared(todayHr)
+            }
             preferences.setTodayScore(todayScoreVal)
             // Only overwrite the cached spike count when the lookup succeeded; a
             // miss must not clobber the previously cached (good) value with 0.
