@@ -186,6 +186,7 @@ section { scroll-margin-top: 96px; }
 .link-arrow {
     display: inline-flex;
     align-items: center;
+    min-height: 44px;
     gap: 0.45rem;
     font-weight: 600;
     color: var(--accent-ink);
@@ -224,7 +225,7 @@ section { scroll-margin-top: 96px; }
     border-bottom: 1px solid var(--border);
 }
 .nav-content { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-.logo { display: inline-flex; align-items: center; gap: 0.7rem; font-family: var(--font-display); font-size: 1.35rem; font-weight: 800; letter-spacing: -0.02em; }
+.logo { display: inline-flex; align-items: center; min-height: 44px; gap: 0.7rem; font-family: var(--font-display); font-size: 1.35rem; font-weight: 800; letter-spacing: -0.02em; }
 .logo img { width: 36px; height: 36px; border-radius: 9px; }
 .site-nav .nav-links { display: flex; align-items: center; gap: 1.75rem; }
 .site-nav .nav-links a:not(.btn) { font-size: 0.95rem; color: var(--text-muted); letter-spacing: 0.01em; }
@@ -232,8 +233,11 @@ section { scroll-margin-top: 96px; }
 .site-nav .nav-links .btn { min-height: 44px; padding: 0.65rem 1.25rem; font-size: 0.95rem; }
 .site-nav .nav-toggle { display: none; }
 
-/* Mobile drawer */
+/* Mobile drawer — BUG B fix: no backdrop-filter on .site-nav at mobile widths,
+   so the position:fixed drawer is NOT contained by the 72px nav box and
+   inset:0 / translateY(-100%) resolve against the viewport. */
 @media (max-width: 899px) {
+    .site-nav { -webkit-backdrop-filter: none; backdrop-filter: none; }
     .site-nav .nav-links {
         position: fixed;
         inset: 0;
@@ -248,7 +252,7 @@ section { scroll-margin-top: 96px; }
         z-index: 999;
     }
     .site-nav .nav-links.open { transform: translateY(0); }
-    .site-nav .nav-links a:not(.btn) { font-size: 1.4rem; font-family: var(--font-display); color: var(--text); }
+    .site-nav .nav-links a:not(.btn) { font-size: 1.4rem; font-family: var(--font-display); color: var(--text); display: inline-flex; align-items: center; min-height: 44px; }
     .site-nav .nav-links .btn { font-size: 1.05rem; padding: 0.9rem 2rem; }
     .site-nav .nav-toggle {
         display: flex;
@@ -545,7 +549,7 @@ section { scroll-margin-top: 96px; }
 .footer-brand p.ver { font-size: 0.8rem; color: var(--text-muted); opacity: 0.6; margin-top: 0.4rem; }
 .footer-links { display: flex; flex-wrap: wrap; gap: 0.4rem 1.6rem; }
 @media (min-width: 768px) { .footer-links { justify-content: flex-end; } }
-.footer-links a { color: var(--text-muted); font-size: 0.92rem; padding: 0.4rem 0; }
+.footer-links a { display: inline-flex; align-items: center; min-height: 44px; color: var(--text-muted); font-size: 0.92rem; padding: 0.4rem 0; }
 .footer-links a:hover { color: var(--text); }
 .footer-legal { margin-top: 2.25rem; padding-top: 1.5rem; border-top: 1px solid var(--border); }
 .footer-legal p { font-size: 0.78rem; line-height: 1.6; color: var(--text-muted); opacity: 0.75; max-width: 88ch; }
@@ -680,8 +684,9 @@ section { scroll-margin-top: 96px; }
     border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-/* Old fixed nav (pages without .site-nav) */
-nav:not(.site-nav) {
+/* Old fixed nav (pages without .site-nav) — BUG A fix: exclude the redesign's
+   footer links nav, which was getting ripped out and pinned to the top */
+nav:not(.site-nav):not(.footer-links) {
     position: fixed;
     top: 0;
     left: 0;

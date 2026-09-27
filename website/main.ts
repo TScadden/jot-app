@@ -50,10 +50,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (open) {
             lastOpener = opener ?? null;
             updateSticky(true);
-            (betaModal.querySelector('.modal-close') as HTMLElement | null)?.focus();
+            // BUG E: focus only after the visibility transition completes —
+            // synchronous focus on .modal-close fires while the overlay is
+            // still visibility:hidden and silently fails. --t-med = 320ms.
+            const closeBtn = betaModal.querySelector('.modal-close') as HTMLElement | null;
+            window.setTimeout(() => closeBtn?.focus({ preventScroll: true }), 340);
         } else {
             updateSticky(true);
-            lastOpener?.focus();
+            lastOpener?.focus({ preventScroll: true });
         }
     };
 
@@ -121,7 +125,12 @@ document.addEventListener('DOMContentLoaded', () => {
         nav?.classList.toggle('drawer-open', open);
         navToggle?.setAttribute('aria-expanded', String(open));
         navToggle?.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
-        document.body.style.overflow = open ? 'hidden' : '';
+        // BUG C: don't clear body scroll lock while the beta modal is open —
+        // opening the modal from the drawer CTA calls setDrawer(false) after
+        // setModal(true) already locked scroll.
+        if (open || !betaModal?.classList.contains('active')) {
+            document.body.style.overflow = open ? 'hidden' : '';
+        }
     };
     navToggle?.addEventListener('click', () => {
         setDrawer(!navLinks?.classList.contains('open'));
