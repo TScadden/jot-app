@@ -343,15 +343,6 @@ section { scroll-margin-top: 96px; }
 .slider-dots .dot:hover::before { background: rgba(255, 255, 255, 0.45); }
 .slider-dots .dot.active::before { background: var(--accent); transform: scale(1.3); }
 
-/* ambient hero background */
-.hero-bg { position: absolute; inset: 0; pointer-events: none; z-index: -1; overflow: hidden; }
-.hero-bg .glow {
-    position: absolute; top: -20%; left: 50%; transform: translateX(-50%);
-    width: 900px; height: 600px;
-    background: radial-gradient(ellipse at center, rgba(124, 110, 255, 0.16) 0%, transparent 65%);
-    filter: blur(10px);
-}
-
 /* ---- Triad strip (Flo steal) ---- */
 .triad { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.015); }
 .triad-list {
@@ -362,7 +353,7 @@ section { scroll-margin-top: 96px; }
 }
 .triad-list li {
     font-family: var(--font-display);
-    font-size: 1.02rem; font-weight: 600; letter-spacing: 0.01em; color: var(--text);
+    font-size: 1.02rem; font-weight: 500; letter-spacing: 0.01em; color: var(--text-muted);
     display: flex; align-items: center; justify-content: center; gap: 0.6rem;
 }
 .triad-list .triad-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; }
@@ -422,7 +413,7 @@ section { scroll-margin-top: 96px; }
 /* ---- Feature strip ---- */
 .feature-strip { display: grid; gap: 1rem; }
 @media (min-width: 640px) { .feature-strip { grid-template-columns: repeat(2, 1fr); } }
-@media (min-width: 1024px) { .feature-strip { grid-template-columns: repeat(5, 1fr); } }
+@media (min-width: 1280px) { .feature-strip { grid-template-columns: repeat(5, 1fr); } }
 .feature-card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -517,7 +508,7 @@ section { scroll-margin-top: 96px; }
 /* ---- Disclaimer footnote band (legal furniture) ---- */
 .disclaimer-band { border-top: 1px solid var(--border); padding: 2.25rem 0; }
 .disclaimer-band p {
-    font-size: 0.8rem; line-height: 1.6; color: var(--text-muted); opacity: 0.8;
+    font-size: 0.8rem; line-height: 1.5; color: var(--text-muted); opacity: 0.8;
     max-width: 78ch; margin: 0 auto; text-align: center;
 }
 
@@ -607,6 +598,7 @@ section { scroll-margin-top: 96px; }
     color: var(--text-muted); font-size: 1.6rem; line-height: 1;
 }
 .modal-close:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+.modal-close svg { width: 20px; height: 20px; }
 .modal-card .beta-pill {
     display: inline-block; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em;
     color: var(--accent-ink); border: 1px solid var(--accent); border-radius: 999px;
@@ -672,7 +664,6 @@ section { scroll-margin-top: 96px; }
 /* ---- Small-screen refinements ---- */
 @media (max-width: 480px) {
     .hero-ctas .btn { flex: 1 1 100%; }
-    .chapter-num { font-size: 4.5rem; }
 }
 
 /* ==========================================================================

@@ -66,7 +66,12 @@ document.addEventListener('DOMContentLoaded', () => {
     betaModal?.addEventListener('click', e => {
         if (e.target === betaModal) setModal(false);
     });
-    betaModal?.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+    betaModal?.addEventListener('touchmove', e => {
+        // Lock background scroll only: touchmoves inside the scrollable
+        // modal card must NOT be blocked, or short screens can't scroll
+        // the card's content (e.g. the Play Store buttons).
+        if (e.target === betaModal) e.preventDefault();
+    }, { passive: false });
     document.addEventListener('keydown', e => {
         if (e.key === 'Escape' && betaModal?.classList.contains('active')) setModal(false);
     });
@@ -81,11 +86,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const next = (index + slides.length) % slides.length;
         slides[current]?.classList.remove('active');
         dots[current]?.classList.remove('active');
-        dots[current]?.setAttribute('aria-selected', 'false');
+        dots[current]?.setAttribute('aria-pressed', 'false');
         current = next;
         slides[current]?.classList.add('active');
         dots[current]?.classList.add('active');
-        dots[current]?.setAttribute('aria-selected', 'true');
+        dots[current]?.setAttribute('aria-pressed', 'true');
     };
 
     if (slides.length > 0) {
@@ -170,16 +175,4 @@ document.addEventListener('DOMContentLoaded', () => {
         }, { threshold: 0.15 }).observe(finalCta);
     }
     window.addEventListener('resize', () => updateSticky(false), { passive: true });
-
-    // --- Subtle hero glow parallax (skip under reduced motion) ---
-    if (!prefersReducedMotion) {
-        window.addEventListener('mousemove', e => {
-            const glow = document.querySelector('.hero-bg .glow') as HTMLElement | null;
-            if (glow) {
-                const x = e.clientX / window.innerWidth;
-                const y = e.clientY / window.innerHeight;
-                glow.style.transform = `translate(calc(-50% + ${x * 50}px), ${y * 50}px)`;
-            }
-        }, { passive: true });
-    }
 });

@@ -90,6 +90,9 @@
         <g id="i-plus" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
             <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
         </g>
+        <g id="i-x" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+            <line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>
+        </g>
         <g id="i-spark" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 3l1.9 5.6 5.6 1.9-5.6 1.9L12 18l-1.9-5.6L4.5 10.5l5.6-1.9z"/>
         </g>
@@ -166,17 +169,16 @@
             </div>
             <div class="slider-controls">
                 <button class="slider-arrow" id="slider-prev" aria-label="Previous screenshot"><svg viewBox="0 0 24 24"><use href="#i-chevl"/></svg></button>
-                <div class="slider-dots" role="tablist" aria-label="Choose screenshot">
-                    <button class="dot active" role="tab" aria-selected="true" aria-label="Screenshot 1"></button>
-                    <button class="dot" role="tab" aria-selected="false" aria-label="Screenshot 2"></button>
-                    <button class="dot" role="tab" aria-selected="false" aria-label="Screenshot 3"></button>
-                    <button class="dot" role="tab" aria-selected="false" aria-label="Screenshot 4"></button>
+                <div class="slider-dots" role="group" aria-label="Choose screenshot">
+                    <button class="dot active" aria-pressed="true" aria-label="Screenshot 1"></button>
+                    <button class="dot" aria-pressed="false" aria-label="Screenshot 2"></button>
+                    <button class="dot" aria-pressed="false" aria-label="Screenshot 3"></button>
+                    <button class="dot" aria-pressed="false" aria-label="Screenshot 4"></button>
                 </div>
                 <button class="slider-arrow" id="slider-next" aria-label="Next screenshot"><svg viewBox="0 0 24 24"><use href="#i-chevr"/></svg></button>
             </div>
         </div>
     </div>
-    <div class="hero-bg" aria-hidden="true"><div class="glow"></div></div>
 </header>
 
 <!-- ============ Triad strip ============ -->
@@ -194,7 +196,7 @@
 <section class="diff" aria-label="What makes Tabs different">
     <div class="container">
         <span class="eyebrow reveal">Not just a notes app</span>
-        <p class="big reveal" data-delay="1">A notes app stores your words. <span class="serif-accent">Tabs finds what they mean.</span></p>
+        <p class="big reveal" data-delay="1">A notes app stores your words. Tabs finds what they mean.</p>
         <p class="sub reveal" data-delay="2">Symptoms, routines, biometrics, and environment — logged in seconds, connected by AI, and summarized into reports your doctor will actually read.</p>
     </div>
 </section>
@@ -494,7 +496,7 @@
 <!-- ============ Beta modal ============ -->
 <div class="modal-overlay" id="beta-modal" role="dialog" aria-modal="true" aria-labelledby="beta-title">
     <div class="modal-card">
-        <button class="modal-close" aria-label="Close">&times;</button>
+        <button class="modal-close" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-x"/></svg></button>
         <span class="beta-pill">BETA</span>
         <h2 id="beta-title">Join our Private Beta</h2>
         <p>Tabs is currently in <strong>private beta testing</strong>. If you have been added to our authorized tester list, you can access the build below.</p>
