@@ -403,12 +403,6 @@ class SettingsViewModel @Inject constructor(
     val userContextHidden = preferences.userContextHidden
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
-    val bodyLoadRemindersEnabled = preferences.bodyLoadRemindersEnabled
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
-
-    val dailyCupUpdatesEnabled = preferences.dailyCupUpdatesEnabled
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-
     val userNickname = preferences.userNickname
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
@@ -873,20 +867,6 @@ class SettingsViewModel @Inject constructor(
     fun setShareDataWithFriends(enabled: Boolean) {
         viewModelScope.launch {
             preferences.setShareDataWithFriends(enabled)
-            syncManager.pushProfileData()
-        }
-    }
-
-    fun setBodyLoadRemindersEnabled(enabled: Boolean) {
-        viewModelScope.launch {
-            preferences.setBodyLoadRemindersEnabled(enabled)
-            syncManager.pushProfileData()
-        }
-    }
-
-    fun setDailyCupUpdatesEnabled(enabled: Boolean) {
-        viewModelScope.launch {
-            preferences.setDailyCupUpdatesEnabled(enabled)
             syncManager.pushProfileData()
         }
     }

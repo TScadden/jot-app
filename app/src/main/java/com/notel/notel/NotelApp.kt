@@ -41,7 +41,9 @@ class NotelApp : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         lifecycleTracker.startTracking()
-        scheduleHabitReminder()
+        // One-shot daily chain pinned to 7 PM (replaces the old drifting periodic work).
+        HabitReminderWorker.schedule(this)
+        WorkManager.getInstance(this).cancelUniqueWork("habit_reminder")
         WorkManager.getInstance(this).cancelUniqueWork("cup_reminder")
         scheduleProjectReminder()
         BiometricsSyncWorker.schedule(this)
@@ -66,31 +68,6 @@ class NotelApp : Application(), Configuration.Provider {
                 }
             }
         }
-    }
-
-    private fun scheduleHabitReminder() {
-        val calendar = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 19)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-        }
-        
-        if (calendar.timeInMillis <= System.currentTimeMillis()) {
-            calendar.add(Calendar.DAY_OF_YEAR, 1)
-        }
-
-        val delay = calendar.timeInMillis - System.currentTimeMillis()
-
-        val dailyWorkRequest = PeriodicWorkRequestBuilder<HabitReminderWorker>(24, TimeUnit.HOURS)
-            .setInitialDelay(delay, TimeUnit.MILLISECONDS)
-            .addTag("habit_reminder")
-            .build()
-
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "habit_reminder",
-            ExistingPeriodicWorkPolicy.UPDATE,
-            dailyWorkRequest
-        )
     }
 
     private fun scheduleProjectReminder() {

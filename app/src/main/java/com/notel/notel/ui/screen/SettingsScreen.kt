@@ -116,8 +116,6 @@ fun SettingsScreen(
     val userGender by viewModel.userGender.collectAsState()
     val autoAiSuggestions by viewModel.autoAiSuggestions.collectAsState()
     val bleAutoConnectEnabled by viewModel.bleAutoConnectEnabled.collectAsState()
-    val bodyLoadRemindersEnabled by viewModel.bodyLoadRemindersEnabled.collectAsState()
-    val dailyCupUpdatesEnabled by viewModel.dailyCupUpdatesEnabled.collectAsState()
     val hrSpikeAlertsEnabled by viewModel.hrSpikeAlertsEnabled.collectAsState()
     val spikeThreshold by viewModel.spikeThreshold.collectAsState()
     val hrDeltaEnabled by viewModel.hrDeltaEnabled.collectAsState()
@@ -3562,33 +3560,6 @@ fun SettingsScreen(
                     color = NotelSurface
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Cup Reminder", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
-                                Text(
-                                    "A daily ping at 9:00 AM to check your Cup level, unless you've already logged in.",
-                                    color = NotelTextSecondary,
-                                    fontSize = 11.sp
-                                )
-                            }
-                            Switch(
-                                checked = bodyLoadRemindersEnabled,
-                                onCheckedChange = { checkAndToggle(it) { enabled -> viewModel.setBodyLoadRemindersEnabled(enabled) } },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = NotelPrimary,
-                                    checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
-                                    uncheckedThumbColor = NotelTextSecondary,
-                                    uncheckedTrackColor = NotelSurfaceHigh
-                                )
-                            )
-                        }
-                        
-
-
-                        
-
-
-
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Habit Reminders", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
