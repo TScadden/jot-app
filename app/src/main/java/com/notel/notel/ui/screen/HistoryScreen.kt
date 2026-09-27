@@ -290,7 +290,7 @@ fun HistoryScreen(
                                     Spacer(Modifier.height(10.dp))
                                     Text(
                                         text = if (item.entry != null) "Original Entry: \"${item.entry.body.take(60)}...\"" else "Original entry unavailable",
-                                        color = if (item.entry != null) NotelTextSecondary else Color(0xFFFF6B6B),
+                                        color = if (item.entry != null) NotelTextSecondary else NotelError,
                                         fontSize = 11.sp,
                                         fontStyle = if (item.entry == null) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal
                                     )
@@ -472,13 +472,13 @@ private fun EntryCard(
                             Icon(
                                 Icons.Default.Sync,
                                 contentDescription = "Sync pending",
-                                tint = Color(0xFFFFB74D),
+                                tint = NotelWarning,
                                 modifier = Modifier.size(12.dp)
                             )
                             Spacer(Modifier.width(4.dp))
                             Text(
                                 "Sync pending",
-                                color = Color(0xFFFFB74D),
+                                color = NotelWarning,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.SemiBold
                             )

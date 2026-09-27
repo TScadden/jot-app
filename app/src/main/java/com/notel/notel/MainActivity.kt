@@ -90,6 +90,7 @@ class MainActivity : ComponentActivity() {
             val quickLogViewModel: com.notel.notel.ui.viewmodel.QuickLogViewModel = hiltViewModel()
             val settingsViewModel: com.notel.notel.ui.viewmodel.SettingsViewModel = hiltViewModel()
             val notelPreferences = remember { com.notel.notel.data.preferences.NotelPreferences(context) }
+            val themeMode by notelPreferences.themeMode.collectAsState(initial = ThemeMode.DARK)
             var selectWidgetAppWidgetId by selectWidgetAppWidgetIdState
             android.util.Log.d("MainActivityWidget", "setContent: selectWidgetAppWidgetId=$selectWidgetAppWidgetId")
             
@@ -154,7 +155,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            NotelTheme {
+            NotelTheme(themeMode = themeMode) {
                 val navController = rememberNavController()
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route
@@ -813,7 +814,7 @@ class MainActivity : ComponentActivity() {
                                         text = banner.message,
                                         style = MaterialTheme.typography.bodyMedium,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = if (banner.isError) Color(0xFFFF6B6B) else NotelTextPrimary,
+                                        color = if (banner.isError) NotelError else NotelTextPrimary,
                                         modifier = Modifier.weight(1f)
                                     )
                                     Row(

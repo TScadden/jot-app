@@ -110,7 +110,7 @@ fun ProfileSetupScreen(
         wordCount < 30 -> "Good start! Add more details." to NotelPrimary
         wordCount < 60 -> "More detail helps AI personalize results." to Color(0xFF0288D1)
         wordCount < 100 -> "Great context! Almost at 100 words." to Color(0xFF689F38)
-        else -> "Optimal AI context reached!" to Color(0xFF4CAF50)
+        else -> "Optimal AI context reached!" to NotelSuccess
     }
 
     Scaffold(
@@ -161,7 +161,7 @@ fun ProfileSetupScreen(
                 // Surrounding Icon Bubble 1 (Top Left)
                 IconBubble(
                     icon = Icons.Default.MedicalServices,
-                    bubbleColor = Color(0xFF38BDF8),
+                    bubbleColor = NotelInfo,
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .offset(x = 30.dp, y = 10.dp)
@@ -335,7 +335,7 @@ fun ProfileSetupScreen(
                                 .padding(horizontal = 12.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.CheckCircle, "Done", tint = Color(0xFF4CAF50), modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.CheckCircle, "Done", tint = NotelSuccess, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(8.dp))
                             Text(name, color = NotelTextPrimary, fontSize = 13.sp, modifier = Modifier.weight(1f), maxLines = 1)
                             IconButton(

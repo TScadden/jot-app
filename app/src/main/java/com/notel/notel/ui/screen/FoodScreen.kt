@@ -173,7 +173,7 @@ fun FoodScreen(
                             modifier = Modifier.padding(14.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.Error, null, tint = Color(0xFFEF5350))
+                            Icon(Icons.Default.Error, null, tint = NotelError)
                             Spacer(Modifier.width(10.dp))
                             Text(
                                 text = errorMessage ?: "",
@@ -339,9 +339,9 @@ private fun FoodResultCard(
 private fun TopicLevelRow(topicLevel: FoodTopicLevel) {
     // Determine colors for level badges
     val (badgeColor, badgeBg) = when (topicLevel.level) {
-        "High" -> Pair(Color(0xFFFF5252), Color(0xFFFF5252).copy(alpha = 0.12f))     // Crimson Red
-        "Medium" -> Pair(Color(0xFFFFA726), Color(0xFFFFA726).copy(alpha = 0.12f))   // Warm Amber/Orange
-        else -> Pair(Color(0xFF66BB6A), Color(0xFF66BB6A).copy(alpha = 0.12f))       // Emerald Green
+        "High" -> Pair(NotelError, NotelError.copy(alpha = 0.12f))     // Crimson Red
+        "Medium" -> Pair(NotelWarning, NotelWarning.copy(alpha = 0.12f))   // Warm Amber/Orange
+        else -> Pair(NotelSuccess, NotelSuccess.copy(alpha = 0.12f))       // Emerald Green
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {

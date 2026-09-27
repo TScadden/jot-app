@@ -212,7 +212,7 @@ fun BodyLoadScreen(
 
                             // Calories
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Whatshot, contentDescription = "Calories", tint = Color(0xFFFF5252), modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.Whatshot, contentDescription = "Calories", tint = NotelError, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text(
                                     text = if (state.activeCalories > 0) "${state.activeCalories}" else "--",
@@ -228,7 +228,7 @@ fun BodyLoadScreen(
 
                             // Logs
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Edit, contentDescription = "Logs", tint = Color(0xFF66BB6A), modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.Edit, contentDescription = "Logs", tint = NotelSuccess, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text(
                                     text = "${state.jotCountDaily}",
@@ -244,7 +244,7 @@ fun BodyLoadScreen(
 
                             // Sleep
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Nightlight, contentDescription = "Sleep", tint = Color(0xFF42A5F5), modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.Nightlight, contentDescription = "Sleep", tint = NotelInfo, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
                                 val sleepStr = if (state.sleepMinutes > 0) {
                                     val h = state.sleepMinutes / 60
@@ -307,7 +307,7 @@ fun BodyLoadScreen(
                                     text = "${state.currentStreak}",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFFFB74D)
+                                    color = NotelWarning
                                 )
                             }
                         }
@@ -1157,7 +1157,7 @@ fun BodyLoadScreen(
         ModalBottomSheet(
             onDismissRequest = { showUvInfo = false },
             sheetState = uvSheetState,
-            containerColor = NotelBackground, // Dark background like screenshot
+            containerColor = Color(0xFF080E1A), // pinned dark: sheet content is white by design // Dark background like screenshot
             dragHandle = { BottomSheetDefaults.DragHandle(color = Color.White.copy(alpha = 0.2f)) }
         ) {
             Column(
@@ -1187,28 +1187,28 @@ fun BodyLoadScreen(
                         Text("UV Index Ranges", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                         Spacer(Modifier.height(16.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(12.dp).background(Color(0xFF66BB6A), CircleShape))
+                            Box(Modifier.size(12.dp).background(NotelSuccess, CircleShape))
                             Spacer(Modifier.width(12.dp))
                             Text("Low", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
                             Text("0-2", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
                         }
                         HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Color.White.copy(alpha = 0.05f))
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(12.dp).background(Color(0xFFFFD54F), CircleShape))
+                            Box(Modifier.size(12.dp).background(NotelWarning, CircleShape))
                             Spacer(Modifier.width(12.dp))
                             Text("Moderate", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
                             Text("3-5", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
                         }
                         HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Color.White.copy(alpha = 0.05f))
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(12.dp).background(Color(0xFFFFB74D), CircleShape))
+                            Box(Modifier.size(12.dp).background(NotelWarning, CircleShape))
                             Spacer(Modifier.width(12.dp))
                             Text("High", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
                             Text("6-7", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
                         }
                         HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Color.White.copy(alpha = 0.05f))
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(12.dp).background(Color(0xFFEF9A9A), CircleShape))
+                            Box(Modifier.size(12.dp).background(NotelError, CircleShape))
                             Spacer(Modifier.width(12.dp))
                             Text("Very High", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
                             Text("8-10", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
@@ -1240,7 +1240,7 @@ fun BodyLoadScreen(
                 Surface(
                     color = Color(0xFF1A1C1E),
                     shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.2f))
+                    border = BorderStroke(1.dp, NotelSuccess.copy(alpha = 0.2f))
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1264,11 +1264,11 @@ fun BodyLoadScreen(
                 Surface(
                     color = Color(0xFF1A1C1E),
                     shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, Color(0xFFFFB74D).copy(alpha = 0.2f))
+                    border = BorderStroke(1.dp, NotelWarning.copy(alpha = 0.2f))
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFFFB74D), modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Warning, contentDescription = null, tint = NotelWarning, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(8.dp))
                             Text("Indoor UV Exposure", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         }
@@ -1340,25 +1340,25 @@ fun BodyLoadScreen(
                 ProtectionLevelCard(
                     title = "Low (0-2) ✓ Safe Zone",
                     description = "Minimal risk. This is the ideal range for outdoor activities. Wear sunglasses on bright days for eye protection.",
-                    color = Color(0xFF66BB6A)
+                    color = NotelSuccess
                 )
                 Spacer(Modifier.height(12.dp))
                 ProtectionLevelCard(
                     title = "Moderate (3-5)",
                     description = "Apply mineral sunscreen (SPF 30+), wear UV-blocking sunglasses and a hat. Limit midday exposure (10am-4pm).",
-                    color = Color(0xFFFFD54F)
+                    color = NotelWarning
                 )
                 Spacer(Modifier.height(12.dp))
                 ProtectionLevelCard(
                     title = "High (6-7)",
                     description = "Protection essential. Use SPF 30-50 mineral sunscreen, wear UPF clothing, wide-brim hat, and wrap-around sunglasses. Seek shade between 10am-4pm.",
-                    color = Color(0xFFFFB74D)
+                    color = NotelWarning
                 )
                 Spacer(Modifier.height(12.dp))
                 ProtectionLevelCard(
                     title = "Very High (8-10)",
                     description = "Avoid sun between 10am-4pm. Use SPF 50+ mineral sunscreen, full coverage UPF clothing, hat, and sunglasses are mandatory. Reapply sunscreen every 2 hours.",
-                    color = Color(0xFFEF9A9A)
+                    color = NotelError
                 )
                 Spacer(Modifier.height(12.dp))
                 ProtectionLevelCard(
@@ -1375,7 +1375,7 @@ fun BodyLoadScreen(
         ModalBottomSheet(
             onDismissRequest = { showTempInfo = false },
             sheetState = tempSheetState,
-            containerColor = NotelBackground,
+            containerColor = Color(0xFF080E1A), // pinned dark: sheet content is white by design
             dragHandle = { BottomSheetDefaults.DragHandle(color = Color.White.copy(alpha = 0.2f)) }
         ) {
             Column(
@@ -1442,7 +1442,7 @@ fun BodyLoadScreen(
                 Surface(
                     color = Color(0xFF1A1C1E),
                     shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.2f))
+                    border = BorderStroke(1.dp, NotelSuccess.copy(alpha = 0.2f))
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1468,7 +1468,7 @@ fun BodyLoadScreen(
         ModalBottomSheet(
             onDismissRequest = { showHumidityInfo = false },
             sheetState = humiditySheetState,
-            containerColor = NotelBackground,
+            containerColor = Color(0xFF080E1A), // pinned dark: sheet content is white by design
             dragHandle = { BottomSheetDefaults.DragHandle(color = Color.White.copy(alpha = 0.2f)) }
         ) {
             Column(
@@ -1542,7 +1542,7 @@ fun BodyLoadScreen(
                 Surface(
                     color = Color(0xFF1A1C1E),
                     shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, Color(0xFFFFB74D).copy(alpha = 0.2f))
+                    border = BorderStroke(1.dp, NotelWarning.copy(alpha = 0.2f))
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1568,7 +1568,7 @@ fun BodyLoadScreen(
         ModalBottomSheet(
             onDismissRequest = { showWindInfo = false },
             sheetState = windSheetState,
-            containerColor = NotelBackground,
+            containerColor = Color(0xFF080E1A), // pinned dark: sheet content is white by design
             dragHandle = { BottomSheetDefaults.DragHandle(color = Color.White.copy(alpha = 0.2f)) }
         ) {
             Column(
@@ -1645,7 +1645,7 @@ fun BodyLoadScreen(
         ModalBottomSheet(
             onDismissRequest = { showPressureInfo = false },
             sheetState = pressureSheetState,
-            containerColor = NotelBackground,
+            containerColor = Color(0xFF080E1A), // pinned dark: sheet content is white by design
             dragHandle = { BottomSheetDefaults.DragHandle(color = Color.White.copy(alpha = 0.2f)) }
         ) {
             Column(
@@ -1719,7 +1719,7 @@ fun BodyLoadScreen(
                 Surface(
                     color = Color(0xFF1A1C1E),
                     shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, Color(0xFFEF9A9A).copy(alpha = 0.2f))
+                    border = BorderStroke(1.dp, NotelError.copy(alpha = 0.2f))
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1790,9 +1790,12 @@ fun WeatherMetricBox(
 
 @Composable
 private fun CategoryChipSmall(category: Category, isSelected: Boolean, onClick: () -> Unit) {
-    val catColor = remember(category) {
+    // Palette captured as a plain value: remember {} forbids @Composable calls,
+    // so the theme getter cannot be referenced inside its calculation lambda.
+    val palette = LocalNotelPalette.current
+    val catColor = remember(category, palette) {
         try { Color(android.graphics.Color.parseColor(category.colorHex)) }
-        catch (e: Exception) { NotelPrimary }
+        catch (e: Exception) { palette.primary }
     }
 
     Box(

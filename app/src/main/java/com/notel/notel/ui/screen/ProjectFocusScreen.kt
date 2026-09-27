@@ -162,7 +162,7 @@ fun BlobBackground() {
         drawPath(
             path = path4,
             brush = Brush.verticalGradient(
-                colors = listOf(Color(0xFF7C6EFF).copy(alpha = 0.55f), Color.Transparent)
+                colors = listOf(NotelPrimary.copy(alpha = 0.55f), Color.Transparent)
             )
         )
     }
@@ -753,13 +753,13 @@ fun ProjectFocusScreen(
                                     // Status badge
                                     Surface(
                                         shape = RoundedCornerShape(8.dp),
-                                        color = if (isCompleted) Color(0xFF4CAF50).copy(alpha = 0.15f)
+                                        color = if (isCompleted) NotelSuccess.copy(alpha = 0.15f)
                                                else NotelPrimary.copy(alpha = 0.12f)
                                     ) {
                                         Text(
                                             text = if (isCompleted) "✅ Complete — Results Ready" else "⏳ In Progress",
                                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                            color = if (isCompleted) Color(0xFF4CAF50) else NotelPrimary,
+                                            color = if (isCompleted) NotelSuccess else NotelPrimary,
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Black,
                                             letterSpacing = 0.5.sp
@@ -814,7 +814,7 @@ fun ProjectFocusScreen(
                                     )
                                     Text(
                                         text = if (isCompleted) "Done!" else "$daysLeft day${if (daysLeft == 1) "" else "s"} left",
-                                        color = if (isCompleted) Color(0xFF4CAF50) else NotelTextSecondary,
+                                        color = if (isCompleted) NotelSuccess else NotelTextSecondary,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Medium
                                     )
@@ -834,7 +834,7 @@ fun ProjectFocusScreen(
                                             .fillMaxWidth(progress)
                                             .fillMaxHeight()
                                             .background(
-                                                if (isCompleted) Color(0xFF4CAF50) else NotelPrimary,
+                                                if (isCompleted) NotelSuccess else NotelPrimary,
                                                 CircleShape
                                             )
                                     )
@@ -857,8 +857,8 @@ fun ProjectFocusScreen(
                                         context.startActivity(intent)
                                     },
                                     shape = RoundedCornerShape(20.dp),
-                                    color = Color(0xFF4CAF50).copy(alpha = 0.1f),
-                                    border = BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.35f)),
+                                    color = NotelSuccess.copy(alpha = 0.1f),
+                                    border = BorderStroke(1.dp, NotelSuccess.copy(alpha = 0.35f)),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Row(
@@ -869,19 +869,19 @@ fun ProjectFocusScreen(
                                         Icon(
                                             Icons.Default.OpenInBrowser,
                                             contentDescription = null,
-                                            tint = Color(0xFF4CAF50),
+                                            tint = NotelSuccess,
                                             modifier = Modifier.size(28.dp)
                                         )
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
                                                 "View Your Results",
-                                                color = Color(0xFF4CAF50),
+                                                color = NotelSuccess,
                                                 fontSize = 16.sp,
                                                 fontWeight = FontWeight.ExtraBold
                                             )
                                             Text(
                                                 "Tap to open jottracker.com and see your full analysis",
-                                                color = Color(0xFF4CAF50).copy(alpha = 0.75f),
+                                                color = NotelSuccess.copy(alpha = 0.75f),
                                                 fontSize = 12.sp,
                                                 lineHeight = 16.sp
                                             )
@@ -889,7 +889,7 @@ fun ProjectFocusScreen(
                                         Icon(
                                             Icons.Default.ChevronRight,
                                             contentDescription = null,
-                                            tint = Color(0xFF4CAF50).copy(alpha = 0.7f),
+                                            tint = NotelSuccess.copy(alpha = 0.7f),
                                             modifier = Modifier.size(20.dp)
                                         )
                                     }
@@ -941,8 +941,8 @@ fun ProjectFocusScreen(
                                     } else if (checkedInToday) {
                                         Surface(
                                             shape = RoundedCornerShape(18.dp),
-                                            color = if (isFirstDay) NotelPrimary.copy(alpha = 0.1f) else Color(0xFF4CAF50).copy(alpha = 0.1f),
-                                            border = BorderStroke(1.dp, if (isFirstDay) NotelPrimary.copy(alpha = 0.3f) else Color(0xFF4CAF50).copy(alpha = 0.3f)),
+                                            color = if (isFirstDay) NotelPrimary.copy(alpha = 0.1f) else NotelSuccess.copy(alpha = 0.1f),
+                                            border = BorderStroke(1.dp, if (isFirstDay) NotelPrimary.copy(alpha = 0.3f) else NotelSuccess.copy(alpha = 0.3f)),
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
                                             Row(
@@ -959,13 +959,13 @@ fun ProjectFocusScreen(
                                                     Column {
                                                         Text(
                                                             text = if (isFirstDay) "New test locked in!" else "Response logged for today!",
-                                                            color = if (isFirstDay) NotelPrimary else Color(0xFF4CAF50),
+                                                            color = if (isFirstDay) NotelPrimary else NotelSuccess,
                                                             fontSize = 15.sp,
                                                             fontWeight = FontWeight.Bold
                                                         )
                                                         Text(
                                                             text = if (isFirstDay) "Your check-in opens at midnight (12:00 AM) so you have time to perform the experiment first." else "Resets at midnight (12:00 AM)",
-                                                            color = (if (isFirstDay) NotelPrimary else Color(0xFF4CAF50)).copy(alpha = 0.7f),
+                                                            color = (if (isFirstDay) NotelPrimary else NotelSuccess).copy(alpha = 0.7f),
                                                             fontSize = 11.sp
                                                         )
                                                     }
@@ -974,7 +974,7 @@ fun ProjectFocusScreen(
                                                     TextButton(
                                                         onClick = { viewModel.undoCheckIn(todayStr) }
                                                     ) {
-                                                        Text("Undo", color = Color(0xFFEF5350), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                        Text("Undo", color = NotelError, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                                     }
                                                 }
                                             }
@@ -1014,8 +1014,8 @@ fun ProjectFocusScreen(
                                                 onClick = { viewModel.checkIn(todayStr, false) },
                                                 modifier = Modifier.weight(1f),
                                                 shape = RoundedCornerShape(18.dp),
-                                                color = if (isLocalNo) Color(0xFFEF5350).copy(alpha = 0.2f) else Color.White.copy(alpha = 0.03f),
-                                                border = BorderStroke(1.dp, if (isLocalNo) Color(0xFFEF5350) else Color.White.copy(alpha = 0.08f))
+                                                color = if (isLocalNo) NotelError.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.03f),
+                                                border = BorderStroke(1.dp, if (isLocalNo) NotelError else Color.White.copy(alpha = 0.08f))
                                             ) {
                                                 Column(
                                                     modifier = Modifier.padding(16.dp),
@@ -1025,7 +1025,7 @@ fun ProjectFocusScreen(
                                                     Spacer(Modifier.height(6.dp))
                                                     Text(
                                                         "Not today",
-                                                        color = if (isLocalNo) Color(0xFFEF5350) else NotelTextSecondary,
+                                                        color = if (isLocalNo) NotelError else NotelTextSecondary,
                                                         fontSize = 13.sp,
                                                         fontWeight = FontWeight.Bold,
                                                         textAlign = TextAlign.Center
@@ -1080,8 +1080,8 @@ fun ProjectFocusScreen(
                                                     .clip(RoundedCornerShape(10.dp))
                                                     .background(
                                                         when {
-                                                            logValue == true -> Color(0xFF4CAF50).copy(alpha = 0.25f)
-                                                            logValue == false || (!hasLog && !isToday && !isFuture) -> Color(0xFFEF5350).copy(alpha = 0.15f)
+                                                            logValue == true -> NotelSuccess.copy(alpha = 0.25f)
+                                                            logValue == false || (!hasLog && !isToday && !isFuture) -> NotelError.copy(alpha = 0.15f)
                                                             isToday -> NotelPrimary.copy(alpha = 0.1f)
                                                             else -> Color.White.copy(alpha = 0.04f)
                                                         }
@@ -1089,8 +1089,8 @@ fun ProjectFocusScreen(
                                                     .border(
                                                         1.dp,
                                                         when {
-                                                            logValue == true -> Color(0xFF4CAF50).copy(alpha = 0.4f)
-                                                            logValue == false || (!hasLog && !isToday && !isFuture) -> Color(0xFFEF5350).copy(alpha = 0.3f)
+                                                            logValue == true -> NotelSuccess.copy(alpha = 0.4f)
+                                                            logValue == false || (!hasLog && !isToday && !isFuture) -> NotelError.copy(alpha = 0.3f)
                                                             isToday -> NotelPrimary.copy(alpha = 0.4f)
                                                             else -> Color.White.copy(alpha = 0.05f)
                                                         },
@@ -1099,8 +1099,8 @@ fun ProjectFocusScreen(
                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 when {
-                                                    logValue == true -> Text("✓", color = Color(0xFF4CAF50), fontSize = 14.sp, fontWeight = FontWeight.Black)
-                                                    logValue == false || (!hasLog && !isToday && !isFuture) -> Text("✗", color = Color(0xFFEF5350), fontSize = 14.sp, fontWeight = FontWeight.Black)
+                                                    logValue == true -> Text("✓", color = NotelSuccess, fontSize = 14.sp, fontWeight = FontWeight.Black)
+                                                    logValue == false || (!hasLog && !isToday && !isFuture) -> Text("✗", color = NotelError, fontSize = 14.sp, fontWeight = FontWeight.Black)
                                                     isFuture -> Text(
                                                         "${dayOffset + 1}",
                                                         color = Color.White.copy(alpha = 0.15f),
@@ -1133,11 +1133,11 @@ fun ProjectFocusScreen(
                                 modifier = Modifier.padding(top = 4.dp)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Box(Modifier.size(8.dp).background(Color(0xFF4CAF50).copy(alpha = 0.7f), CircleShape))
+                                    Box(Modifier.size(8.dp).background(NotelSuccess.copy(alpha = 0.7f), CircleShape))
                                     Text("Completed", color = NotelTextSecondary, fontSize = 11.sp)
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Box(Modifier.size(8.dp).background(Color(0xFFEF5350).copy(alpha = 0.7f), CircleShape))
+                                    Box(Modifier.size(8.dp).background(NotelError.copy(alpha = 0.7f), CircleShape))
                                     Text("Missed", color = NotelTextSecondary, fontSize = 11.sp)
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1163,7 +1163,7 @@ fun ProjectFocusScreen(
                                                 viewModel.cancelActiveTest()
                                             }
                                         ) {
-                                            Text("Yes", color = Color(0xFFEF5350), fontWeight = FontWeight.Bold)
+                                            Text("Yes", color = NotelError, fontWeight = FontWeight.Bold)
                                         }
                                     },
                                     dismissButton = {
@@ -1178,12 +1178,12 @@ fun ProjectFocusScreen(
                             Spacer(Modifier.height(8.dp))
                             Button(
                                 onClick = { showCancelDialog = true },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF5350).copy(alpha = 0.1f)),
-                                border = BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.35f)),
+                                colors = ButtonDefaults.buttonColors(containerColor = NotelError.copy(alpha = 0.1f)),
+                                border = BorderStroke(1.dp, NotelError.copy(alpha = 0.35f)),
                                 shape = RoundedCornerShape(16.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Cancel Experiment", color = Color(0xFFEF5350), fontWeight = FontWeight.Bold)
+                                Text("Cancel Experiment", color = NotelError, fontWeight = FontWeight.Bold)
                             }
                         }
 

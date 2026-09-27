@@ -85,11 +85,11 @@ fun ConnectionsScreen(
                     if (state.isConnected) {
                         GlassyCard(
                             modifier = Modifier.fillMaxWidth(),
-                            color = Color(0xFF4CAF50).copy(alpha = 0.15f)
+                            color = NotelSuccess.copy(alpha = 0.15f)
                         ) {
                             Text(
                                 text = "Looks like you are already connected!",
-                                color = Color(0xFF4CAF50),
+                                color = NotelSuccess,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 15.sp,
                                 modifier = Modifier

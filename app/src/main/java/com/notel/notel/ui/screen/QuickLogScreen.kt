@@ -54,10 +54,11 @@ fun QuickLogScreen(
     val isGeneratingWeeklyRecap by viewModel.isGeneratingWeeklyRecap.collectAsState()
     val isGeneratingDeepResearch by viewModel.isGeneratingDeepResearch.collectAsState()
 
-    val activeCatColor = remember(state.selectedCategory) {
+    val palette57 = LocalNotelPalette.current
+    val activeCatColor = remember(state.selectedCategory, palette57) {
         state.selectedCategory?.let { cat ->
-            try { Color(android.graphics.Color.parseColor(cat.colorHex)) } catch (e: Exception) { NotelPrimary }
-        } ?: NotelPrimary
+            try { Color(android.graphics.Color.parseColor(cat.colorHex)) } catch (e: Exception) { palette57.primary }
+        } ?: palette57.primary
     }
 
     val voiceLogLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -804,9 +805,10 @@ fun QuickLogScreen(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CategoryChip(category: Category, isSelected: Boolean, onClick: () -> Unit, onLongClick: (() -> Unit)? = null) {
-    val catColor = remember(category) {
+    val palette807 = LocalNotelPalette.current
+    val catColor = remember(category, palette807) {
         try { Color(android.graphics.Color.parseColor(category.colorHex)) }
-        catch (e: Exception) { NotelPrimary }
+        catch (e: Exception) { palette807.primary }
     }
     Box(
         modifier = Modifier
@@ -1000,7 +1002,7 @@ fun ProductivityDashboard(
                                         val isDone = sortedDates.contains(cellDate)
                                         val isToday = cellDate == today
                                         val color = when {
-                                            isDone -> Color(0xFF4CAF50)
+                                            isDone -> NotelSuccess
                                             isToday -> Color(0xFF2196F3)
                                             else -> NotelSurfaceHigh
                                         }

@@ -94,7 +94,7 @@ fun WelcomeOnboardingScreen(
                         Spacer(Modifier.width(10.dp))
                         CalloutChip(
                             icon = Icons.Default.Biotech,
-                            iconBg = Color(0xFF38BDF8),
+                            iconBg = NotelInfo,
                             text = "Track symptoms and treatments",
                             modifier = Modifier.weight(1f, fill = false)
                         )

@@ -284,7 +284,7 @@ fun BodyLoadCard(
                     ) {
                         Canvas(modifier = Modifier.fillMaxSize()) {
                             val strokeWidth = 2.dp.toPx()
-                            val colors = listOf(Color(0xFFFF5252), Color(0xFF42A5F5), Color(0xFF7C6EFF), Color(0xFFFF5252))
+                            val colors = listOf(NotelError, NotelInfo, NotelPrimary, NotelError)
                             
                             val outerPath = Path().apply {
                                 addRoundRect(RoundRect(Rect(Offset.Zero, size), CornerRadius(8.dp.toPx())))
@@ -340,7 +340,7 @@ fun BodyLoadCard(
                         MetricItem(
                             icon = Icons.Default.Whatshot,
                             value = if (state.activeCalories > 0) "${state.activeCalories}" else "--",
-                            color = Color(0xFFFF5252)
+                            color = NotelError
                         )
 
                         VerticalDivider(modifier = Modifier.height(16.dp), color = Color.White.copy(alpha = 0.05f))
@@ -349,7 +349,7 @@ fun BodyLoadCard(
                         MetricItem(
                             icon = Icons.Default.Edit,
                             value = "${state.jotCountDaily}",
-                            color = Color(0xFF66BB6A)
+                            color = NotelSuccess
                         )
 
                         VerticalDivider(modifier = Modifier.height(16.dp), color = Color.White.copy(alpha = 0.05f))
@@ -358,7 +358,7 @@ fun BodyLoadCard(
                         MetricItem(
                             icon = Icons.Default.Nightlight,
                             value = formatSleep(state.sleepMinutes),
-                            color = Color(0xFF42A5F5)
+                            color = NotelInfo
                         )
                     }
                 }
@@ -418,7 +418,7 @@ fun BodyLoadCard(
                     border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Text("🔥${state.currentStreak}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFB74D))
+                        Text("🔥${state.currentStreak}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = NotelWarning)
                     }
                 }
 
@@ -629,17 +629,4 @@ private fun formatSleep(mins: Int): String {
     val h = mins / 60
     val m = mins % 60
     return if (h > 0) "${h}h${m}m" else "${m}m"
-}
-
-private fun getFactorColor(name: String): Color {
-    val lowName = name.lowercase()
-    return when {
-        lowName.contains("hrv") || lowName.contains("ready") -> Color(0xFF4DB6AC) // Teal/Mint for HRV
-        lowName.contains("cal") || lowName.contains("activity") || lowName.contains("exercise") -> Color(0xFFFF5252) // Red
-        lowName.contains("sleep") || lowName.contains("rest") -> Color(0xFF42A5F5) // Blue
-        lowName.contains("jot") || lowName.contains("note") -> Color(0xFF7C6EFF) // Purple
-        lowName.contains("cardio") || lowName.contains("pots") || lowName.contains("hr") || lowName.contains("spike") -> Color(0xFF7C6EFF) // Purple
-        lowName.contains("mcas") || lowName.contains("histamine") || lowName.contains("allergy") -> Color(0xFFFFB74D) // Orange
-        else -> NotelPrimary
-    }
 }

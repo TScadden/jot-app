@@ -129,6 +129,7 @@ fun SettingsScreen(
     val shareDataWithFriends by viewModel.shareDataWithFriends.collectAsState()
     val tutorialSeen by viewModel.settingsTutorialSeen.collectAsState()  // null = loading, false = not seen, true = seen
     val showNavLabels by viewModel.showNavLabels.collectAsState()
+    val themeMode by viewModel.themeMode.collectAsState()
 
     val context = LocalContext.current
 
@@ -594,18 +595,18 @@ fun SettingsScreen(
                                 Spacer(Modifier.height(4.dp))
                                 Text(
                                     if (isAdmin) "Developer Access · All Features Unlocked" else if (isUnlimited) "Premium Access · All Features Unlocked" else "Subscribe to unlock all AI features",
-                                    color = if (isUnlimited) Color(0xFF4CAF50) else NotelTextSecondary,
+                                    color = if (isUnlimited) NotelSuccess else NotelTextSecondary,
                                     fontSize = 13.sp
                                 )
                             }
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
-                                color = if (isUnlimited) Color(0xFF4CAF50).copy(alpha = 0.15f) else NotelSurfaceHigh
+                                color = if (isUnlimited) NotelSuccess.copy(alpha = 0.15f) else NotelSurfaceHigh
                             ) {
                                 Text(
                                     if (isAdmin) "ADMIN" else if (isUnlimited) "ACTIVE" else "INACTIVE",
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                    color = if (isUnlimited) Color(0xFF4CAF50) else NotelTextSecondary,
+                                    color = if (isUnlimited) NotelSuccess else NotelTextSecondary,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Black
                                 )
@@ -768,12 +769,12 @@ fun SettingsScreen(
                                     }
                                     Surface(
                                         shape = RoundedCornerShape(8.dp),
-                                        color = Color(0xFF4CAF50).copy(alpha = 0.12f),
+                                        color = NotelSuccess.copy(alpha = 0.12f),
                                         modifier = Modifier.padding(horizontal = 4.dp)
                                     ) {
                                         Text(
                                             text = "SAVE 45% • BEST VALUE",
-                                            color = Color(0xFF4CAF50),
+                                            color = NotelSuccess,
                                             fontSize = 9.sp,
                                             fontWeight = FontWeight.Bold,
                                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -1184,6 +1185,53 @@ fun SettingsScreen(
                                 checkedTrackColor = NotelPrimary
                             )
                         )
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                // Appearance: Light / Dark / System theme choice (persisted).
+                GlassyCard(
+                    shape = RoundedCornerShape(16.dp),
+                    color = NotelSurface
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text("Appearance", color = NotelTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Spacer(Modifier.height(2.dp))
+                        Text("Choose how Tabs looks. System follows your phone's setting.", color = NotelTextSecondary, fontSize = 11.sp)
+                        Spacer(Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val options = listOf(
+                                ThemeMode.LIGHT to "Light",
+                                ThemeMode.DARK to "Dark",
+                                ThemeMode.SYSTEM to "System"
+                            )
+                            options.forEach { (mode, label) ->
+                                val selected = themeMode == mode
+                                Button(
+                                    onClick = { viewModel.setThemeMode(mode) },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(44.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (selected) NotelPrimary else NotelSurfaceHigh,
+                                        // White on the dark accent is only 3.80:1, so dark
+                                        // mode uses near-black ink; light mode keeps white
+                                        // on the darker light accent (6.77:1).
+                                        contentColor = if (selected) {
+                                            if (isLightTheme) Color.White else NotelBackground
+                                        } else NotelTextSecondary
+                                    ),
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    Text(label, fontSize = 13.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -2889,7 +2937,7 @@ fun SettingsScreen(
                             Spacer(Modifier.height(4.dp))
                             Text(
                                 text = nicknameError!!,
-                                color = androidx.compose.ui.graphics.Color(0xFFFF5252),
+                                color = NotelError,
                                 fontSize = 11.sp
                             )
                         }
@@ -4390,11 +4438,11 @@ fun DebugScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     currentCycle.forEach { entry ->
                         val (icon, tint, label) = when {
-                            entry.body.startsWith("SYNC_OK")    -> Triple("✓", Color(0xFF4CAF50), entry.body.removePrefix("SYNC_OK: "))
-                            entry.body.startsWith("SYNC_FAIL")  -> Triple("✗", Color(0xFFE53935), entry.body.removePrefix("SYNC_FAIL: "))
-                            entry.body.startsWith("SYNC_SKIP")  -> Triple("–", Color(0xFFFFA726), entry.body.removePrefix("SYNC_SKIP: "))
-                            entry.body.startsWith("SYNC_DONE")  -> Triple("✓", Color(0xFF4CAF50), entry.body.removePrefix("SYNC_DONE: "))
-                            entry.body.startsWith("SYNC_ERROR") -> Triple("✗", Color(0xFFE53935), entry.body.removePrefix("SYNC_ERROR: "))
+                            entry.body.startsWith("SYNC_OK")    -> Triple("✓", NotelSuccess, entry.body.removePrefix("SYNC_OK: "))
+                            entry.body.startsWith("SYNC_FAIL")  -> Triple("✗", NotelError, entry.body.removePrefix("SYNC_FAIL: "))
+                            entry.body.startsWith("SYNC_SKIP")  -> Triple("–", NotelWarning, entry.body.removePrefix("SYNC_SKIP: "))
+                            entry.body.startsWith("SYNC_DONE")  -> Triple("✓", NotelSuccess, entry.body.removePrefix("SYNC_DONE: "))
+                            entry.body.startsWith("SYNC_ERROR") -> Triple("✗", NotelError, entry.body.removePrefix("SYNC_ERROR: "))
                             entry.body.startsWith("SYNC_START") -> Triple("→", Color(0xFF90CAF9), entry.body.removePrefix("SYNC_START: "))
                             else -> Triple("·", NotelTextSecondary, entry.body)
                         }
@@ -4470,7 +4518,7 @@ fun DocumentTile(
                             .size(10.dp)
                             .align(Alignment.TopEnd)
                             .background(
-                                color = Color(0xFF4CAF50),
+                                color = NotelSuccess,
                                 shape = CircleShape
                             )
                     )
@@ -4500,7 +4548,7 @@ fun DocumentTile(
                         Spacer(Modifier.width(6.dp))
                         Text(
                             text = "• AI read",
-                            color = Color(0xFF4CAF50),
+                            color = NotelSuccess,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Medium
                         )
@@ -4811,12 +4859,12 @@ fun TabsLiveScreenContent(
                                     viewModel.stopHrLoggingService()
                                     refreshFilesList()
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF4D4D).copy(alpha = 0.2f)),
+                                colors = ButtonDefaults.buttonColors(containerColor = NotelError.copy(alpha = 0.2f)),
                                 shape = RoundedCornerShape(8.dp),
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                                 modifier = Modifier.height(28.dp)
                             ) {
-                                Text("STOP LOG", color = Color(0xFFFF4D4D), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text("STOP LOG", color = NotelError, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                         } else {
                             val isScanning = connectionState is com.notel.notel.data.ConnectionState.Scanning
@@ -4825,14 +4873,14 @@ fun TabsLiveScreenContent(
                                     if (isScanning) viewModel.stopBleScan() else viewModel.startBleScan()
                                 },
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (isScanning) Color(0xFFFF4D4D).copy(alpha = 0.2f) else NotelPrimary
+                                    containerColor = if (isScanning) NotelError.copy(alpha = 0.2f) else NotelPrimary
                                 ),
                                 shape = RoundedCornerShape(12.dp)
                             ) {
                                 if (isScanning) {
-                                    CircularProgressIndicator(modifier = Modifier.size(12.dp), color = Color(0xFFFF4D4D), strokeWidth = 2.dp)
+                                    CircularProgressIndicator(modifier = Modifier.size(12.dp), color = NotelError, strokeWidth = 2.dp)
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("STOP SCAN", color = Color(0xFFFF4D4D), fontSize = 10.sp)
+                                    Text("STOP SCAN", color = NotelError, fontSize = 10.sp)
                                 } else {
                                     Icon(Icons.Default.Refresh, "Scan", modifier = Modifier.size(12.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
@@ -5224,7 +5272,7 @@ fun HeartMonitorCard(
                     is com.notel.notel.data.ConnectionState.Error -> "ERROR: ${connectionState.message.uppercase()}"
                 }
                 val statusColor = when (connectionState) {
-                    is com.notel.notel.data.ConnectionState.Connected -> Color(0xFF4CAF50)
+                    is com.notel.notel.data.ConnectionState.Connected -> NotelSuccess
                     is com.notel.notel.data.ConnectionState.Scanning -> Color(0xFFFFC107)
                     is com.notel.notel.data.ConnectionState.Connecting -> Color(0xFF2196F3)
                     is com.notel.notel.data.ConnectionState.Error -> Color(0xFFF44336)
@@ -5681,7 +5729,7 @@ fun SavedSessionRow(
                 Icon(
                     imageVector = Icons.Default.Delete,
                     contentDescription = "Delete session CSV log",
-                    tint = Color(0xFFFF4D4D),
+                    tint = NotelError,
                     modifier = Modifier.size(20.dp)
                 )
             }

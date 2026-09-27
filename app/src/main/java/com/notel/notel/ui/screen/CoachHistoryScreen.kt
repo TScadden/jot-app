@@ -152,7 +152,7 @@ fun SessionCard(
                 Icon(
                     imageVector = Icons.Default.Delete,
                     contentDescription = "Delete Chat",
-                    tint = Color(0xFFFF5252).copy(alpha = 0.8f)
+                    tint = NotelError.copy(alpha = 0.8f)
                 )
             }
         }

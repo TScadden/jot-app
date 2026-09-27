@@ -154,7 +154,7 @@ fun CoachScreen(
                 actions = {
                     if (messages.size > 1) {
                         IconButton(onClick = { viewModel.deleteCurrentSession(onDeleted = onBack) }) {
-                            Icon(Icons.Default.Delete, "Delete Chat", tint = Color(0xFFFF5252))
+                            Icon(Icons.Default.Delete, "Delete Chat", tint = NotelError)
                         }
                     }
                 },
@@ -583,9 +583,9 @@ private fun ChatBubble(
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.outlinedButtonColors(
-                                        contentColor = Color(0xFFFF5252)
+                                        contentColor = NotelError
                                     ),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF5252).copy(alpha = 0.4f))
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, NotelError.copy(alpha = 0.4f))
                                 ) {
                                     Text("Deny", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                 }
@@ -613,7 +613,7 @@ private fun ChatBubble(
                     ) {
                         Text(
                             text = "✓ Note Saved",
-                            color = Color(0xFF00E676),
+                            color = NotelSuccess,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -627,7 +627,7 @@ private fun ChatBubble(
                     ) {
                         Text(
                             text = "✗ Suggestion Dismissed",
-                            color = Color(0xFFFF5252),
+                            color = NotelError,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -682,9 +682,9 @@ private fun ChatBubble(
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.outlinedButtonColors(
-                                        contentColor = Color(0xFFFF5252)
+                                        contentColor = NotelError
                                     ),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF5252).copy(alpha = 0.4f))
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, NotelError.copy(alpha = 0.4f))
                                 ) {
                                     Text("Deny", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                 }
@@ -712,7 +712,7 @@ private fun ChatBubble(
                     ) {
                         Text(
                             text = "✓ Document Saved to Tabs DB",
-                            color = Color(0xFF00E676),
+                            color = NotelSuccess,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -726,7 +726,7 @@ private fun ChatBubble(
                     ) {
                         Text(
                             text = "✗ Save Suggestion Dismissed",
-                            color = Color(0xFFFF5252),
+                            color = NotelError,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -795,9 +795,9 @@ private fun ChatBubble(
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.outlinedButtonColors(
-                                        contentColor = Color(0xFFFF5252)
+                                        contentColor = NotelError
                                     ),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF5252).copy(alpha = 0.4f))
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, NotelError.copy(alpha = 0.4f))
                                 ) {
                                     Text("Deny", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                 }
@@ -825,7 +825,7 @@ private fun ChatBubble(
                     ) {
                         Text(
                             text = "✓ List Created Successfully",
-                            color = Color(0xFF00E676),
+                            color = NotelSuccess,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -839,7 +839,7 @@ private fun ChatBubble(
                     ) {
                         Text(
                             text = "✗ List Suggestion Dismissed",
-                            color = Color(0xFFFF5252),
+                            color = NotelError,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -914,9 +914,9 @@ private fun ChatBubble(
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.outlinedButtonColors(
-                                        contentColor = Color(0xFFFF5252)
+                                        contentColor = NotelError
                                     ),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF5252).copy(alpha = 0.4f))
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, NotelError.copy(alpha = 0.4f))
                                 ) {
                                     Text("Deny", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                 }
@@ -942,7 +942,7 @@ private fun ChatBubble(
                     ) {
                         Text(
                             text = "✓ Reminder Set",
-                            color = Color(0xFF00E676),
+                            color = NotelSuccess,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -955,7 +955,7 @@ private fun ChatBubble(
                     ) {
                         Text(
                             text = "✗ Reminder Dismissed",
-                            color = Color(0xFFFF5252),
+                            color = NotelError,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -1039,9 +1039,9 @@ private fun ChatBubble(
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.outlinedButtonColors(
-                                        contentColor = Color(0xFFFF5252)
+                                        contentColor = NotelError
                                     ),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF5252).copy(alpha = 0.4f))
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, NotelError.copy(alpha = 0.4f))
                                 ) {
                                     Text("Dismiss", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                 }
@@ -1067,7 +1067,7 @@ private fun ChatBubble(
                     ) {
                         Text(
                             text = "✓ Event Scheduled & Added to Calendar",
-                            color = Color(0xFF00E676),
+                            color = NotelSuccess,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -1080,7 +1080,7 @@ private fun ChatBubble(
                     ) {
                         Text(
                             text = "✗ Event Dismissed",
-                            color = Color(0xFFFF5252),
+                            color = NotelError,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -1113,7 +1113,7 @@ private fun ChatBubble(
                                     text = "Proposed Calendar Deletion",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFFF5252)
+                                    color = NotelError
                                 )
                             }
                             Spacer(modifier = Modifier.height(10.dp))
@@ -1152,7 +1152,7 @@ private fun ChatBubble(
                                     modifier = Modifier.weight(1.5f),
                                     shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFFFF5252),
+                                        containerColor = NotelError,
                                         contentColor = Color.White
                                     )
                                 ) {
@@ -1169,7 +1169,7 @@ private fun ChatBubble(
                     ) {
                         Text(
                             text = "✓ Event Deleted from Calendar",
-                            color = Color(0xFFFF5252),
+                            color = NotelError,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -1261,10 +1261,10 @@ private fun ChatBubble(
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.outlinedButtonColors(
-                                        contentColor = Color(0xFFFF5252),
-                                        disabledContentColor = Color(0xFFFF5252).copy(alpha = 0.5f)
+                                        contentColor = NotelError,
+                                        disabledContentColor = NotelError.copy(alpha = 0.5f)
                                     ),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF5252).copy(alpha = if (isProcessed) 0.2f else 0.4f))
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, NotelError.copy(alpha = if (isProcessed) 0.2f else 0.4f))
                                 ) {
                                     Text("Dismiss", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                 }
@@ -1298,7 +1298,7 @@ private fun ChatBubble(
                     ) {
                         Text(
                             text = if (message.proposedMedications.size > 1) "✓ Medications Added to Profile" else "✓ Medication Added to Profile",
-                            color = Color(0xFF00E676),
+                            color = NotelSuccess,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )

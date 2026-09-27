@@ -72,6 +72,11 @@ class VoiceLogActivity : ComponentActivity() {
         initSpeechRecognizer()
 
         setContent {
+            // VoiceLogActivity follows the app-wide Light / Dark / System theme
+            // (reads the same DataStore key as MainActivity).
+            val themePrefs = remember { com.notel.notel.data.preferences.NotelPreferences(applicationContext) }
+            val voiceThemeMode by themePrefs.themeMode.collectAsState(initial = com.notel.notel.ui.theme.ThemeMode.DARK)
+            com.notel.notel.ui.theme.NotelTheme(themeMode = voiceThemeMode) {
             val scope = rememberCoroutineScope()
             var isProcessing by remember { mutableStateOf(false) } // State for AI thinking
 
@@ -103,6 +108,7 @@ class VoiceLogActivity : ComponentActivity() {
                     }
                 }
             )
+            } // NotelTheme
         }
     }
 

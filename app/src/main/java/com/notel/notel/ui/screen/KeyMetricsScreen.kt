@@ -368,7 +368,7 @@ fun KeyMetricsScreen(
                         value = if (state.weightPounds > 0f) "${Math.round(state.weightPounds)}" else if (state.isLoading) "--" else "No Data Recorded",
                         unit = "lbs",
                         icon = Icons.Default.MonitorWeight,
-                        color = Color(0xFF4FC3F7),
+                        color = NotelInfo,
                         isLoading = state.isLoading && state.weightPounds <= 0f
                     )
                 }

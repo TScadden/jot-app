@@ -124,6 +124,15 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    val themeMode = preferences.themeMode
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.notel.notel.ui.theme.ThemeMode.DARK)
+
+    fun setThemeMode(mode: com.notel.notel.ui.theme.ThemeMode) {
+        viewModelScope.launch {
+            preferences.setThemeMode(mode)
+        }
+    }
+
     fun setBleAutoConnectEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferences.setBleAutoConnectEnabled(enabled)

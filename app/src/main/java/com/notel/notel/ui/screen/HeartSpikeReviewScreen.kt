@@ -163,7 +163,7 @@ fun HeartSpikeReviewScreen(
                         Icon(
                             Icons.Default.Whatshot,
                             contentDescription = null,
-                            tint = Color(0xFFFF5252),
+                            tint = NotelError,
                             modifier = Modifier.size(24.dp)
                         )
                     }
@@ -196,7 +196,7 @@ fun HeartSpikeReviewScreen(
                         Icon(
                             Icons.Default.CheckCircle,
                             contentDescription = null,
-                            tint = Color(0xFF4CAF50),
+                            tint = NotelSuccess,
                             modifier = Modifier.size(48.dp)
                         )
                         Spacer(Modifier.height(12.dp))
@@ -253,7 +253,7 @@ fun HeartSpikeReviewScreen(
                                 ) {
                                     Text(
                                         "#${index + 1}",
-                                        color = Color(0xFFFF5252),
+                                        color = NotelError,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Black,
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -282,7 +282,7 @@ fun HeartSpikeReviewScreen(
                                 Column(horizontalAlignment = Alignment.End) {
                                     Text(
                                         "${spike.peakBpm} bpm",
-                                        color = Color(0xFFFF5252),
+                                        color = NotelError,
                                         fontWeight = FontWeight.Black,
                                         fontSize = 15.sp,
                                         maxLines = 1
@@ -324,7 +324,7 @@ fun HeartSpikeReviewScreen(
                                             )
                                             Text(
                                                 "$bpm bpm",
-                                                color = if (bpm >= 100) Color(0xFFFF5252) else NotelTextPrimary,
+                                                color = if (bpm >= 100) NotelError else NotelTextPrimary,
                                                 fontSize = 12.sp,
                                                 fontWeight = if (bpm >= 100) FontWeight.Bold else FontWeight.Normal
                                             )

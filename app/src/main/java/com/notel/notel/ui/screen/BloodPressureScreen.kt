@@ -112,7 +112,7 @@ fun BloodPressureScreen(
                                     modifier = Modifier.padding(12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFFFB74D), modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Default.Warning, contentDescription = null, tint = NotelWarning, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(8.dp))
                                     Text(
                                         "Health Connect permission needed to sync automatic device readings.",
@@ -134,7 +134,7 @@ fun BloodPressureScreen(
                                     modifier = Modifier.padding(12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFE57373), modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Default.Warning, contentDescription = null, tint = NotelError, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(8.dp))
                                     Text(
                                         "Health Connect query issue. Showing manual readings.",
@@ -329,7 +329,7 @@ fun BloodPressureScreen(
                                 recordToDelete = null
                             }
                         ) {
-                            Text("Delete", color = Color(0xFFE57373), fontWeight = FontWeight.Bold)
+                            Text("Delete", color = NotelError, fontWeight = FontWeight.Bold)
                         }
                     },
                     dismissButton = {
@@ -394,7 +394,7 @@ fun BloodPressureScreen(
                             if (validationError != null || uiState.saveErrorMessage != null) {
                                 Text(
                                     text = validationError ?: uiState.saveErrorMessage ?: "",
-                                    color = Color(0xFFE57373),
+                                    color = NotelError,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium
                                 )

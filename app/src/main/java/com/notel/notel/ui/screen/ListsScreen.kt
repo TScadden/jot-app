@@ -345,7 +345,7 @@ fun ListsScreen(
                         viewModel.deleteList(listToDelete)
                         showDeleteConfirm = null
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252))
+                    colors = ButtonDefaults.buttonColors(containerColor = NotelError)
                 ) {
                     Text("Delete")
                 }
@@ -400,7 +400,7 @@ private fun ListItemsPanel(
                 )
             }
             IconButton(onClick = onDeleteList) {
-                Icon(Icons.Default.Delete, "Delete list", tint = Color(0xFFFF5252).copy(alpha = 0.6f))
+                Icon(Icons.Default.Delete, "Delete list", tint = NotelError.copy(alpha = 0.6f))
             }
         }
 

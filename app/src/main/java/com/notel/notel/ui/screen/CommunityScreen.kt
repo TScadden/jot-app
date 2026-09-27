@@ -734,7 +734,7 @@ fun FriendDetailDialog(
                                         if (h > 0) "-${h}h ${m}m" else "-${m}m"
                                     }
                                 } ?: "—",
-                                accentColor = if ((detail.todaySleepDebt ?: 0) < 0) Color(0xFFFF5252) else NotelTextSecondary
+                                accentColor = if ((detail.todaySleepDebt ?: 0) < 0) NotelError else NotelTextSecondary
                             )
                         }
                         Spacer(Modifier.height(12.dp))
@@ -756,7 +756,7 @@ fun FriendDetailDialog(
                                 value = detail.todaySpikes?.let { 
                                     if (it == 1) "1 spike" else "$it spikes"
                                 } ?: "—",
-                                accentColor = if ((detail.todaySpikes ?: 0) > 0) Color(0xFFFFB74D) else NotelTextSecondary
+                                accentColor = if ((detail.todaySpikes ?: 0) > 0) NotelWarning else NotelTextSecondary
                             )
                         }
                         Spacer(Modifier.height(12.dp))

@@ -371,13 +371,13 @@ fun SleepScreen(
                             
                             // Deficit and REM rows (Replacements for HRV and Activity)
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.History, null, tint = Color(0xFFFF5252), modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.History, null, tint = NotelError, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(8.dp))
                                 val debtH = Math.abs(state.sleepDebtMins) / 60
                                 val debtM = Math.abs(state.sleepDebtMins) % 60
                                 Text(
                                     "Deficit: -${debtH}h ${debtM}m",
-                                    color = Color(0xFFFF5252),
+                                    color = NotelError,
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -386,7 +386,7 @@ fun SleepScreen(
                             Spacer(Modifier.height(8.dp))
                             
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.AutoGraph, null, tint = Color(0xFF4FC3F7), modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.AutoGraph, null, tint = NotelInfo, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(8.dp))
                                 val remH = sd.remMinutes / 60
                                 val remM = sd.remMinutes % 60

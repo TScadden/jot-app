@@ -325,7 +325,7 @@ fun FitbitScreen(
                             Icon(
                                 imageVector = Icons.Default.Favorite,
                                 contentDescription = null,
-                                tint = Color(0xFF7C6EFF),
+                                tint = NotelPrimary,
                                 modifier = Modifier.size(48.dp)
                             )
                             Spacer(Modifier.width(16.dp))
@@ -394,13 +394,13 @@ fun FitbitScreen(
                                     Icon(
                                         Icons.Default.BarChart,
                                         contentDescription = null,
-                                        tint = Color(0xFF79B4FF),
+                                        tint = NotelInfo,
                                         modifier = Modifier.size(14.dp)
                                     )
                                     Spacer(Modifier.width(6.dp))
                                     Text(
                                         if (state.latestHeartRate > 0) "Last ${state.latestHeartRate} bpm${if (state.latestHeartRateTime.isNotBlank()) " · ${state.latestHeartRateTime}" else ""}" else "Last -- bpm",
-                                        color = Color(0xFF79B4FF),
+                                        color = NotelInfo,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         maxLines = 1,
@@ -473,7 +473,7 @@ fun FitbitScreen(
                                 Box(
                                     modifier = Modifier
                                         .size(width = 16.dp, height = 3.dp)
-                                        .background(Color(0xFF7C6EFF), RoundedCornerShape(2.dp))
+                                        .background(NotelPrimary, RoundedCornerShape(2.dp))
                                 )
                                 Spacer(Modifier.width(6.dp))
                                 Text("Heart rate", color = NotelTextSecondary, fontSize = 11.sp)
@@ -492,7 +492,7 @@ fun FitbitScreen(
                                 Box(
                                     modifier = Modifier
                                         .size(8.dp)
-                                        .background(Color(0xFFFF5252), CircleShape)
+                                        .background(NotelError, CircleShape)
                                 )
                                 Spacer(Modifier.width(6.dp))
                                 Text(
@@ -570,7 +570,7 @@ fun FitbitScreen(
                                     Icon(
                                         Icons.Default.Whatshot,
                                         contentDescription = null,
-                                        tint = Color(0xFFFF5252),
+                                        tint = NotelError,
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
@@ -584,7 +584,7 @@ fun FitbitScreen(
                                     )
                                     Text(
                                         loadLevel,
-                                        color = Color(0xFFFF5252),
+                                        color = NotelError,
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.SemiBold
                                     )
@@ -598,7 +598,7 @@ fun FitbitScreen(
                                 Text(
                                     loadLevel,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                    color = Color(0xFFFF5252),
+                                    color = NotelError,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -615,7 +615,7 @@ fun FitbitScreen(
                                 label = "Peak",
                                 value = if (maxBpm > 0) "$maxBpm" else "--",
                                 unit = "bpm",
-                                color = Color(0xFFFF5252)
+                                color = NotelError
                             )
                             SpikeMetricSmall(
                                 label = "Largest jump",
@@ -778,7 +778,7 @@ fun HeartPatternGraph(
                 
                 val textLayoutResult = textMeasurer.measure(
                     text = AnnotatedString("$tick"),
-                    style = TextStyle(color = Color(0xFF7A8FAF), fontSize = 10.sp)
+                    style = TextStyle(color = NotelTextSecondary, fontSize = 10.sp)
                 )
                 drawText(
                     textLayoutResult = textLayoutResult,
@@ -826,7 +826,7 @@ fun HeartPatternGraph(
                 }
                 val textLayoutResult = textMeasurer.measure(
                     text = AnnotatedString(labelText),
-                    style = TextStyle(color = Color(0xFF7A8FAF), fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                    style = TextStyle(color = NotelTextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Medium)
                 )
                 val textWidth = textLayoutResult.size.width.toFloat()
                 val clampedTextX = (x - textWidth / 2f).coerceIn(
@@ -854,7 +854,7 @@ fun HeartPatternGraph(
                 }
                 drawPath(
                     path = path,
-                    color = Color(0xFF7C6EFF),
+                    color = NotelPrimary,
                     style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                 )
             }
@@ -865,7 +865,7 @@ fun HeartPatternGraph(
                 val peakY = yToPx(peakPoint.second.toFloat())
 
                 drawCircle(
-                    color = Color(0xFFFF5252),
+                    color = NotelError,
                     radius = 5.dp.toPx(),
                     center = Offset(peakX, peakY)
                 )
@@ -877,7 +877,7 @@ fun HeartPatternGraph(
 
                 val peakTextResult = textMeasurer.measure(
                     text = AnnotatedString("${peakPoint.second}"),
-                    style = TextStyle(color = Color(0xFFFF5252), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    style = TextStyle(color = NotelError, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 )
                 drawText(
                     textLayoutResult = peakTextResult,

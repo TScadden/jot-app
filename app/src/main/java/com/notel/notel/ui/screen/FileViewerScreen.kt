@@ -76,7 +76,7 @@ fun FileViewerScreen(
                         if (!extractedText.isNullOrBlank()) {
                             Text(
                                 "AI read · tap below to view or edit",
-                                color = Color(0xFF4CAF50),
+                                color = NotelSuccess,
                                 fontSize = 10.sp
                             )
                         }
@@ -279,7 +279,7 @@ private fun AiExtractionPanelHeader(
                                 extractedText.isBlank() -> "No content could be extracted"
                                 else -> "${extractedText.length} characters extracted"
                             },
-                            color = if (extractedText != null && extractedText.isNotBlank()) Color(0xFF4CAF50) else NotelTextSecondary,
+                            color = if (extractedText != null && extractedText.isNotBlank()) NotelSuccess else NotelTextSecondary,
                             fontSize = 11.sp
                         )
                     }
@@ -359,7 +359,7 @@ private fun AiExtractionPanel(
                                 else -> "${extractedText.length} characters extracted"
                             },
                             color = if (extractedText != null && extractedText.isNotBlank())
-                                Color(0xFF4CAF50) else NotelTextSecondary,
+                                NotelSuccess else NotelTextSecondary,
                             fontSize = 11.sp
                         )
                     }

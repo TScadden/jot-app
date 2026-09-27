@@ -294,12 +294,12 @@ fun MembershipOnboardingScreen(
                     }
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFF4CAF50).copy(alpha = 0.12f),
+                        color = NotelSuccess.copy(alpha = 0.12f),
                         modifier = Modifier.padding(horizontal = 4.dp)
                     ) {
                         Text(
                             text = "SAVE 45% • BEST VALUE",
-                            color = Color(0xFF4CAF50),
+                            color = NotelSuccess,
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)

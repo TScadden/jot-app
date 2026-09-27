@@ -154,6 +154,7 @@ open class NotelPreferences(
         val ROUTINE_CLICK_COUNTS = stringPreferencesKey("routine_click_counts")
         val INFO_TILE_ORDER = stringPreferencesKey("info_tile_order")
         val SHOW_NAV_LABELS = booleanPreferencesKey("show_nav_labels")
+        val THEME_MODE = stringPreferencesKey("theme_mode") // "DARK" | "LIGHT" | "SYSTEM"; default DARK
         val TODAY_MODE = stringPreferencesKey("today_mode") // "SIMPLE" or "DETAILED"
         val TODAY_HIDDEN_SECTIONS = stringPreferencesKey("today_hidden_sections") // comma separated list
         val TODAY_SECTION_ORDER = stringPreferencesKey("today_section_order") // comma separated list
@@ -200,6 +201,13 @@ open class NotelPreferences(
     val showNavLabels: Flow<Boolean> = context.dataStore.data.map { it[SHOW_NAV_LABELS] ?: true }
     suspend fun setShowNavLabels(show: Boolean) {
         context.dataStore.edit { it[SHOW_NAV_LABELS] = show }
+    }
+
+    /** Light / Dark / System appearance choice. Survives reboot (DataStore). */
+    val themeMode: Flow<com.notel.notel.ui.theme.ThemeMode> =
+        context.dataStore.data.map { com.notel.notel.ui.theme.ThemeMode.fromStored(it[THEME_MODE]) }
+    suspend fun setThemeMode(mode: com.notel.notel.ui.theme.ThemeMode) {
+        context.dataStore.edit { it[THEME_MODE] = com.notel.notel.ui.theme.ThemeMode.toStored(mode) }
     }
 
     val hasConsented: Flow<Boolean> = context.dataStore.data.map { it[HAS_CONSENTED] ?: false }

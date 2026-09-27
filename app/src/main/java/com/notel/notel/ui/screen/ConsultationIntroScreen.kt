@@ -73,7 +73,7 @@ fun ConsultationIntroScreen(
                     // Surrounding Icon Bubble 1 (Top Left)
                     IconBubble(
                         icon = Icons.Default.MedicalServices,
-                        bubbleColor = Color(0xFF38BDF8),
+                        bubbleColor = NotelInfo,
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .offset(x = 40.dp, y = 30.dp)

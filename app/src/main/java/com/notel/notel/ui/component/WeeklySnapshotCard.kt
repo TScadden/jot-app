@@ -374,11 +374,11 @@ private fun SnapshotDataContent(
             // Blood Pressure Legend
             if (metricData.metricName == "Blood Pressure" && metricData.isAvailable) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(8.dp).background(Color(0xFFEF5350), CircleShape))
+                    Box(Modifier.size(8.dp).background(NotelError, CircleShape))
                     Spacer(Modifier.width(4.dp))
                     Text("Sys", fontSize = 10.sp, color = NotelTextSecondary)
                     Spacer(Modifier.width(8.dp))
-                    Box(Modifier.size(8.dp).background(Color(0xFF42A5F5), CircleShape))
+                    Box(Modifier.size(8.dp).background(NotelInfo, CircleShape))
                     Spacer(Modifier.width(4.dp))
                     Text("Dia", fontSize = 10.sp, color = NotelTextSecondary)
                 }
@@ -480,13 +480,13 @@ private fun WeeklySnapshotInteractiveCanvas(
     val isBpChart = metricData.metricName == "Blood Pressure"
 
     val lineColor = when (metricData.metricName) {
-        "Sleep Hours" -> Color(0xFF42A5F5)
+        "Sleep Hours" -> NotelInfo
         "Resting Heart Rate" -> Color(0xFFFF5E62)
-        "HR Spikes" -> Color(0xFFE53935)
-        "Calories" -> Color(0xFFFFA726)
-        "Logs" -> Color(0xFF66BB6A)
-        "Habit Completion" -> Color(0xFFFFB74D)
-        "Blood Pressure" -> Color(0xFFEF5350)
+        "HR Spikes" -> NotelError
+        "Calories" -> NotelWarning
+        "Logs" -> NotelSuccess
+        "Habit Completion" -> NotelWarning
+        "Blood Pressure" -> NotelError
         else -> NotelPrimary
     }
 
@@ -577,14 +577,14 @@ private fun WeeklySnapshotInteractiveCanvas(
                             } else {
                                 currentDiaPath?.lineTo(cx, diaY)
                             }
-                            drawCircle(Color(0xFF42A5F5), radius = if (selectedIndex == index) 5.dp.toPx() else 3.dp.toPx(), center = Offset(cx, diaY))
+                            drawCircle(NotelInfo, radius = if (selectedIndex == index) 5.dp.toPx() else 3.dp.toPx(), center = Offset(cx, diaY))
                         } else {
-                            currentDiaPath?.let { drawPath(it, Color(0xFF42A5F5), style = Stroke(width = 2.dp.toPx())) }
+                            currentDiaPath?.let { drawPath(it, NotelInfo, style = Stroke(width = 2.dp.toPx())) }
                             currentDiaPath = null
                         }
                     }
                     currentSysPath?.let { drawPath(it, lineColor, style = Stroke(width = 2.dp.toPx())) }
-                    currentDiaPath?.let { drawPath(it, Color(0xFF42A5F5), style = Stroke(width = 2.dp.toPx())) }
+                    currentDiaPath?.let { drawPath(it, NotelInfo, style = Stroke(width = 2.dp.toPx())) }
                 }
             } else {
                 // Continuous Line Chart (Sleep & Heart Rate) with Gaps on missing null days

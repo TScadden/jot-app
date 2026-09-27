@@ -105,7 +105,7 @@ fun HabitsScreen(
                             .background(
                                 Brush.horizontalGradient(
                                     colors = listOf(
-                                        Color(0xFFE2A123).copy(alpha = 0.20f),
+                                        NotelWarning.copy(alpha = 0.20f),
                                         Color(0xFFFF6B35).copy(alpha = 0.15f)
                                     )
                                 ),
@@ -120,19 +120,19 @@ fun HabitsScreen(
                             Icon(
                                 imageVector = Icons.Default.Whatshot,
                                 contentDescription = null,
-                                tint = Color(0xFFE2A123),
+                                tint = NotelWarning,
                                 modifier = Modifier.size(28.dp)
                             )
                             Column {
                                 Text(
                                     text = "$overallStreak day streak!",
-                                    color = Color(0xFFE2A123),
+                                    color = NotelWarning,
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.ExtraBold
                                 )
                                 Text(
                                     text = "You completed every habit $overallStreak day${if (overallStreak == 1) "" else "s"} in a row",
-                                    color = Color(0xFFE2A123).copy(alpha = 0.7f),
+                                    color = NotelWarning.copy(alpha = 0.7f),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium
                                 )
@@ -239,7 +239,7 @@ fun HabitsScreen(
                         .fillMaxWidth(progressRatio)
                         .fillMaxHeight()
                         .background(
-                            if (progressRatio == 1f) Color(0xFF4CAF50) else NotelPrimary
+                            if (progressRatio == 1f) NotelSuccess else NotelPrimary
                         )
                 )
             }
@@ -313,8 +313,8 @@ fun HabitsScreen(
                                             // Streak badge
                                             Surface(
                                                 shape = RoundedCornerShape(8.dp),
-                                                color = if (isChecked) Color(0xFF4CAF50).copy(alpha = 0.15f)
-                                                        else if (streak > 0) Color(0xFFE2A123).copy(alpha = 0.15f)
+                                                color = if (isChecked) NotelSuccess.copy(alpha = 0.15f)
+                                                        else if (streak > 0) NotelWarning.copy(alpha = 0.15f)
                                                         else Color.Transparent
                                             ) {
                                                 Text(
@@ -322,8 +322,8 @@ fun HabitsScreen(
                                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                                     fontSize = 11.sp,
                                                     fontWeight = FontWeight.Bold,
-                                                    color = if (isChecked) Color(0xFF4CAF50)
-                                                            else if (streak > 0) Color(0xFFE2A123)
+                                                    color = if (isChecked) NotelSuccess
+                                                            else if (streak > 0) NotelWarning
                                                             else NotelTextSecondary
                                                 )
                                             }

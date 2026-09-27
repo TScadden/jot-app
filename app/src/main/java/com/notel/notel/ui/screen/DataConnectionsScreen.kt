@@ -246,7 +246,7 @@ fun DataConnectionsScreen(
                 )
                 Text(
                     "Connected",
-                    color = Color(0xFF66BB6A),
+                    color = NotelSuccess,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium
                 )
@@ -256,8 +256,8 @@ fun DataConnectionsScreen(
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
-                        color = Color(0xFFEF5350).copy(alpha = 0.05f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.2f))
+                        color = NotelError.copy(alpha = 0.05f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, NotelError.copy(alpha = 0.2f))
                     ) {
                         Column(
                             modifier = Modifier.padding(16.dp),
@@ -298,11 +298,11 @@ fun DataConnectionsScreen(
                         selectedAppForManagement = null
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF5350).copy(alpha = 0.1f)),
+                    colors = ButtonDefaults.buttonColors(containerColor = NotelError.copy(alpha = 0.1f)),
                     shape = RoundedCornerShape(12.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.3f))
+                    border = androidx.compose.foundation.BorderStroke(1.dp, NotelError.copy(alpha = 0.3f))
                 ) {
-                    Text("Deactivate in Tabs", color = Color(0xFFEF5350), fontWeight = FontWeight.Bold)
+                    Text("Deactivate in Tabs", color = NotelError, fontWeight = FontWeight.Bold)
                 }
                 
                 Spacer(Modifier.height(12.dp))
@@ -385,7 +385,7 @@ fun ConnectionItem(
                 )
                 Text(
                     text = status,
-                    color = if (status == "Connected") Color(0xFF66BB6A) else NotelTextSecondary,
+                    color = if (status == "Connected") NotelSuccess else NotelTextSecondary,
                     fontSize = 12.sp
                 )
             }
