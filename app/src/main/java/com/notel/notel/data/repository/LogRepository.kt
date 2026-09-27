@@ -8,7 +8,6 @@ import com.notel.notel.data.local.entity.Category
 import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.remote.GeminiService
 import com.notel.notel.data.remote.BodyLoadResponse
-import com.notel.notel.data.remote.ClassifyAndCleanResponse
 import com.notel.notel.data.healthconnect.HealthConnectManager
 import com.notel.notel.data.healthconnect.DailyHeartRateSummary
 import com.notel.notel.data.sync.SyncManager
@@ -1757,52 +1756,20 @@ class LogRepository @Inject constructor(
     }
 
     /**
-     * Entry point for Google Assistant notes.
-     * Cleans text (removes extras like "um", "uh") and classifies into best category.
+     * Entry point for voice notes.
+     * Saves the raw transcript as-is into the General category (no AI cleanup).
      */
-    suspend fun handleVoiceNote(rawText: String, useAI: Boolean = true): Result<String> {
-        val categories = categoryRepository.getAllCategories().first()
-        val catMap = categories.associate { it.id to it.name }
-        
-        if (!useAI) {
-            // Save Raw: Skip AI and put in General category (ID 7)
-            insertEntry(
-                LogEntry(
-                    categoryId = 7, 
-                    body = rawText,
-                    manualText = "", // No longer storing redundant manual text
-                    source = "Voice Raw"
-                )
+    suspend fun handleVoiceNote(rawText: String): Result<String> {
+        // Save Raw: put in General category (ID 7)
+        insertEntry(
+            LogEntry(
+                categoryId = 7,
+                body = rawText,
+                manualText = "", // No longer storing redundant manual text
+                source = "Voice Raw"
             )
-            return Result.success("Note saved as raw.")
-        }
-        
-        // Clean with AI (Gemini)
-        return geminiService.classifyAndCleanNote(rawText, catMap).fold(
-            onSuccess = { response ->
-                insertEntry(
-                    LogEntry(
-                        categoryId = response.categoryId,
-                        body = response.cleanedText,
-                        manualText = "", // No longer storing redundant manual text
-                        source = "Voice AI"
-                    )
-                )
-                Result.success("Note saved to ${catMap[response.categoryId] ?: "General"}")
-            },
-            onFailure = { 
-                // Fallback to General (ID 7) if AI fails
-                insertEntry(
-                    LogEntry(
-                        categoryId = 7, 
-                        body = rawText,
-                        manualText = "", // No longer storing redundant manual text
-                        source = "Voice AI (Fallback)"
-                    )
-                )
-                Result.success("Note saved to General")
-            }
         )
+        return Result.success("Note saved as raw.")
     }
 
     /**

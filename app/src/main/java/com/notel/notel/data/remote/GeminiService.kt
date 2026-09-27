@@ -704,39 +704,6 @@ class GeminiService @Inject constructor(
         }
     }
 
-    suspend fun classifyAndCleanNote(
-        noteText: String,
-        categories: Map<Int, String>
-    ): Result<ClassifyAndCleanResponse> {
-        return try {
-            val response = tabsApi.classifyAndClean(ClassifyAndCleanRequest(noteText, categories))
-            val result = response.body()?.result
-            if (response.isSuccessful && result != null) {
-                Result.success(result)
-            } else {
-                val errorBody = response.errorBody()?.string()
-                var errorMessage = "Unknown API Error"
-                if (errorBody != null) {
-                    try {
-                        val json = org.json.JSONObject(errorBody)
-                        if (json.has("error")) {
-                            errorMessage = json.getString("error")
-                        } else if (json.has("message")) {
-                            errorMessage = json.getString("message")
-                        } else {
-                            errorMessage = errorBody
-                        }
-                    } catch (e: Exception) {
-                        errorMessage = errorBody
-                    }
-                }
-                Result.failure(IOException(errorMessage))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
     suspend fun classifyCoachNoteCategory(
         noteText: String,
         categories: Map<Int, String>

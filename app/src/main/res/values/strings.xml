@@ -1,8 +1,8 @@
 <resources>
     <string name="app_name">Tabs</string>
     <string name="google_web_client_id">309178591258-9da8qs8sigdnr7qvfblbeiid2d0190kn.apps.googleusercontent.com</string>
-    <string name="voice_log_short_label">Voice AI Log</string>
-    <string name="voice_log_long_label">Start a voice log with AI cleanup</string>
+    <string name="voice_log_short_label">Voice Log</string>
+    <string name="voice_log_long_label">Start a voice log</string>
     
     <!-- Widget Strings -->
     <string name="habit_widget_label">Daily Habits</string>
@@ -10,5 +10,5 @@
     <string name="single_habit_widget_label">Single Habit Tracker</string>
     <string name="single_habit_widget_description">Track a single daily habit on your home screen.</string>
     <string name="voice_widget_label">Quick Voice Log</string>
-    <string name="voice_widget_description">Tap to record symptom and wellness notes with AI audio transcription.</string>
+    <string name="voice_widget_description">Tap to record symptom and wellness notes with voice transcription.</string>
 </resources>

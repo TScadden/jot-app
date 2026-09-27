@@ -20,7 +20,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -42,7 +41,6 @@ import com.notel.notel.data.repository.LogRepository
 import com.notel.notel.ui.theme.NotelBackground
 import com.notel.notel.ui.theme.NotelPrimary
 import com.notel.notel.ui.theme.NotelSurface
-import com.notel.notel.ui.theme.NotelSurfaceHigh
 import com.notel.notel.ui.theme.NotelTextPrimary
 import com.notel.notel.ui.theme.NotelTextSecondary
 import com.notel.notel.ui.theme.GlassySpinner
@@ -85,11 +83,11 @@ class VoiceLogActivity : ComponentActivity() {
                 errorMessage = errorMessage,
                 onStartListening = { startListening() },
                 onFinish = { finish() },
-                onSendToAI = { text, useAI ->
-                    isProcessing = useAI
+                onSave = { text ->
+                    isProcessing = true
                     scope.launch {
                         try {
-                            logRepository.handleVoiceNote(text, useAI = useAI)
+                            logRepository.handleVoiceNote(text)
                             setResult(RESULT_OK, Intent().apply {
                                 putExtra("VOICE_LOG_SUCCESS", true)
                                 putExtra("VOICE_LOG_MESSAGE", "Voice entry logged")
@@ -229,12 +227,12 @@ fun VoiceLogScreen(
     errorMessage: String?,
     onStartListening: () -> Unit,
     onFinish: () -> Unit,
-    onSendToAI: (String, Boolean) -> Unit
+    onSave: (String) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     
     if (isProcessing) {
-        // AI Thinking State
+        // Saving State
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -253,8 +251,8 @@ fun VoiceLogScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     GlassySpinner(size = 56.dp)
-                    Text("Cleaning with AI...", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = NotelTextPrimary)
-                    Text("Performing surgical cleanup of your log...", style = MaterialTheme.typography.bodyMedium, color = NotelTextSecondary, textAlign = TextAlign.Center)
+                    Text("Saving...", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = NotelTextPrimary)
+                    Text("Saving your voice note...", style = MaterialTheme.typography.bodyMedium, color = NotelTextSecondary, textAlign = TextAlign.Center)
                 }
             }
         }
@@ -343,7 +341,7 @@ fun VoiceLogScreen(
                 }
 
                 Text(
-                    text = if (errorMessage != null) "Recognition Issue" else "Voice AI Log",
+                    text = if (errorMessage != null) "Recognition Issue" else "Voice Log",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.ExtraBold,
                     color = NotelTextPrimary
@@ -383,30 +381,17 @@ fun VoiceLogScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Option 1: Save Raw
+                    // Save raw voice transcript
                     Button(
-                        onClick = { onSendToAI(recognizedText, false) },
-                        enabled = recognizedText.isNotBlank() && recognizedText != "Listening...",
-                        colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh),
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.Save, null, tint = NotelTextPrimary, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Save Raw", color = NotelTextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    }
-
-                    // Option 2: Clean with AI
-                    Button(
-                        onClick = { onSendToAI(recognizedText, true) },
+                        onClick = { onSave(recognizedText) },
                         enabled = recognizedText.isNotBlank() && recognizedText != "Listening...",
                         colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
                         shape = RoundedCornerShape(16.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Icon(Icons.Default.AutoAwesome, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.Save, null, tint = Color.White, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Clean AI", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("Save", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
                 }
 

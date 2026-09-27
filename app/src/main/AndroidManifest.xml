@@ -184,7 +184,7 @@
         <receiver
             android:name=".VoiceLogWidget"
             android:exported="true"
-            android:label="Voice AI Log">
+            android:label="Voice Log">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
