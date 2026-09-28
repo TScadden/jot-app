@@ -58,6 +58,7 @@ val DEFAULT_INFO_TILES = listOf(
     InfoTile("key_metrics", "Key Metrics", Icons.Default.BarChart, "Your Body Data"),
     InfoTile("blood_pressure", "Blood Pressure", Icons.Default.Favorite, "Systolic & Diastolic"),
     InfoTile("food", "Food", Icons.Default.Restaurant, "Sensitivity Checker"),
+    InfoTile("research", "Research", Icons.Default.MenuBook, "Health research library"),
     InfoTile("community", "Community", Icons.Default.People, "Friends & Leaderboard")
 )
 
@@ -79,6 +80,7 @@ fun InfoScreen(
     onNotesClick: () -> Unit = {},
     onProjectFocusClick: () -> Unit = {},
     onBloodPressureClick: () -> Unit = {},
+    onResearchClick: () -> Unit = {},
     onNavigateToMembership: () -> Unit = {},
     isUnlimited: Boolean = false,
     bloodPressureState: com.notel.notel.data.repository.BloodPressureTileState = com.notel.notel.data.repository.BloodPressureTileState.Checking,
@@ -315,6 +317,7 @@ fun InfoScreen(
                             onNotesClick = onNotesClick,
                             onProjectFocusClick = onProjectFocusClick,
                             onBloodPressureClick = onBloodPressureClick,
+                            onResearchClick = onResearchClick,
                             bloodPressureState = bloodPressureState,
                             recordClick = { key ->
                                 coroutineScope.launch {
@@ -350,6 +353,7 @@ fun InfoTileCard(
     onNotesClick: () -> Unit = {},
     onProjectFocusClick: () -> Unit = {},
     onBloodPressureClick: () -> Unit = {},
+    onResearchClick: () -> Unit = {},
     bloodPressureState: com.notel.notel.data.repository.BloodPressureTileState = com.notel.notel.data.repository.BloodPressureTileState.Checking,
     recordClick: (String) -> Unit = {}
 ) {
@@ -408,6 +412,7 @@ fun InfoTileCard(
                         "notes" -> onNotesClick()
                         "project_focus" -> onProjectFocusClick()
                         "blood_pressure" -> onBloodPressureClick()
+                        "research" -> onResearchClick()
                     }
                 }
             }

@@ -502,6 +502,7 @@ class MainActivity : ComponentActivity() {
                                 onNotesClick = { navController.navigate("notes") },
                                 onProjectFocusClick = { navController.navigate("project_focus") },
                                 onBloodPressureClick = { navController.navigate("blood_pressure") },
+                                onResearchClick = { navController.navigate("research") },
                                 onNavigateToMembership = { navController.navigate("settings?menu=MEMBERSHIP") },
                                 isUnlimited = isUnlimited,
                                 bloodPressureState = fitbitState.bloodPressureState,
@@ -524,6 +525,12 @@ class MainActivity : ComponentActivity() {
                         }
                         composable("tips_and_tricks") {
                             TipsAndTricksScreen(onBack = { navController.popBackStack() })
+                        }
+                        composable("research") {
+                            com.notel.notel.ui.screen.ResearchScreen(
+                                onBack = { navController.popBackStack() },
+                                onNavigateToProfile = { navController.navigate("settings?menu=USER_PROFILE") }
+                            )
                         }
                         composable("food") {
                             FoodScreen(onBack = { navController.popBackStack() })
