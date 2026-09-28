@@ -114,7 +114,6 @@ fun ResearchScreen(
                         )
                     }
                 }
-            }
 
             Spacer(Modifier.height(14.dp))
 
