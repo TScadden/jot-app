@@ -80,21 +80,18 @@ fun ResearchScreen(
             )
         }
     ) { padding ->
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            contentPadding = PaddingValues(bottom = 32.dp)
         ) {
-            item {
-                // Always-visible medical disclaimer banner
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = NotelWarning.copy(alpha = 0.12f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, NotelWarning.copy(alpha = 0.4f))
-                ) {
+            // Pinned medical disclaimer banner — always visible above the scroll region
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = NotelWarning.copy(alpha = 0.12f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, NotelWarning.copy(alpha = 0.4f)),
+                modifier = Modifier.padding(horizontal = 16.dp)
+            ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.Top
@@ -119,6 +116,15 @@ fun ResearchScreen(
                 }
             }
 
+            Spacer(Modifier.height(14.dp))
+
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                contentPadding = PaddingValues(bottom = 32.dp)
+            ) {
             if (userConditions.isEmpty()) {
                 item {
                     // No saved conditions — point to Profile → Conditions
