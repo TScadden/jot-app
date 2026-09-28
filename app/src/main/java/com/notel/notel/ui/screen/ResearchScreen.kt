@@ -270,6 +270,7 @@ fun ResearchScreen(
         }
     }
 }
+    }
 
 @Composable
 private fun ResearchEntryCard(entry: ResearchEntry) {
