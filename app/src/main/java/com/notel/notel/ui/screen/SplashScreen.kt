@@ -121,6 +121,12 @@ fun SplashScreen(
         }
     }
 
+    // Bug fix: the tagline transiently measured wider than the screen during the
+    // entry zoom and clipped at the screen edges. fillMaxWidth + horizontal
+    // padding caps the tagline's measured width to the padded screen width, so
+    // it can never reach the screen edges at any point of the 1.05x zoom.
+    // At rest the tagline (~240dp) is far narrower than the padded width, so
+    // this is visually identical — single line, centered.
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -131,6 +137,8 @@ fun SplashScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
             modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp)
                 .alpha(alphaAnim)
                 .scale(scaleAnim)
                 .graphicsLayer {
