@@ -21,6 +21,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -295,13 +296,35 @@ private fun ResearchEntryCard(entry: ResearchEntry) {
                         fontSize = 15.sp,
                         lineHeight = 20.sp
                     )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = entry.summary,
-                        color = NotelTextSecondary,
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp
-                    )
+                    Spacer(Modifier.height(8.dp))
+                    if (entry.takeaways.isNotEmpty()) {
+                        entry.takeaways.forEach { takeaway ->
+                            Row(modifier = Modifier.padding(vertical = 3.dp)) {
+                                Text(
+                                    text = "•",
+                                    color = NotelPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    lineHeight = 18.sp
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = takeaway,
+                                    color = NotelTextPrimary,
+                                    fontSize = 13.sp,
+                                    lineHeight = 18.sp,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                    } else {
+                        Text(
+                            text = entry.summary,
+                            color = NotelTextSecondary,
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
                 }
                 Spacer(Modifier.width(8.dp))
                 Icon(
@@ -311,23 +334,25 @@ private fun ResearchEntryCard(entry: ResearchEntry) {
                 )
             }
 
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(4.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.clickable { uriHandler.openUri(entry.sourceUrl) }
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(role = Role.Button) { uriHandler.openUri(entry.sourceUrl) }
+                    .padding(vertical = 12.dp)
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                    contentDescription = "Open source",
-                    tint = NotelPrimary,
-                    modifier = Modifier.size(14.dp)
+                    contentDescription = null,
+                    tint = NotelTextSecondary,
+                    modifier = Modifier.size(12.dp)
                 )
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(4.dp))
                 Text(
-                    text = "via ${entry.sourceHandle} on ${entry.sourcePlatform}",
-                    color = NotelPrimary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold
+                    text = "Source",
+                    color = NotelTextSecondary,
+                    fontSize = 12.sp
                 )
             }
 
@@ -345,13 +370,6 @@ private fun ResearchEntryCard(entry: ResearchEntry) {
                         color = NotelTextPrimary,
                         fontSize = 13.sp,
                         lineHeight = 19.sp
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "Source: ${entry.sourceName} · \"${entry.sourceVideoTitle}\" (${entry.videoDurationSeconds}s)",
-                        color = NotelTextSecondary,
-                        fontSize = 11.sp,
-                        lineHeight = 15.sp
                     )
                 }
             }

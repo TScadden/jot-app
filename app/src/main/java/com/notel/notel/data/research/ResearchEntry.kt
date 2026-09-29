@@ -18,6 +18,7 @@ data class ResearchEntry(
     val id: String,
     val title: String,
     val summary: String,
+    val takeaways: List<String> = emptyList(),
     val detail: String,
     val sourceHandle: String,
     val sourceName: String,
