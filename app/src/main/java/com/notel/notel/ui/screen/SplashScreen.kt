@@ -10,6 +10,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -57,12 +60,14 @@ fun SplashScreen(
     viewModel: SplashViewModel = hiltViewModel(),
     onNavigateNext: (isLoggedIn: Boolean, isOnboarded: Boolean) -> Unit
 ) {
-    var animState by remember { mutableStateOf(0) } // 0 = start, 1 = fadeIn, 2 = fadeOut
+    var animState by remember { mutableStateOf(0) } // 0 = start, 1 = fadeIn, 2 = slideOut
 
+    // Entry anims — untouched. Fade in with a slight overshoot scale, hold at 1.05
+    // through the exit (the slide replaces the old shrink).
     val alphaAnim by animateFloatAsState(
         targetValue = when (animState) {
             1 -> 1f
-            2 -> 0f
+            2 -> 1f
             else -> 0f
         },
         animationSpec = tween(
@@ -75,7 +80,7 @@ fun SplashScreen(
     val scaleAnim by animateFloatAsState(
         targetValue = when (animState) {
             1 -> 1.05f
-            2 -> 0.9f
+            2 -> 1.05f
             else -> 0.8f
         },
         animationSpec = tween(
@@ -85,11 +90,31 @@ fun SplashScreen(
         label = "SplashScale"
     )
 
+    // Exit: content sweeps upward off the top of the screen over 650ms with
+    // FastOutSlowInEasing (no spring, no overshoot — Master Bible motion).
+    // Alpha holds at 1 through the first 60% of the travel, then fades to 0
+    // in the final stretch so nothing pops off-screen.
+    val exitProgress by animateFloatAsState(
+        targetValue = if (animState == 2) 1f else 0f,
+        animationSpec = tween(
+            durationMillis = 650,
+            easing = FastOutSlowInEasing
+        ),
+        label = "SplashExit"
+    )
+    val exitAlpha = if (exitProgress < 0.6f) 1f else 1f - (exitProgress - 0.6f) / 0.4f
+
+    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
+    val screenHeightPx = remember(configuration, density) {
+        with(density) { configuration.screenHeightDp.dp.toPx() }
+    }
+
     LaunchedEffect(Unit) {
         animState = 1 // Fade In
         delay(1200)   // Hold visible with glass glow
-        animState = 2 // Fade Out
-        delay(650)    // Complete fade out transition
+        animState = 2 // Slide Out
+        delay(650)    // Complete slide out transition
 
         viewModel.checkAuthState { isLoggedIn, isOnboarded ->
             onNavigateNext(isLoggedIn, isOnboarded)
@@ -108,6 +133,12 @@ fun SplashScreen(
             modifier = Modifier
                 .alpha(alphaAnim)
                 .scale(scaleAnim)
+                .graphicsLayer {
+                    // Exit slide: translate upward off the top of the screen.
+                    // Chained alphas multiply, so entry alpha * exit alpha is correct.
+                    translationY = -exitProgress * screenHeightPx
+                    alpha = exitAlpha
+                }
         ) {
             // Tabs sticky note logo
             Image(
