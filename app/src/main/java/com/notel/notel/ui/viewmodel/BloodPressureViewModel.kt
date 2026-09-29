@@ -175,7 +175,7 @@ class BloodPressureViewModel @Inject constructor(
         _uiState.update { it.copy(saveErrorMessage = null) }
     }
 
-    // --- CSV import (Storage Access Framework; file is parsed on-device and never uploaded) ---
+    // --- CSV import (SAF; file is parsed on-device; parsed readings sync via existing profile sync) ---
 
     fun previewCsvImport(contentResolver: android.content.ContentResolver, uri: android.net.Uri) {
         _uiState.update { it.copy(csvImport = CsvImportUiState(phase = CsvImportPhase.PARSING)) }

@@ -57,7 +57,8 @@ fun BloodPressureScreen(
 
     val context = LocalContext.current
     // Storage Access Framework picker: no new permissions needed. The picked file is
-    // read via a content stream and parsed on-device; it is never uploaded anywhere.
+    // read via a content stream and parsed on-device; only the parsed readings sync via the
+    // existing profile sync, like any manual entry.
     // "*/*" (rather than "text/csv") so exports the system doesn't label as CSV are still pickable;
     // the parser itself validates the content.
     val csvPicker = rememberLauncherForActivityResult(
