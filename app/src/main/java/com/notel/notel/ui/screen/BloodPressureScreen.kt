@@ -1,6 +1,8 @@
 package com.notel.notel.ui.screen
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -418,14 +420,17 @@ fun BloodPressureScreen(
                         val times = preview.newReadings.map { it.timeEpochMs }
                         if (times.isEmpty()) null else {
                             val sdf = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
-                            "${sdf.format(Date(times.min()))} – ${sdf.format(Date(times.max()))}"
+                            "${sdf.format(Date(times.min()))} to ${sdf.format(Date(times.max()))}"
                         }
                     }
                     AlertDialog(
                         onDismissRequest = { viewModel.dismissCsvImport() },
                         title = { Text("Import Blood Pressure CSV", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
                         text = {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(
+                                modifier = Modifier.verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
                                 Text(
                                     text = if (newCount == 1) "1 reading ready to import" else "$newCount readings ready to import",
                                     color = NotelTextPrimary,
@@ -455,7 +460,7 @@ fun BloodPressureScreen(
                                     preview.newReadings.take(5).forEach { r ->
                                         val rowText = remember(r.timeEpochMs, r.systolic, r.diastolic) {
                                             val sdf = SimpleDateFormat("MMM d, yyyy · h:mm a", Locale.getDefault())
-                                            "${r.systolic}/${r.diastolic} mmHg — ${sdf.format(Date(r.timeEpochMs))}"
+                                            "${r.systolic}/${r.diastolic} mmHg, ${sdf.format(Date(r.timeEpochMs))}"
                                         }
                                         Text(rowText, color = NotelTextPrimary, fontSize = 13.sp)
                                     }
