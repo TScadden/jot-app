@@ -4,6 +4,7 @@ import java.io.InputStream
 import java.text.ParsePosition
 import java.text.SimpleDateFormat
 import java.util.Locale
+import kotlin.math.roundToInt
 
 // ============================================================================
 // Blood pressure CSV importer (Phase 1).
@@ -321,11 +322,11 @@ object BloodPressureCsvParser {
         return out
     }
 
-    /** Parses an integer cell, tolerating decimals ("120.0") and stray spaces. */
+    /** Parses an integer cell, tolerating decimals ("120.0") and stray spaces; decimals round to the nearest whole number. */
     private fun parseIntCell(raw: String): Int? {
         val t = raw.trim().removeSurrounding("\"").trim()
         if (t.isEmpty()) return null
-        return t.toIntOrNull() ?: t.toDoubleOrNull()?.toInt()
+        return t.toIntOrNull() ?: t.toDoubleOrNull()?.roundToInt()
     }
 
     private fun valuesArePlausible(sys: Int, dia: Int): Boolean {
