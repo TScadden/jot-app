@@ -2,18 +2,36 @@ package com.notel.notel.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.notel.notel.data.csv.BloodPressureCsvParser
+import com.notel.notel.data.csv.CsvParseResult
+import com.notel.notel.data.csv.CsvReadOutcome
+import com.notel.notel.data.csv.MSG_READ_FAILED
+import com.notel.notel.data.csv.MSG_TOO_LARGE
+import com.notel.notel.data.csv.readCsvTextCapped
 import com.notel.notel.data.healthconnect.BloodPressureUiRecord
 import com.notel.notel.data.repository.BloodPressureFetchResult
 import com.notel.notel.data.repository.BloodPressureRepository
 import com.notel.notel.data.repository.HealthConnectStatus
 import com.notel.notel.data.repository.SaveResult
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+enum class CsvImportPhase { PARSING, PREVIEW, IMPORTING, RESULT, ERROR }
+
+data class CsvImportUiState(
+    val phase: CsvImportPhase,
+    val newReadings: List<BloodPressureUiRecord> = emptyList(),
+    val duplicateCount: Int = 0,
+    val invalidCount: Int = 0,
+    val resultMessage: String? = null,
+    val errorMessage: String? = null
+)
 
 data class BloodPressureUiState(
     val isLoading: Boolean = true,
@@ -23,7 +41,8 @@ data class BloodPressureUiState(
     val hcStatus: HealthConnectStatus = HealthConnectStatus.Available,
     val hasManualReadings: Boolean = false,
     val errorMessage: String? = null,
-    val saveErrorMessage: String? = null
+    val saveErrorMessage: String? = null,
+    val csvImport: CsvImportUiState? = null
 )
 
 @HiltViewModel
@@ -155,4 +174,95 @@ class BloodPressureViewModel @Inject constructor(
     fun clearSaveError() {
         _uiState.update { it.copy(saveErrorMessage = null) }
     }
+
+    // --- CSV import (Storage Access Framework; file is parsed on-device and never uploaded) ---
+
+    fun previewCsvImport(contentResolver: android.content.ContentResolver, uri: android.net.Uri) {
+        _uiState.update { it.copy(csvImport = CsvImportUiState(phase = CsvImportPhase.PARSING)) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val readOutcome: CsvReadOutcome = try {
+                contentResolver.openInputStream(uri)?.use { readCsvTextCapped(it) }
+                    ?: CsvReadOutcome.Failed
+            } catch (e: Exception) {
+                CsvReadOutcome.Failed
+            }
+            when (readOutcome) {
+                is CsvReadOutcome.TooLarge -> setCsvImportError(MSG_TOO_LARGE)
+                is CsvReadOutcome.Failed -> setCsvImportError(MSG_READ_FAILED)
+                is CsvReadOutcome.Ok -> {
+                    when (val parsed = BloodPressureCsvParser.parse(readOutcome.text)) {
+                        is CsvParseResult.Failure -> setCsvImportError(parsed.userMessage)
+                        is CsvParseResult.Success -> {
+                            val existingKeys = repository.getManualRecords()
+                                .map { Triple(it.timeEpochMs, it.systolic, it.diastolic) }
+                                .toSet()
+                            val newReadings = mutableListOf<BloodPressureUiRecord>()
+                            var duplicates = parsed.duplicateRowCount
+                            for (r in parsed.readings) {
+                                if (Triple(r.timeEpochMs, r.systolic, r.diastolic) in existingKeys) {
+                                    duplicates++
+                                } else {
+                                    newReadings.add(
+                                        BloodPressureUiRecord(
+                                            systolic = r.systolic,
+                                            diastolic = r.diastolic,
+                                            timeEpochMs = r.timeEpochMs,
+                                            id = "manual_${r.timeEpochMs}_${r.systolic}_${r.diastolic}",
+                                            source = com.notel.notel.data.healthconnect.BloodPressureSource.MANUAL
+                                        )
+                                    )
+                                }
+                            }
+                            _uiState.update {
+                                it.copy(
+                                    csvImport = CsvImportUiState(
+                                        phase = CsvImportPhase.PREVIEW,
+                                        newReadings = newReadings,
+                                        duplicateCount = duplicates,
+                                        invalidCount = parsed.invalidRowCount
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fun confirmCsvImport() {
+        val current = _uiState.value.csvImport ?: return
+        if (current.phase != CsvImportPhase.PREVIEW) return
+        _uiState.update { it.copy(csvImport = current.copy(phase = CsvImportPhase.IMPORTING)) }
+        viewModelScope.launch(Dispatchers.IO) {
+            when (val result = repository.addManualRecords(current.newReadings)) {
+                is SaveResult.Success -> {
+                    loadData(isRefresh = true)
+                    val imported = current.newReadings.size
+                    val skipped = current.duplicateCount + current.invalidCount
+                    val message = "${plural(imported, "reading")} imported, " +
+                        "${plural(skipped, "row")} skipped " +
+                        "(${plural(current.duplicateCount, "duplicate")}, " +
+                        "${plural(current.invalidCount, "invalid")})"
+                    _uiState.update {
+                        it.copy(csvImport = current.copy(phase = CsvImportPhase.RESULT, resultMessage = message))
+                    }
+                }
+                is SaveResult.Failure -> setCsvImportError(result.errorMessage)
+            }
+        }
+    }
+
+    fun dismissCsvImport() {
+        _uiState.update { it.copy(csvImport = null) }
+    }
+
+    private fun setCsvImportError(message: String) {
+        _uiState.update {
+            it.copy(csvImport = CsvImportUiState(phase = CsvImportPhase.ERROR, errorMessage = message))
+        }
+    }
+
+    private fun plural(count: Int, singular: String): String =
+        "$count $singular" + if (count == 1) "" else "s"
 }

@@ -119,6 +119,63 @@ class BloodPressureRepository(
         return SaveResult.Success(updatedRecords)
     }
 
+    /**
+     * Batch import of manual blood pressure records (used by the CSV importer).
+     * Appends all records, writes DataStore once, and performs a single profile
+     * sync push — never call [addManualRecord] in a loop for imports.
+     *
+     * Defensive: re-validates bounds, forces MANUAL source with the canonical
+     * deterministic id ("manual_<epoch>_<sys>_<dia>") so re-imports dedupe, and
+     * skips records already present in storage.
+     */
+    suspend fun addManualRecords(records: List<BloodPressureUiRecord>): SaveResult {
+        val sanitized = records
+            .filter { it.systolic > 0 && it.diastolic > 0 && it.diastolic <= it.systolic }
+            .map {
+                it.copy(
+                    id = "manual_${it.timeEpochMs}_${it.systolic}_${it.diastolic}",
+                    source = BloodPressureSource.MANUAL
+                )
+            }
+            .distinctBy { it.id }
+
+        if (sanitized.isEmpty()) {
+            return SaveResult.Success(fetchRecordsInternal().records)
+        }
+
+        val currentManual = getManualRecords().toMutableList()
+        val existingIds = currentManual.map { it.id }.toSet()
+        val toAdd = sanitized.filterNot { it.id in existingIds }
+        if (toAdd.isEmpty()) {
+            return SaveResult.Success(fetchRecordsInternal().records)
+        }
+
+        currentManual.addAll(toAdd)
+        currentManual.sortByDescending { it.timeEpochMs }
+
+        if (preferences != null) {
+            try {
+                val encoded = json.encodeToString(currentManual)
+                preferences.setManualBloodPressureLogs(encoded)
+                logD("Batch-imported ${toAdd.size} manual blood pressure records")
+            } catch (e: Exception) {
+                logE("Failed to write batch-imported blood pressure records to DataStore", e)
+                return SaveResult.Failure(e.message ?: "Failed to write to local storage")
+            }
+
+            try {
+                syncManager?.pushProfileData()
+            } catch (e: Exception) {
+                logW("Non-blocking profile sync push failed after BP batch import", e)
+            }
+        } else {
+            logW("Preferences instance is null in BloodPressureRepository; batch import transient only")
+        }
+
+        val updatedRecords = fetchRecordsInternal().records
+        return SaveResult.Success(updatedRecords)
+    }
+
     suspend fun deleteManualRecord(recordId: String): SaveResult {
         if (preferences == null) {
             return SaveResult.Failure("Local preferences not available")

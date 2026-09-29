@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -21,7 +22,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.notel.notel.data.csv.CsvImportPhase
 import com.notel.notel.data.healthconnect.BloodPressureSource
 import com.notel.notel.data.healthconnect.BloodPressureUiRecord
 import com.notel.notel.data.repository.HealthConnectStatus
@@ -47,6 +52,18 @@ fun BloodPressureScreen(
     val latestRecord = uiState.records.firstOrNull()
 
     var recordToDelete by remember { mutableStateOf<BloodPressureUiRecord?>(null) }
+
+    val context = LocalContext.current
+    // Storage Access Framework picker: no new permissions needed. The picked file is
+    // read via a content stream and parsed on-device; it is never uploaded anywhere.
+    // "*/*" (rather than "text/csv") so exports the system doesn't label as CSV are still pickable;
+    // the parser itself validates the content.
+    val csvPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) viewModel.previewCsvImport(context.contentResolver, uri)
+    }
+    val csvImportState = uiState.csvImport
 
     Scaffold(
         containerColor = NotelBackground,
@@ -222,13 +239,35 @@ fun BloodPressureScreen(
                     }
 
                     Spacer(Modifier.height(24.dp))
-                    Text(
-                        text = "History",
-                        color = NotelTextPrimary,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "History",
+                            color = NotelTextPrimary,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        TextButton(onClick = { csvPicker.launch("*/*") }) {
+                            Icon(
+                                Icons.Default.UploadFile,
+                                contentDescription = null,
+                                tint = NotelPrimary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                "Import CSV",
+                                color = NotelPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
 
                     if (uiState.records.isEmpty()) {
                         Box(
@@ -339,6 +378,151 @@ fun BloodPressureScreen(
                     },
                     containerColor = NotelSurface
                 )
+            }
+
+            // CSV import flow: preview + explicit confirm (never silently imports).
+            // Phases: PARSING -> PREVIEW -> IMPORTING -> RESULT, or ERROR at any point.
+            when (csvImportState?.phase) {
+                CsvImportPhase.PARSING, CsvImportPhase.IMPORTING -> {
+                    AlertDialog(
+                        onDismissRequest = { },
+                        title = {
+                            Text(
+                                if (csvImportState?.phase == CsvImportPhase.PARSING) "Reading CSV…" else "Importing…",
+                                color = NotelTextPrimary,
+                                fontWeight = FontWeight.Bold
+                            )
+                        },
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(color = NotelPrimary, modifier = Modifier.size(20.dp))
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    if (csvImportState?.phase == CsvImportPhase.PARSING)
+                                        "Parsing your file on this device…"
+                                    else
+                                        "Saving readings to your log…",
+                                    color = NotelTextSecondary,
+                                    fontSize = 13.sp
+                                )
+                            }
+                        },
+                        confirmButton = { },
+                        containerColor = NotelSurface
+                    )
+                }
+                CsvImportPhase.PREVIEW -> {
+                    val preview = csvImportState!!
+                    val newCount = preview.newReadings.size
+                    val rangeText = remember(preview.newReadings) {
+                        val times = preview.newReadings.map { it.timeEpochMs }
+                        if (times.isEmpty()) null else {
+                            val sdf = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
+                            "${sdf.format(Date(times.min()))} – ${sdf.format(Date(times.max()))}"
+                        }
+                    }
+                    AlertDialog(
+                        onDismissRequest = { viewModel.dismissCsvImport() },
+                        title = { Text("Import Blood Pressure CSV", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(
+                                    text = if (newCount == 1) "1 reading ready to import" else "$newCount readings ready to import",
+                                    color = NotelTextPrimary,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                if (rangeText != null) {
+                                    Text("Date range: $rangeText", color = NotelTextSecondary, fontSize = 13.sp)
+                                }
+                                if (preview.duplicateCount > 0) {
+                                    Text(
+                                        "${preview.duplicateCount} ${if (preview.duplicateCount == 1) "duplicate" else "duplicates"} skipped (already in your log)",
+                                        color = NotelTextSecondary,
+                                        fontSize = 13.sp
+                                    )
+                                }
+                                if (preview.invalidCount > 0) {
+                                    Text(
+                                        "${preview.invalidCount} invalid ${if (preview.invalidCount == 1) "row" else "rows"} skipped",
+                                        color = NotelTextSecondary,
+                                        fontSize = 13.sp
+                                    )
+                                }
+                                if (newCount > 0) {
+                                    Spacer(Modifier.height(4.dp))
+                                    Text("First ${minOf(5, newCount)} readings:", color = NotelTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                    preview.newReadings.take(5).forEach { r ->
+                                        val rowText = remember(r.timeEpochMs, r.systolic, r.diastolic) {
+                                            val sdf = SimpleDateFormat("MMM d, yyyy · h:mm a", Locale.getDefault())
+                                            "${r.systolic}/${r.diastolic} mmHg — ${sdf.format(Date(r.timeEpochMs))}"
+                                        }
+                                        Text(rowText, color = NotelTextPrimary, fontSize = 13.sp)
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = { viewModel.confirmCsvImport() },
+                                colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary)
+                            ) {
+                                Text("Import")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { viewModel.dismissCsvImport() }) {
+                                Text("Cancel", color = NotelTextSecondary)
+                            }
+                        },
+                        containerColor = NotelSurface
+                    )
+                }
+                CsvImportPhase.RESULT -> {
+                    AlertDialog(
+                        onDismissRequest = { viewModel.dismissCsvImport() },
+                        title = { Text("Import Complete", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
+                        text = {
+                            Text(
+                                csvImportState?.resultMessage ?: "",
+                                color = NotelTextSecondary,
+                                fontSize = 14.sp
+                            )
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = { viewModel.dismissCsvImport() },
+                                colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary)
+                            ) {
+                                Text("Done")
+                            }
+                        },
+                        containerColor = NotelSurface
+                    )
+                }
+                CsvImportPhase.ERROR -> {
+                    AlertDialog(
+                        onDismissRequest = { viewModel.dismissCsvImport() },
+                        title = { Text("Couldn't Import CSV", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
+                        text = {
+                            Text(
+                                csvImportState?.errorMessage ?: "Something went wrong.",
+                                color = NotelTextSecondary,
+                                fontSize = 14.sp
+                            )
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = { viewModel.dismissCsvImport() },
+                                colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary)
+                            ) {
+                                Text("OK")
+                            }
+                        },
+                        containerColor = NotelSurface
+                    )
+                }
+                null -> {}
             }
 
             if (showAddDialog) {
