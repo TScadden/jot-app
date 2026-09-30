@@ -39,7 +39,7 @@
         <h3>e. Device Permissions and Usage</h3>
         <p>The App requests access to specific device features to enable core functions:</p>
         <ul>
-            <li><strong>Location (Fine/Coarse)</strong>: Used to retrieve local weather context for your journal entries. Location data is processed locally on your device and sent to the weather API. We do not track or store your persistent location history.</li>
+            <li><strong>Location (Approximate Only)</strong>: The App requests approximate location, which identifies a rough area around you and never a precise address. We use it to show weather for your actual location, which feeds the location based guidance rows such as temperature ranges, hydration guidance, and wind chill. We request it only after you choose "Share location" in the card shown in the App. We never collect it silently and never collect it in the background. Your location stays on your device and is sent only to Open Meteo to fetch weather. It is not sold and is not shared otherwise. If you choose not to share, the App keeps working fully and weather uses IP based estimates.</li>
             <li><strong>Calendar (Read/Write)</strong>: Used to display and sync your schedule context with your log notes.</li>
             <li><strong>Microphone / Record Audio</strong>: Used to record audio notes for the "Voice AI Log" feature. Audio is recorded only when you explicitly press the record button and is processed to transcribe your voice notes.</li>
             <li><strong>Bluetooth and Connected Devices</strong>: Used to scan for and connect to external wellness devices (such as heart rate sensors).</li>
