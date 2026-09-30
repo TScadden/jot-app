@@ -58,6 +58,10 @@ data class BodyLoadState(
     val isHealthConnected: Boolean = true,
     val weather: WeatherState = WeatherState(),
     val weatherLoading: Boolean = false,
+    // True only when a weather fetch just failed while a VPN was the active
+    // network. The Current Location sheet shows a VPN-specific unavailable
+    // state instead of the generic one. Never used to nag outside a fetch.
+    val weatherVpnBlocked: Boolean = false,
     // True when the in-app location rationale card should be shown. The system
     // permission prompt only ever fires from the user's explicit tap on it.
     val showLocationRationale: Boolean = false,
@@ -580,13 +584,15 @@ class BodyLoadViewModel @Inject constructor(
 
     private fun fetchWeather() {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            _uiState.update { it.copy(weatherLoading = true) }
+            _uiState.update { it.copy(weatherLoading = true, weatherVpnBlocked = false) }
+            var ok = false
             try {
                 val lat = lastKnownLat ?: preferences.lastKnownLat.first().takeIf { it != 0.0 }
                 val lon = lastKnownLon ?: preferences.lastKnownLon.first().takeIf { it != 0.0 }
                 val city = lastKnownCity ?: preferences.lastKnownCity.first()
 
                 weatherApi.getDetailedWeather(lat, lon, city)?.let { info ->
+                    ok = true
                     _uiState.update { it.copy(
                         weather = WeatherState(
                             temp = info.temp,
@@ -603,9 +609,27 @@ class BodyLoadViewModel @Inject constructor(
                     ) }
                 }
             } finally {
-                _uiState.update { it.copy(weatherLoading = false) }
+                // A failed fetch while a VPN is the active network is almost
+                // certainly the VPN (e.g. Tailscale) blocking the weather call,
+                // not a weather outage: say so in the sheet instead of the
+                // generic error. Needs no new permissions (ACCESS_NETWORK_STATE).
+                val vpnFailed = !ok && isVpnActive()
+                _uiState.update { it.copy(weatherLoading = false, weatherVpnBlocked = vpnFailed) }
             }
         }
+    }
+
+    /**
+     * True when the device's active network routes through a VPN
+     * (Tailscale included). Checked only when a weather fetch has failed, so
+     * VPN users who never open weather are never nagged.
+     */
+    private fun isVpnActive(): Boolean {
+        val connectivity = appContext.getSystemService(Context.CONNECTIVITY_SERVICE)
+            as android.net.ConnectivityManager
+        val caps = connectivity.getNetworkCapabilities(connectivity.activeNetwork)
+            ?: return false
+        return caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)
     }
 
     fun retryWeather() {

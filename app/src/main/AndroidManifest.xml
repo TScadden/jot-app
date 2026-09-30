@@ -3,6 +3,9 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Normal install-time permission; lets the app detect an active VPN so a
+         weather failure can be explained instead of silently failing. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- FINE is required for BLE scanning (API 26-30); weather requests COARSE only. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />

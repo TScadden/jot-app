@@ -950,8 +950,10 @@ fun BodyLoadScreen(
                     ) {
                         Text("☁️", fontSize = 40.sp)
                         Spacer(Modifier.height(16.dp))
+                        val vpnBlocked = state.weatherVpnBlocked
                         Text(
-                            text = "Couldn't load weather right now",
+                            text = if (vpnBlocked) "Weather is unavailable with a VPN"
+                                else "Couldn't load weather right now",
                             color = NotelTextPrimary,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp,
@@ -959,7 +961,10 @@ fun BodyLoadScreen(
                         )
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            text = "Weather needs a connection and your location to load. Check your connection and try again.",
+                            text = if (vpnBlocked)
+                                "Weather can't load while a VPN or Tailscale is connected. Disconnect it and try again."
+                            else
+                                "Weather needs a connection and your location to load. Check your connection and try again.",
                             color = NotelTextSecondary,
                             fontSize = 13.sp,
                             textAlign = TextAlign.Center
