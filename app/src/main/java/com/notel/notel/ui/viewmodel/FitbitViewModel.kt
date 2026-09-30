@@ -391,9 +391,6 @@ class FitbitViewModel @Inject constructor(
          }
     }
 
-
-    }
-
     private var fetchHeartRateJob: kotlinx.coroutines.Job? = null
 
     fun fetchHeartRateForDate(date: String) {
@@ -834,6 +831,11 @@ class FitbitViewModel @Inject constructor(
                 // Sleep details
                 val hcSleep = healthConnectManager.readHistoricalSleepWithDeep(resolvedDays)
                 hcSleep.forEach { summary ->
+                    sleepDurationMap[summary.date] = summary.minutesAsleep
+                    deepSleepMap[summary.date] = summary.deepMinutes
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("FitbitViewModel", "exportMetricsCsv failed", e)
             }
         }
         
