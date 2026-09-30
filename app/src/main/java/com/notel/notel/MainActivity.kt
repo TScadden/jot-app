@@ -82,9 +82,8 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val context = LocalContext.current
-            val activity = context as? ComponentActivity
             // Provide a global instance of FitbitViewModel at the activity level
-            // so it can handle the auth redirect regardless of current navigation destination.
+            // so the shared health-data state is available across navigation destinations.
             val fitbitViewModel: FitbitViewModel = hiltViewModel()
             val bodyLoadViewModel: BodyLoadViewModel = hiltViewModel()
             val quickLogViewModel: com.notel.notel.ui.viewmodel.QuickLogViewModel = hiltViewModel()
@@ -129,31 +128,8 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            val processedIntents = remember { java.util.Collections.synchronizedSet(HashSet<Int>()) }
-            DisposableEffect(activity) {
-                val listener = androidx.core.util.Consumer<android.content.Intent> { intent ->
-                    activity?.intent = intent
-                    val data = intent.data
-                    val intentHash = System.identityHashCode(intent)
-                    if (data?.scheme == "com.notel.notel.fitbit" && data.host == "callback" && processedIntents.add(intentHash)) {
-                        fitbitViewModel.handleFitbitCallback(data)
-                        intent.data = null
-                    }
-                }
-                activity?.addOnNewIntentListener(listener)
-                
-                val initialIntent = activity?.intent
-                val initialData = initialIntent?.data
-                val initialHash = initialIntent?.let { System.identityHashCode(it) } ?: 0
-                if (initialData?.scheme == "com.notel.notel.fitbit" && initialData.host == "callback" && processedIntents.add(initialHash)) {
-                    fitbitViewModel.handleFitbitCallback(initialData)
-                    activity?.intent?.data = null
-                }
-                
-                onDispose {
-                    activity?.removeOnNewIntentListener(listener)
-                }
-            }
+            // Fitbit OAuth deep-link handling was removed with the Fitbit Web API
+            // sunset (Oct 30, 2026); no OAuth flow can start anymore.
 
             NotelTheme(themeMode = themeMode) {
                 val navController = rememberNavController()

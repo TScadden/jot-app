@@ -76,13 +76,8 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
             
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="com.notel.notel.fitbit" android:host="callback" />
-            </intent-filter>
-
+            <!-- Fitbit OAuth deep link removed with the Fitbit Web API sunset (Oct 30, 2026). -->
+            
             <intent-filter>
                 <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
                 <category android:name="android.intent.category.DEFAULT" />

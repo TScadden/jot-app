@@ -783,7 +783,6 @@ class LogRepository @Inject constructor(
         val kb = getEnrichedKnowledgeBase()
         val pastInsights = getPastInsightsText()
         val hasHealthConnect = healthConnectManager.hasAllPermissions()
-        val fitbitToken = preferences.fitbitToken.first()
         
         val fitbitData = getFitbitDataSummary()
         val habitData = getHabitDataSummary()
@@ -823,7 +822,6 @@ class LogRepository @Inject constructor(
         val kb = getEnrichedKnowledgeBase()
         val pastInsights = getPastInsightsText()
         val hasHealthConnect = healthConnectManager.hasAllPermissions()
-        val fitbitToken = preferences.fitbitToken.first()
         
         val fitbitData = getFitbitDataSummary(last30DaysOnly = last30DaysOnly)
         // Habits are UI-only for personal tracking; excluded from the PDF report.
@@ -870,7 +868,6 @@ class LogRepository @Inject constructor(
         val context = getEnrichedUserContext()
         val kb = getEnrichedKnowledgeBase()
         val hasHealthConnect = healthConnectManager.hasAllPermissions()
-        val fitbitToken = preferences.fitbitToken.first()
         
         val fitbitData = getFitbitDataSummary()
         val habitData = getHabitDataSummary()
@@ -892,7 +889,6 @@ class LogRepository @Inject constructor(
         val kb = getEnrichedKnowledgeBase()
         val pastInsights = getPastInsightsText()
         val hasHealthConnect = healthConnectManager.hasAllPermissions()
-        val fitbitToken = preferences.fitbitToken.first()
 
         val fitbitData = getFitbitDataSummary()
         val habitData = getHabitDataSummary()
@@ -1270,14 +1266,19 @@ class LogRepository @Inject constructor(
 
     private suspend fun getFitbitDataSummary(targetDate: String? = null, last30DaysOnly: Boolean = false): String {
         val hasHealthConnect = healthConnectManager.hasAllPermissions()
-        val fitbitToken = preferences.fitbitToken.first()
-        if (!hasHealthConnect && fitbitToken.isBlank()) return ""
+
+        // The Fitbit Web API was retired (Oct 30, 2026): this summary now serves
+        // locally cached history only. Serve it whenever any cached history or
+        // Health Connect access exists, even with no stored Fitbit token.
+        val spikesJson = preferences.historicalHrSpikes.first()
+        val heartJson = preferences.historicalHeartRate.first()
+        val sleepJson = preferences.historicalSleep.first()
+        if (!hasHealthConnect && spikesJson.isBlank() && heartJson.isBlank() && sleepJson.isBlank()) return ""
 
         val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
         val daysLimit = if (last30DaysOnly) 14 else 30
 
         // ── Spike-aware heart rate (POTS/MCAS critical) ───────────────────────
-        val spikesJson = preferences.historicalHrSpikes.first()
         val spikeHistory: List<DailyHeartRateSummary> = if (spikesJson.isNotBlank()) {
             try { json.decodeFromString(spikesJson) } catch (e: Exception) { emptyList() }
         } else if (hasHealthConnect) {
@@ -1288,14 +1289,12 @@ class LogRepository @Inject constructor(
             fresh
         } else emptyList()
 
-        val heartJson = preferences.historicalHeartRate.first()
         val heartHist = try {
             if (heartJson.isNotBlank()) json.decodeFromString<List<BiomarkerPoint>>(heartJson).map { it.date to it.value }
             else if (hasHealthConnect) healthConnectCoordinator.getHeartRateHistory(daysLimit)
             else emptyList()
         } catch (e: Exception) { emptyList() }
 
-        val sleepJson = preferences.historicalSleep.first()
         val sleepHist = try {
             if (sleepJson.isNotBlank()) json.decodeFromString<List<BiomarkerPoint>>(sleepJson).map { it.date to it.value }
             else if (hasHealthConnect) healthConnectCoordinator.getSleepHistory(daysLimit)

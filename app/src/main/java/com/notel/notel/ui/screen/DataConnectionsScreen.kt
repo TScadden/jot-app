@@ -56,8 +56,10 @@ fun DataConnectionsScreen(
         }
     }
 
-    // Definition of supported apps and their current connection status
-    val supportedApps = remember(state.isConnected, state.isFitbitConnected) {
+    // Definition of supported apps and their current connection status.
+    // Fitbit direct sync is retired (Google shut down the Fitbit Web API Oct 30, 2026):
+    // it is shown below as an honest disabled state, never as a connect option.
+    val supportedApps = remember(state.isConnected) {
         listOf(
             AppInfo(
                 id = "health_connect",
@@ -72,14 +74,6 @@ fun DataConnectionsScreen(
                 isConnected = state.isConnected,
                 onConnect = { healthConnectLauncher.launch(fitbitViewModel.healthConnectManager.permissions) },
                 onDisconnect = { fitbitViewModel.disconnectHealthConnect() }
-            ),
-            AppInfo(
-                id = "fitbit",
-                name = "Fitbit (Direct Sync)",
-                logo = { FitbitLogo() },
-                isConnected = state.isFitbitConnected,
-                onConnect = { fitbitViewModel.connectFitbit(context) },
-                onDisconnect = { fitbitViewModel.disconnectFitbit() }
             )
         )
     }
@@ -182,6 +176,59 @@ fun DataConnectionsScreen(
                 }
             }
 
+            // Retired integrations
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Unavailable",
+                    color = NotelTextSecondary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
+                )
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    color = NotelSurface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, NotelSurfaceHigh.copy(alpha = 0.3f))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .background(if (isLightTheme) NotelSurfaceHigh else LegacyDarkHairlineFaint, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                FitbitLogo()
+                            }
+                            Spacer(Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Fitbit (Direct Sync)",
+                                    color = NotelTextPrimary,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "No longer available",
+                                    color = NotelTextSecondary,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                        Text(
+                            text = "Google retired the Fitbit Web API, so direct syncing from Fitbit is no longer possible. Your previously saved history stays in Tabs. Health Connect keeps working as before.",
+                            color = NotelTextSecondary,
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+                }
+            }
+
             // Help Section (Plain Text)
             Spacer(modifier = Modifier.height(8.dp))
             Column(
@@ -205,7 +252,7 @@ fun DataConnectionsScreen(
                 )
 
                 Text(
-                    "If you use a Fitbit, you can also link it directly for faster, cloud-to-cloud syncing of your historical biomarker data.",
+                    "Fitbit devices can still sync through Health Connect, so your Fitbit data keeps flowing into Tabs that way.",
                     color = NotelTextSecondary,
                     fontSize = 14.sp,
                     lineHeight = 20.sp
@@ -312,9 +359,6 @@ fun DataConnectionsScreen(
                         try {
                             if (app.id == "health_connect") {
                                 val intent = android.content.Intent("android.health.connect.action.HEALTH_HOME_SETTINGS")
-                                context.startActivity(intent)
-                            } else if (app.id == "fitbit") {
-                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.fitbit.com/settings/profile/apps"))
                                 context.startActivity(intent)
                             }
                         } catch(e: Exception) {}

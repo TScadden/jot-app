@@ -275,9 +275,8 @@ fun SettingsScreen(
     
     val snackbarHostState = remember { SnackbarHostState() }
     val activity = context as? android.app.Activity
-    val fitbitViewModel: com.notel.notel.ui.viewmodel.FitbitViewModel = hiltViewModel()
-    val fitbitState by fitbitViewModel.state.collectAsState()
-    
+    // Fitbit direct sync retired (Oct 30, 2026): no Fitbit state is consumed here anymore.
+
     var showAllTimeTelemetryGraph by remember { mutableStateOf(false) }
     val telemetryHistoryStr by viewModel.heartRateHistory.collectAsState()
     val isPullingTelemetry by viewModel.isPullingTelemetry.collectAsState()
@@ -2812,32 +2811,24 @@ fun SettingsScreen(
                 shape = RoundedCornerShape(16.dp),
                 color = NotelSurface
             ) {
-                if (fitbitState.isFitbitConnected) {
+                // Fitbit direct sync is retired (Google shut down the Fitbit Web API Oct 30, 2026).
+                // Show the honest disabled state; no connect action is offered.
+                Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.CloudQueue, null, tint = NotelPrimary, modifier = Modifier.size(28.dp))
+                        Icon(Icons.Default.CloudOff, null, tint = NotelTextSecondary, modifier = Modifier.size(28.dp))
                         Spacer(Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Fitbit Cloud Active", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
-                            Text("Pulling 6-month history directly", color = NotelTextSecondary, fontSize = 12.sp)
+                            Text("Fitbit Direct Sync", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                            Text("No longer available", color = NotelTextSecondary, fontSize = 12.sp)
                         }
                     }
-                } else {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.CloudOff, null, tint = NotelPrimary, modifier = Modifier.size(28.dp))
-                        Spacer(Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Fitbit Direct API", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
-                            Text("Bypass Health Connect limits to pull your full 6-month history instantly.", color = NotelTextSecondary, fontSize = 12.sp)
-                        }
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    GlassyButton(
-                        onClick = { fitbitViewModel.connectFitbit(context) },
-                        modifier = Modifier.fillMaxWidth(),
-                        containerColor = NotelSurfaceHigh
-                    ) {
-                        Text("Connect Fitbit Directly", color = NotelTextPrimary, fontWeight = FontWeight.Bold)
-                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Google retired the Fitbit Web API, so direct Fitbit syncing has ended. Anything already saved stays in Tabs, and Health Connect keeps working as before.",
+                        color = NotelTextSecondary,
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp
+                    )
                 }
             }
 

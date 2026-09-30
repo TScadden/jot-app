@@ -61,6 +61,9 @@ open class NotelPreferences(
         val FITBIT_CODE_VERIFIER = stringPreferencesKey("fitbit_code_verifier")
         val FITBIT_OAUTH_STATE = stringPreferencesKey("fitbit_oauth_state")
         val FITBIT_OAUTH_TIME = longPreferencesKey("fitbit_oauth_time")
+        // One-time flag for the Fitbit Web API sunset (retired Oct 30, 2026):
+        // stored OAuth credentials are wiped once so no dead API calls can fire.
+        val FITBIT_SUNSET_MIGRATION_DONE = booleanPreferencesKey("fitbit_sunset_migration_done")
         
         val API_SPENDING_LIMIT = floatPreferencesKey("api_spending_limit")
         val CURRENT_MONTH_COST = floatPreferencesKey("current_month_cost")
@@ -464,6 +467,8 @@ open class NotelPreferences(
     val fitbitOauthState: Flow<String> = context.dataStore.data.map { it[FITBIT_OAUTH_STATE] ?: "" }
     val fitbitOauthTime: Flow<Long> = context.dataStore.data.map { it[FITBIT_OAUTH_TIME] ?: 0L }
 
+    val fitbitSunsetMigrationDone: Flow<Boolean> = context.dataStore.data.map { it[FITBIT_SUNSET_MIGRATION_DONE] ?: false }
+
     val apiSpendingLimit: Flow<Float> = context.dataStore.data.map { prefs ->
         prefs[API_SPENDING_LIMIT] ?: 0f
     }
@@ -774,6 +779,25 @@ open class NotelPreferences(
             it.remove(FITBIT_OAUTH_STATE)
             it.remove(FITBIT_OAUTH_TIME)
         }
+    }
+
+    /**
+     * Fitbit Web API sunset (retired Oct 30, 2026): wipe stored OAuth
+     * credentials once. Cached history keys are deliberately untouched —
+     * previously synced data keeps serving.
+     */
+    suspend fun clearFitbitCredentials() {
+        context.dataStore.edit {
+            it.remove(FITBIT_TOKEN)
+            it.remove(FITBIT_REFRESH_TOKEN)
+            it.remove(FITBIT_CODE_VERIFIER)
+            it.remove(FITBIT_OAUTH_STATE)
+            it.remove(FITBIT_OAUTH_TIME)
+        }
+    }
+
+    suspend fun setFitbitSunsetMigrationDone() {
+        context.dataStore.edit { it[FITBIT_SUNSET_MIGRATION_DONE] = true }
     }
 
     suspend fun setApiSpendingLimit(limit: Float) {

@@ -460,13 +460,11 @@ class SettingsViewModel @Inject constructor(
 
     val connectedAppsCount: StateFlow<Int> = combine(
         healthConnectConnected,
-        preferences.fitbitToken,
         googleCalendarConnected,
         googleAccountConnected
-    ) { hc, fitbitToken, cal, google ->
+    ) { hc, cal, google ->
         var count = 0
         if (hc) count++
-        if (fitbitToken.isNotBlank()) count++
         if (cal) count++
         if (google) count++
         if (count == 0) 1 else count
@@ -619,56 +617,6 @@ class SettingsViewModel @Inject constructor(
                     val hcHeight = healthConnectManager.readLatestHeight()
                     if (hcWeight != null && hcWeight > 0f) newWeight = Math.round(hcWeight).toFloat()
                     if (hcHeight != null && hcHeight > 0f) newHeight = Math.round(hcHeight).toFloat()
-                }
-
-                // 2. Try Fitbit Cloud (can provide Age and Gender too)
-                val token = preferences.fitbitToken.first()
-                if (token.isNotBlank()) {
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        val request = okhttp3.Request.Builder()
-                            .url("https://api.fitbit.com/1/user/-/profile.json")
-                            .header("Authorization", "Bearer $token")
-                            .build()
-                        val client = okhttp3.OkHttpClient()
-                        client.newCall(request).execute().use { response ->
-                            if (response.isSuccessful) {
-                                val body = response.body?.string() ?: ""
-                                val jsonParser = Json { ignoreUnknownKeys = true }
-                                val root = jsonParser.parseToJsonElement(body).jsonObject
-                                val user = root["user"]?.jsonObject
-                                
-                                val fAge = user?.get("age")?.jsonPrimitive?.intOrNull
-                                val fHeight = user?.get("height")?.jsonPrimitive?.floatOrNull
-                                val fWeight = user?.get("weight")?.jsonPrimitive?.floatOrNull
-                                val fGender = user?.get("gender")?.jsonPrimitive?.content
-                                val heightUnit = user?.get("heightUnit")?.jsonPrimitive?.content ?: ""
-                                val weightUnit = user?.get("weightUnit")?.jsonPrimitive?.content ?: ""
-                                
-                                if (fAge != null && fAge > 0) newAge = fAge
-                                if (!fGender.isNullOrBlank()) newGender = fGender
-                                if (fHeight != null && fHeight > 0f) {
-                                    val rawHeight = if (heightUnit.equals("METRIC", ignoreCase = true) || heightUnit.equals("cm", ignoreCase = true)) {
-                                        if (fHeight < 100f) fHeight else fHeight / 2.54f
-                                    } else if (heightUnit.equals("US", ignoreCase = true) || heightUnit.equals("inches", ignoreCase = true)) {
-                                        fHeight
-                                    } else {
-                                        if (fHeight > 100f) fHeight / 2.54f else fHeight
-                                    }
-                                    newHeight = Math.round(rawHeight).toFloat()
-                                }
-                                if (fWeight != null && fWeight > 0f) {
-                                    val rawWeight = if (weightUnit.equals("METRIC", ignoreCase = true) || weightUnit.equals("kg", ignoreCase = true)) {
-                                        if (fWeight > 140f) fWeight else fWeight * 2.20462f
-                                    } else if (weightUnit.equals("US", ignoreCase = true) || weightUnit.equals("lbs", ignoreCase = true)) {
-                                        fWeight
-                                    } else {
-                                        if (fWeight < 130f) fWeight * 2.20462f else fWeight
-                                    }
-                                    newWeight = Math.round(rawWeight).toFloat()
-                                }
-                            }
-                        }
-                    }
                 }
 
                 // Combine and save

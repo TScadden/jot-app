@@ -301,12 +301,9 @@ class ClinicalReportDataCollector @Inject constructor(
                 metadataMap["hrv"] = SectionMetadata("hrv", DataSourceStatus.SUCCESS, res.size)
                 res
             } else {
-                // Fallback: Fitbit Web API daily HRV (RMSSD) time series
-                val fitbitHrv = withTimeoutOrNull(20_000L) { fetchHrvFromFitbit(minDateStr, targetToday.toString()) }
-                if (!fitbitHrv.isNullOrEmpty()) {
-                    metadataMap["hrv"] = SectionMetadata("hrv", DataSourceStatus.SUCCESS, fitbitHrv.size, "Fitbit data")
-                    fitbitHrv
-                } else if (res == null) {
+                // The Fitbit Web API was retired (Oct 30, 2026), so there is no
+                // live Fitbit HRV fallback anymore. Report the honest state instead.
+                if (res == null) {
                     metadataMap["hrv"] = SectionMetadata("hrv", DataSourceStatus.TIMED_OUT, 0, "Query timed out after 60s")
                     emptyList()
                 } else {
@@ -497,36 +494,6 @@ class ClinicalReportDataCollector @Inject constructor(
                 .filter { it.date >= minDate && it.value > 0 }
                 .map { it.date to it.value }
                 .sortedBy { it.first }
-        } catch (e: Exception) { emptyList() }
-    }
-
-    /**
-     * Fallback: Fitbit Web API daily HRV (RMSSD) time series. Used when Health
-     * Connect has no HRV records (e.g. wearables that don't sync HRV to HC).
-     */
-    private suspend fun fetchHrvFromFitbit(startDate: String, endDate: String): List<Pair<String, Double>> {
-        return try {
-            val token = preferences.fitbitToken.first()
-            if (token.isBlank()) return emptyList()
-            val client = okhttp3.OkHttpClient()
-            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-            val request = okhttp3.Request.Builder()
-                .url("https://api.fitbit.com/1/user/-/hrv/date/$startDate/$endDate.json")
-                .header("Authorization", "Bearer $token")
-                .build()
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return emptyList()
-                val body = response.body?.string() ?: return emptyList()
-                val root = json.parseToJsonElement(body).jsonObject
-                root["hrv"]?.jsonArray?.mapNotNull { el ->
-                    val obj = el.jsonObject
-                    val date = obj["dateTime"]?.jsonPrimitive?.content ?: return@mapNotNull null
-                    val rmssd = obj["value"]?.jsonObject
-                        ?.get("dailyRmssd")?.jsonPrimitive?.doubleOrNull
-                        ?: return@mapNotNull null
-                    date to rmssd
-                } ?: emptyList()
-            }
         } catch (e: Exception) { emptyList() }
     }
 }

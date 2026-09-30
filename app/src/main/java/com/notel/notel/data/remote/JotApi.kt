@@ -752,23 +752,7 @@ interface TabsApi {
 
     @POST("api/habits/clear")
     suspend fun clearHabitData(): Response<GenericResponse>
-
-    @POST("api/auth/fitbit/token")
-    suspend fun exchangeFitbitToken(@Body request: FitbitTokenProxyRequest): Response<FitbitTokenProxyResponse>
+    // Fitbit OAuth token proxy removed with the Fitbit Web API sunset (Oct 30, 2026).
 }
 
-@Serializable
-data class FitbitTokenProxyRequest(
-    val code: String,
-    val codeVerifier: String? = null,
-    val redirectUri: String = "com.notel.notel.fitbit://callback"
-)
-
-@Serializable
-data class FitbitTokenProxyResponse(
-    val access_token: String? = null,
-    val refresh_token: String? = null,
-    val user_id: String? = null,
-    val expires_in: Int? = null,
-    val error: String? = null
-)
+// (FitbitTokenProxyRequest / FitbitTokenProxyResponse removed with the Fitbit Web API sunset.)

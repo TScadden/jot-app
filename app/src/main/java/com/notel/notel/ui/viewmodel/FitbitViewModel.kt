@@ -84,7 +84,6 @@ class FitbitViewModel @Inject constructor(
     val healthConnectManager: HealthConnectManager,
     val healthConnectCoordinator: com.notel.notel.data.healthconnect.HealthConnectCoordinator,
     private val lifecycleTracker: com.notel.notel.util.AppLifecycleTracker,
-    private val tabsApi: com.notel.notel.data.remote.TabsApi,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
 
@@ -131,11 +130,16 @@ class FitbitViewModel @Inject constructor(
                         cachedDailyStatsMap = map
                     }
                 }
-                launch {
-                    preferences.fitbitToken.collect { token ->
-                        _state.update { it.copy(isFitbitConnected = token.isNotBlank()) }
+                // One-time Fitbit sunset migration (Fitbit Web API retired Oct 30, 2026):
+                // wipe stored OAuth credentials so no dead API calls can fire and the
+                // connection state stays honest. Cached history is untouched and keeps serving.
+                try {
+                    if (!preferences.fitbitSunsetMigrationDone.first()) {
+                        preferences.clearFitbitCredentials()
+                        preferences.setFitbitSunsetMigrationDone()
                     }
-                }
+                } catch (e: Exception) { /* credentials stay as-is; no live paths use them anymore */ }
+                _state.update { it.copy(isFitbitConnected = false) }
                 launch {
                     preferences.historicalHeartRate.collect { str ->
                         if (str.isNotBlank()) {
@@ -256,30 +260,21 @@ class FitbitViewModel @Inject constructor(
         
         viewModelScope.launch {
             try {
+                // Health Connect only. The Fitbit Web API was retired (Oct 30, 2026),
+                // so the Fitbit branch was removed; cached Fitbit history keeps serving.
                 val hasHC = healthConnectManager.hasAllPermissions()
-                val token = preferences.fitbitToken.first()
-                
-                if (!hasHC && token.isBlank()) {
+
+                if (!hasHC) {
                     _state.update { it.copy(isConnected = false, errorMessage = "Connection Required") }
                     return@launch
                 }
 
                 _state.update { it.copy(isConnected = true, isLoading = true, errorMessage = null) }
-                
-                if (hasHC) {
-                    try {
-                        syncFromHealthConnect(fetchHistory = true, forceRefresh = force)
-                    } catch (e: Exception) {
-                        _state.update { it.copy(errorMessage = "Health Connect sync failed") }
-                    }
-                }
-                
-                if (token.isNotBlank()) {
-                    launch {
-                        try {
-                            fetchFromFitbitApi(token)
-                        } catch (e: Exception) {}
-                    }
+
+                try {
+                    syncFromHealthConnect(fetchHistory = true, forceRefresh = force)
+                } catch (e: Exception) {
+                    _state.update { it.copy(errorMessage = "Health Connect sync failed") }
                 }
             } catch (e: Exception) {
                 _state.update { it.copy(errorMessage = "Sync failed: ${e.message}") }
@@ -396,256 +391,7 @@ class FitbitViewModel @Inject constructor(
          }
     }
 
-    private suspend fun fetchFromFitbitApi(token: String) {
-        withContext(Dispatchers.IO) {
-            val client = okhttp3.OkHttpClient()
-            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-            
-            try {
-                // 1. Heart Rate History (6 Months)
-                val hrHistRequest = okhttp3.Request.Builder()
-                    .url("https://api.fitbit.com/1/user/-/activities/heart/date/today/6m.json")
-                    .header("Authorization", "Bearer $token")
-                    .build()
-                
-                val hrList = client.newCall(hrHistRequest).execute().use { response ->
-                    if (response.isSuccessful) {
-                        val body = response.body?.string() ?: ""
-                        val root = json.parseToJsonElement(body).jsonObject
-                        root["activities-heart"]?.jsonArray?.mapNotNull { el ->
-                            val obj = el.jsonObject
-                            val date = obj["dateTime"]?.jsonPrimitive?.content ?: ""
-                            val valObj = obj["value"]?.jsonObject
-                            val rhr = valObj?.get("restingHeartRate")?.jsonPrimitive?.intOrNull ?: 0
-                            if (date.isNotBlank() && rhr > 0) date to rhr else null
-                        } ?: emptyList()
-                    } else emptyList()
-                }
-                
-                if (hrList.isNotEmpty()) {
-                    val currentStr = preferences.historicalHeartRate.first()
-                    val current = try {
-                        if (currentStr.isNotBlank()) json.decodeFromString<List<BiomarkerPoint>>(currentStr).map { it.date to it.value } else emptyList()
-                    } catch (e: Exception) { emptyList() }
-                    
-                    val combined = (current + hrList).distinctBy { it.first }.sortedByDescending { it.first }
-                    preferences.setHistoricalHeartRate(json.encodeToString(combined.map { BiomarkerPoint(it.first, it.second) }))
-                    _state.update { it.copy(historicalHeartRate = combined) }
-                }
 
-                // 2. Calories History (6 Months)
-                val calHistRequest = okhttp3.Request.Builder()
-                    .url("https://api.fitbit.com/1/user/-/activities/calories/date/today/6m.json")
-                    .header("Authorization", "Bearer $token")
-                    .build()
-                
-                val calList = client.newCall(calHistRequest).execute().use { response ->
-                    if (response.isSuccessful) {
-                        val body = response.body?.string() ?: ""
-                        val root = json.parseToJsonElement(body).jsonObject
-                        root["activities-calories"]?.jsonArray?.mapNotNull { el ->
-                            val obj = el.jsonObject
-                            val date = obj["dateTime"]?.jsonPrimitive?.content ?: ""
-                            val cal = obj["value"]?.jsonPrimitive?.intOrNull ?: 0
-                            if (date.isNotBlank() && cal > 0) date to cal else null
-                        } ?: emptyList()
-                    } else emptyList()
-                }
-                
-                if (calList.isNotEmpty()) {
-                    val currentStr = preferences.historicalCalories.first()
-                    val current = try {
-                        if (currentStr.isNotBlank()) json.decodeFromString<List<BiomarkerPoint>>(currentStr).map { it.date to it.value } else emptyList()
-                    } catch (e: Exception) { emptyList() }
-
-                    val combined = (current + calList).distinctBy { it.first }.sortedByDescending { it.first }
-                    preferences.setHistoricalCalories(json.encodeToString(combined.map { BiomarkerPoint(it.first, it.second) }))
-                    _state.update { it.copy(historicalCalories = combined) }
-                }
-
-                // 3. Sleep History (6 Months via Sleep List)
-                val todayStr = java.time.LocalDate.now().toString()
-                val sleepHistRequest = okhttp3.Request.Builder()
-                    .url("https://api.fitbit.com/1.2/user/-/sleep/list.json?beforeDate=$todayStr&sort=desc&offset=0&limit=180")
-                    .header("Authorization", "Bearer $token")
-                    .build()
-                
-                val sleepList = client.newCall(sleepHistRequest).execute().use { response ->
-                    if (response.isSuccessful) {
-                        val body = response.body?.string() ?: ""
-                        val root = json.parseToJsonElement(body).jsonObject
-                        val sleepArray = root["sleep"]?.jsonArray ?: JsonArray(emptyList())
-                        sleepArray.mapNotNull { el ->
-                            val obj = el.jsonObject
-                            val date = obj["dateOfSleep"]?.jsonPrimitive?.content ?: ""
-                            val minAsleep = obj["minutesAsleep"]?.jsonPrimitive?.intOrNull ?: 0
-                            if (date.isNotBlank() && minAsleep > 0) date to minAsleep else null
-                        }
-                    } else emptyList()
-                }
-                
-                if (sleepList.isNotEmpty()) {
-                    val currentStr = preferences.historicalSleep.first()
-                    val current = try {
-                        if (currentStr.isNotBlank()) json.decodeFromString<List<BiomarkerPoint>>(currentStr).map { it.date to it.value } else emptyList()
-                    } catch (e: Exception) { emptyList() }
-
-                    val combined = (current + sleepList).distinctBy { it.first }.sortedByDescending { it.first }
-                    preferences.setHistoricalSleep(json.encodeToString(combined.map { BiomarkerPoint(it.first, it.second) }))
-                    _state.update { it.copy(historicalSleep = combined) }
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("FitbitViewModel", "Historical sync failed: ${e.message}")
-            }
-        }
-    }
-
-    private fun <T> List<T>.firstBy(predicate: (T) -> Boolean): T? = firstOrNull(predicate)
-
-    private suspend fun fetchWeightFromCloud(token: String, date: String): Double? {
-        return withContext(Dispatchers.IO) {
-            val client = okhttp3.OkHttpClient()
-            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-            try {
-                android.util.Log.d("FitbitViewModel", "Fetching Weight from Fitbit Web API for last 30 days ending $date...")
-                val request = okhttp3.Request.Builder()
-                    .url("https://api.fitbit.com/1/user/-/body/log/weight/date/$date/30d.json")
-                    .header("Authorization", "Bearer $token")
-                    .header("Accept-Language", "en_US")
-                    .build()
-                client.newCall(request).execute().use { response ->
-                    android.util.Log.d("FitbitViewModel", "Fitbit Weight response code: ${response.code}")
-                    if (response.isSuccessful) {
-                        val body = response.body?.string() ?: ""
-                        android.util.Log.d("FitbitViewModel", "Fitbit Weight response body: $body")
-                        val root = json.parseToJsonElement(body).jsonObject
-                        val weightArr = root["weight"]?.jsonArray
-                        val valObj = weightArr?.lastOrNull()?.jsonObject
-                        val weightVal = valObj?.get("weight")?.jsonPrimitive?.doubleOrNull
-                        android.util.Log.d("FitbitViewModel", "Fitbit Weight parsed value: $weightVal")
-                        weightVal
-                    } else {
-                        val errBody = response.body?.string() ?: ""
-                        android.util.Log.e("FitbitViewModel", "Fitbit Weight request failed with code ${response.code}: $errBody")
-                        null
-                    }
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("FitbitViewModel", "Exception in fetchWeightFromCloud: ${e.message}", e)
-                null
-            }
-        }
-    }
-
-    private suspend fun fetchSpO2FromCloud(token: String, date: String): Double? {
-        return withContext(Dispatchers.IO) {
-            val client = okhttp3.OkHttpClient()
-            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-            try {
-                android.util.Log.d("FitbitViewModel", "Fetching SpO2 from Fitbit Web API for $date...")
-                val request = okhttp3.Request.Builder()
-                    .url("https://api.fitbit.com/1/user/-/spo2/date/$date.json")
-                    .header("Authorization", "Bearer $token")
-                    .build()
-                client.newCall(request).execute().use { response ->
-                    android.util.Log.d("FitbitViewModel", "Fitbit SpO2 response code: ${response.code}")
-                    if (response.isSuccessful) {
-                        val body = response.body?.string() ?: ""
-                        android.util.Log.d("FitbitViewModel", "Fitbit SpO2 response body: $body")
-                        val root = json.parseToJsonElement(body).jsonObject
-                        val valObj = if (root.containsKey("spo2")) {
-                            root["spo2"]?.jsonArray?.firstOrNull()?.jsonObject?.get("value")?.jsonObject
-                        } else {
-                            root["value"]?.jsonObject
-                        }
-                        val valDouble = valObj?.get("avg")?.jsonPrimitive?.doubleOrNull
-                        android.util.Log.d("FitbitViewModel", "Fitbit SpO2 parsed value: $valDouble")
-                        valDouble
-                    } else {
-                        val errBody = response.body?.string() ?: ""
-                        android.util.Log.e("FitbitViewModel", "Fitbit SpO2 request failed with code ${response.code}: $errBody")
-                        null
-                    }
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("FitbitViewModel", "Exception in fetchSpO2FromCloud: ${e.message}", e)
-                null
-            }
-        }
-    }
-
-    private suspend fun fetchRespiratoryRateFromCloud(token: String, date: String): Double? {
-        return withContext(Dispatchers.IO) {
-            val client = okhttp3.OkHttpClient()
-            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-            try {
-                android.util.Log.d("FitbitViewModel", "Fetching Respiratory Rate from Fitbit Web API for $date...")
-                val request = okhttp3.Request.Builder()
-                    .url("https://api.fitbit.com/1/user/-/br/date/$date.json")
-                    .header("Authorization", "Bearer $token")
-                    .build()
-                client.newCall(request).execute().use { response ->
-                    android.util.Log.d("FitbitViewModel", "Fitbit Respiratory Rate response code: ${response.code}")
-                    if (response.isSuccessful) {
-                        val body = response.body?.string() ?: ""
-                        android.util.Log.d("FitbitViewModel", "Fitbit Respiratory Rate response body: $body")
-                        val root = json.parseToJsonElement(body).jsonObject
-                        val valObj = if (root.containsKey("br")) {
-                            root["br"]?.jsonArray?.firstOrNull()?.jsonObject?.get("value")?.jsonObject
-                        } else {
-                            root["value"]?.jsonObject
-                        }
-                        val valDouble = valObj?.get("breathingRate")?.jsonPrimitive?.doubleOrNull
-                        android.util.Log.d("FitbitViewModel", "Fitbit Respiratory Rate parsed value: $valDouble")
-                        valDouble
-                    } else {
-                        val errBody = response.body?.string() ?: ""
-                        android.util.Log.e("FitbitViewModel", "Fitbit Respiratory Rate request failed with code ${response.code}: $errBody")
-                        null
-                    }
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("FitbitViewModel", "Exception in fetchRespiratoryRateFromCloud: ${e.message}", e)
-                null
-            }
-        }
-    }
-
-    private suspend fun fetchHrvFromCloud(token: String, date: String): Double? {
-        return withContext(Dispatchers.IO) {
-            val client = okhttp3.OkHttpClient()
-            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-            try {
-                android.util.Log.d("FitbitViewModel", "Fetching HRV from Fitbit Web API for $date...")
-                val request = okhttp3.Request.Builder()
-                    .url("https://api.fitbit.com/1/user/-/hrv/date/$date.json")
-                    .header("Authorization", "Bearer $token")
-                    .build()
-                client.newCall(request).execute().use { response ->
-                    android.util.Log.d("FitbitViewModel", "Fitbit HRV response code: ${response.code}")
-                    if (response.isSuccessful) {
-                        val body = response.body?.string() ?: ""
-                        android.util.Log.d("FitbitViewModel", "Fitbit HRV response body: $body")
-                        val root = json.parseToJsonElement(body).jsonObject
-                        val valObj = if (root.containsKey("hrv")) {
-                            root["hrv"]?.jsonArray?.firstOrNull()?.jsonObject?.get("value")?.jsonObject
-                        } else {
-                            root["value"]?.jsonObject
-                        }
-                        val valDouble = valObj?.get("dailyRmssd")?.jsonPrimitive?.doubleOrNull
-                        android.util.Log.d("FitbitViewModel", "Fitbit HRV parsed value: $valDouble")
-                        valDouble
-                    } else {
-                        val errBody = response.body?.string() ?: ""
-                        android.util.Log.e("FitbitViewModel", "Fitbit HRV request failed with code ${response.code}: $errBody")
-                        null
-                    }
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("FitbitViewModel", "Exception in fetchHrvFromCloud: ${e.message}", e)
-                null
-            }
-        }
     }
 
     private var fetchHeartRateJob: kotlinx.coroutines.Job? = null
@@ -684,9 +430,8 @@ class FitbitViewModel @Inject constructor(
         fetchHeartRateJob?.cancel()
         fetchHeartRateJob = viewModelScope.launch(Dispatchers.IO) {
             val hasHC = healthConnectManager.hasAllPermissions()
-            val token = preferences.fitbitToken.first()
-            
-            if (!hasHC && token.isBlank()) return@launch
+
+            if (!hasHC) return@launch
 
             var intradayHR: List<Pair<Long, Int>> = emptyList()
             var avgHR = 0
@@ -770,54 +515,6 @@ class FitbitViewModel @Inject constructor(
         }
     }
 
-    private suspend fun fetchHeartRateFromCloud(token: String, date: String): Triple<List<Pair<String, Int>>, Int, Int>? {
-        return withContext(Dispatchers.IO) {
-            val client = okhttp3.OkHttpClient()
-            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-            try {
-                // Fetch HR Intraday (1min resolution)
-                val hrRequest = okhttp3.Request.Builder()
-                    .url("https://api.fitbit.com/1/user/-/activities/heart/date/$date/1d/1min.json")
-                    .header("Authorization", "Bearer $token")
-                    .build()
-                
-                var hrList = emptyList<Pair<String, Int>>()
-                var restingHr = 0
-                client.newCall(hrRequest).execute().use { response ->
-                    if (response.isSuccessful) {
-                        val body = response.body?.string() ?: ""
-                        val root = json.parseToJsonElement(body).jsonObject
-                        hrList = root["activities-heart-intraday"]?.jsonObject?.get("dataset")?.jsonArray?.mapNotNull { el ->
-                            val obj = el.jsonObject
-                            val time = obj["time"]?.jsonPrimitive?.content ?: ""
-                            val valInt = obj["value"]?.jsonPrimitive?.intOrNull ?: 0
-                            if (time.isNotBlank() && valInt > 0) time to valInt else null
-                        } ?: emptyList()
-                        restingHr = root["activities-heart"]?.jsonArray?.getOrNull(0)?.jsonObject?.get("value")?.jsonObject?.get("restingHeartRate")?.jsonPrimitive?.intOrNull ?: 0
-                    }
-                }
-
-                // Fetch Calories for that day
-                val calRequest = okhttp3.Request.Builder()
-                    .url("https://api.fitbit.com/1/user/-/activities/date/$date.json")
-                    .header("Authorization", "Bearer $token")
-                    .build()
-                
-                var cals = 0
-                client.newCall(calRequest).execute().use { response ->
-                    if (response.isSuccessful) {
-                        val body = response.body?.string() ?: ""
-                        val root = json.parseToJsonElement(body).jsonObject
-                        cals = root["summary"]?.jsonObject?.get("caloriesOut")?.jsonPrimitive?.intOrNull ?: 0
-                    }
-                }
-                
-                if (hrList.isNotEmpty() || cals > 0) {
-                    Triple(hrList, restingHr, cals)
-                } else null
-            } catch (e: Exception) { null }
-        }
-    }
 
     private suspend fun saveDailyStatToCache(date: String, metrics: CachedMetrics) {
         val targetDateStr = if (date == "today") java.time.LocalDate.now().toString() else date
@@ -839,38 +536,26 @@ class FitbitViewModel @Inject constructor(
                     _state.update { it.copy(isLoading = true, errorMessage = null) }
                 }
                 
-                val token = preferences.fitbitToken.first()
                 val hasHC = healthConnectManager.hasAllPermissions()
-                if (hasHC || token.isNotBlank()) {
+                if (hasHC) {
                     val isToday = targetDateStr == java.time.LocalDate.now().toString()
-                    
-                    val cloudSpO2Deferred = if (token.isNotBlank()) async { fetchSpO2FromCloud(token, targetDateStr) } else null
-                    val cloudBrDeferred = if (token.isNotBlank()) async { fetchRespiratoryRateFromCloud(token, targetDateStr) } else null
-                    val cloudHrvDeferred = if (token.isNotBlank()) async { fetchHrvFromCloud(token, targetDateStr) } else null
-                    val cloudWeightDeferred = if (token.isNotBlank()) async { fetchWeightFromCloud(token, targetDateStr) } else null
 
-                    val intradayHRDeferred = if (hasHC) async { healthConnectManager.readHeartRateIntraday(targetDateStr) } else null
-                    val respRateDeferred = if (hasHC) async { healthConnectManager.readRespiratoryRate(targetDateStr) } else null
-                    val oxySatDeferred = if (hasHC) async { healthConnectManager.readOxygenSaturation(targetDateStr) } else null
-                    val rhrDeferred = if (hasHC) async { healthConnectManager.readRestingHeartRate(targetDateStr) } else null
-                    val weightDeferred = if (hasHC) async { healthConnectManager.readLatestWeight(targetDateStr) } else null
-                    
-                    val cloudSpO2 = try { cloudSpO2Deferred?.await() } catch(e: Exception) { null }
-                    val cloudBr = try { cloudBrDeferred?.await() } catch(e: Exception) { null }
-                    val cloudHrv = try { cloudHrvDeferred?.await() } catch(e: Exception) { null }
+                    val intradayHRDeferred = async { healthConnectManager.readHeartRateIntraday(targetDateStr) }
+                    val respRateDeferred = async { healthConnectManager.readRespiratoryRate(targetDateStr) }
+                    val oxySatDeferred = async { healthConnectManager.readOxygenSaturation(targetDateStr) }
+                    val rhrDeferred = async { healthConnectManager.readRestingHeartRate(targetDateStr) }
+                    val weightDeferred = async { healthConnectManager.readLatestWeight(targetDateStr) }
 
-                    val intradayHR = try { intradayHRDeferred?.await() } catch(e: Exception) { null } ?: emptyList()
-                    val respRate = cloudBr ?: try { respRateDeferred?.await() } catch(e: Exception) { null }
-                    val oxySat = cloudSpO2 ?: try { oxySatDeferred?.await() } catch(e: Exception) { null }
-                    val rhr = try { rhrDeferred?.await() } catch(e: Exception) { null }
-                    val cloudWeight = try { cloudWeightDeferred?.await() } catch(e: Exception) { null }
+                    val intradayHR = try { intradayHRDeferred.await() } catch(e: Exception) { null } ?: emptyList()
+                    val respRate = try { respRateDeferred.await() } catch(e: Exception) { null }
+                    val oxySat = try { oxySatDeferred.await() } catch(e: Exception) { null }
+                    val rhr = try { rhrDeferred.await() } catch(e: Exception) { null }
                     val profileWeight = try { preferences.userWeight.first() } catch(e: Exception) { 0f }
-                    val weight = cloudWeight?.toFloat() 
-                        ?: try { weightDeferred?.await() } catch(e: Exception) { null }
+                    val weight = try { weightDeferred.await() } catch(e: Exception) { null }
                         ?: if (profileWeight > 0f) profileWeight else null
-                    
+
                     // HRV is only fetched for past dates — today shows an advisory note and has no end-of-day value yet
-                    val hrvForDate: Double = cloudHrv ?: if (!isToday && hasHC) {
+                    val hrvForDate: Double = if (!isToday) {
                         try {
                             val hrvList = healthConnectManager.readHeartRateVariability(days = 30)
                             hrvList.find { it.first == targetDateStr }?.second ?: 0.0
@@ -1035,9 +720,8 @@ class FitbitViewModel @Inject constructor(
     fun fetchSleepForDate(date: String) {
         viewModelScope.launch {
             val hasHC = healthConnectManager.hasAllPermissions()
-            val token = preferences.fitbitToken.first()
-            
-            if (!hasHC && token.isBlank()) return@launch
+
+            if (!hasHC) return@launch
 
             _state.update { it.copy(isLoading = true, errorMessage = null, selectedSleepDate = date) }
             
@@ -1075,47 +759,6 @@ class FitbitViewModel @Inject constructor(
         }
     }
 
-    private suspend fun fetchSleepFromCloud(token: String, date: String): SleepData? {
-        return withContext(Dispatchers.IO) {
-            val client = okhttp3.OkHttpClient()
-            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-            try {
-                val request = okhttp3.Request.Builder()
-                    .url("https://api.fitbit.com/1.2/user/-/sleep/date/$date.json")
-                    .header("Authorization", "Bearer $token")
-                    .build()
-                
-                client.newCall(request).execute().use { response ->
-                    if (response.isSuccessful) {
-                        val body = response.body?.string() ?: ""
-                        val root = json.parseToJsonElement(body).jsonObject
-                        val sleep = root["sleep"]?.jsonArray?.getOrNull(0)?.jsonObject ?: return@use null
-                        
-                        val duration = sleep["duration"]?.jsonPrimitive?.intOrNull ?: 0
-                        val efficiency = sleep["efficiency"]?.jsonPrimitive?.intOrNull ?: 0
-                        val minAsleep = sleep["minutesAsleep"]?.jsonPrimitive?.intOrNull ?: 0
-                        
-                        // Parse levels for details
-                        val summary = sleep["levels"]?.jsonObject?.get("summary")?.jsonObject
-                        val deep = summary?.get("deep")?.jsonObject?.get("minutes")?.jsonPrimitive?.intOrNull ?: 0
-                        val light = summary?.get("light")?.jsonObject?.get("minutes")?.jsonPrimitive?.intOrNull ?: 0
-                        val rem = summary?.get("rem")?.jsonObject?.get("minutes")?.jsonPrimitive?.intOrNull ?: 0
-                        val wake = summary?.get("wake")?.jsonObject?.get("minutes")?.jsonPrimitive?.intOrNull ?: 0
-
-                        SleepData(
-                            minutesAsleep = minAsleep,
-                            timeInBed = duration / 60000,
-                            deepMinutes = deep,
-                            lightMinutes = light,
-                            remMinutes = rem,
-                            wakeMinutes = wake,
-                            efficiency = efficiency
-                        )
-                    } else null
-                }
-            } catch (e: Exception) { null }
-        }
-    }
 
     fun disconnectHealthConnect() {
         viewModelScope.launch {
@@ -1141,183 +784,6 @@ class FitbitViewModel @Inject constructor(
         }
     }
 
-    private fun generateSecureRandomString(byteLength: Int): String {
-        val random = java.security.SecureRandom()
-        val bytes = ByteArray(byteLength)
-        random.nextBytes(bytes)
-        return android.util.Base64.encodeToString(bytes, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING)
-    }
-
-    private fun generateCodeChallenge(verifier: String): String {
-        val bytes = verifier.toByteArray(Charsets.US_ASCII)
-        val messageDigest = java.security.MessageDigest.getInstance("SHA-256")
-        val digest = messageDigest.digest(bytes)
-        return android.util.Base64.encodeToString(digest, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING)
-    }
-
-    fun connectFitbit(context: android.content.Context) {
-        viewModelScope.launch {
-            val state = generateSecureRandomString(16)
-            val codeVerifier = generateSecureRandomString(32)
-            val codeChallenge = generateCodeChallenge(codeVerifier)
-            
-            preferences.setFitbitOauthPending(codeVerifier, state, System.currentTimeMillis())
-
-            val clientId = "23TRPL"
-            val redirectUri = "com.notel.notel.fitbit://callback"
-            val scope = "activity heartrate sleep profile weight oxygen_saturation respiratory_rate"
-            val url = "https://www.fitbit.com/oauth2/authorize?response_type=code&client_id=$clientId&redirect_uri=${java.net.URLEncoder.encode(redirectUri, "UTF-8")}&scope=${java.net.URLEncoder.encode(scope, "UTF-8")}&code_challenge=$codeChallenge&code_challenge_method=S256&state=$state"
-            
-            withContext(Dispatchers.Main) {
-                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)).apply {
-                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(intent)
-            }
-        }
-    }
-
-    private val processedCodes = java.util.Collections.synchronizedSet(HashSet<String>())
-
-    fun handleFitbitCallback(uri: android.net.Uri?) {
-        if (uri == null || uri.scheme != "com.notel.notel.fitbit" || uri.host != "callback") {
-            return
-        }
-
-        val code = uri.getQueryParameter("code")
-        val state = uri.getQueryParameter("state")
-        val error = uri.getQueryParameter("error")
-        val errorDesc = uri.getQueryParameter("error_description")
-
-        // REDACT SECRETS FROM ADB LOGS: Log presence flags, never token/code/state values
-        android.util.Log.d("FitbitViewModel", "Fitbit callback received: hasCode=${!code.isNullOrBlank()}, hasState=${!state.isNullOrBlank()}, error=${error ?: "none"}")
-
-        if (!error.isNullOrBlank()) {
-            val msg = errorDesc?.ifBlank { null } ?: error
-            android.util.Log.e(TAG, "Fitbit OAuth callback error: error=$error desc=$msg")
-            _state.update {
-                it.copy(
-                    isLoading = false,
-                    errorMessage = com.notel.notel.util.FriendlyErrors.forBackendError(
-                        TAG, null, com.notel.notel.util.FriendlyErrors.Kind.AUTH
-                    ).banner
-                )
-            }
-            return
-        }
-
-        if (code.isNullOrBlank()) {
-            android.util.Log.e(TAG, "Fitbit callback missing authorization code")
-            _state.update {
-                it.copy(
-                    isLoading = false,
-                    errorMessage = com.notel.notel.util.FriendlyErrors.forBackendError(
-                        TAG, null, com.notel.notel.util.FriendlyErrors.Kind.AUTH
-                    ).banner
-                )
-            }
-            return
-        }
-
-        if (state.isNullOrBlank()) {
-            _state.update { it.copy(isLoading = false, errorMessage = "Missing state parameter from Fitbit callback.") }
-            return
-        }
-
-        if (!processedCodes.add(code)) {
-            android.util.Log.d("FitbitViewModel", "Duplicate OAuth code callback ignored.")
-            return
-        }
-
-        exchangeCodeForToken(code, state)
-    }
-
-    fun exchangeCodeForToken(code: String, receivedState: String) {
-        viewModelScope.launch {
-            _state.update { it.copy(isLoading = true) }
-            try {
-                // Load pending OAuth state
-                val pendingState = preferences.fitbitOauthState.first()
-                val pendingVerifier = preferences.fitbitCodeVerifier.first()
-                val pendingTime = preferences.fitbitOauthTime.first()
-
-                if (pendingState.isBlank() || pendingVerifier.isBlank()) {
-                    _state.update { it.copy(isLoading = false, errorMessage = "No pending login request found.") }
-                    return@launch
-                }
-
-                if (System.currentTimeMillis() - pendingTime > 600000L) { // 10 minutes timeout
-                    preferences.clearFitbitOauthPending() // Clear expired transaction
-                    _state.update { it.copy(isLoading = false, errorMessage = "Login request timed out. Please try again.") }
-                    return@launch
-                }
-
-                if (pendingState != receivedState) {
-                    // Reject mismatched state WITHOUT deleting the valid, unexpired pending transaction
-                    _state.update { it.copy(isLoading = false, errorMessage = "Mismatched OAuth state.") }
-                    return@launch
-                }
-
-                // Validation succeeded. Consume matching transaction immediately (single-use)
-                preferences.clearFitbitOauthPending()
-
-                withContext(Dispatchers.IO) {
-                    try {
-                        val proxyReq = com.notel.notel.data.remote.FitbitTokenProxyRequest(
-                            code = code,
-                            codeVerifier = pendingVerifier,
-                            redirectUri = "com.notel.notel.fitbit://callback"
-                        )
-                        val apiResponse = tabsApi.exchangeFitbitToken(proxyReq)
-                        if (apiResponse.isSuccessful && apiResponse.body()?.access_token != null) {
-                            val res = apiResponse.body()!!
-                            val token = res.access_token ?: ""
-                            val refresh = res.refresh_token ?: ""
-                            if (token.isNotBlank()) {
-                                viewModelScope.launch {
-                                    preferences.setFitbitToken(token)
-                                    preferences.setFitbitRefreshToken(refresh)
-                                    _state.update { it.copy(isFitbitConnected = true, isLoading = false, errorMessage = null) }
-                                    sync()
-                                }
-                            } else {
-                                _state.update { it.copy(isLoading = false, errorMessage = "Received empty token from Fitbit proxy.") }
-                            }
-                        } else {
-                            val errBody = apiResponse.errorBody()?.string() ?: ""
-                            val errMessage = if (errBody.contains("FITBIT_CLIENT_SECRET")) {
-                                "FITBIT_CLIENT_SECRET environment variable is not configured on the server."
-                            } else {
-                                apiResponse.body()?.error ?: "Fitbit Auth Failed: HTTP ${apiResponse.code()}"
-                            }
-                            android.util.Log.e("FitbitViewModel", "Fitbit token proxy error: $errMessage")
-                            if (!_state.value.isFitbitConnected) {
-                                _state.update { it.copy(isLoading = false, errorMessage = errMessage) }
-                            } else {
-                                _state.update { it.copy(isLoading = false) }
-                            }
-                        }
-                    } catch (proxyEx: Exception) {
-                        android.util.Log.e("FitbitViewModel", "Token exchange failed: ${proxyEx.message}", proxyEx)
-                        if (!_state.value.isFitbitConnected) {
-                            _state.update { it.copy(isLoading = false, errorMessage = "Fitbit token exchange failed: ${proxyEx.message}") }
-                        } else {
-                            _state.update { it.copy(isLoading = false) }
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                _state.update {
-                    it.copy(
-                        isLoading = false,
-                        errorMessage = com.notel.notel.util.FriendlyErrors.forBackendError(
-                            TAG, e, com.notel.notel.util.FriendlyErrors.Kind.AUTH
-                        ).banner
-                    )
-                }
-            }
-        }
-    }
 
     private fun calculateDebtAtDate(date: String, history: List<Pair<String, Int>>): Int {
         val targetHours = 8.0
@@ -1343,8 +809,7 @@ class FitbitViewModel @Inject constructor(
     suspend fun exportMetricsCsv(days: Int, includeSpikes: Boolean): String = withContext(Dispatchers.IO) {
         val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
         val hasHC = healthConnectManager.hasAllPermissions()
-        val token = preferences.fitbitToken.first()
-        
+
         val today = java.time.LocalDate.now()
         val resolvedDays = if (days == -1) 3650 else days
         
@@ -1369,70 +834,6 @@ class FitbitViewModel @Inject constructor(
                 // Sleep details
                 val hcSleep = healthConnectManager.readHistoricalSleepWithDeep(resolvedDays)
                 hcSleep.forEach { summary ->
-                    sleepDurationMap[summary.date] = summary.minutesAsleep
-                    deepSleepMap[summary.date] = summary.deepMinutes
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("FitbitViewModel", "exportMetricsCsv failed", e)
-            }
-        }
-        
-        // ── Get Fitbit Data ──
-        if (token.isNotBlank()) {
-            try {
-                // Fetch Sleep list from Fitbit (contains stages and deep minutes)
-                val client = okhttp3.OkHttpClient()
-                val todayStr = today.toString()
-                val sleepHistRequest = okhttp3.Request.Builder()
-                    .url("https://api.fitbit.com/1.2/user/-/sleep/list.json?beforeDate=$todayStr&sort=desc&offset=0&limit=$resolvedDays")
-                    .header("Authorization", "Bearer $token")
-                    .build()
-                
-                client.newCall(sleepHistRequest).execute().use { response ->
-                    if (response.isSuccessful) {
-                        val body = response.body?.string() ?: ""
-                        val root = json.parseToJsonElement(body).jsonObject
-                        val sleepArray = root["sleep"]?.jsonArray ?: emptyList()
-                        sleepArray.forEach { el ->
-                            val obj = el.jsonObject
-                            val date = obj["dateOfSleep"]?.jsonPrimitive?.content ?: ""
-                            val minAsleep = obj["minutesAsleep"]?.jsonPrimitive?.intOrNull ?: 0
-                            val summary = obj["levels"]?.jsonObject?.get("summary")?.jsonObject
-                            val deep = summary?.get("deep")?.jsonObject?.get("minutes")?.jsonPrimitive?.intOrNull ?: 0
-                            if (date.isNotBlank() && minAsleep > 0) {
-                                sleepDurationMap[date] = minAsleep
-                                deepSleepMap[date] = deep
-                            }
-                        }
-                    }
-                }
-                
-                // Fitbit heart rate / resting HR fallback
-                val limitDays = if (days == -1) 365 else days // Fitbit heart rate 6m URL or daysd.json (limit to 365 days max for fallback)
-                val hrHistRequest = okhttp3.Request.Builder()
-                    .url("https://api.fitbit.com/1/user/-/activities/heart/date/today/${limitDays}d.json")
-                    .header("Authorization", "Bearer $token")
-                    .build()
-                
-                client.newCall(hrHistRequest).execute().use { response ->
-                    if (response.isSuccessful) {
-                        val body = response.body?.string() ?: ""
-                        val root = json.parseToJsonElement(body).jsonObject
-                        root["activities-heart"]?.jsonArray?.forEach { el ->
-                            val obj = el.jsonObject
-                            val date = obj["dateTime"]?.jsonPrimitive?.content ?: ""
-                            val valObj = obj["value"]?.jsonObject
-                            val rhr = valObj?.get("restingHeartRate")?.jsonPrimitive?.intOrNull ?: 0
-                            if (date.isNotBlank() && rhr > 0) {
-                                if (!avgHrMap.containsKey(date)) {
-                                    avgHrMap[date] = rhr
-                                }
-                            }
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("FitbitViewModel", "exportMetricsCsv failed", e)
             }
         }
         
