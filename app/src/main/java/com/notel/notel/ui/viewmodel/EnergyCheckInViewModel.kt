@@ -35,6 +35,14 @@ data class EnergyCheckInUiState(
 /** Identifies energy check-in entries among the Mood & Energy category's rows. */
 const val ENERGY_CHECKIN_SOURCE = "Energy check-in"
 
+/**
+ * Reserved tag applied to every energy check-in entry (founder-specified text,
+ * Sep 30 2026). The tag is locked on these entries: it cannot be removed,
+ * replaced, or edited by the user. Only entries whose source is
+ * [ENERGY_CHECKIN_SOURCE] carry it.
+ */
+const val ENERGY_CHECKIN_TAG = "Daily Ranking"
+
 /** Seeded "Mood & Energy" category; resolved by slug at runtime with this as fallback id. */
 const val ENERGY_CATEGORY_SLUG = "mood"
 const val ENERGY_CATEGORY_FALLBACK_ID = 6
@@ -125,6 +133,7 @@ class EnergyCheckInViewModel @Inject constructor(
                     LogEntry(
                         categoryId = energyCategoryId,
                         body = "Feeling: $level/5 Today",
+                        chips = org.json.JSONArray(listOf(ENERGY_CHECKIN_TAG)).toString(),
                         source = ENERGY_CHECKIN_SOURCE
                     )
                 )

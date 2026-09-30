@@ -22,6 +22,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.notel.notel.data.local.entity.LogEntry
 import com.notel.notel.data.repository.CategoryRepository
 import com.notel.notel.data.repository.LogRepository
+import com.notel.notel.ui.viewmodel.ENERGY_CHECKIN_SOURCE
+import com.notel.notel.ui.viewmodel.ENERGY_CHECKIN_TAG
 import com.notel.notel.ui.theme.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import androidx.lifecycle.ViewModel
@@ -75,8 +77,15 @@ class EntryDetailViewModel @Inject constructor(
         }
         viewModelScope.launch {
             val catName = categories.value.find { it.id == categoryId }?.name ?: ""
-            val updatedChips = if (catName.isNotBlank()) listOf(catName) else emptyList()
-            val updatedChipsJson = org.json.JSONArray(updatedChips).toString()
+            // Energy check-in entries keep their locked "Daily Ranking" tag no
+            // matter what else changes on the entry; all other entries keep the
+            // previous behavior (chips become the new category name).
+            val updatedChipsJson = if (current.source == ENERGY_CHECKIN_SOURCE) {
+                dailyRankingTagJson()
+            } else {
+                val updatedChips = if (catName.isNotBlank()) listOf(catName) else emptyList()
+                org.json.JSONArray(updatedChips).toString()
+            }
 
             val updated = current.copy(
                 categoryId = categoryId,
@@ -94,10 +103,34 @@ class EntryDetailViewModel @Inject constructor(
             val updated = current.copy(
                 body = body,
                 manualText = manualText,
+                // Belt and suspenders: the locked tag can never be dropped by an
+                // edit-save round trip, even if chips arrive mangled.
+                chips = withCheckInTagIfNeeded(current),
                 updatedAt = System.currentTimeMillis(),
                 syncState = com.notel.notel.data.local.entity.EntrySyncState.DIRTY
             )
             logRepository.updateEntry(updated)
+        }
+    }
+
+    // ── Locked "Daily Ranking" tag helpers ────────────────────────────────
+    // Energy check-in entries (source "Energy check-in") carry the reserved
+    // "Daily Ranking" tag, which the user cannot remove, replace, or edit.
+    // Every save path for these entries re-applies it, so no edit flow can
+    // drop it. Additive only: other entries' chips are never touched.
+
+    private fun dailyRankingTagJson(): String =
+        org.json.JSONArray(listOf(ENERGY_CHECKIN_TAG)).toString()
+
+    private fun withCheckInTagIfNeeded(current: LogEntry): String {
+        if (current.source != ENERGY_CHECKIN_SOURCE) return current.chips
+        return try {
+            val arr = org.json.JSONArray(current.chips)
+            val labels = (0 until arr.length()).map { arr.optString(it) }
+            if (ENERGY_CHECKIN_TAG in labels) current.chips
+            else org.json.JSONArray(labels + ENERGY_CHECKIN_TAG).toString()
+        } catch (_: Exception) {
+            dailyRankingTagJson()
         }
     }
 }
@@ -157,6 +190,7 @@ fun EntryDetailScreen(
                 verticalArrangement = Arrangement.spacedBy(20.dp) // More spacious
             ) {
                 val isMedTabEntry = e.source == "Medications Tab" || e.chips.contains("Medication Tab")
+                val isCheckInEntry = e.source == ENERGY_CHECKIN_SOURCE
                 if (isMedTabEntry) {
                     Box(
                         modifier = Modifier
@@ -286,6 +320,7 @@ fun EntryDetailScreen(
                             @OptIn(ExperimentalLayoutApi::class)
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 chips.forEach { chip ->
+                                    val isLockedTag = isCheckInEntry && chip == ENERGY_CHECKIN_TAG
                                     Box(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(20.dp))
@@ -293,9 +328,28 @@ fun EntryDetailScreen(
                                             .border(1.dp, NotelPrimary.copy(alpha = 0.25f), RoundedCornerShape(20.dp))
                                             .padding(horizontal = 12.dp, vertical = 6.dp)
                                     ) {
-                                        Text(chip, color = NotelTextPrimary, fontSize = 13.sp)
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            if (isLockedTag) {
+                                                Icon(
+                                                    Icons.Default.Lock,
+                                                    contentDescription = null,
+                                                    tint = NotelTextSecondary,
+                                                    modifier = Modifier.size(12.dp)
+                                                )
+                                                Spacer(Modifier.width(4.dp))
+                                            }
+                                            Text(chip, color = NotelTextPrimary, fontSize = 13.sp)
+                                        }
                                     }
                                 }
+                            }
+                            if (isCheckInEntry) {
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "This tag was added automatically and cannot be changed.",
+                                    color = NotelTextSecondary,
+                                    fontSize = 12.sp
+                                )
                             }
                         }
                     }
