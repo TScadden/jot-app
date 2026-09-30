@@ -2,6 +2,21 @@ package com.notel.notel.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.location.Geocoder
+import android.location.Location
+import androidx.core.content.ContextCompat
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import com.google.android.gms.tasks.CancellationTokenSource
+import com.google.android.gms.tasks.Task
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeout
+import java.util.Locale
+import kotlin.coroutines.resume
 import com.notel.notel.data.local.entity.Category
 import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.repository.CategoryRepository
@@ -43,6 +58,9 @@ data class BodyLoadState(
     val isHealthConnected: Boolean = true,
     val weather: WeatherState = WeatherState(),
     val weatherLoading: Boolean = false,
+    // True when the in-app location rationale card should be shown. The system
+    // permission prompt only ever fires from the user's explicit tap on it.
+    val showLocationRationale: Boolean = false,
     val avgHeartRate: Int = 0,
     val currentStreak: Int = 0,
     val bestStreak: Int = 0,
@@ -71,7 +89,8 @@ class BodyLoadViewModel @Inject constructor(
     private val logRepository: LogRepository,
     private val categoryRepository: CategoryRepository,
     private val preferences: NotelPreferences,
-    private val syncManager: com.notel.notel.data.sync.SyncManager
+    private val syncManager: com.notel.notel.data.sync.SyncManager,
+    @ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(BodyLoadState())
@@ -325,7 +344,8 @@ class BodyLoadViewModel @Inject constructor(
             }
         }
         selectDay(LocalDate.now().toString())
-        fetchWeather()
+        refreshWeather()
+        maybeShowLocationRationale()
     }
 
     private data class MetricsUpdate(
@@ -440,6 +460,124 @@ class BodyLoadViewModel @Inject constructor(
         }
     }
 
+    /** True when the app may read approximate device location for weather. */
+    fun hasWeatherLocationPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(appContext, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(appContext, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+    }
+
+    /**
+     * Entry point for weather loading: GPS first when permitted, otherwise the
+     * saved-location / IP path. The IP fallback and the honest unavailable
+     * state are untouched; GPS is strictly an upgrade.
+     */
+    private fun refreshWeather() {
+        if (hasWeatherLocationPermission()) {
+            fetchGpsLocation()
+        } else {
+            fetchWeather()
+        }
+    }
+
+    /**
+     * Shows the in-app rationale card (rendered by the screen) when location
+     * has never been asked for. The system prompt only fires from the user's
+     * explicit tap on "Share location", never automatically.
+     */
+    private fun maybeShowLocationRationale() {
+        viewModelScope.launch {
+            if (!hasWeatherLocationPermission() && !preferences.weatherLocationPromptSeen.first()) {
+                _uiState.update { it.copy(showLocationRationale = true) }
+            }
+        }
+    }
+
+    fun dismissLocationRationale() {
+        viewModelScope.launch {
+            preferences.setWeatherLocationPromptSeen(true)
+            _uiState.update { it.copy(showLocationRationale = false) }
+        }
+    }
+
+    fun onLocationPermissionResult(granted: Boolean) {
+        viewModelScope.launch {
+            preferences.setWeatherLocationPromptSeen(true)
+            _uiState.update { it.copy(showLocationRationale = false) }
+            if (granted) {
+                fetchGpsLocation()
+            }
+            // Denied: weather keeps working through the IP fallback path that
+            // already ran at init. No nagging, no fake data.
+        }
+    }
+
+    /**
+     * One-shot GPS fix for weather, then the normal fetch. Any failure
+     * (timeout, no fix, Geocoder down) falls through to fetchWeather(), which
+     * keeps the IP fallback and the honest unavailable state.
+     */
+    private fun fetchGpsLocation() {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            // Show the skeleton (not the honest unavailable state) while the
+            // one-shot fix is in flight; fetchWeather() clears it in finally.
+            _uiState.update { it.copy(weatherLoading = true) }
+            try {
+                if (!hasWeatherLocationPermission()) {
+                    fetchWeather()
+                    return@launch
+                }
+                val client = LocationServices.getFusedLocationProviderClient(appContext)
+                var location: Location? = null
+                try {
+                    location = withTimeout(GPS_TIMEOUT_MS) {
+                        awaitLocationTask(
+                            client.getCurrentLocation(
+                                Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+                                CancellationTokenSource().token
+                            )
+                        )
+                    }
+                } catch (e: Exception) {
+                    // Timeout or cancellation: fall through to lastLocation.
+                }
+                if (location == null) {
+                    location = awaitLocationTask(client.lastLocation)
+                }
+                if (location != null) {
+                    updateLocation(
+                        location.latitude,
+                        location.longitude,
+                        geocodeCity(location.latitude, location.longitude)
+                    )
+                } else {
+                    fetchWeather()
+                }
+            } catch (e: SecurityException) {
+                // Permission revoked mid-flight: IP fallback path.
+                fetchWeather()
+            }
+        }
+    }
+
+    private suspend fun awaitLocationTask(task: Task<Location?>): Location? =
+        suspendCancellableCoroutine { cont ->
+            task.addOnSuccessListener { cont.resume(it) }
+                .addOnFailureListener { cont.resume(null) }
+        }
+
+    @Suppress("DEPRECATION") // Blocking Geocoder works on all API levels; called on Dispatchers.IO.
+    private fun geocodeCity(lat: Double, lon: Double): String {
+        return try {
+            Geocoder(appContext, Locale.getDefault())
+                .getFromLocation(lat, lon, 1)
+                ?.firstOrNull()
+                ?.locality
+                ?: "Current Location"
+        } catch (e: Exception) {
+            "Current Location"
+        }
+    }
+
     private fun fetchWeather() {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             _uiState.update { it.copy(weatherLoading = true) }
@@ -471,12 +609,17 @@ class BodyLoadViewModel @Inject constructor(
     }
 
     fun retryWeather() {
-        fetchWeather()
+        refreshWeather()
     }
 
     fun markTheorySeen() {
         viewModelScope.launch {
             preferences.setCupTheorySeen(true)
         }
+    }
+
+    companion object {
+        // One GPS fix must never hold weather hostage: past this, IP fallback runs.
+        private const val GPS_TIMEOUT_MS = 12_000L
     }
 }

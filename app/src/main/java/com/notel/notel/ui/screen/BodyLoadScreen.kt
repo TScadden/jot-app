@@ -48,6 +48,9 @@ import com.notel.notel.ui.viewmodel.EventCounterDto
 import com.notel.notel.data.local.entity.Category
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.Manifest
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -75,6 +78,15 @@ fun BodyLoadScreen(
     todayViewModel: com.notel.notel.ui.viewmodel.TodayViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
+
+    // Location permission is requested ONLY from the user's explicit tap on the
+    // in-app rationale card ("Share location"). Weather requests COARSE
+    // (approximate) only; FINE is never requested here.
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        viewModel.onLocationPermissionResult(granted)
+    }
     val quickLogState by quickLogViewModel.uiState.collectAsState()
     val todayState by todayViewModel.uiState.collectAsState()
     val habits by habitViewModel.habits.collectAsState()
@@ -903,6 +915,15 @@ fun BodyLoadScreen(
                     .padding(bottom = 64.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                if (state.showLocationRationale) {
+                    LocationRationaleCard(
+                        onShareLocation = {
+                            locationPermissionLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+                        },
+                        onDismiss = { viewModel.dismissLocationRationale() }
+                    )
+                    Spacer(Modifier.height(16.dp))
+                }
                 val weather = state.weather
                 if (state.weatherLoading) {
                     // Fetch still in flight: skeleton rows.
@@ -1782,6 +1803,57 @@ fun BodyLoadScreen(
                             lineHeight = 18.sp
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+/** In-app rationale shown before the system location prompt. All copy is dash-free. */
+@Composable
+private fun LocationRationaleCard(
+    onShareLocation: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    GlassyCard(
+        shape = RoundedCornerShape(20.dp),
+        color = NotelSurfaceHigh.copy(alpha = 0.3f),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("📍", fontSize = 24.sp)
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    text = "Use your location for weather?",
+                    color = NotelTextPrimary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "Share your approximate location so weather reflects where you actually are instead of guessing from your network. You can change this anytime in Settings.",
+                color = NotelTextSecondary,
+                fontSize = 13.sp
+            )
+            Spacer(Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Button(
+                    onClick = onShareLocation,
+                    colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Share location", color = Color.White, fontWeight = FontWeight.Medium)
+                }
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Not now", color = NotelTextSecondary, fontWeight = FontWeight.Medium)
                 }
             }
         }

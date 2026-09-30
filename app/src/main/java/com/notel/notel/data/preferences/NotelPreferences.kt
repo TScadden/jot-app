@@ -120,6 +120,7 @@ open class NotelPreferences(
         val LAST_KNOWN_LAT = doublePreferencesKey("last_known_lat")
         val LAST_KNOWN_LON = doublePreferencesKey("last_known_lon")
         val LAST_KNOWN_CITY = stringPreferencesKey("last_known_city")
+        val WEATHER_LOCATION_PROMPT_SEEN = booleanPreferencesKey("weather_location_prompt_seen")
         val HIGHEST_CUP_DAILY = intPreferencesKey("highest_cup_daily")
         val USER_CONTEXT_HIDDEN = booleanPreferencesKey("user_context_hidden")
         val HAS_HISTORICAL_BODY_LOAD = booleanPreferencesKey("has_historical_body_load")
@@ -385,6 +386,7 @@ open class NotelPreferences(
     val lastKnownLat: Flow<Double> = context.dataStore.data.map { it[LAST_KNOWN_LAT] ?: 0.0 }
     val lastKnownLon: Flow<Double> = context.dataStore.data.map { it[LAST_KNOWN_LON] ?: 0.0 }
     val lastKnownCity: Flow<String?> = context.dataStore.data.map { it[LAST_KNOWN_CITY] }
+    val weatherLocationPromptSeen: Flow<Boolean> = context.dataStore.data.map { it[WEATHER_LOCATION_PROMPT_SEEN] ?: false }
 
     val onboardingComplete: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[ONBOARDING_COMPLETE] ?: false
@@ -1030,6 +1032,10 @@ open class NotelPreferences(
             it[LAST_KNOWN_LON] = lon
             it[LAST_KNOWN_CITY] = city
         }
+    }
+
+    suspend fun setWeatherLocationPromptSeen(seen: Boolean) {
+        context.dataStore.edit { it[WEATHER_LOCATION_PROMPT_SEEN] = seen }
     }
 
     suspend fun setTipsAndTricksTopics(topicsJson: String) {
