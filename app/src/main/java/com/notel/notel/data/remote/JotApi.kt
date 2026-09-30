@@ -141,13 +141,15 @@ data class CoachRequest(
 @Serializable
 data class AuthRequest(
     val email: String,
-    val password: String
+    val password: String,
+    val ageConfirmed: Boolean = false
 )
 
 @Serializable
 data class GoogleAuthRequest(
     val idToken: String,
-    val isRegisterMode: Boolean
+    val isRegisterMode: Boolean,
+    val ageConfirmed: Boolean = false
 )
 
 @Serializable

@@ -51,6 +51,9 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
 
+/** Age gate: shown when a signup attempt is made without the 13+ attestation checked. */
+private const val AGE_GATE_BLOCK_MESSAGE = "Tabs is for people 13 and older. You cannot create an account yet."
+
 @HiltViewModel
 class LoginViewModel @Inject constructor(
     private val preferences: NotelPreferences,
@@ -190,12 +193,12 @@ class LoginViewModel @Inject constructor(
         }
     }
 
-    fun loginWithGoogleAccount(idToken: String, isRegisterMode: Boolean) {
+    fun loginWithGoogleAccount(idToken: String, isRegisterMode: Boolean, ageConfirmed: Boolean) {
         viewModelScope.launch {
             isLoading = true
             errorMsg = null
             try {
-                val response = tabsApi.googleLogin(GoogleAuthRequest(idToken, isRegisterMode))
+                val response = tabsApi.googleLogin(GoogleAuthRequest(idToken, isRegisterMode, ageConfirmed))
                 val body = response.body()
                 
                 if (response.isSuccessful && body != null && body.token?.isNotBlank() == true) {
@@ -247,7 +250,7 @@ class LoginViewModel @Inject constructor(
         }
     }
 
-    fun register(email: String, pass: String) {
+    fun register(email: String, pass: String, ageConfirmed: Boolean) {
         if (email.isBlank() || pass.isBlank()) {
             errorMsg = "Please fill in all fields"
             return
@@ -258,7 +261,7 @@ class LoginViewModel @Inject constructor(
             errorMsg = null
             
             try {
-                val response = tabsApi.register(AuthRequest(email, pass))
+                val response = tabsApi.register(AuthRequest(email, pass, ageConfirmed))
                 val body = response.body()
                 
                 if (response.isSuccessful && body != null && body.token?.isNotBlank() == true) {
@@ -302,6 +305,7 @@ fun LoginScreen(
     var isRegisterMode by remember { mutableStateOf(initialMode == "register") }
     var isForgotPasswordMode by remember { mutableStateOf(false) }
     var passwordVisible by remember { mutableStateOf(false) }
+    var ageConfirmed by remember { mutableStateOf(false) } // 13+ attestation, unchecked by default
     
     val context = androidx.compose.ui.platform.LocalContext.current
     val loggedIn = viewModel.isLoggedIn
@@ -329,7 +333,7 @@ fun LoginScreen(
                 val account: GoogleSignInAccount = task.getResult(ApiException::class.java)
                 val idToken = account.idToken
                 if (!idToken.isNullOrBlank()) {
-                    viewModel.loginWithGoogleAccount(idToken, isRegisterMode)
+                    viewModel.loginWithGoogleAccount(idToken, isRegisterMode, ageConfirmed)
                 } else {
                     viewModel.setError("Could not get Google ID token")
                 }
@@ -500,13 +504,44 @@ fun LoginScreen(
                             Spacer(Modifier.height(8.dp))
                         }
 
+                        // AGE GATE CHECKBOX (shown only on the Sign Up form, above the Sign Up button)
+                        if (isRegisterMode && !isForgotPasswordMode) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { ageConfirmed = !ageConfirmed }
+                                    .padding(vertical = 2.dp)
+                            ) {
+                                Checkbox(
+                                    checked = ageConfirmed,
+                                    onCheckedChange = { ageConfirmed = it },
+                                    colors = CheckboxDefaults.colors(
+                                        checkedColor = NotelPrimary,
+                                        uncheckedColor = NotelTextSecondary.copy(alpha = 0.6f),
+                                        checkmarkColor = NotelBackground
+                                    )
+                                )
+                                Text(
+                                    text = "I confirm I am 13 or older.",
+                                    fontSize = 13.sp,
+                                    color = NotelTextPrimary
+                                )
+                            }
+                            Spacer(Modifier.height(4.dp))
+                        }
+
                         // MAIN ACTION BUTTON (Log In, Sign Up, or Reset)
                         Button(
                             onClick = {
                                 if (isForgotPasswordMode) {
                                     viewModel.forgotPassword(email)
                                 } else if (isRegisterMode) {
-                                    viewModel.register(email, password)
+                                    if (!ageConfirmed) {
+                                        viewModel.setError(AGE_GATE_BLOCK_MESSAGE)
+                                    } else {
+                                        viewModel.register(email, password, ageConfirmed)
+                                    }
                                 } else {
                                     viewModel.login(email, password)
                                 }
@@ -543,6 +578,7 @@ fun LoginScreen(
                                     isForgotPasswordMode = false
                                 } else {
                                     isRegisterMode = !isRegisterMode
+                                    ageConfirmed = false // reset the 13+ attestation when switching modes
                                 }
                                 viewModel.setError(null)
                             }
@@ -578,13 +614,17 @@ fun LoginScreen(
                         // GOOGLE AUTH BUTTON (ON BOTTOM)
                         Button(
                             onClick = {
-                                try {
-                                    googleSignInClient.signOut().addOnCompleteListener {
-                                        val signInIntent = googleSignInClient.signInIntent
-                                        googleAccountLauncher.launch(signInIntent)
+                                if (isRegisterMode && !ageConfirmed) {
+                                    viewModel.setError(AGE_GATE_BLOCK_MESSAGE)
+                                } else {
+                                    try {
+                                        googleSignInClient.signOut().addOnCompleteListener {
+                                            val signInIntent = googleSignInClient.signInIntent
+                                            googleAccountLauncher.launch(signInIntent)
+                                        }
+                                    } catch (e: Exception) {
+                                        viewModel.setError("Could not launch Google Sign In: ${e.message}")
                                     }
-                                } catch (e: Exception) {
-                                    viewModel.setError("Could not launch Google Sign In: ${e.message}")
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh),
