@@ -75,6 +75,10 @@ website/dist/
 **/*.pub
 **/*.cert
 **/cert.pub
+# Release keystores must never be committed (debug keystore is already tracked)
+*.jks
+*.keystore
+!shared-debug.keystore
 .env
 .env.*
 
