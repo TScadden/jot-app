@@ -142,14 +142,14 @@ fun HistoryScreen(
                     val isAllSelected = categoryFilter == null
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(Radii.chip))
                             .background(if (isAllSelected) NotelPrimary else NotelSurface)
                             .border(
                                 width = 1.dp,
                                 color = if (isAllSelected) NotelPrimary
                                     else if (isLightTheme) NotelBorder
                                     else NotelPrimary.copy(alpha = 0.25f),
-                                shape = RoundedCornerShape(10.dp)
+                                shape = RoundedCornerShape(Radii.chip)
                             )
                             .clickable { viewModel.setCategoryFilter(null) }
                             .padding(horizontal = 16.dp, vertical = 8.dp)
@@ -176,22 +176,21 @@ fun HistoryScreen(
                     }
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(Radii.chip))
                             .background(if (isSelected) catColor else NotelSurface)
                             .border(
                                 width = 1.dp,
                                 color = if (isSelected) catColor else catColor.copy(alpha = 0.35f),
-                                shape = RoundedCornerShape(10.dp)
+                                shape = RoundedCornerShape(Radii.chip)
                             )
                             .clickable { viewModel.setCategoryFilter(if (isSelected) null else cat.id) }
                             .padding(horizontal = 16.dp, vertical = 8.dp)
                     ) {
                         Text(
-                            cat.name.uppercase(),
+                            cat.name,
                             color = if (isSelected) LegacyDarkChipInk else NotelTextSecondary,
                             fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.8.sp
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
@@ -282,13 +281,13 @@ fun HistoryScreen(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = item.insight.type.uppercase(),
+                                            text = item.insight.type.lowercase().replaceFirstChar { it.uppercase() },
                                             color = NotelPrimary,
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 11.sp
                                         )
                                         Text(
-                                            text = item.category?.name?.uppercase() ?: (item.entry?.let { "CATEGORY ID ${it.categoryId}" } ?: "UNCATEGORIZED"),
+                                            text = item.category?.name ?: (item.entry?.let { "Category ${it.categoryId}" } ?: "Uncategorized"),
                                             color = NotelTextSecondary,
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold
@@ -389,17 +388,16 @@ private fun EntryCard(
                     if (category != null && catColor != null) {
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
+                                .clip(RoundedCornerShape(8.dp))
                                 .background(catColor.copy(alpha = 0.15f))
-                                .border(1.dp, catColor.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+                                .border(1.dp, catColor.copy(alpha = 0.45f), RoundedCornerShape(8.dp))
                                 .padding(horizontal = 8.dp, vertical = 3.dp)
                         ) {
                             Text(
-                                text = category.name.uppercase(),
+                                text = category.name,
                                 color = tagContentColor(catColor),
                                 fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.8.sp
+                                fontWeight = FontWeight.Bold
                             )
                         }
                         Spacer(Modifier.width(8.dp))
@@ -414,7 +412,7 @@ private fun EntryCard(
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(
-                            "VOICE AI",
+                            "Voice AI",
                             color = NotelPrimary.copy(alpha = 0.75f),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,

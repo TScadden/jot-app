@@ -92,7 +92,7 @@ fun TrendsScreen(
                         Icon(Icons.Default.TrendingUp, null, tint = NotelPrimary, modifier = Modifier.size(32.dp))
                         Spacer(Modifier.width(16.dp))
                         Column {
-                            Text("LOG VOLUME", color = NotelPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
+                            SectionLabel("Log volume", color = NotelPrimary)
                             Text("${state.totalLogs} Total Entries", color = NotelTextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                             if (state.selectedHour != null) {
                                 Text("Tap to reset filter", color = NotelPrimary.copy(alpha = 0.7f), fontSize = 11.sp)
@@ -101,103 +101,112 @@ fun TrendsScreen(
                     }
                 }
 
-                // Day Selector
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = { viewModel.previousDay() }) {
-                        Icon(Icons.Default.ChevronLeft, "Previous Day", tint = NotelTextPrimary)
-                    }
-                    Text(
-                        text = state.dateLabel,
-                        color = NotelTextPrimary,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
-                        modifier = Modifier.clickable { viewModel.clearSelection() }
+                if (state.totalLogs == 0) {
+                    EmptyState(
+                        title = "No logs yet",
+                        body = "Log your first entry from Quick Log, then come back here to see your patterns.",
+                        icon = Icons.Default.TrendingUp,
+                        modifier = Modifier.fillMaxWidth()
                     )
-                    IconButton(onClick = { viewModel.nextDay() }, enabled = state.dayOffset < 0) {
-                        Icon(
-                            Icons.Default.ChevronRight, 
-                            "Next Day", 
-                            tint = if (state.dayOffset < 0) NotelTextPrimary else NotelTextSecondary.copy(alpha = 0.5f)
-                        )
-                    }
-                }
-                
-                Column {
-                    Text(
-                        text = if (state.selectedHour != null) "Logs at ${formatHour(state.selectedHour!!)}" else "Log Activity by Hour",
-                        color = NotelPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 0.6.sp
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Box(
-                        modifier = Modifier.fillMaxWidth().height(220.dp)
-                            .clip(RoundedCornerShape(16.dp)).background(NotelSurface)
-                            .border(1.dp, NotelPrimary.copy(alpha = 0.18f), RoundedCornerShape(16.dp)).padding(16.dp)
+                } else {
+                    // Day Selector
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        HourlyDensityChart(data = state.frequencyByHour, selectedHour = state.selectedHour, onHourSelected = { viewModel.selectHour(it) })
-                    }
-                }
-
-                // Category Distribution
-                if (state.selectedHour == null) {
-                    Text("Category Focus", color = NotelTextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        state.categories.forEach { cat ->
-                            val count = state.frequencyByCategory[cat.id] ?: 0
-                            if (count > 0) {
-                                CategoryProgressRow(
-                                    name = cat.name,
-                                    count = count,
-                                    total = state.totalLogs,
-                                    colorHex = cat.colorHex
-                                )
-                            }
+                        IconButton(onClick = { viewModel.previousDay() }) {
+                            Icon(Icons.Default.ChevronLeft, "Previous Day", tint = NotelTextPrimary)
+                        }
+                        Text(
+                            text = state.dateLabel,
+                            color = NotelTextPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            modifier = Modifier.clickable { viewModel.clearSelection() }
+                        )
+                        IconButton(onClick = { viewModel.nextDay() }, enabled = state.dayOffset < 0) {
+                            Icon(
+                                Icons.Default.ChevronRight, 
+                                "Next Day", 
+                                tint = if (state.dayOffset < 0) NotelTextPrimary else NotelTextSecondary.copy(alpha = 0.5f)
+                            )
                         }
                     }
-                }
-
-                if (state.selectedHour != null && state.filteredLogs.isNotEmpty()) {
-                    Text("Entries for this hour", color = NotelPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 0.6.sp)
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        state.filteredLogs.forEach { entry ->
-                            Box(
-                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                                    .background(NotelSurface).border(1.dp, NotelPrimary.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
-                                    .clickable { onNavigateToEntry(entry.id) }.padding(12.dp)
-                            ) {
-                                Column {
-                                    Text(SimpleDateFormat("h:mm a, MMM dd", Locale.getDefault()).format(Date(entry.timestamp)), color = NotelPrimary.copy(alpha = 0.6f), fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                                    Spacer(Modifier.height(4.dp))
-                                    Text(entry.body, color = NotelTextPrimary, fontSize = 14.sp)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (state.selectedSymptom != null && state.logsForSymptom.isNotEmpty()) {
-                    Text("Logs for '${state.selectedSymptom}'", color = NotelPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 0.6.sp)
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        state.logsForSymptom.forEach { entry ->
-                            Box(
-                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                                    .background(NotelSurface).border(1.dp, NotelPrimary.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
-                                    .clickable { onNavigateToEntry(entry.id) }.padding(12.dp)
-                            ) {
-                                Column {
-                                    Text(SimpleDateFormat("h:mm a, MMM dd", Locale.getDefault()).format(Date(entry.timestamp)), color = NotelPrimary.copy(alpha = 0.6f), fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                                    Spacer(Modifier.height(4.dp))
-                                    Text(entry.body, color = NotelTextPrimary, fontSize = 14.sp)
-                                }
-                            }
-                        }
-                    }
-                }
                 
-                Spacer(Modifier.height(100.dp))
+                    Column {
+                        SectionLabel(
+                            text = if (state.selectedHour != null) "Logs at ${formatHour(state.selectedHour!!)}" else "Log activity by hour",
+                            color = NotelPrimary
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Box(
+                            modifier = Modifier.fillMaxWidth().height(220.dp)
+                                .clip(RoundedCornerShape(16.dp)).background(NotelSurface)
+                                .border(1.dp, NotelPrimary.copy(alpha = 0.18f), RoundedCornerShape(16.dp)).padding(16.dp)
+                        ) {
+                            HourlyDensityChart(data = state.frequencyByHour, selectedHour = state.selectedHour, onHourSelected = { viewModel.selectHour(it) })
+                        }
+                    }
+
+                    // Category Distribution
+                    if (state.selectedHour == null) {
+                        Text("Category Focus", color = NotelTextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            state.categories.forEach { cat ->
+                                val count = state.frequencyByCategory[cat.id] ?: 0
+                                if (count > 0) {
+                                    CategoryProgressRow(
+                                        name = cat.name,
+                                        count = count,
+                                        total = state.totalLogs,
+                                        colorHex = cat.colorHex
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (state.selectedHour != null && state.filteredLogs.isNotEmpty()) {
+                        SectionLabel("Entries for this hour", color = NotelPrimary)
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            state.filteredLogs.forEach { entry ->
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                                        .background(NotelSurface).border(1.dp, NotelPrimary.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
+                                        .clickable { onNavigateToEntry(entry.id) }.padding(12.dp)
+                                ) {
+                                    Column {
+                                        Text(SimpleDateFormat("h:mm a, MMM dd", Locale.getDefault()).format(Date(entry.timestamp)), color = NotelPrimary.copy(alpha = 0.6f), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(entry.body, color = NotelTextPrimary, fontSize = 14.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (state.selectedSymptom != null && state.logsForSymptom.isNotEmpty()) {
+                        SectionLabel("Logs for '${state.selectedSymptom}'", color = NotelPrimary)
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            state.logsForSymptom.forEach { entry ->
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                                        .background(NotelSurface).border(1.dp, NotelPrimary.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
+                                        .clickable { onNavigateToEntry(entry.id) }.padding(12.dp)
+                                ) {
+                                    Column {
+                                        Text(SimpleDateFormat("h:mm a, MMM dd", Locale.getDefault()).format(Date(entry.timestamp)), color = NotelPrimary.copy(alpha = 0.6f), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(entry.body, color = NotelTextPrimary, fontSize = 14.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(100.dp))
+                }
             }
         }
         
@@ -209,7 +218,7 @@ fun TrendsScreen(
                         .border(1.dp, NotelPrimary.copy(alpha = 0.25f), RoundedCornerShape(20.dp)).padding(24.dp)
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("MOST USED SYMPTOMS", color = NotelPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 0.8.sp)
+                        SectionLabel("Most used symptoms", color = NotelPrimary)
                         Spacer(Modifier.height(16.dp))
                         if (state.topChips.isEmpty()) {
                             Text("No symptoms logged yet.", color = NotelTextSecondary, fontSize = 14.sp)
@@ -286,7 +295,8 @@ fun HourlyDensityChart(
                 Column(
                     modifier = Modifier
                         .fillMaxHeight()
-                        .width(32.dp)
+                        // 40dp column keeps the 12dp bar slim but thumb-tappable.
+                        .width(40.dp)
                         .clickable { onHourSelected(hour) },
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Bottom

@@ -273,11 +273,10 @@ fun QuickLogScreen(
                                     Icon(Icons.Default.Add, null, tint = NotelPrimary, modifier = Modifier.size(16.dp))
                                     Spacer(Modifier.width(4.dp))
                                     Text(
-                                        text = "ADD",
+                                        text = "Add",
                                         color = NotelTextSecondary,
                                         fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        letterSpacing = 0.5.sp
+                                        fontWeight = FontWeight.Bold
                                     )
                                 }
                             }
@@ -286,13 +285,9 @@ fun QuickLogScreen(
 
                     // ── Recent Suggestions Drawer ───────────────────────────────────────
                     if (state.recentSuggestions.isNotEmpty()) {
-                        Text(
-                            "RECENT SUGGESTIONS",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = NotelTextSecondary,
-                            modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp),
-                            letterSpacing = 0.5.sp
+                        SectionLabel(
+                            text = "Recent suggestions",
+                            modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp)
                         )
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
@@ -385,20 +380,6 @@ fun QuickLogScreen(
                 }
 
                 item {
-                    // ── Productivity Layer / Combo Preview ────────────────────────
-                    AnimatedVisibility(
-                        visible = state.manualText.isBlank() && state.selectedChips.isEmpty(),
-                        enter = fadeIn() + expandVertically(),
-                        exit = fadeOut() + shrinkVertically()
-                    ) {
-                        var isProductivityExpanded by remember { mutableStateOf(false) }
-                        Column {
-                            // Removed Counter Clock / Event Bubble
-                        }
-                    }
-                }
-
-                item {
                     AnimatedVisibility(
                         visible = state.selectedChips.isNotEmpty() || state.manualText.trim().isNotBlank() || state.saveError != null,
                         enter = fadeIn() + expandVertically(),
@@ -428,22 +409,21 @@ fun QuickLogScreen(
                                             onClick = { viewModel.saveEntry() },
                                             enabled = state.isLogEnabled,
                                             modifier = Modifier
-                                                .widthIn(min = 72.dp, max = 88.dp)
-                                                .height(36.dp)
-                                                .defaultMinSize(minWidth = 72.dp, minHeight = 48.dp),
-                                            shape = RoundedCornerShape(18.dp),
-                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                                                .widthIn(min = 72.dp)
+                                                .height(48.dp),
+                                            shape = RoundedCornerShape(Radii.chip),
+                                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
                                             colors = ButtonDefaults.buttonColors(
                                                 containerColor = activeCatColor,
                                                 disabledContainerColor = activeCatColor.copy(alpha = 0.35f),
-                                                contentColor = Color.White,
-                                                disabledContentColor = Color.White.copy(alpha = 0.5f)
+                                                contentColor = NotelOnAccent,
+                                                disabledContentColor = NotelOnAccent.copy(alpha = 0.5f)
                                             )
                                         ) {
                                             if (state.isSaving) {
                                                 CircularProgressIndicator(
                                                     modifier = Modifier.size(16.dp),
-                                                    color = Color.White,
+                                                    color = NotelOnAccent,
                                                     strokeWidth = 2.dp
                                                 )
                                             } else {
@@ -455,7 +435,7 @@ fun QuickLogScreen(
                                                         imageVector = Icons.Default.Check,
                                                         contentDescription = null,
                                                         modifier = Modifier.size(14.dp),
-                                                        tint = Color.White
+                                                        tint = NotelOnAccent
                                                     )
                                                     Text(
                                                         text = "Log",
@@ -516,9 +496,9 @@ fun QuickLogScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp)
-                        .clip(RoundedCornerShape(22.dp))
+                        .clip(RoundedCornerShape(Radii.dialog))
                         .background(NotelSurface)
-                        .border(1.dp, NotelPrimary.copy(alpha = 0.18f), RoundedCornerShape(22.dp))
+                        .border(1.dp, NotelPrimary.copy(alpha = 0.18f), RoundedCornerShape(Radii.dialog))
                         .padding(24.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -592,9 +572,9 @@ fun QuickLogScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp)
-                        .clip(RoundedCornerShape(22.dp))
+                        .clip(RoundedCornerShape(Radii.dialog))
                         .background(NotelSurface)
-                        .border(1.dp, NotelPrimary.copy(alpha = 0.18f), RoundedCornerShape(22.dp))
+                        .border(1.dp, NotelPrimary.copy(alpha = 0.18f), RoundedCornerShape(Radii.dialog))
                         .padding(24.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -668,9 +648,9 @@ fun QuickLogScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp)
-                        .clip(RoundedCornerShape(22.dp))
+                        .clip(RoundedCornerShape(Radii.dialog))
                         .background(NotelSurface)
-                        .border(1.dp, NotelPrimary.copy(alpha = 0.18f), RoundedCornerShape(22.dp))
+                        .border(1.dp, NotelPrimary.copy(alpha = 0.18f), RoundedCornerShape(Radii.dialog))
                         .padding(24.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -759,14 +739,14 @@ fun QuickLogScreen(
                                                 Column {
                                                     Text(
                                                         text = name,
-                                                        color = if (isSelected) Color.White else NotelTextPrimary,
+                                                        color = if (isSelected) NotelOnAccent else NotelTextPrimary,
                                                         fontSize = 14.sp,
                                                         fontWeight = FontWeight.Bold
                                                     )
                                                     if (suggestion.reason != null) {
                                                         Text(
                                                             text = suggestion.reason!!,
-                                                            color = if (isSelected) Color.White.copy(alpha = 0.8f) else NotelTextSecondary,
+                                                            color = if (isSelected) NotelOnAccent.copy(alpha = 0.8f) else NotelTextSecondary,
                                                             fontSize = 11.sp,
                                                             lineHeight = 14.sp
                                                         )
@@ -815,7 +795,7 @@ fun QuickLogScreen(
                                     onClick = { viewModel.addSelectedCategories() },
                                     modifier = Modifier.weight(1f),
                                     containerColor = NotelPrimary
-                                ) { Text("Add Subject", color = Color.White) }
+                                ) { Text("Add Subject", color = NotelOnAccent) }
                             }
                         }
                     }
@@ -853,8 +833,9 @@ private fun EnergyCheckInRow(
             val isSelected = selected == level
             Box(
                 modifier = Modifier
-                    .padding(horizontal = 3.dp)
-                    .size(38.dp)
+                    // 48dp pitch with a 44dp hit target — thumb-friendly one-tap row.
+                    .padding(horizontal = 2.dp)
+                    .size(44.dp)
                     .clip(CircleShape)
                     .background(if (isSelected) NotelPrimary else NotelSurface)
                     .border(
@@ -867,7 +848,7 @@ private fun EnergyCheckInRow(
             ) {
                 Text(
                     "$level",
-                    color = if (isSelected) Color.White else NotelTextPrimary,
+                    color = if (isSelected) NotelOnAccent else NotelTextPrimary,
                     fontSize = 15.sp,
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                 )
@@ -943,12 +924,12 @@ fun CategoryChip(category: Category, isSelected: Boolean, onClick: () -> Unit, o
     }
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(Radii.chip))
             .background(if (isSelected) catColor else NotelSurface)
             .border(
                 width = 1.dp,
                 color = if (isSelected) catColor else catColor.copy(alpha = 0.35f),
-                shape = RoundedCornerShape(10.dp)
+                shape = RoundedCornerShape(Radii.chip)
             )
             .combinedClickable(
                 onClick = onClick,
@@ -957,11 +938,10 @@ fun CategoryChip(category: Category, isSelected: Boolean, onClick: () -> Unit, o
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
         Text(
-            text = category.name.uppercase(),
-            color = if (isSelected) Color(0xFF0A0A0E) else NotelTextSecondary,
+            text = category.name,
+            color = if (isSelected) LegacyDarkChipInk else NotelTextSecondary,
             fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 0.8.sp
+            fontWeight = FontWeight.Bold
         )
     }
 }
@@ -991,19 +971,19 @@ private fun ChipGrid(
                     modifier = Modifier
                         .weight(1f)
                         .animateContentSize()
-                        .clip(RoundedCornerShape(16.dp))
+                        .clip(RoundedCornerShape(Radii.chip))
                         .background(chipBg)
                         .border(
                             width = 1.dp,
                             color = chipBorder,
-                            shape = RoundedCornerShape(16.dp)
+                            shape = RoundedCornerShape(Radii.chip)
                         )
                         .clickable { onToggle(chip) }
                         .padding(horizontal = 14.dp, vertical = 12.dp)
                 ) {
                     Text(
                         text = chip,
-                        color = if (isSelected) Color.White else NotelTextPrimary,
+                        color = if (isSelected) NotelOnAccent else NotelTextPrimary,
                         fontSize = 13.sp,
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                         maxLines = 1,
@@ -1028,146 +1008,6 @@ private fun ChipGrid(
     }
 }
 
-
-@Composable
-fun ProductivityDashboard(
-    loggedDays: Set<String>,
-    onToggleDay: (String) -> Unit,
-    isExpanded: Boolean,
-    onExpandedChange: (Boolean) -> Unit
-) {
-    val today = remember { LocalDate.now() }
-    val formatter = remember { DateTimeFormatter.ISO_LOCAL_DATE }
-    val sortedDates = remember(loggedDays) {
-        loggedDays.mapNotNull { 
-            try { LocalDate.parse(it, formatter) } catch (e: Exception) { null }
-        }.sorted()
-    }
-    val firstDate = sortedDates.firstOrNull() ?: today
-    val daysSinceStart = java.time.temporal.ChronoUnit.DAYS.between(firstDate, today)
-    val cyclesCompleted = if (daysSinceStart >= 0) daysSinceStart / 90 else 0
-    val gridStartDate = firstDate.plusDays((cyclesCompleted * 90))
-    
-    val daysCompleted = sortedDates.size
-    
-    var streak = 0
-    val hasAnyLogs = sortedDates.isNotEmpty()
-    if (sortedDates.contains(today)) {
-        var tempDate = today
-        while (sortedDates.contains(tempDate)) {
-            streak++
-            tempDate = tempDate.minusDays(1)
-        }
-    } else {
-        var tempDate = today.minusDays(1)
-        while (sortedDates.contains(tempDate)) {
-            streak++
-            tempDate = tempDate.minusDays(1)
-        }
-    }
-
-    val currentPhase = ((daysCompleted - 1).coerceAtLeast(0) / 30) + 1 // Phase continues indefinitely
-    
-    val loggedInCurrentCycle = sortedDates.count { !it.isBefore(gridStartDate) && it.isBefore(gridStartDate.plusDays(90)) }
-    val progressPercent = ((loggedInCurrentCycle.toFloat() / 90f) * 100).toInt().coerceAtMost(100)
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(NotelSurface)
-            .border(1.dp, NotelPrimary.copy(alpha = 0.15f), RoundedCornerShape(20.dp))
-            .padding(16.dp)
-            .animateContentSize()
-    ) {
-        Column {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onExpandedChange(!isExpanded) }
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(NotelPrimary.copy(alpha = 0.12f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Insights, contentDescription = null, tint = NotelPrimary, modifier = Modifier.size(18.dp))
-                }
-                Spacer(Modifier.width(10.dp))
-                Text("Productivity Agent", style = MaterialTheme.typography.titleMedium, color = NotelTextPrimary, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.weight(1f))
-                Icon(
-                    if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = null,
-                    tint = NotelTextSecondary
-                )
-            }
-            
-            if (isExpanded) {
-                Spacer(Modifier.height(16.dp))
-                
-                // Stat Cards
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    StatCard("Days", "$daysCompleted", Modifier.weight(1f))
-                    StatCard("Streak", "${if (hasAnyLogs) streak.coerceAtLeast(1) else 0} 🔥", Modifier.weight(1f))
-                    StatCard("Phase", "$currentPhase", Modifier.weight(1f))
-                    StatCard("Progress", "$progressPercent%", Modifier.weight(1f))
-                }
-
-                Spacer(Modifier.height(16.dp))
-                Text("90-Day Journey", style = MaterialTheme.typography.labelMedium, color = NotelTextSecondary)
-                Spacer(Modifier.height(8.dp))
-                
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    items(1) {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            for (row in 0 until 3) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    for (col in 0 until 30) {
-                                        val dayIndex = row * 30 + col
-                                        val cellDate = gridStartDate.plusDays(dayIndex.toLong())
-                                        val isDone = sortedDates.contains(cellDate)
-                                        val isToday = cellDate == today
-                                        val color = when {
-                                            isDone -> NotelSuccess
-                                            isToday -> Color(0xFF2196F3)
-                                            else -> NotelSurfaceHigh
-                                        }
-                                        Box(
-                                            modifier = Modifier
-                                                .size(20.dp)
-                                                .clip(RoundedCornerShape(4.dp))
-                                                .background(color)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .background(NotelSurfaceHigh.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-            .border(1.dp, NotelPrimary.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
-            .padding(8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(value, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = NotelTextPrimary)
-        Text(label, style = MaterialTheme.typography.labelSmall, color = NotelTextSecondary, fontSize = 10.sp, maxLines = 1)
-    }
-}
-
 @Composable
 private fun SmartActionCard(
     action: com.notel.notel.ui.viewmodel.SmartAction,
@@ -1178,9 +1018,9 @@ private fun SmartActionCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
-            .clip(RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(Radii.card))
             .background(NotelSurface)
-            .border(1.dp, NotelPrimary.copy(alpha = 0.22f), RoundedCornerShape(18.dp))
+            .border(1.dp, NotelPrimary.copy(alpha = 0.22f), RoundedCornerShape(Radii.card))
     ) {
         // Left accent strip
         Box(
@@ -1188,7 +1028,7 @@ private fun SmartActionCard(
                 .align(Alignment.CenterStart)
                 .width(4.dp)
                 .fillMaxHeight()
-                .background(NotelPrimary, RoundedCornerShape(topStart = 18.dp, bottomStart = 18.dp))
+                .background(NotelPrimary, RoundedCornerShape(topStart = Radii.card, bottomStart = Radii.card))
         )
         Column(modifier = Modifier.padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

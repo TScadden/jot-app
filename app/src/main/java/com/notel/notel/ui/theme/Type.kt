@@ -6,7 +6,15 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-// Set of Material typography styles to start with
+// ── Tabs Lab type scale (professional bar) ─────────────────────────────────────
+// One display style, one body, one caption — mapped in DesignTokens.kt:
+//
+//   Display → typography.titleLarge (22sp, bold at call sites)
+//   Body    → typography.bodyLarge  (16sp)
+//   Caption → typography.labelMedium (12sp)
+//
+// Eyebrow section headers use SectionLabel (sentence case, never ALL CAPS).
+// Avoid raw fontSize values in new UI code.
 val Typography = Typography(
     bodyLarge = TextStyle(
         fontFamily = FontFamily.Default,
