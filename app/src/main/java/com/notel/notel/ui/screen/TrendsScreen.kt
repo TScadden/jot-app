@@ -30,7 +30,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFeatureSettings
 import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.notel.notel.ui.theme.*
@@ -308,7 +307,7 @@ fun HourlyDensityChart(
                                 color = if (isSelected) NotelAccent else NotelTextSecondary,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                fontFeatureSettings = FontFeatureSettings("tnum")
+                                fontFeatureSettings = "tnum"
                             ),
                             modifier = Modifier.padding(bottom = 4.dp)
                         )
