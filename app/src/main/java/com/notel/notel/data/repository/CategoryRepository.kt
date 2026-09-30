@@ -22,8 +22,9 @@ class CategoryRepository @Inject constructor(
     suspend fun findCategoryIdBySlug(slug: String, defaultId: Int = 7): Int {
         val cat = categoryDao.getCategoryBySlug(slug)
         if (cat != null) return cat.id
-        // Fall back by stableKey matching across all categories
-        return 7
+        // Slug lookup missed (e.g. fresh installs seed categories without slugs);
+        // honor the caller's requested fallback instead of hard-coding General.
+        return defaultId
     }
 
     suspend fun insertCategory(category: Category) {
