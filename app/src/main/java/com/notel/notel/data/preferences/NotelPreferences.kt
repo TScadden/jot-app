@@ -55,8 +55,8 @@ open class NotelPreferences(
         val PROFESSIONAL_UPDATES = stringPreferencesKey("professional_updates")
         val LOGGED_DAYS = stringPreferencesKey("logged_days")
         val AI_INSIGHTS = stringPreferencesKey("ai_insights")
-        // Tabs Lab prototype namespace (Sep 2026): morning check-in experiment data.
-        // New key, local only, cannot collide with production keys.
+        // Tabs Lab namespace (Sep 2026): energy check-in experiment data.
+        // Existing key, local only, never synced; cannot collide with production keys.
         val MORNING_CHECKIN_LAB = stringPreferencesKey("tabs_lab_morning_checkin")
         val NOTIFIED_REPORT_IDS = stringSetPreferencesKey("notified_report_ids")
         val FITBIT_TOKEN = stringPreferencesKey("fitbit_token")
@@ -427,8 +427,8 @@ open class NotelPreferences(
     }
 
     /**
-     * Tabs Lab morning check-in prototype (Sep 2026). Local only, never synced.
-     * JSON: {"date":"2026-09-30","energy":3,"note":"..."}.
+     * Tabs Lab energy check-in (Sep 2026, simplified): one-tap 1-5 rating, no note.
+     * Local only, never synced. JSON: {"date":"2026-09-30","energy":3}.
      */
     val morningCheckinLab: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[MORNING_CHECKIN_LAB] ?: ""

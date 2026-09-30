@@ -480,7 +480,6 @@ class MainActivity : ComponentActivity() {
                                 onBloodPressureClick = { navController.navigate("blood_pressure") },
                                 onResearchClick = { navController.navigate("research") },
                                 onTrendsClick = { navController.navigate("trends") },
-                                onMorningCheckInClick = { navController.navigate("morning_checkin_lab") },
                                 onNavigateToMembership = { navController.navigate("settings?menu=MEMBERSHIP") },
                                 isUnlimited = isUnlimited,
                                 bloodPressureState = fitbitState.bloodPressureState,
@@ -593,11 +592,6 @@ class MainActivity : ComponentActivity() {
                             TrendsScreen(
                                 onBack = { navController.popBackStack() },
                                 onNavigateToEntry = { id -> navController.navigate("detail/$id") }
-                            )
-                        }
-                        composable("morning_checkin_lab") {
-                            com.notel.notel.ui.screen.MorningCheckInScreen(
-                                onBack = { navController.popBackStack() }
                             )
                         }
                         composable("spike_review") {

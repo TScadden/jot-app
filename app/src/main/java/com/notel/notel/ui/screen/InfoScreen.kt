@@ -57,7 +57,6 @@ val DEFAULT_INFO_TILES = listOf(
     InfoTile("health_coach", "Health Coach", Icons.Default.QuestionMark, "Personalized Advice"),
     InfoTile("key_metrics", "Key Metrics", Icons.Default.BarChart, "Your Body Data"),
     InfoTile("trends", "Trends", Icons.Default.TrendingUp, "Patterns over time"),
-    InfoTile("morning_checkin_lab", "Morning check in", Icons.Default.WbSunny, "Lab prototype"),
     InfoTile("blood_pressure", "Blood Pressure", Icons.Default.Favorite, "Systolic & Diastolic"),
     InfoTile("food", "Food", Icons.Default.Restaurant, "Sensitivity Checker"),
     InfoTile("research", "Research", Icons.Default.MenuBook, "Health research library"),
@@ -73,7 +72,6 @@ fun InfoScreen(
     onMedicationsClick: () -> Unit = {},
     onKeyMetricsClick: () -> Unit = {},
     onTrendsClick: () -> Unit = {},
-    onMorningCheckInClick: () -> Unit = {},
     onCoachClick: () -> Unit = {},
     onTipsAndTricksClick: () -> Unit = {},
     onFoodClick: () -> Unit = {},
@@ -312,7 +310,6 @@ fun InfoScreen(
                             onMedicationsClick = onMedicationsClick,
                             onKeyMetricsClick = onKeyMetricsClick,
                             onTrendsClick = onTrendsClick,
-                            onMorningCheckInClick = onMorningCheckInClick,
                             onCoachClick = onCoachClick,
                             onTipsAndTricksClick = onTipsAndTricksClick,
                             onFoodClick = onFoodClick,
@@ -350,7 +347,6 @@ fun InfoTileCard(
     onMedicationsClick: () -> Unit,
     onKeyMetricsClick: () -> Unit,
     onTrendsClick: () -> Unit = {},
-    onMorningCheckInClick: () -> Unit = {},
     onCoachClick: () -> Unit,
     onTipsAndTricksClick: () -> Unit,
     onFoodClick: () -> Unit,
@@ -411,7 +407,6 @@ fun InfoTileCard(
                         "medications" -> onMedicationsClick()
                         "key_metrics" -> onKeyMetricsClick()
                         "trends" -> onTrendsClick()
-                        "morning_checkin_lab" -> onMorningCheckInClick()
                         "health_coach" -> onCoachClick()
                         "tips_and_tricks" -> onTipsAndTricksClick()
                         "food" -> onFoodClick()

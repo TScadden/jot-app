@@ -13,33 +13,23 @@ import java.time.LocalDate
 import javax.inject.Inject
 
 /**
- * Tabs Lab prototype: morning check-in / energy snapshot.
- * Local only. Reads and writes a single new DataStore key (tabs_lab_morning_checkin),
+ * Tabs Lab energy check-in (Sep 2026, simplified): a compact 1-5 energy rating
+ * that lives on the Quick Log screen. One tap saves today's rating immediately;
+ * tapping a different number updates it.
+ *
+ * Local only. Reads and writes the existing DataStore key (tabs_lab_morning_checkin),
  * never synced to the server, fully cleared by uninstalling Tabs Lab.
  */
-data class MorningCheckInUiState(
-    val selectedLevel: Int = 0,
-    val note: String = "",
-    val savedToday: Boolean = false,
-    val justSaved: Boolean = false
+data class EnergyCheckInUiState(
+    val selectedLevel: Int = 0
 )
 
 @HiltViewModel
-class MorningCheckInViewModel @Inject constructor(
+class EnergyCheckInViewModel @Inject constructor(
     private val preferences: NotelPreferences
 ) : ViewModel() {
 
-    companion object {
-        val ENERGY_LEVELS = listOf(
-            1 to "Empty",
-            2 to "Low",
-            3 to "Steady",
-            4 to "Good",
-            5 to "Full"
-        )
-    }
-
-    private val _uiState = MutableStateFlow(MorningCheckInUiState())
+    private val _uiState = MutableStateFlow(EnergyCheckInUiState())
     val uiState = _uiState.asStateFlow()
 
     init {
@@ -50,38 +40,28 @@ class MorningCheckInViewModel @Inject constructor(
                     val obj = JSONObject(json)
                     if (obj.optString("date", "") == LocalDate.now().toString()) {
                         val level = obj.optInt("energy", 0).coerceIn(0, 5)
-                        val note = obj.optString("note", "")
-                        _uiState.update {
-                            it.copy(selectedLevel = level, note = note, savedToday = true)
-                        }
+                        _uiState.update { it.copy(selectedLevel = level) }
+                    } else {
+                        // A rating from a previous day does not carry over.
+                        _uiState.update { it.copy(selectedLevel = 0) }
                     }
                 } catch (e: Exception) {
-                    // Prototype: corrupted local data is ignored, never crashes
+                    // Corrupted local data is ignored, never crashes.
                 }
             }
         }
     }
 
+    /** One tap saves today's rating. Tapping another number updates it. */
     fun selectLevel(level: Int) {
         if (level !in 1..5) return
-        _uiState.update { it.copy(selectedLevel = level, justSaved = false) }
-    }
-
-    fun updateNote(note: String) {
-        _uiState.update { it.copy(note = note, justSaved = false) }
-    }
-
-    fun saveCheckIn() {
-        val state = _uiState.value
-        if (state.selectedLevel !in 1..5) return
         viewModelScope.launch {
             val json = JSONObject()
                 .put("date", LocalDate.now().toString())
-                .put("energy", state.selectedLevel)
-                .put("note", state.note.trim())
+                .put("energy", level)
                 .toString()
             preferences.setMorningCheckinLab(json)
-            _uiState.update { it.copy(savedToday = true, justSaved = true) }
+            _uiState.update { it.copy(selectedLevel = level) }
         }
     }
 }
