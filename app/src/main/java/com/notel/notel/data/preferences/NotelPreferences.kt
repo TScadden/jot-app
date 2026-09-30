@@ -55,6 +55,9 @@ open class NotelPreferences(
         val PROFESSIONAL_UPDATES = stringPreferencesKey("professional_updates")
         val LOGGED_DAYS = stringPreferencesKey("logged_days")
         val AI_INSIGHTS = stringPreferencesKey("ai_insights")
+        // Tabs Lab prototype namespace (Sep 2026): morning check-in experiment data.
+        // New key, local only, cannot collide with production keys.
+        val MORNING_CHECKIN_LAB = stringPreferencesKey("tabs_lab_morning_checkin")
         val NOTIFIED_REPORT_IDS = stringSetPreferencesKey("notified_report_ids")
         val FITBIT_TOKEN = stringPreferencesKey("fitbit_token")
         val FITBIT_REFRESH_TOKEN = stringPreferencesKey("fitbit_refresh_token")
@@ -423,6 +426,14 @@ open class NotelPreferences(
         prefs[LOGGED_DAYS] ?: ""
     }
 
+    /**
+     * Tabs Lab morning check-in prototype (Sep 2026). Local only, never synced.
+     * JSON: {"date":"2026-09-30","energy":3,"note":"..."}.
+     */
+    val morningCheckinLab: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[MORNING_CHECKIN_LAB] ?: ""
+    }
+
     val aiInsights: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[AI_INSIGHTS] ?: "[]"
     }
@@ -751,6 +762,10 @@ open class NotelPreferences(
 
     suspend fun setLoggedDays(jsonArray: String) {
         context.dataStore.edit { it[LOGGED_DAYS] = jsonArray }
+    }
+
+    suspend fun setMorningCheckinLab(json: String) {
+        context.dataStore.edit { it[MORNING_CHECKIN_LAB] = json }
     }
 
     suspend fun setAiInsights(jsonArray: String) {
