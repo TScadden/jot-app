@@ -281,7 +281,7 @@ private fun ReminderCard(
         } else {
             "Every ${reminder.intervalMinutes}m"
         }
-        "$intervalStr  •  ${formatTime(reminder.startHour, reminder.startMinute)} – ${formatTime(reminder.endHour, reminder.endMinute)}"
+        "$intervalStr  •  ${formatTime(reminder.startHour, reminder.startMinute)} to ${formatTime(reminder.endHour, reminder.endMinute)}"
     }
 
     Surface(

@@ -184,6 +184,7 @@ class BloodPressureViewModel @Inject constructor(
                 contentResolver.openInputStream(uri)?.use { readCsvTextCapped(it) }
                     ?: CsvReadOutcome.Failed
             } catch (e: Exception) {
+                android.util.Log.e("BloodPressureViewModel", "CSV read failure", e)
                 CsvReadOutcome.Failed
             }
             when (readOutcome) {

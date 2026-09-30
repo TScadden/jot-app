@@ -65,7 +65,7 @@ object BodyImpactEngine {
             val displayText = buildString {
                 if (entry.body.isNotBlank()) append(entry.body)
                 if (entry.manualText.isNotBlank()) {
-                    if (isNotEmpty()) append(" — ")
+                    if (isNotEmpty()) append(" · ")
                     append(entry.manualText)
                 }
             }

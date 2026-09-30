@@ -720,7 +720,7 @@ fun FriendDetailDialog(
                                     val h = it / 60
                                     val m = it % 60
                                     if (h > 0) "${h}h ${m}m" else "${m}m"
-                                } ?: "—"
+                                } ?: "·"
                             )
                             FriendStatCard(
                                 modifier = Modifier.weight(1f),
@@ -733,7 +733,7 @@ fun FriendDetailDialog(
                                         val m = Math.abs(it) % 60
                                         if (h > 0) "-${h}h ${m}m" else "-${m}m"
                                     }
-                                } ?: "—",
+                                } ?: "·",
                                 accentColor = if ((detail.todaySleepDebt ?: 0) < 0) NotelError else NotelTextSecondary
                             )
                         }
@@ -747,7 +747,7 @@ fun FriendDetailDialog(
                                 modifier = Modifier.weight(1f),
                                 icon = Icons.Default.Favorite,
                                 label = "Avg HR",
-                                value = detail.todayAvgHr?.let { "${it} bpm" } ?: "—"
+                                value = detail.todayAvgHr?.let { "${it} bpm" } ?: "·"
                             )
                             FriendStatCard(
                                 modifier = Modifier.weight(1f),
@@ -755,7 +755,7 @@ fun FriendDetailDialog(
                                 label = "HR Spikes",
                                 value = detail.todaySpikes?.let { 
                                     if (it == 1) "1 spike" else "$it spikes"
-                                } ?: "—",
+                                } ?: "·",
                                 accentColor = if ((detail.todaySpikes ?: 0) > 0) NotelWarning else NotelTextSecondary
                             )
                         }
@@ -764,7 +764,7 @@ fun FriendDetailDialog(
                             modifier = Modifier.fillMaxWidth(),
                             icon = Icons.Default.EmojiEvents,
                             label = "Daily Score",
-                            value = detail.todayScore?.let { "$it pts" } ?: "—",
+                            value = detail.todayScore?.let { "$it pts" } ?: "·",
                             accentColor = NotelPrimary
                         )
                     }

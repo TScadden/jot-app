@@ -394,7 +394,9 @@ class WeeklySnapshotViewModel @Inject constructor(
                             }
                         }
                         is SnapshotReadResult.Failure -> {
-                            val errMsg = result.cause.message ?: "Failed to read data"
+                            val errMsg = com.notel.notel.util.FriendlyErrors.forBackendError(
+                                "WeeklySnapshotViewModel", result.cause, com.notel.notel.util.FriendlyErrors.Kind.LOAD
+                            ).banner
                             _uiState.value = WeeklySnapshotState.Error(
                                 metricName = metric.displayName,
                                 message = errMsg,
@@ -414,7 +416,9 @@ class WeeklySnapshotViewModel @Inject constructor(
                 }
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
                 if (requestId == requestIdGenerator.get()) {
-                    val errMsg = "Request timed out while reading Health Connect. Tap refresh to retry."
+                    val errMsg = com.notel.notel.util.FriendlyErrors.forBackendError(
+                        "WeeklySnapshotViewModel", e, com.notel.notel.util.FriendlyErrors.Kind.LOAD
+                    ).banner
                     _uiState.value = WeeklySnapshotState.Error(
                         metricName = metric.displayName,
                         message = errMsg,
@@ -435,7 +439,9 @@ class WeeklySnapshotViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 if (requestId == requestIdGenerator.get()) {
-                    val errMsg = e.message ?: "Failed to load data"
+                    val errMsg = com.notel.notel.util.FriendlyErrors.forBackendError(
+                        "WeeklySnapshotViewModel", e, com.notel.notel.util.FriendlyErrors.Kind.LOAD
+                    ).banner
                     _uiState.value = WeeklySnapshotState.Error(
                         metricName = metric.displayName,
                         message = errMsg,

@@ -133,6 +133,10 @@ class TodayViewModel @Inject constructor(
     private val preferences: NotelPreferences
 ) : ViewModel() {
 
+    companion object {
+        private const val TAG = "TodayViewModel"
+    }
+
     private val _isRetryingSync = MutableStateFlow(false)
     private val _trendsState = MutableStateFlow<TodayTrendsState>(TodayTrendsState.Loading)
     private val _trendsItems = MutableStateFlow<List<HealthComparisonItem>>(emptyList())
@@ -169,7 +173,11 @@ class TodayViewModel @Inject constructor(
                     _trendsItems.value = staleItems
                     _trendsState.value = TodayTrendsState.Ready(staleItems)
                 } else {
-                    _trendsState.value = TodayTrendsState.Error(e.message ?: "Failed to calculate trends")
+                    _trendsState.value = TodayTrendsState.Error(
+                        com.notel.notel.util.FriendlyErrors.forBackendError(
+                            TAG, e, com.notel.notel.util.FriendlyErrors.Kind.LOAD
+                        ).banner
+                    )
                 }
             }
         }
@@ -350,7 +358,9 @@ class TodayViewModel @Inject constructor(
                     snoozedUntilMs = snoozedUntilMs
                 )
             } catch (e: Exception) {
-                _errorBanner.value = "Failed to record medication action: ${e.message}"
+                _errorBanner.value = com.notel.notel.util.FriendlyErrors.forBackendError(
+                    TAG, e, com.notel.notel.util.FriendlyErrors.Kind.SAVE
+                ).banner
             }
         }
     }
@@ -360,7 +370,9 @@ class TodayViewModel @Inject constructor(
             try {
                 preferences.setCompletedReminder(todayStr, reminderId, isCompleted)
             } catch (e: Exception) {
-                _errorBanner.value = "Failed to update reminder: ${e.message}"
+                _errorBanner.value = com.notel.notel.util.FriendlyErrors.forBackendError(
+                    TAG, e, com.notel.notel.util.FriendlyErrors.Kind.SAVE
+                ).banner
             }
         }
     }

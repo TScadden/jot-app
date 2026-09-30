@@ -70,6 +70,10 @@ class ProjectFocusViewModel @Inject constructor(
     private val api: TabsApi
 ) : ViewModel() {
 
+    companion object {
+        private const val TAG = "ProjectFocusViewModel"
+    }
+
     private val _uiState = MutableStateFlow(ProjectFocusUiState())
     val uiState: StateFlow<ProjectFocusUiState> = _uiState.asStateFlow()
 
@@ -153,7 +157,9 @@ class ProjectFocusViewModel @Inject constructor(
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    error = e.message
+                    error = com.notel.notel.util.FriendlyErrors.forBackendError(
+                        TAG, e, com.notel.notel.util.FriendlyErrors.Kind.LOAD
+                    ).banner
                 )
             }
         }
@@ -174,15 +180,20 @@ class ProjectFocusViewModel @Inject constructor(
                     )
                     saveCurrentState()
                 } else {
+                    android.util.Log.e(TAG, "getFocusSuggestions failed: ${res.code()}")
                     _uiState.value = _uiState.value.copy(
                         isSuggestionsLoading = false,
-                        error = "Failed to load suggestions from server: ${res.code()}"
+                        error = com.notel.notel.util.FriendlyErrors.forBackendError(
+                            TAG, null, com.notel.notel.util.FriendlyErrors.Kind.LOAD
+                        ).banner
                     )
                 }
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isSuggestionsLoading = false,
-                    error = e.message
+                    error = com.notel.notel.util.FriendlyErrors.forBackendError(
+                        TAG, e, com.notel.notel.util.FriendlyErrors.Kind.LOAD
+                    ).banner
                 )
             }
         }

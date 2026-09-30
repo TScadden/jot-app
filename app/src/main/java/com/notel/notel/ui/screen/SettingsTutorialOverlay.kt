@@ -46,7 +46,7 @@ enum class ArrowDirection { UP, DOWN, LEFT, RIGHT }
 val settingsTutorialSteps = listOf(
     TutorialStep(
         title = "Personal Context",
-        description = "Tell the AI about yourself here — health conditions, goals, and lifestyle. The more detail you give, the smarter your insights get.",
+        description = "Tell the AI about yourself here: health conditions, goals, and lifestyle. The more detail you give, the smarter your insights get.",
         icon = Icons.Default.Person,
         arrowDirection = ArrowDirection.DOWN
     ),
@@ -76,7 +76,7 @@ val settingsTutorialSteps = listOf(
     ),
     TutorialStep(
         title = "Event Counters",
-        description = "Track how many days until (or since) important events — next check-up, medication start date, race day, and more. The starred counter appears on the main screen.",
+        description = "Track how many days until (or since) important events: next checkup, medication start date, race day, and more. The starred counter appears on the main screen.",
         icon = Icons.Default.Timer,
         arrowDirection = ArrowDirection.UP
     )
@@ -141,6 +141,9 @@ fun SettingsTutorialOverlay(
             val bounds = targetCoords.boundsInWindow()
             val paddingPx = with(density) { 6.dp.toPx() }
 
+            // Captured for DrawScope use (@Composable getters can't be called inside Canvas).
+            val glowColor = NotelPrimary.copy(alpha = glowAlpha)
+
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val rect = androidx.compose.ui.geometry.Rect(
                     left = bounds.left - paddingPx,
@@ -174,7 +177,7 @@ fun SettingsTutorialOverlay(
 
                 // Solid stroke on top
                 drawRoundRect(
-                    color = NotelPrimary.copy(alpha = glowAlpha),
+                    color = glowColor,
                     topLeft = Offset(rect.left, rect.top),
                     size = Size(rect.width, rect.height),
                     cornerRadius = CornerRadius(cornerRadius),

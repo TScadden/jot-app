@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.notel.notel.data.local.entity.Category
 import com.notel.notel.data.local.entity.LogEntry
+import com.notel.notel.ui.component.NotelSnackbarHost
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.HistoryViewModel
 import com.notel.notel.ui.viewmodel.EntrySyncStatus
@@ -66,23 +67,7 @@ fun HistoryScreen(
     Scaffold(
         containerColor = NotelBackground,
         snackbarHost = {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = 80.dp)
-                    .padding(horizontal = 16.dp),
-                contentAlignment = Alignment.TopCenter
-            ) {
-                SnackbarHost(snackbarHostState) { data ->
-                    Snackbar(
-                        snackbarData = data,
-                        containerColor = NotelSurfaceHigh.copy(alpha = 0.95f),
-                        contentColor = NotelTextPrimary,
-                        actionColor = NotelPrimary,
-                        shape = RoundedCornerShape(16.dp)
-                    )
-                }
-            }
+            NotelSnackbarHost(hostState = snackbarHostState)
         },
         topBar = {
             TopAppBar(

@@ -23,6 +23,10 @@ class CommunityViewModel @Inject constructor(
     private val preferences: NotelPreferences
 ) : ViewModel() {
 
+    companion object {
+        private const val TAG = "CommunityViewModel"
+    }
+
     val userStreak: StateFlow<Int> = preferences.currentStreak
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
@@ -57,7 +61,10 @@ class CommunityViewModel @Inject constructor(
                 if (friendsRes.isSuccessful) {
                     _friends.value = friendsRes.body()?.friends ?: emptyList()
                 } else {
-                    _error.value = "Failed to fetch friends list"
+                    android.util.Log.e(TAG, "getFriendsList failed: ${friendsRes.code()}")
+                    _error.value = com.notel.notel.util.FriendlyErrors.forBackendError(
+                        TAG, null, com.notel.notel.util.FriendlyErrors.Kind.LOAD
+                    ).banner
                 }
 
                 // Fetch notifications
@@ -66,7 +73,9 @@ class CommunityViewModel @Inject constructor(
                     _notifications.value = notifRes.body()?.notifications ?: emptyList()
                 }
             } catch (e: Exception) {
-                _error.value = e.message ?: "Network error occurred"
+                _error.value = com.notel.notel.util.FriendlyErrors.forBackendError(
+                    TAG, e, com.notel.notel.util.FriendlyErrors.Kind.LOAD
+                ).banner
             } finally {
                 _isLoading.value = false
             }
@@ -83,16 +92,21 @@ class CommunityViewModel @Inject constructor(
                     onResult(true, null)
                     fetchFriendsAndNotifications() // Refresh list & requests
                 } else {
-                    val errorBody = res.errorBody()?.string()
-                    val errorMsg = if (!errorBody.isNullOrBlank() && errorBody.contains("\"error\":")) {
-                        errorBody.substringAfter("\"error\":\"").substringBefore("\"")
-                    } else {
-                        res.body()?.error ?: "Failed to send friend request"
-                    }
-                    onResult(false, errorMsg)
+                    android.util.Log.e(TAG, "sendFriendRequest failed: ${res.code()}")
+                    onResult(
+                        false,
+                        com.notel.notel.util.FriendlyErrors.forBackendError(
+                            TAG, null, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN
+                        ).banner
+                    )
                 }
             } catch (e: Exception) {
-                onResult(false, e.message ?: "Network error occurred")
+                onResult(
+                    false,
+                    com.notel.notel.util.FriendlyErrors.forBackendError(
+                        TAG, e, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN
+                    ).banner
+                )
             } finally {
                 _isLoading.value = false
             }
@@ -109,10 +123,21 @@ class CommunityViewModel @Inject constructor(
                     onResult(true, null)
                     fetchFriendsAndNotifications() // Refresh
                 } else {
-                    onResult(false, res.body()?.error ?: "Failed to respond to request")
+                    android.util.Log.e(TAG, "respondFriendRequest failed: ${res.code()}")
+                    onResult(
+                        false,
+                        com.notel.notel.util.FriendlyErrors.forBackendError(
+                            TAG, null, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN
+                        ).banner
+                    )
                 }
             } catch (e: Exception) {
-                onResult(false, e.message ?: "Network error occurred")
+                onResult(
+                    false,
+                    com.notel.notel.util.FriendlyErrors.forBackendError(
+                        TAG, e, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN
+                    ).banner
+                )
             } finally {
                 _isLoading.value = false
             }
@@ -138,10 +163,21 @@ class CommunityViewModel @Inject constructor(
                 if (res.isSuccessful && res.body()?.success == true) {
                     onResult(res.body()?.data, null)
                 } else {
-                    onResult(null, res.body()?.error ?: "Failed to load friend data")
+                    android.util.Log.e(TAG, "getFriendDetail failed: ${res.code()}")
+                    onResult(
+                        null,
+                        com.notel.notel.util.FriendlyErrors.forBackendError(
+                            TAG, null, com.notel.notel.util.FriendlyErrors.Kind.LOAD
+                        ).banner
+                    )
                 }
             } catch (e: Exception) {
-                onResult(null, e.message ?: "Network error")
+                onResult(
+                    null,
+                    com.notel.notel.util.FriendlyErrors.forBackendError(
+                        TAG, e, com.notel.notel.util.FriendlyErrors.Kind.LOAD
+                    ).banner
+                )
             }
         }
     }

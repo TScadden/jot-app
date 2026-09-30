@@ -43,6 +43,10 @@ class SettingsViewModel @Inject constructor(
     @ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
 
+    companion object {
+        private const val TAG = "SettingsViewModel"
+    }
+
     private val _systemLogs = MutableStateFlow<List<SystemLog>>(emptyList())
     val systemLogs = _systemLogs.asStateFlow()
 
@@ -165,7 +169,10 @@ class SettingsViewModel @Inject constructor(
                     preferences.setGoogleAccountEmail(email)
                     onResult(true, body.message)
                 } else {
-                    onResult(false, body?.error ?: "Unable to connect Google account")
+                    android.util.Log.e(TAG, "linkGoogle failed: ${response.code()}")
+                    onResult(false, com.notel.notel.util.FriendlyErrors.forBackendError(
+                        TAG, null, com.notel.notel.util.FriendlyErrors.Kind.AUTH
+                    ).banner)
                 }
             } catch (e: Exception) {
                 // Linking must fail closed. Never update local connection state
@@ -185,7 +192,10 @@ class SettingsViewModel @Inject constructor(
                     onResult(true, "Google account disconnected successfully.")
                 } else {
                     val err = res.body()?.error ?: "Failed to disconnect Google account"
-                    onResult(false, err)
+                    android.util.Log.e(TAG, "disconnectGoogle failed: ${res.code()} err=$err")
+                    onResult(false, com.notel.notel.util.FriendlyErrors.forBackendError(
+                        TAG, null, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN
+                    ).banner)
                 }
             } catch (e: Exception) {
                 // Preserve local state when the server could not confirm disconnection.
@@ -380,7 +390,7 @@ class SettingsViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e("SettingsViewModel", "migrateOldCsvFiles failed", e)
             }
         }
     }
@@ -688,10 +698,10 @@ class SettingsViewModel @Inject constructor(
                 val base64 = android.util.Base64.encodeToString(fileBytes, android.util.Base64.NO_WRAP)
 
                 logRepository.ingestDocumentFile(fileName, mimeType, base64).onFailure {
-                    logRepository.setProcessError(it.message ?: "Failed to process file")
+                    logRepository.setProcessError(com.notel.notel.util.FriendlyErrors.forBackendError(TAG, it, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN).banner)
                 }
             } catch (e: Exception) {
-                logRepository.setProcessError(e.message ?: "An error occurred")
+                logRepository.setProcessError(com.notel.notel.util.FriendlyErrors.forBackendError(TAG, e, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN).banner)
             } finally {
                 _isProcessingFile.value = false
             }
@@ -705,10 +715,10 @@ class SettingsViewModel @Inject constructor(
             
             try {
                 logRepository.ingestTextNote(title, body).onFailure {
-                    logRepository.setProcessError(it.message ?: "Failed to process text note")
+                    logRepository.setProcessError(com.notel.notel.util.FriendlyErrors.forBackendError(TAG, it, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN).banner)
                 }
             } catch (e: Exception) {
-                logRepository.setProcessError(e.message ?: "An error occurred")
+                logRepository.setProcessError(com.notel.notel.util.FriendlyErrors.forBackendError(TAG, e, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN).banner)
             } finally {
                 _isProcessingFile.value = false
             }
@@ -842,7 +852,7 @@ class SettingsViewModel @Inject constructor(
             } catch (e: kotlinx.coroutines.CancellationException) {
                 _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Cancelled
             } catch (e: Exception) {
-                _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Failed(e.message ?: "Report generation failed", allowRawFallback = true)
+                _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Failed(com.notel.notel.util.FriendlyErrors.forBackendError(TAG, e, com.notel.notel.util.FriendlyErrors.Kind.EXPORT).banner, allowRawFallback = true)
             }
         }
     }
@@ -1045,15 +1055,15 @@ class SettingsViewModel @Inject constructor(
                             
                             onResult(parsed)
                         } catch (e: Exception) {
-                            onError("Failed to parse medication details from AI response: ${e.message}")
+                            onError(com.notel.notel.util.FriendlyErrors.forBackendError(TAG, e, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN).banner)
                         }
                     },
                     onFailure = { err ->
-                        onError(err.message ?: "AI Extraction failed")
+                        onError(com.notel.notel.util.FriendlyErrors.forBackendError(TAG, err, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN).banner)
                     }
                 )
             } catch (e: Exception) {
-                onError(e.message ?: "An error occurred during AI extraction")
+                onError(com.notel.notel.util.FriendlyErrors.forBackendError(TAG, e, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN).banner)
             }
         }
     }
@@ -1368,7 +1378,7 @@ class SettingsViewModel @Inject constructor(
             _isSyncing.value = true
             try {
                 if (!preferences.loggedIn.first()) {
-                    android.widget.Toast.makeText(context, "Error: Not logged in", android.widget.Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(context, "You are not logged in. Please sign in to sync.", android.widget.Toast.LENGTH_SHORT).show()
                     return@launch
                 }
                 
@@ -1388,17 +1398,17 @@ class SettingsViewModel @Inject constructor(
                 } else {
                     android.widget.Toast.makeText(
                         context,
-                        "Recovery failed — please check your internet connection",
+                        "Recovery failed. Please check your internet connection.",
                         android.widget.Toast.LENGTH_LONG
                     ).show()
                 }
             } catch (e: Exception) {
                 android.widget.Toast.makeText(
                     context,
-                    "Recovery error: ${e.message}",
+                    com.notel.notel.util.FriendlyErrors.forBackendError(TAG, e, com.notel.notel.util.FriendlyErrors.Kind.LOAD).banner,
                     android.widget.Toast.LENGTH_LONG
                 ).show()
-                _syncError.emit(e.message ?: "Failed to recover data")
+                _syncError.emit(com.notel.notel.util.FriendlyErrors.forBackendError(TAG, e, com.notel.notel.util.FriendlyErrors.Kind.LOAD).banner)
             } finally {
                 _isRecovering.value = false
                 _isSyncing.value = false
@@ -1411,7 +1421,7 @@ class SettingsViewModel @Inject constructor(
             _isManualSyncing.value = true
             try {
                 if (!preferences.loggedIn.first()) {
-                    android.widget.Toast.makeText(context, "Error: Not logged in", android.widget.Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(context, "You are not logged in. Please sign in to sync.", android.widget.Toast.LENGTH_SHORT).show()
                     return@launch
                 }
                 syncManager.syncAllData()
@@ -1419,10 +1429,10 @@ class SettingsViewModel @Inject constructor(
             } catch (e: Exception) {
                 android.widget.Toast.makeText(
                     context,
-                    "Sync failed: ${e.message}",
+                    com.notel.notel.util.FriendlyErrors.syncOneLiner(TAG, e),
                     android.widget.Toast.LENGTH_LONG
                 ).show()
-                _syncError.emit(e.message ?: "Sync failed")
+                _syncError.emit(com.notel.notel.util.FriendlyErrors.syncOneLiner(TAG, e))
             } finally {
                 _isManualSyncing.value = false
             }
@@ -1498,10 +1508,10 @@ class SettingsViewModel @Inject constructor(
                     body.tag?.let { preferences.setUserTag(it) }
                     onResult(true, null)
                 } else {
-                    onResult(false, body?.error ?: "Failed to update nickname on the server")
+                    android.util.Log.e(TAG, "updateNickname failed: " + updateRes.code()); onResult(false, com.notel.notel.util.FriendlyErrors.forBackendError(TAG, null, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN).banner)
                 }
             } catch (e: Exception) {
-                onResult(false, e.message ?: "Network error")
+                onResult(false, com.notel.notel.util.FriendlyErrors.forBackendError(TAG, e, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN).banner)
             }
         }
     }
@@ -1610,7 +1620,9 @@ class SettingsViewModel @Inject constructor(
                     onSuccess()
                 },
                 onFailure = { error ->
-                    onError(error.message ?: "Failed to delete account data")
+                    onError(com.notel.notel.util.FriendlyErrors.forBackendError(
+                        TAG, error, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN
+                    ).banner)
                 }
             )
         }

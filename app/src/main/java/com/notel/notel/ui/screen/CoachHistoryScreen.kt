@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.notel.notel.data.local.entity.CoachSession
 import com.notel.notel.ui.theme.NotelBackground
+import com.notel.notel.ui.theme.NotelError
 import com.notel.notel.ui.theme.NotelPrimary
 import com.notel.notel.ui.theme.NotelSurfaceHigh
 import com.notel.notel.ui.theme.NotelTextPrimary

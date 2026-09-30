@@ -160,6 +160,7 @@ fun BodyLoadCard(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val infiniteTransition = rememberInfiniteTransition()
+                    val titleStaticColor = NotelTextPrimary
                     val pulseColor by if (!state.cupTheorySeen) {
                         infiniteTransition.animateColor(
                             initialValue = NotelTextPrimary,
@@ -170,7 +171,7 @@ fun BodyLoadCard(
                             )
                         )
                     } else {
-                        remember { mutableStateOf(NotelTextPrimary) }
+                        remember { mutableStateOf(titleStaticColor) }
                     }
 
                     Text(
@@ -284,9 +285,11 @@ fun BodyLoadCard(
                             .background(NotelSurfaceHigh.copy(alpha = 0.1f), RoundedCornerShape(8.dp)),
                         contentAlignment = Alignment.Center
                     ) {
+                        // Captured for DrawScope use (@Composable getters can't be called inside Canvas).
+                        val ringColors = listOf(NotelError, NotelInfo, NotelPrimary, NotelError)
                         Canvas(modifier = Modifier.fillMaxSize()) {
                             val strokeWidth = 2.dp.toPx()
-                            val colors = listOf(NotelError, NotelInfo, NotelPrimary, NotelError)
+                            val colors = ringColors
                             
                             val outerPath = Path().apply {
                                 addRoundRect(RoundRect(Rect(Offset.Zero, size), CornerRadius(8.dp.toPx())))

@@ -24,6 +24,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.notel.notel.ui.component.ErrorStateCard
 import com.notel.notel.ui.component.SkeletonListRow
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.TipsAndTricksViewModel
@@ -99,6 +100,19 @@ fun TipsAndTricksScreen(
             contentAlignment = Alignment.TopCenter
         ) {
             when {
+                errorMessage != null && topics.isEmpty() && !isLoadingTopics -> {
+                    // Screen-level load failure: calm card (Mira spec Template 2), same box as the list.
+                    ErrorStateCard(
+                        headline = "Could not load your data",
+                        explanation = "We could not pull your latest insights. Anything already saved is still here. Check your connection and try again.",
+                        actionLabel = "Try again",
+                        onAction = {
+                            viewModel.clearError()
+                            viewModel.generateTopics()
+                        },
+                        modifier = Modifier.padding(top = 24.dp)
+                    )
+                }
                 isLoadingTopics -> {
                     // Premium loading state
                     Column(
@@ -219,21 +233,7 @@ fun TipsAndTricksScreen(
                 }
             }
 
-            // Error alerts
-            if (errorMessage != null) {
-                AlertDialog(
-                    onDismissRequest = { viewModel.clearError() },
-                    containerColor = NotelSurface,
-                    title = { Text("Failed to Generate", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
-                    text = { Text(errorMessage ?: "An error occurred", color = NotelTextSecondary) },
-                    confirmButton = {
-                        Button(
-                            onClick = { viewModel.clearError() },
-                            colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary)
-                        ) { Text("OK") }
-                    }
-                )
-            }
+            // Error alerts are shown inline as the Template 2 card above (no dialog).
         }
     }
 
@@ -311,11 +311,31 @@ fun TipsAndTricksScreen(
                         }
                     }
                 } else {
-                    Text(
-                        text = "Could not fetch tips. Please check your connection.",
-                        color = NotelTextSecondary,
-                        fontSize = 14.sp
-                    )
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "Could not load tips for this topic. Check your connection and try again.",
+                            color = NotelTextSecondary,
+                            fontSize = 14.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        androidx.compose.material3.TextButton(
+                            onClick = {
+                                viewModel.clearError()
+                                viewModel.fetchTipsForTopic(topic)
+                            }
+                        ) {
+                            Text(
+                                text = "Try again",
+                                color = NotelPrimary,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
                 }
             }
         }

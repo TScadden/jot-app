@@ -26,6 +26,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.IntrinsicSize
+import com.notel.notel.ui.component.NotelSnackbarHost
 import com.notel.notel.ui.component.SkeletonBlock
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -153,7 +154,7 @@ fun SettingsScreen(
                     viewModel.connectGoogleCalendar(email)
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e("SettingsScreen", "SettingsScreen failed", e)
             }
         }
     }
@@ -187,12 +188,12 @@ fun SettingsScreen(
                 } else {
                     android.widget.Toast.makeText(
                         context,
-                        "Google did not return a verifiable sign-in token.",
+                        "Google did not return a verifiable sign in token.",
                         android.widget.Toast.LENGTH_LONG
                     ).show()
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e("SettingsScreen", "SettingsScreen failed", e)
             }
         }
     }
@@ -406,23 +407,7 @@ fun SettingsScreen(
     Scaffold(
         containerColor = NotelBackground,
         snackbarHost = {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = 80.dp)
-                    .padding(horizontal = 16.dp),
-                contentAlignment = Alignment.TopCenter
-            ) {
-                SnackbarHost(snackbarHostState) { data ->
-                    Snackbar(
-                        snackbarData = data,
-                        containerColor = NotelSurfaceHigh.copy(alpha = 0.95f),
-                        contentColor = NotelTextPrimary,
-                        actionColor = NotelPrimary,
-                        shape = RoundedCornerShape(16.dp)
-                    )
-                }
-            }
+            NotelSnackbarHost(hostState = snackbarHostState)
         },
         topBar = {
             TopAppBar(
@@ -2211,7 +2196,7 @@ fun SettingsScreen(
                                 .padding(vertical = 6.dp)
                         ) {
                             Text(
-                                "Report Failed: ${failedState.message}",
+                                failedState.message,
                                 color = MaterialTheme.colorScheme.error,
                                 fontSize = 12.sp
                             )
@@ -2473,7 +2458,7 @@ fun SettingsScreen(
                                     googleAccountChooserLauncher.launch(signInIntent)
                                 }
                             } catch (e: Exception) {
-                                e.printStackTrace()
+                                android.util.Log.e("SettingsScreen", "trialLabel failed", e)
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh),
@@ -2558,7 +2543,7 @@ fun SettingsScreen(
                                     googleAccountLinkLauncher.launch(signInIntent)
                                 }
                             } catch (e: Exception) {
-                                e.printStackTrace()
+                                android.util.Log.e("SettingsScreen", "trialLabel failed", e)
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = NotelSurfaceHigh),
@@ -2635,7 +2620,7 @@ fun SettingsScreen(
 
                             Text(
                                 text = if (showOnlyConfirm) 
-                                    "Are you sure you want to disconnect this Google account? Tabs will refuse if you do not have another usable sign-in method."
+                                    "Are you sure you want to disconnect this Google account? Tabs will refuse if you do not have another usable sign in method."
                                     else "Set a password to safely disconnect your Google account. If you close this, your Google account stays connected.",
                                 fontSize = 13.sp,
                                 color = NotelTextSecondary,
@@ -4465,7 +4450,7 @@ fun DebugScreen(
                         val (icon, tint, label) = when {
                             entry.body.startsWith("SYNC_OK")    -> Triple("✓", NotelSuccess, entry.body.removePrefix("SYNC_OK: "))
                             entry.body.startsWith("SYNC_FAIL")  -> Triple("✗", NotelError, entry.body.removePrefix("SYNC_FAIL: "))
-                            entry.body.startsWith("SYNC_SKIP")  -> Triple("–", NotelWarning, entry.body.removePrefix("SYNC_SKIP: "))
+                            entry.body.startsWith("SYNC_SKIP")  -> Triple("·", NotelWarning, entry.body.removePrefix("SYNC_SKIP: "))
                             entry.body.startsWith("SYNC_DONE")  -> Triple("✓", NotelSuccess, entry.body.removePrefix("SYNC_DONE: "))
                             entry.body.startsWith("SYNC_ERROR") -> Triple("✗", NotelError, entry.body.removePrefix("SYNC_ERROR: "))
                             entry.body.startsWith("SYNC_START") -> Triple("→", Color(0xFF90CAF9), entry.body.removePrefix("SYNC_START: "))
@@ -4690,7 +4675,7 @@ fun TabsLiveScreenContent(
                     }
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e("SettingsScreen", "TabsLiveScreenContent failed", e)
             }
             liveSessionPoints = list
         } else {
@@ -5056,6 +5041,9 @@ fun InteractiveTelemetryGraph(
     val sdf = remember { java.text.SimpleDateFormat("MM/dd h:mm a", java.util.Locale.getDefault()) }
     val tooltipSdf = remember { java.text.SimpleDateFormat("MMM dd, h:mm:ss a", java.util.Locale.getDefault()) }
 
+    // Captured for DrawScope use (@Composable getters can't be called inside Canvas).
+    val gridLineColor = NotelSurfaceHigh
+
     Box(
         modifier = modifier
             .background(NotelSurfaceHigh.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
@@ -5084,7 +5072,7 @@ fun InteractiveTelemetryGraph(
                 val value = maxLimit - (fraction * range).toInt()
                 
                 drawLine(
-                    color = NotelSurfaceHigh,
+                    color = gridLineColor,
                     start = Offset(0f, y),
                     end = Offset(width, y),
                     strokeWidth = 1.dp.toPx()
@@ -5273,7 +5261,7 @@ fun HeartMonitorCard(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
-                    text = heartRate?.toString() ?: "--",
+                    text = heartRate?.toString() ?: "·",
                     fontSize = 48.sp,
                     fontWeight = FontWeight.Black,
                     color = NotelTextPrimary
@@ -5294,7 +5282,7 @@ fun HeartMonitorCard(
                     is com.notel.notel.data.ConnectionState.Scanning -> "SCANNING FOR DEVICE..."
                     is com.notel.notel.data.ConnectionState.Connecting -> "CONNECTING..."
                     is com.notel.notel.data.ConnectionState.Connected -> "CONNECTED: ${connectionState.deviceName.uppercase()}"
-                    is com.notel.notel.data.ConnectionState.Error -> "ERROR: ${connectionState.message.uppercase()}"
+                    is com.notel.notel.data.ConnectionState.Error -> "CONNECTION FAILED"
                 }
                 val statusColor = when (connectionState) {
                     is com.notel.notel.data.ConnectionState.Connected -> NotelSuccess
@@ -5365,6 +5353,9 @@ fun InteractiveHeartRateGraph(
         }
     }
 
+    // Captured for DrawScope use (@Composable getters can't be called inside Canvas).
+    val gridLineColor = NotelSurfaceHigh
+
     Box(
         modifier = modifier
             .background(NotelSurfaceHigh.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
@@ -5403,7 +5394,7 @@ fun InteractiveHeartRateGraph(
                 val value = maxLimit - (fraction * range).toInt()
                 
                 drawLine(
-                    color = NotelSurfaceHigh,
+                    color = gridLineColor,
                     start = Offset(0f, y),
                     end = Offset(width, y),
                     strokeWidth = 1.dp.toPx()
@@ -5783,7 +5774,7 @@ fun SessionGraphDialog(file: java.io.File, onDismissRequest: () -> Unit) {
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("SettingsScreen", "SessionGraphDialog failed", e)
         }
         list
     }
@@ -5944,7 +5935,7 @@ private fun shareCsvFile(context: android.content.Context, file: java.io.File) {
         }
         context.startActivity(android.content.Intent.createChooser(intent, "Share Heart Rate CSV"))
     } catch (e: Exception) {
-        android.widget.Toast.makeText(context, "Failed to share file: ${e.localizedMessage}", android.widget.Toast.LENGTH_SHORT).show()
+        android.util.Log.e("SettingsScreen", "Share CSV failure", e); android.widget.Toast.makeText(context, com.notel.notel.util.FriendlyErrors.exportOneLiner("SettingsScreen", e), android.widget.Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -5964,9 +5955,9 @@ private fun downloadCsvFile(context: android.content.Context, file: java.io.File
                         inputStream.copyTo(outputStream!!)
                     }
                 }
-                android.widget.Toast.makeText(context, "Saved to Downloads folder", android.widget.Toast.LENGTH_SHORT).show()
+                android.widget.Toast.makeText(context, "Saved to your Downloads folder.", android.widget.Toast.LENGTH_SHORT).show()
             } else {
-                android.widget.Toast.makeText(context, "Failed to create file in Downloads", android.widget.Toast.LENGTH_SHORT).show()
+                android.widget.Toast.makeText(context, com.notel.notel.util.FriendlyErrors.exportOneLiner("SettingsScreen", null), android.widget.Toast.LENGTH_SHORT).show()
             }
         } else {
             val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
@@ -5975,10 +5966,10 @@ private fun downloadCsvFile(context: android.content.Context, file: java.io.File
             }
             val destFile = java.io.File(downloadsDir, file.name)
             file.copyTo(destFile, overwrite = true)
-            android.widget.Toast.makeText(context, "Saved to Downloads: ${destFile.absolutePath}", android.widget.Toast.LENGTH_LONG).show()
+            android.widget.Toast.makeText(context, "Saved to your Downloads folder.", android.widget.Toast.LENGTH_LONG).show()
         }
     } catch (e: Exception) {
-        android.widget.Toast.makeText(context, "Download failed: ${e.localizedMessage}", android.widget.Toast.LENGTH_SHORT).show()
+        android.util.Log.e("SettingsScreen", "Download CSV failure", e); android.widget.Toast.makeText(context, com.notel.notel.util.FriendlyErrors.exportOneLiner("SettingsScreen", e), android.widget.Toast.LENGTH_SHORT).show()
     }
 }
 

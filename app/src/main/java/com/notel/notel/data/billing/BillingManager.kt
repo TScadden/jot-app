@@ -4,10 +4,12 @@ import android.app.Activity
 import android.content.Context
 import android.util.Log
 import com.android.billingclient.api.*
+import com.android.billingclient.api.ProductDetails.PricingPhase
 import com.notel.notel.data.preferences.NotelPreferences
 import com.notel.notel.data.remote.BillingVerificationRequest
 import com.notel.notel.data.remote.SubscriptionSyncRequest
 import com.notel.notel.data.remote.TabsApi
+import com.notel.notel.util.FriendlyErrors
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -243,8 +245,12 @@ class BillingManager @Inject constructor(
             Log.i(tag, "User canceled the purchase flow")
             checkSubscriptionStatus()
         } else {
-            Log.e(tag, "Purchase failed: ${billingResult.debugMessage}")
-            scope.launch { _billingEvents.emit("Purchase failed: ${billingResult.debugMessage}") }
+            Log.e(tag, "Purchase failed: responseCode=${billingResult.responseCode} message=${billingResult.debugMessage}")
+            scope.launch {
+                _billingEvents.emit(
+                    FriendlyErrors.forBackendError(tag, null, FriendlyErrors.Kind.UNKNOWN).banner
+                )
+            }
             checkSubscriptionStatus()
         }
     }
@@ -297,11 +303,15 @@ class BillingManager @Inject constructor(
                     
                 } else {
                     Log.e(tag, "Server verification failed: ${response.message()}")
-                    _billingEvents.emit("Payment verification failed on server.")
+                    _billingEvents.emit(
+                        FriendlyErrors.forBackendError(tag, null, FriendlyErrors.Kind.UNKNOWN).banner
+                    )
                 }
             } catch (e: Exception) {
-                Log.e(tag, "Error verifying purchase: ${e.message}")
-                _billingEvents.emit("Connection error during payment verification.")
+                Log.e(tag, "Error verifying purchase", e)
+                _billingEvents.emit(
+                    FriendlyErrors.forBackendError(tag, e, FriendlyErrors.Kind.UNKNOWN).banner
+                )
             }
         }
     }

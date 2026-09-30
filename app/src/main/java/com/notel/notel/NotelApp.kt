@@ -64,7 +64,7 @@ class NotelApp : Application(), Configuration.Provider {
                         }
                     }
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    android.util.Log.e("NotelApp", "Health Connect startup check failed", e)
                 }
             }
         }

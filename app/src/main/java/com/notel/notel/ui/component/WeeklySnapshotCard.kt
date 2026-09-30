@@ -296,7 +296,7 @@ fun WeeklySnapshotCard(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = state.message,
+                                        text = "Your past data is safe. The latest refresh did not finish.",
                                         color = MaterialTheme.colorScheme.error,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Medium,
@@ -482,6 +482,8 @@ private fun WeeklySnapshotInteractiveCanvas(
     val gridLineColor = if (isLightTheme) NotelBorder else LegacyDarkGrid
     val noDataColor = if (isLightTheme) NotelBorder else LegacyDarkNoDataRing
     val noDataLineColor = if (isLightTheme) NotelTextSecondary.copy(alpha = 0.5f) else LegacyDarkNoDataTick
+    val diaPointColor = NotelInfo
+    val selectedPointColor = NotelPrimary
 
     val lineColor = when (metricData.metricName) {
         "Sleep Hours" -> NotelInfo
@@ -581,14 +583,14 @@ private fun WeeklySnapshotInteractiveCanvas(
                             } else {
                                 currentDiaPath?.lineTo(cx, diaY)
                             }
-                            drawCircle(NotelInfo, radius = if (selectedIndex == index) 5.dp.toPx() else 3.dp.toPx(), center = Offset(cx, diaY))
+                            drawCircle(diaPointColor, radius = if (selectedIndex == index) 5.dp.toPx() else 3.dp.toPx(), center = Offset(cx, diaY))
                         } else {
-                            currentDiaPath?.let { drawPath(it, NotelInfo, style = Stroke(width = 2.dp.toPx())) }
+                            currentDiaPath?.let { drawPath(it, diaPointColor, style = Stroke(width = 2.dp.toPx())) }
                             currentDiaPath = null
                         }
                     }
                     currentSysPath?.let { drawPath(it, lineColor, style = Stroke(width = 2.dp.toPx())) }
-                    currentDiaPath?.let { drawPath(it, NotelInfo, style = Stroke(width = 2.dp.toPx())) }
+                    currentDiaPath?.let { drawPath(it, diaPointColor, style = Stroke(width = 2.dp.toPx())) }
                 }
             } else {
                 // Continuous Line Chart (Sleep & Heart Rate) with Gaps on missing null days
@@ -616,7 +618,7 @@ private fun WeeklySnapshotInteractiveCanvas(
 
                             drawCircle(Color.White, radius = 3.5.dp.toPx(), center = ptOffset)
                             drawCircle(
-                                color = if (selectedIndex == index) NotelPrimary else lineColor,
+                                color = if (selectedIndex == index) selectedPointColor else lineColor,
                                 radius = if (selectedIndex == index) 5.dp.toPx() else 2.dp.toPx(),
                                 center = ptOffset
                             )

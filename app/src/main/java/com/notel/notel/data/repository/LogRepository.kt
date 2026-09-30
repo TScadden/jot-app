@@ -58,6 +58,10 @@ class LogRepository @Inject constructor(
     val clinicalReportDataCollector: ClinicalReportDataCollector,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) {
+
+    companion object {
+        private const val TAG = "LogRepository"
+    }
     private val insightsMutex = Mutex()
 
     private val _isGeneratingReport = MutableStateFlow(false)
@@ -163,7 +167,12 @@ class LogRepository @Inject constructor(
             
             val file = reportGenerator.generateReport(snapshot, aiSummary, isRawFallback = isRawFallback)
             if (file == null) {
-                onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Failed("Failed creating PDF document.", allowRawFallback = true, reportData = snapshot))
+                onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Failed(
+                com.notel.notel.util.FriendlyErrors.forBackendError(
+                    "LogRepository", null, com.notel.notel.util.FriendlyErrors.Kind.EXPORT
+                ).banner,
+                allowRawFallback = true, reportData = snapshot
+            ))
                 return null
             }
 
@@ -177,7 +186,12 @@ class LogRepository @Inject constructor(
             onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Cancelled)
             throw e
         } catch (e: Exception) {
-            onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Failed(e.message ?: "Report generation failed", allowRawFallback = true))
+            onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Failed(
+                com.notel.notel.util.FriendlyErrors.forBackendError(
+                    "LogRepository", e, com.notel.notel.util.FriendlyErrors.Kind.EXPORT
+                ).banner,
+                allowRawFallback = true
+            ))
             return null
         } finally {
             _isGeneratingReport.value = false
@@ -196,10 +210,10 @@ class LogRepository @Inject constructor(
         GlobalScope.launch {
             try {
                 getWeeklyRecap(allCategories).onFailure { e ->
-                    _processError.value = "Weekly Recap Failed: ${e.message}"
+                    _processError.value = com.notel.notel.util.FriendlyErrors.forBackendError("LogRepository", e, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN).banner
                 }
             } catch (e: Exception) {
-                _processError.value = "Weekly Recap Failed: ${e.message}"
+                _processError.value = com.notel.notel.util.FriendlyErrors.forBackendError("LogRepository", e, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN).banner
             } finally {
                 _isGeneratingWeeklyRecap.value = false
             }
@@ -213,10 +227,10 @@ class LogRepository @Inject constructor(
         GlobalScope.launch {
             try {
                 getDeepResearch(allCategories).onFailure { e ->
-                    _processError.value = "Deep Advice Failed: ${e.message}"
+                    _processError.value = com.notel.notel.util.FriendlyErrors.forBackendError("LogRepository", e, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN).banner
                 }
             } catch (e: Exception) {
-                _processError.value = "Deep Advice Failed: ${e.message}"
+                _processError.value = com.notel.notel.util.FriendlyErrors.forBackendError("LogRepository", e, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN).banner
             } finally {
                 _isGeneratingDeepResearch.value = false
             }
@@ -230,10 +244,10 @@ class LogRepository @Inject constructor(
         GlobalScope.launch {
             try {
                 getDocumentComparison(allCategories).onFailure { e ->
-                    _processError.value = "Document Comparison Failed: ${e.message}"
+                    _processError.value = com.notel.notel.util.FriendlyErrors.forBackendError("LogRepository", e, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN).banner
                 }
             } catch (e: Exception) {
-                _processError.value = "Document Comparison Failed: ${e.message}"
+                _processError.value = com.notel.notel.util.FriendlyErrors.forBackendError("LogRepository", e, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN).banner
             } finally {
                 _isComparingDocuments.value = false
             }
@@ -293,7 +307,7 @@ class LogRepository @Inject constructor(
             clearTodayBodyLoadCache()
             triggerSync()
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("LogRepository", "deleteEntry failed", e)
             // At least keep the local deleted
         }
     }
@@ -320,7 +334,7 @@ class LogRepository @Inject constructor(
                 tabsApi.deleteDocument(doc.id)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("LogRepository", "deleteDocument failed", e)
         }
         
         // 3. Trigger refresh
@@ -415,7 +429,7 @@ class LogRepository @Inject constructor(
                 preferences.setTodayAwakeAvgHr(todayHrEntry.awakeAvg)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("LogRepository", "getDailyStatsSummary failed", e)
         }
 
         // Update cache
@@ -1119,7 +1133,7 @@ class LogRepository @Inject constructor(
                     }
                 } catch (e: Exception) {
                     // Non-fatal: extraction failed, will fall back to inline data at report time
-                    e.printStackTrace()
+                    android.util.Log.e("LogRepository", "ingestDocumentFile failed", e)
                 }
             }
             
@@ -1213,7 +1227,7 @@ class LogRepository @Inject constructor(
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("LogRepository", "extractAndCacheDocumentText failed", e)
         }
     }
 
@@ -1309,12 +1323,12 @@ class LogRepository @Inject constructor(
 
         if (targetDate != null) {
             summary.append("DAILY SNAPSHOT FOR $targetDate:\n")
-            heartHist.find { it.first == targetDate }?.let { summary.append("- Avg HR: ${it.second} bpm\n") }
-            sleepHist.find { it.first == targetDate }?.let { summary.append("- Sleep: ${formatSleep(it.second)} \n") }
-            calHist.find { it.first == targetDate }?.let { summary.append("- Active Energy: ${it.second} kcal\n") }
-            hrvHist.find { it.first == targetDate }?.let { summary.append("- HRV (RMSSD): ${it.second.toInt()} ms\n") }
+            heartHist.find { it.first == targetDate }?.let { summary.append("• Avg HR: ${it.second} bpm\n") }
+            sleepHist.find { it.first == targetDate }?.let { summary.append("• Sleep: ${formatSleep(it.second)} \n") }
+            calHist.find { it.first == targetDate }?.let { summary.append("• Active Energy: ${it.second} kcal\n") }
+            hrvHist.find { it.first == targetDate }?.let { summary.append("• HRV (RMSSD): ${it.second.toInt()} ms\n") }
             spikeHistory.find { it.date == targetDate }?.let {
-                summary.append("- HR Spikes: ${it.spikeCount} events | Max Delta: +${it.maxDelta} bpm | Range: ${it.baseline}-${it.max} bpm\n")
+                summary.append("• HR Spikes: ${it.spikeCount} events | Max Delta: +${it.maxDelta} bpm | Range: ${it.baseline}-${it.max} bpm\n")
             }
             return summary.toString().trim()
         }
@@ -1326,7 +1340,7 @@ class LogRepository @Inject constructor(
             summary.append("NOTE: Heart rate spikes ≥30 bpm above resting baseline are flagged as orthostatic events.\n")
             summary.append("Format: Date | Avg | Max | Resting Baseline (p10) | Events >100bpm | Largest Spike | Details\n")
             spikeHistory.take(if (last30DaysOnly) 15 else 180).forEach { d ->
-                summary.append("- ${formatReportDate(d.date)}: Average: ${d.avg} bpm | Max: ${d.max} bpm | Baseline: ${d.baseline} bpm")
+                summary.append("• ${formatReportDate(d.date)}: Average: ${d.avg} bpm | Max: ${d.max} bpm | Baseline: ${d.baseline} bpm")
                 summary.append(" | Active Spike: ${d.baseline} bpm TO ${d.max} bpm (Delta jump of +${d.maxDelta}) | Count: ${d.spikeCount}")
                 if (d.eventsList.isNotEmpty()) {
                     val details = d.eventsList.joinToString(", ") { "${formatSleep(it.durationMins)} peak @${it.peakBpm}" }
@@ -1380,7 +1394,7 @@ class LogRepository @Inject constructor(
                 bpRecords.take(30).forEach { bp ->
                     val dateFormatted = sdf.format(java.util.Date(bp.timeEpochMs))
                     val sourceLabel = if (bp.source == com.notel.notel.data.healthconnect.BloodPressureSource.MANUAL) "Manual Log" else "Health Connect"
-                    summary.append("- $dateFormatted: ${bp.systolic}/${bp.diastolic} mmHg ($sourceLabel)\n")
+                    summary.append("• $dateFormatted: ${bp.systolic}/${bp.diastolic} mmHg ($sourceLabel)\n")
                 }
                 summary.append("\n")
             }
@@ -1394,7 +1408,7 @@ class LogRepository @Inject constructor(
         summary.append("Format: Date | Avg HR | Sleep | Deep Sleep | Calories | HRV | HR Spikes\n")
         sortedDates.forEach { date ->
             val data = dailyMap[date]!!
-            summary.append("- $date: ")
+            summary.append("• $date: ")
             summary.append(if (data.hr != null) "${data.hr} bpm" else "N/A")
             summary.append(" | ")
             summary.append(if (data.sleep != null) formatSleep(data.sleep) else "N/A")
@@ -1416,7 +1430,7 @@ class LogRepository @Inject constructor(
             
             summary.append("\nOVERALL STATISTICAL TRENDS (Last 6 Months):\n")
             summary.append("AI CRITICAL INSTRUCTION: If any 'Sample Count' or 'ID' similar numbers (e.g. 45196, 6464, 6182) appear in the raw logs above, YOU MUST EXCLUDE THEM. ONLY report the averages provided in this section.\n")
-            summary.append("- Avg Monthly HR: Current: $avgThis bpm | 3rd Mo: $avg3 bpm | 6th Mo: $avg6 bpm\n")
+            summary.append("• Avg Monthly HR: Current: $avgThis bpm | 3rd Mo: $avg3 bpm | 6th Mo: $avg6 bpm\n")
         }
 
         if (spikeHistory.isNotEmpty()) {
@@ -1425,10 +1439,10 @@ class LogRepository @Inject constructor(
             val worstDay = spikeHistory.maxByOrNull { it.maxDelta }
             val statsTitle = if (last30DaysOnly) "ORTHOSTATIC SPIKE SUMMARY (Last 30 Days)" else "ORTHOSTATIC SPIKE SUMMARY (Full History - Last 180 Days)"
             summary.append("\n$statsTitle:\n")
-            summary.append("- Avg daily events (>100 bpm): ${"%,.1f".format(avgSpikes)}\n")
-            summary.append("- Avg max jump: +${avgDelta} bpm\n")
+            summary.append("• Avg daily events (>100 bpm): ${"%,.1f".format(avgSpikes)}\n")
+            summary.append("• Avg max jump: +${avgDelta} bpm\n")
             if (worstDay != null) {
-                summary.append("- Worst day: ${formatReportDate(worstDay.date)} — Jumped from ${worstDay.baseline} bpm TO ${worstDay.max} bpm total (+${worstDay.maxDelta}), ${worstDay.spikeCount} total events\n")
+                summary.append("• Worst day: ${formatReportDate(worstDay.date)}. Jumped from ${worstDay.baseline} bpm TO ${worstDay.max} bpm total (+${worstDay.maxDelta}), ${worstDay.spikeCount} total events\n")
             }
         }
         

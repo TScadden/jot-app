@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
  *  - Subtle 1dp [NotelPrimary]-tinted border
  *  - Clip to [shape]
  */
+@Composable
 fun Modifier.liquidGlass(
     shape: Shape = RoundedCornerShape(16.dp),
     color: Color = NotelSurface,

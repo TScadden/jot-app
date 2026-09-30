@@ -88,6 +88,10 @@ class FitbitViewModel @Inject constructor(
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
 
+    companion object {
+        private const val TAG = "FitbitViewModel"
+    }
+
     private val _state = MutableStateFlow(FitbitState(connectedDevices = listOf("Health Connect")))
     val state = _state.asStateFlow()
 
@@ -945,7 +949,13 @@ class FitbitViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 if (showLoader) {
-                    _state.update { it.copy(errorMessage = "Failed to sync metrics: ${e.message}") }
+                    _state.update {
+                        it.copy(
+                            errorMessage = com.notel.notel.util.FriendlyErrors.forBackendError(
+                                TAG, e, com.notel.notel.util.FriendlyErrors.Kind.LOAD
+                            ).banner
+                        )
+                    }
                 }
             } finally {
                 // Only dismiss loader if the active date matches the queried date
@@ -1184,12 +1194,28 @@ class FitbitViewModel @Inject constructor(
 
         if (!error.isNullOrBlank()) {
             val msg = errorDesc?.ifBlank { null } ?: error
-            _state.update { it.copy(isLoading = false, errorMessage = "Fitbit connection error: $msg") }
+            android.util.Log.e(TAG, "Fitbit OAuth callback error: error=$error desc=$msg")
+            _state.update {
+                it.copy(
+                    isLoading = false,
+                    errorMessage = com.notel.notel.util.FriendlyErrors.forBackendError(
+                        TAG, null, com.notel.notel.util.FriendlyErrors.Kind.AUTH
+                    ).banner
+                )
+            }
             return
         }
 
         if (code.isNullOrBlank()) {
-            _state.update { it.copy(isLoading = false, errorMessage = "Missing authorization code from Fitbit callback.") }
+            android.util.Log.e(TAG, "Fitbit callback missing authorization code")
+            _state.update {
+                it.copy(
+                    isLoading = false,
+                    errorMessage = com.notel.notel.util.FriendlyErrors.forBackendError(
+                        TAG, null, com.notel.notel.util.FriendlyErrors.Kind.AUTH
+                    ).banner
+                )
+            }
             return
         }
 
@@ -1281,7 +1307,14 @@ class FitbitViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                _state.update { it.copy(isLoading = false, errorMessage = "Fitbit Login Error: ${e.message}") }
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = com.notel.notel.util.FriendlyErrors.forBackendError(
+                            TAG, e, com.notel.notel.util.FriendlyErrors.Kind.AUTH
+                        ).banner
+                    )
+                }
             }
         }
     }
@@ -1340,7 +1373,7 @@ class FitbitViewModel @Inject constructor(
                     deepSleepMap[summary.date] = summary.deepMinutes
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e("FitbitViewModel", "exportMetricsCsv failed", e)
             }
         }
         
@@ -1399,7 +1432,7 @@ class FitbitViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e("FitbitViewModel", "exportMetricsCsv failed", e)
             }
         }
         
@@ -1527,7 +1560,7 @@ class FitbitViewModel @Inject constructor(
                     com.notel.notel.util.NotificationHelper(context).showCsvReady(cacheFile)
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e("FitbitViewModel", "exportMetricsCsvAsync failed", e)
             } finally {
                 _isExportingCsv.value = false
             }

@@ -485,7 +485,7 @@ fun FitbitScreen(
                                         .background(Color(0xFF2A385E), RoundedCornerShape(2.dp))
                                 )
                                 Spacer(Modifier.width(6.dp))
-                                Text("Resting range (45–70 bpm)", color = NotelTextSecondary, fontSize = 11.sp)
+                                Text("Resting range (45 to 70 bpm)", color = NotelTextSecondary, fontSize = 11.sp)
                             }
                             val peakBpmVal = remember(state.heartRateData) { state.heartRateData.maxOfOrNull { it.second } ?: 0 }
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -740,6 +740,11 @@ fun HeartPatternGraph(
         heartRateData.maxByOrNull { it.second }
     }
 
+    // Captured for DrawScope use (@Composable getters can't be called inside Canvas).
+    val axisLabelColor = NotelTextSecondary
+    val curveColor = NotelPrimary
+    val peakColor = NotelError
+
     Box(modifier = modifier) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val leftPadding = 36.dp.toPx()
@@ -779,7 +784,7 @@ fun HeartPatternGraph(
                 
                 val textLayoutResult = textMeasurer.measure(
                     text = AnnotatedString("$tick"),
-                    style = TextStyle(color = NotelTextSecondary, fontSize = 10.sp)
+                    style = TextStyle(color = axisLabelColor, fontSize = 10.sp)
                 )
                 drawText(
                     textLayoutResult = textLayoutResult,
@@ -827,7 +832,7 @@ fun HeartPatternGraph(
                 }
                 val textLayoutResult = textMeasurer.measure(
                     text = AnnotatedString(labelText),
-                    style = TextStyle(color = NotelTextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                    style = TextStyle(color = axisLabelColor, fontSize = 10.sp, fontWeight = FontWeight.Medium)
                 )
                 val textWidth = textLayoutResult.size.width.toFloat()
                 val clampedTextX = (x - textWidth / 2f).coerceIn(
@@ -855,7 +860,7 @@ fun HeartPatternGraph(
                 }
                 drawPath(
                     path = path,
-                    color = NotelPrimary,
+                    color = curveColor,
                     style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                 )
             }
@@ -866,7 +871,7 @@ fun HeartPatternGraph(
                 val peakY = yToPx(peakPoint.second.toFloat())
 
                 drawCircle(
-                    color = NotelError,
+                    color = peakColor,
                     radius = 5.dp.toPx(),
                     center = Offset(peakX, peakY)
                 )
@@ -878,7 +883,7 @@ fun HeartPatternGraph(
 
                 val peakTextResult = textMeasurer.measure(
                     text = AnnotatedString("${peakPoint.second}"),
-                    style = TextStyle(color = NotelError, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    style = TextStyle(color = peakColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 )
                 drawText(
                     textLayoutResult = peakTextResult,

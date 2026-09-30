@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -173,7 +174,7 @@ fun FoodScreen(
                             modifier = Modifier.padding(14.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.Error, null, tint = NotelErrorTintOn)
+                            Icon(Icons.Outlined.CloudOff, null, tint = NotelErrorTintOn)
                             Spacer(Modifier.width(10.dp))
                             Text(
                                 text = errorMessage ?: "",

@@ -77,6 +77,9 @@ fun BlobBackground() {
         label = "phase4"
     )
 
+    // Captured for DrawScope use (@Composable getters can't be called inside Canvas).
+    val frontGooColor = NotelPrimary.copy(alpha = 0.55f)
+
     androidx.compose.foundation.Canvas(
         modifier = Modifier
             .fillMaxSize()
@@ -162,7 +165,7 @@ fun BlobBackground() {
         drawPath(
             path = path4,
             brush = Brush.verticalGradient(
-                colors = listOf(NotelPrimary.copy(alpha = 0.55f), Color.Transparent)
+                colors = listOf(frontGooColor, Color.Transparent)
             )
         )
     }
@@ -757,7 +760,7 @@ fun ProjectFocusScreen(
                                                else NotelPrimary.copy(alpha = 0.12f)
                                     ) {
                                         Text(
-                                            text = if (isCompleted) "✅ Complete — Results Ready" else "⏳ In Progress",
+                                            text = if (isCompleted) "✅ Complete. Results ready." else "⏳ In Progress",
                                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                                             color = if (isCompleted) NotelSuccess else NotelPrimary,
                                             fontSize = 11.sp,

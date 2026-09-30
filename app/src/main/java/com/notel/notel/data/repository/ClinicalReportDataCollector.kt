@@ -1,5 +1,7 @@
 package com.notel.notel.data.repository
 
+import android.util.Log
+
 import com.notel.notel.data.healthconnect.HealthConnectCoordinator
 import com.notel.notel.data.healthconnect.HealthConnectManager
 import com.notel.notel.data.local.dao.KnowledgeDocumentDao
@@ -58,7 +60,7 @@ class ClinicalReportDataCollector @Inject constructor(
                 metadataMap["logs"] = SectionMetadata("logs", DataSourceStatus.SUCCESS, entries.size)
                 entries
             } catch (e: Exception) {
-                metadataMap["logs"] = SectionMetadata("logs", DataSourceStatus.ERROR, 0, e.message)
+                metadataMap["logs"] = SectionMetadata("logs", DataSourceStatus.ERROR, 0, e.javaClass.simpleName)
                 emptyList()
             }
         }
@@ -80,7 +82,7 @@ class ClinicalReportDataCollector @Inject constructor(
                 metadataMap["conditions"] = SectionMetadata("conditions", DataSourceStatus.SUCCESS, conds.size)
                 conds
             } catch (e: Exception) {
-                metadataMap["conditions"] = SectionMetadata("conditions", DataSourceStatus.ERROR, 0, e.message)
+                metadataMap["conditions"] = SectionMetadata("conditions", DataSourceStatus.ERROR, 0, e.javaClass.simpleName)
                 emptyList()
             }
         }
@@ -117,7 +119,7 @@ class ClinicalReportDataCollector @Inject constructor(
                 metadataMap["medications"] = SectionMetadata("medications", DataSourceStatus.SUCCESS, meds.size)
                 meds
             } catch (e: Exception) {
-                metadataMap["medications"] = SectionMetadata("medications", DataSourceStatus.ERROR, 0, e.message)
+                metadataMap["medications"] = SectionMetadata("medications", DataSourceStatus.ERROR, 0, e.javaClass.simpleName)
                 emptyList()
             }
         }
@@ -133,7 +135,7 @@ class ClinicalReportDataCollector @Inject constructor(
                 metadataMap["documents"] = SectionMetadata("documents", DataSourceStatus.SUCCESS, extractedTexts.size)
                 extractedTexts
             } catch (e: Exception) {
-                metadataMap["documents"] = SectionMetadata("documents", DataSourceStatus.ERROR, 0, e.message)
+                metadataMap["documents"] = SectionMetadata("documents", DataSourceStatus.ERROR, 0, e.javaClass.simpleName)
                 emptyList()
             }
         }
@@ -148,7 +150,7 @@ class ClinicalReportDataCollector @Inject constructor(
                 metadataMap["bloodPressure"] = SectionMetadata("bloodPressure", DataSourceStatus.SUCCESS, filteredBp.size)
                 filteredBp
             } catch (e: Exception) {
-                metadataMap["bloodPressure"] = SectionMetadata("bloodPressure", DataSourceStatus.ERROR, 0, e.message)
+                metadataMap["bloodPressure"] = SectionMetadata("bloodPressure", DataSourceStatus.ERROR, 0, e.javaClass.simpleName)
                 emptyList()
             }
         }

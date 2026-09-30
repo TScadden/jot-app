@@ -163,15 +163,27 @@ object PdfExporter {
                     outputStream.close()
                     Toast.makeText(context, "Saved PDF to Downloads!", Toast.LENGTH_LONG).show()
                 } else {
-                    Toast.makeText(context, "Failed to write PDF", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        context,
+                        com.notel.notel.util.FriendlyErrors.exportOneLiner("PdfExporter", null),
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
             } else {
-                Toast.makeText(context, "Failed to create MediaStore entry", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    context,
+                    com.notel.notel.util.FriendlyErrors.exportOneLiner("PdfExporter", null),
+                    Toast.LENGTH_SHORT
+                ).show()
             }
             pdfDocument.close()
         } catch (e: Exception) {
-            e.printStackTrace()
-            Toast.makeText(context, "Error saving PDF: ${e.message}", Toast.LENGTH_SHORT).show()
+            android.util.Log.e("PdfExporter", "PDF write failure", e)
+            Toast.makeText(
+                context,
+                com.notel.notel.util.FriendlyErrors.exportOneLiner("PdfExporter", e),
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 

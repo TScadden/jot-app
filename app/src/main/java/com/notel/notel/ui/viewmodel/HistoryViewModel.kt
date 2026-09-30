@@ -89,7 +89,9 @@ class HistoryViewModel @Inject constructor(
             try {
                 syncManager.syncAllData()
             } catch (e: Exception) {
-                _lastSyncError.value = e.message ?: "Sync failed"
+                _lastSyncError.value = com.notel.notel.util.FriendlyErrors.syncOneLiner(
+                    "HistoryViewModel", e
+                )
             } finally {
                 _isSyncing.value = false
             }

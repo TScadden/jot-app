@@ -450,7 +450,7 @@ fun QuickLogScreen(
                                         text = buildString {
                                             if (state.composedText.isNotBlank()) append(state.composedText)
                                             if (state.manualText.isNotBlank()) {
-                                                if (isNotEmpty()) append(" — ")
+                                                if (isNotEmpty()) append(" · ")
                                                 append(state.manualText.trim())
                                             }
                                         },

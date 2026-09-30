@@ -423,6 +423,10 @@ class CoachViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
+    companion object {
+        private const val TAG = "CoachViewModel"
+    }
+
     private val _currentSessionId = MutableStateFlow(savedStateHandle.get<String>("sessionId"))
 
     private val _loadingMessage = MutableStateFlow<CoachMessage?>(null)
@@ -488,7 +492,7 @@ class CoachViewModel @Inject constructor(
                     try {
                         Json.decodeFromString(kotlinx.serialization.builtins.ListSerializer(Medication.serializer()), json).toMutableList()
                     } catch (e: Exception) {
-                        e.printStackTrace()
+                        android.util.Log.e(TAG, "approveProposedMedication failed", e)
                         mutableListOf()
                     }
                 } else {
@@ -538,7 +542,7 @@ class CoachViewModel @Inject constructor(
                     try {
                         syncManager.pushProfileData()
                     } catch (e: Exception) {
-                        e.printStackTrace()
+                        android.util.Log.e(TAG, "approveProposedMedication failed", e)
                     }
                 }
             } catch (e: Exception) {
@@ -588,7 +592,7 @@ class CoachViewModel @Inject constructor(
                     )
                 )
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e(TAG, "approveProposedNote failed", e)
             }
         }
     }
@@ -615,7 +619,7 @@ class CoachViewModel @Inject constructor(
                     )
                 )
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e(TAG, "denyProposedNote failed", e)
             }
         }
     }
@@ -653,11 +657,11 @@ class CoachViewModel @Inject constructor(
                     try {
                         syncManager.pushProfileData()
                     } catch (e: Exception) {
-                        e.printStackTrace()
+                        android.util.Log.e(TAG, "approveProposedList failed", e)
                     }
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e(TAG, "approveProposedList failed", e)
             }
         }
     }
@@ -684,7 +688,7 @@ class CoachViewModel @Inject constructor(
                     )
                 )
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e(TAG, "denyProposedList failed", e)
             }
         }
     }
@@ -741,7 +745,7 @@ class CoachViewModel @Inject constructor(
                     )
                 )
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e(TAG, "approveProposedReminder failed", e)
             }
         }
     }
@@ -766,7 +770,7 @@ class CoachViewModel @Inject constructor(
                     )
                 )
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e(TAG, "denyProposedReminder failed", e)
             }
         }
     }
@@ -807,7 +811,7 @@ class CoachViewModel @Inject constructor(
                             if (access >= 500) candidates.add(CalInfo(id, accName, accType))
                         }
                     }
-                } catch (e: Exception) { e.printStackTrace() }
+                } catch (e: Exception) { android.util.Log.e(TAG, "approveProposedCalendarEvent failed", e) }
 
                 // Prefer the calendar whose account matches the connected email; fall back to first writable
                 val best = candidates.firstOrNull { it.accountName.equals(targetEmail, ignoreCase = true) }
@@ -815,7 +819,7 @@ class CoachViewModel @Inject constructor(
 
                 if (best == null) {
                     coachMessageDao.insertMessage(CoachMessageEntity(sessionId = sessionId, role = "coach",
-                        content = "Could not find a writable calendar. Please ensure Calendar permissions are granted in Settings → Apps → Tabs → Permissions."))
+                        content = "Could not find a writable calendar. Please ensure Calendar permissions are granted in Settings > Apps > Tabs > Permissions."))
                     return@launch
                 }
 
@@ -841,7 +845,7 @@ class CoachViewModel @Inject constructor(
                             startMillis = parsed.time
                         }
                     } catch (e: Exception) {
-                        e.printStackTrace()
+                        android.util.Log.e(TAG, "approveProposedCalendarEvent failed", e)
                     }
                 }
                 val endMillis = startMillis + 60 * 60 * 1000 // default 1 hour duration
@@ -891,18 +895,18 @@ class CoachViewModel @Inject constructor(
                         CoachMessageEntity(
                             sessionId = sessionId,
                             role = "coach",
-                            content = "The calendar insert returned no URI — this usually means WRITE_CALENDAR permission was denied. Please go to Settings → Apps → Tabs → Permissions and enable Calendar access, then try again."
+                            content = "The calendar insert returned no URI. This usually means WRITE_CALENDAR permission was denied. Please go to Settings > Apps > Tabs > Permissions and enable Calendar access, then try again."
                         )
                     )
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e(TAG, "approveProposedCalendarEvent failed", e)
                 val sessionId = _currentSessionId.value ?: return@launch
                 coachMessageDao.insertMessage(
                     CoachMessageEntity(
                         sessionId = sessionId,
                         role = "coach",
-                        content = "An error occurred while writing to your calendar: ${e.message}"
+                        content = com.notel.notel.util.FriendlyErrors.coachCalendarAddFailure("CoachViewModel", e)
                     )
                 )
             }
@@ -929,7 +933,7 @@ class CoachViewModel @Inject constructor(
                     )
                 )
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e(TAG, "denyProposedCalendarEvent failed", e)
             }
         }
     }
@@ -957,7 +961,7 @@ class CoachViewModel @Inject constructor(
                             selectionArgs.add(endOfDay.toString())
                         }
                     } catch (e: Exception) {
-                        e.printStackTrace()
+                        android.util.Log.e(TAG, "approveProposedCalendarDeleteEvent failed", e)
                     }
                 }
 
@@ -996,13 +1000,13 @@ class CoachViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e(TAG, "approveProposedCalendarDeleteEvent failed", e)
                 val sessionId = _currentSessionId.value ?: return@launch
                 coachMessageDao.insertMessage(
                     CoachMessageEntity(
                         sessionId = sessionId,
                         role = "coach",
-                        content = "An error occurred while deleting from your calendar: ${e.message}"
+                        content = com.notel.notel.util.FriendlyErrors.coachCalendarDeleteFailure("CoachViewModel", e)
                     )
                 )
             }
@@ -1029,7 +1033,7 @@ class CoachViewModel @Inject constructor(
                     )
                 )
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e(TAG, "denyProposedCalendarDeleteEvent failed", e)
             }
         }
     }
@@ -1053,7 +1057,7 @@ class CoachViewModel @Inject constructor(
                 // 4. Return to previous screen
                 onDeleted()
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e(TAG, "deleteCurrentSession failed", e)
             }
         }
     }
@@ -1121,7 +1125,7 @@ class CoachViewModel @Inject constructor(
                         _loadingMessage.value = CoachMessage(
                             id = loadingId,
                             role = "coach",
-                            content = "Couldn't read that file: ${error.message}",
+                            content = com.notel.notel.util.FriendlyErrors.coachFileReadFailure("CoachViewModel", error),
                             isLoading = false
                         )
                     }
@@ -1130,7 +1134,7 @@ class CoachViewModel @Inject constructor(
                 _loadingMessage.value = CoachMessage(
                     id = UUID.randomUUID().toString(),
                     role = "coach",
-                    content = "An error occurred while reading the file: ${e.message}",
+                    content = com.notel.notel.util.FriendlyErrors.coachFileReadFailure("CoachViewModel", e),
                     isLoading = false
                 )
             }
@@ -1178,7 +1182,7 @@ class CoachViewModel @Inject constructor(
                     )
                 )
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e(TAG, "approveProposedFile failed", e)
             }
         }
     }
@@ -1205,7 +1209,7 @@ class CoachViewModel @Inject constructor(
                     )
                 )
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e(TAG, "denyProposedFile failed", e)
             }
         }
     }
@@ -1435,11 +1439,21 @@ class CoachViewModel @Inject constructor(
                         )
                     },
                     onFailure = { error ->
-                        _loadingMessage.value = CoachMessage(id = loadingId, role = "coach", content = "Sorry, I had trouble connecting: ${error.message}", isLoading = false)
+                        _loadingMessage.value = CoachMessage(
+                            id = loadingId,
+                            role = "coach",
+                            content = com.notel.notel.util.FriendlyErrors.coachSendFailure("CoachViewModel", error),
+                            isLoading = false
+                        )
                     }
                 )
             } catch (e: Exception) {
-                _loadingMessage.value = CoachMessage(id = UUID.randomUUID().toString(), role = "coach", content = "An unexpected error occurred.", isLoading = false)
+                _loadingMessage.value = CoachMessage(
+                    id = UUID.randomUUID().toString(),
+                    role = "coach",
+                    content = com.notel.notel.util.FriendlyErrors.coachSendFailure("CoachViewModel", e),
+                    isLoading = false
+                )
             }
         }
     }
@@ -1517,7 +1531,7 @@ class CoachViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e(TAG, "getUpcomingCalendarEvents failed", e)
             }
 
             if (eventsList.isEmpty()) {
@@ -1526,8 +1540,8 @@ class CoachViewModel @Inject constructor(
                 "CALENDAR EVENTS (today + next 14 days):\n" + eventsList.joinToString("\n")
             }
         } catch (e: Exception) {
-            e.printStackTrace()
-            "Error querying calendar events: ${e.message}"
+            android.util.Log.e(TAG, "getUpcomingCalendarEvents failed", e)
+            "Calendar events are unavailable right now."
         }
     }
 
@@ -1570,7 +1584,7 @@ class CoachViewModel @Inject constructor(
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e(TAG, "getBestWritableCalendarId failed", e)
         }
         return bestId
     }

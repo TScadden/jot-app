@@ -220,7 +220,7 @@ fun HabitsScreen(
             Text(
                 text = if (habits.isEmpty()) "Add your first habit above to get started."
                        else if (checkedCount == habits.size) "All done today! Amazing work 🎉"
-                       else "Keep it up — you're on a roll!",
+                       else "Keep it up. You're on a roll!",
                 color = NotelTextSecondary,
                 fontSize = 13.sp
             )
@@ -319,7 +319,7 @@ fun HabitsScreen(
                                                         else Color.Transparent
                                             ) {
                                                 Text(
-                                                    text = if (isChecked) "✅" else if (streak > 0) "🔥 $streak" else "—",
+                                                    text = if (isChecked) "✅" else if (streak > 0) "🔥 $streak" else "·",
                                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                                     fontSize = 11.sp,
                                                     fontWeight = FontWeight.Bold,

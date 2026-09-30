@@ -3,6 +3,7 @@ package com.notel.notel.ui.screen
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,6 +21,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -32,7 +34,7 @@ import com.notel.notel.ui.viewmodel.ResearchViewModel
 
 /** Medical disclaimer — always visible at the top of the Research screen. */
 private const val RESEARCH_DISCLAIMER =
-    "For educational purposes only — not medical advice. Talk to your doctor before trying anything here."
+    "For educational purposes only. This is not medical advice. Talk to your doctor before trying anything here."
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

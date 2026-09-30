@@ -24,6 +24,10 @@ class TipsAndTricksViewModel @Inject constructor(
     private val preferences: NotelPreferences
 ) : ViewModel() {
 
+    companion object {
+        private const val TAG = "TipsAndTricksViewModel"
+    }
+
     // Topics list flow parsed from cached JSON
     val topics: StateFlow<List<String>> = preferences.tipsAndTricksTopics
         .map { json ->
@@ -137,18 +141,22 @@ class TipsAndTricksViewModel @Inject constructor(
                             // Clear old cached answers since topics changed
                             preferences.setTipsAndTricksAnswers("")
                         } else {
-                            _errorMessage.value = "Failed to parse topics list from server."
+                            _errorMessage.value = com.notel.notel.util.FriendlyErrors.forBackendError(TAG, null, com.notel.notel.util.FriendlyErrors.Kind.LOAD).banner
                         }
                     } catch (e: Exception) {
-                        e.printStackTrace()
-                        _errorMessage.value = "Failed to decode topics. Please try again."
+                        android.util.Log.e(TAG, "Decode topics failure", e)
+                        _errorMessage.value = com.notel.notel.util.FriendlyErrors.forBackendError(TAG, e, com.notel.notel.util.FriendlyErrors.Kind.LOAD).banner
                     }
                 }.onFailure {
-                    _errorMessage.value = it.message ?: "Network error. Please try again."
+                    _errorMessage.value = com.notel.notel.util.FriendlyErrors.forBackendError(
+                        TAG, it, com.notel.notel.util.FriendlyErrors.Kind.LOAD
+                    ).banner
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
-                _errorMessage.value = e.message ?: "Failed to scan records."
+                android.util.Log.e(TAG, "Scan records failure", e)
+                _errorMessage.value = com.notel.notel.util.FriendlyErrors.forBackendError(
+                    TAG, e, com.notel.notel.util.FriendlyErrors.Kind.LOAD
+                ).banner
             } finally {
                 _isLoadingTopics.value = false
             }
@@ -217,18 +225,22 @@ class TipsAndTricksViewModel @Inject constructor(
                             }
                             preferences.setTipsAndTricksAnswers(obj.toString())
                         } else {
-                            _errorMessage.value = "Failed to parse tips."
+                            _errorMessage.value = com.notel.notel.util.FriendlyErrors.forBackendError(TAG, null, com.notel.notel.util.FriendlyErrors.Kind.LOAD).banner
                         }
                     } catch (e: Exception) {
-                        e.printStackTrace()
-                        _errorMessage.value = "Could not decode tips. Please retry."
+                        android.util.Log.e(TAG, "Decode tips failure", e)
+                        _errorMessage.value = com.notel.notel.util.FriendlyErrors.forBackendError(TAG, e, com.notel.notel.util.FriendlyErrors.Kind.LOAD).banner
                     }
                 }.onFailure {
-                    _errorMessage.value = it.message ?: "Failed to generate tips."
+                    _errorMessage.value = com.notel.notel.util.FriendlyErrors.forBackendError(
+                        TAG, it, com.notel.notel.util.FriendlyErrors.Kind.LOAD
+                    ).banner
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
-                _errorMessage.value = e.message ?: "Error getting tips."
+                android.util.Log.e(TAG, "Fetch tips failure", e)
+                _errorMessage.value = com.notel.notel.util.FriendlyErrors.forBackendError(
+                    TAG, e, com.notel.notel.util.FriendlyErrors.Kind.LOAD
+                ).banner
             } finally {
                 _loadingTipsTopic.value = null
             }

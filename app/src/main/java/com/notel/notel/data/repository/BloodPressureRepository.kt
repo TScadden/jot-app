@@ -4,6 +4,7 @@ import android.util.Log
 import com.notel.notel.data.healthconnect.BloodPressureSource
 import com.notel.notel.data.healthconnect.BloodPressureUiRecord
 import com.notel.notel.data.preferences.NotelPreferences
+import com.notel.notel.util.FriendlyErrors
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -103,7 +104,9 @@ class BloodPressureRepository(
                 logD("Successfully saved manual blood pressure record to local preferences")
             } catch (e: Exception) {
                 logE("Failed to write manual blood pressure record to DataStore", e)
-                return SaveResult.Failure(e.message ?: "Failed to write to local storage")
+                return SaveResult.Failure(
+                    FriendlyErrors.forBackendError(tag, e, FriendlyErrors.Kind.SAVE).banner
+                )
             }
 
             try {
@@ -160,7 +163,7 @@ class BloodPressureRepository(
                 logD("Batch-imported ${toAdd.size} manual blood pressure records")
             } catch (e: Exception) {
                 logE("Failed to write batch-imported blood pressure records to DataStore", e)
-                return SaveResult.Failure(e.message ?: "Failed to write to local storage")
+                return SaveResult.Failure(FriendlyErrors.csvImportFailure(tag, e))
             }
 
             try {
@@ -201,7 +204,7 @@ class BloodPressureRepository(
             logD("Successfully deleted manual record $recordId from DataStore")
         } catch (e: Exception) {
             logE("Failed to update DataStore after manual record deletion", e)
-            return SaveResult.Failure(e.message ?: "Failed to update storage")
+            return SaveResult.Failure(FriendlyErrors.bpDeleteFailure(tag, e))
         }
 
         try {
@@ -235,7 +238,9 @@ class BloodPressureRepository(
             }
         } catch (e: Exception) {
             logE("Exception querying Health Connect blood pressure records", e)
-            hcStatus = HealthConnectStatus.Error(e.message ?: "Failed to read Health Connect data")
+            hcStatus = HealthConnectStatus.Error(
+                FriendlyErrors.forBackendError(tag, e, FriendlyErrors.Kind.LOAD).banner
+            )
         }
 
         val manualRecords = getManualRecords()

@@ -28,7 +28,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.notel.notel.data.csv.CsvImportPhase
+import com.notel.notel.ui.viewmodel.CsvImportPhase
 import com.notel.notel.data.healthconnect.BloodPressureSource
 import com.notel.notel.data.healthconnect.BloodPressureUiRecord
 import com.notel.notel.data.repository.HealthConnectStatus

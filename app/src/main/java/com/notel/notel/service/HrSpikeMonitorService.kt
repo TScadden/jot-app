@@ -32,6 +32,7 @@ class HrSpikeMonitorService : Service() {
     private var monitorJob: Job? = null
 
     companion object {
+        private const val TAG = "HrSpikeMonitorService"
         private const val NOTIFICATION_ID = 5001
         private const val CHANNEL_ID = "hr_monitor_service"
         
@@ -67,7 +68,7 @@ class HrSpikeMonitorService : Service() {
                 startForeground(NOTIFICATION_ID, notification)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("HrSpikeMonitorService", "onCreate failed", e)
             // If foreground start fails, the service will likely be killed by the system,
             // but at least it won't crash the entire app process.
         }
@@ -148,7 +149,7 @@ class HrSpikeMonitorService : Service() {
                 preferences.setHrLastSampleTime(latestTime)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("HrSpikeMonitorService", "checkSpikes failed", e)
         }
     }
 

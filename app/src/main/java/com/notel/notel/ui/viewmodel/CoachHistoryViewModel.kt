@@ -22,6 +22,10 @@ class CoachHistoryViewModel @Inject constructor(
     private val tabsApi: TabsApi
 ) : ViewModel() {
 
+    companion object {
+        private const val TAG = "CoachHistoryViewModel"
+    }
+
     private val _sessions = MutableStateFlow<List<CoachSession>>(emptyList())
     val sessions: StateFlow<List<CoachSession>> = _sessions.asStateFlow()
 
@@ -44,7 +48,7 @@ class CoachHistoryViewModel @Inject constructor(
                     tabsApi.deleteCoachSession(session.id)
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e("CoachHistoryViewModel", "deleteSession failed", e)
             }
         }
     }

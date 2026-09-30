@@ -40,6 +40,7 @@ import com.notel.notel.data.remote.ForgotPasswordRequest
 import com.notel.notel.data.remote.TabsApi
 import com.notel.notel.data.sync.SyncManager
 import com.notel.notel.ui.theme.*
+import com.notel.notel.util.FriendlyErrors
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
@@ -125,7 +126,7 @@ class LoginViewModel @Inject constructor(
                     errorMsg = body?.error ?: "Failed to send reset link"
                 }
             } catch (e: Exception) {
-                errorMsg = e.message ?: "Network error"
+                errorMsg = FriendlyErrors.forBackendError("LoginScreen", e, FriendlyErrors.Kind.AUTH).banner
             } finally {
                 isLoading = false
             }
@@ -186,7 +187,7 @@ class LoginViewModel @Inject constructor(
                     errorMsg = errorMessage ?: (body?.error ?: "Invalid credentials")
                 }
             } catch (e: Exception) {
-                errorMsg = e.message ?: "Network error"
+                errorMsg = FriendlyErrors.forBackendError("LoginScreen", e, FriendlyErrors.Kind.AUTH).banner
             } finally {
                 isLoading = false
             }
@@ -243,7 +244,7 @@ class LoginViewModel @Inject constructor(
                     errorMsg = errorMessage ?: (body?.error ?: "Google login failed")
                 }
             } catch (e: Exception) {
-                errorMsg = e.message ?: "Google login failed"
+                errorMsg = FriendlyErrors.forBackendError("LoginScreen", e, FriendlyErrors.Kind.AUTH).banner
             } finally {
                 isLoading = false
             }
@@ -284,7 +285,7 @@ class LoginViewModel @Inject constructor(
                     errorMsg = errorMessage ?: (body?.error ?: "Registration failed")
                 }
             } catch (e: Exception) {
-                errorMsg = e.message ?: "Network error"
+                errorMsg = FriendlyErrors.forBackendError("LoginScreen", e, FriendlyErrors.Kind.AUTH).banner
             } finally {
                 isLoading = false
             }
@@ -341,7 +342,16 @@ fun LoginScreen(
                 if (e.statusCode == 12501) { // GoogleSignInStatusCodes.SIGN_IN_CANCELLED
                     viewModel.setError("Google Sign In cancelled by user")
                 } else {
-                    viewModel.setError("Google Sign In failed: ${e.message} (status code: ${e.statusCode}). (Note: Status code 10 indicates a Google OAuth client configuration mismatch. Ensure your client ID is registered in Google Cloud Console with the correct SHA-1 fingerprint: 0C:59:52:94:76:05:42:D7:97:DB:2D:96:5D:64:05:4F:84:F3:0A:F1)")
+                    // Diagnostics (status code + SHA fingerprint) go to the internal log only.
+                    android.util.Log.e(
+                        "LoginScreen",
+                        "Google Sign In failed. statusCode=${e.statusCode}, " +
+                            "SHA-1 0C:59:52:94:76:05:42:D7:97:DB:2D:96:5D:64:05:4F:84:F3:0A:F1",
+                        e
+                    )
+                    viewModel.setError(
+                        FriendlyErrors.forBackendError("LoginScreen", e, FriendlyErrors.Kind.AUTH).banner
+                    )
                 }
             }
         } else {
@@ -349,7 +359,8 @@ fun LoginScreen(
             if (resultCode == android.app.Activity.RESULT_CANCELED) {
                 viewModel.setError("Google Sign In cancelled by user")
             } else {
-                viewModel.setError("Google Sign In failed with result code: $resultCode")
+                android.util.Log.e("LoginScreen", "Google Sign In did not finish. resultCode=$resultCode")
+                viewModel.setError("Google Sign In did not finish. Please try again.")
             }
         }
     }
@@ -623,7 +634,8 @@ fun LoginScreen(
                                             googleAccountLauncher.launch(signInIntent)
                                         }
                                     } catch (e: Exception) {
-                                        viewModel.setError("Could not launch Google Sign In: ${e.message}")
+                                        android.util.Log.e("LoginScreen", "Could not launch Google Sign In", e)
+                                        viewModel.setError("Could not launch Google Sign In. Please try again.")
                                     }
                                 }
                             },

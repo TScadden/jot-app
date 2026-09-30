@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import com.notel.notel.data.sync.SyncManager
+import com.notel.notel.util.FriendlyErrors
 import javax.inject.Inject
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -244,7 +245,9 @@ class QuickLogViewModel @Inject constructor(
         if (offline) {
             _uiState.update { it.copy(
                 isLoadingChips = false,
-                chipsError = "Connection Error: You are offline. Load Suggestions is unavailable."
+                chipsError = FriendlyErrors.forBackendError(
+                    "QuickLogViewModel", null, FriendlyErrors.Kind.NETWORK
+                ).banner
             ) }
             return
         }
@@ -288,7 +291,9 @@ class QuickLogViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isLoadingChips = false,
-                            chipsError = msg,
+                            chipsError = FriendlyErrors.forBackendError(
+                                "QuickLogViewModel", err, FriendlyErrors.Kind.LOAD
+                            ).banner,
                             retryAfterSeconds = seconds
                         )
                     }
@@ -329,7 +334,7 @@ class QuickLogViewModel @Inject constructor(
                 append(selectedTiles.joinToString(" · "))
             }
             if (trimmedText.isNotBlank()) {
-                if (isNotEmpty()) append(" — ")
+                if (isNotEmpty()) append(" · ")
                 append(trimmedText)
             }
         }
@@ -381,14 +386,15 @@ class QuickLogViewModel @Inject constructor(
                     // Sync failure does not remove locally saved entry
                 }
             } catch (e: Exception) {
+                val friendlyMessage = FriendlyErrors.quickLogSaveFailure("QuickLogViewModel", e)
                 _uiState.update {
                     it.copy(
                         isSaving = false,
                         saveSuccess = false,
-                        saveError = e.message ?: "Failed to save log entry locally"
+                        saveError = friendlyMessage
                     )
                 }
-                _eventFlow.emit(QuickLogEvent.SaveFailed(message = e.message ?: "Failed to save log entry"))
+                _eventFlow.emit(QuickLogEvent.SaveFailed(message = friendlyMessage))
             }
         }
     }
@@ -479,7 +485,14 @@ class QuickLogViewModel @Inject constructor(
                     _uiState.update { it.copy(isLoadingSuggestions = false, suggestedCategories = suggestions) }
                 },
                 onFailure = { err ->
-                    _uiState.update { it.copy(isLoadingSuggestions = false, suggestionsError = err.message ?: "Failed to get suggestions") }
+                    _uiState.update {
+                        it.copy(
+                            isLoadingSuggestions = false,
+                            suggestionsError = FriendlyErrors.forBackendError(
+                                "QuickLogViewModel", err, FriendlyErrors.Kind.UNKNOWN
+                            ).banner
+                        )
+                    }
                 }
             )
         }
@@ -585,7 +598,12 @@ class QuickLogViewModel @Inject constructor(
                 },
                 onFailure = { err ->
                     _uiState.update {
-                        it.copy(isLoadingAdvice = false, adviceError = err.message ?: "Something went wrong.")
+                        it.copy(
+                            isLoadingAdvice = false,
+                            adviceError = FriendlyErrors.forBackendError(
+                                "QuickLogViewModel", err, FriendlyErrors.Kind.UNKNOWN
+                            ).banner
+                        )
                     }
                 }
             )
@@ -602,7 +620,12 @@ class QuickLogViewModel @Inject constructor(
                 },
                 onFailure = { err ->
                     _uiState.update {
-                        it.copy(isLoadingAdvice = false, adviceError = err.message ?: "Basic Advice failed.")
+                        it.copy(
+                            isLoadingAdvice = false,
+                            adviceError = FriendlyErrors.forBackendError(
+                                "QuickLogViewModel", err, FriendlyErrors.Kind.UNKNOWN
+                            ).banner
+                        )
                     }
                 }
             )
@@ -619,7 +642,12 @@ class QuickLogViewModel @Inject constructor(
                 },
                 onFailure = { err ->
                     _uiState.update {
-                        it.copy(isLoadingAdvice = false, adviceError = err.message ?: "Deep Advice failed.")
+                        it.copy(
+                            isLoadingAdvice = false,
+                            adviceError = FriendlyErrors.forBackendError(
+                                "QuickLogViewModel", err, FriendlyErrors.Kind.UNKNOWN
+                            ).banner
+                        )
                     }
                 }
             )
@@ -636,7 +664,12 @@ class QuickLogViewModel @Inject constructor(
                 },
                 onFailure = { err ->
                     _uiState.update {
-                        it.copy(isLoadingComparison = false, comparisonError = err.message ?: "Something went wrong.")
+                        it.copy(
+                            isLoadingComparison = false,
+                            comparisonError = FriendlyErrors.forBackendError(
+                                "QuickLogViewModel", err, FriendlyErrors.Kind.UNKNOWN
+                            ).banner
+                        )
                     }
                 }
             )

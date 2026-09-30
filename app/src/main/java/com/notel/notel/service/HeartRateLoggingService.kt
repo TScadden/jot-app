@@ -240,7 +240,7 @@ class HeartRateLoggingService : Service() {
         serviceScope.launch {
             bleManager.connectionState.collect { state ->
                 if (state is ConnectionState.Error) {
-                    updateNotification("Error: ${state.message}")
+                    updateNotification("Heart rate monitor disconnected. Reconnect in Settings to resume.")
                 }
             }
         }

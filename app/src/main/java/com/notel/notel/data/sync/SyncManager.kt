@@ -76,7 +76,7 @@ class SyncManager @Inject constructor(
                 if (profilePushSuccess) {
                     log("SYNC_OK: Profile (context, medications, settings, streaks)")
                 } else {
-                    log("SYNC_WARN: Profile — could not push to server.")
+                    log("SYNC_WARN: Profile: could not push to server.")
                 }
 
                 val isOnboarded = preferences.onboardingComplete.first()
@@ -90,12 +90,12 @@ class SyncManager @Inject constructor(
                         }
                         val catRes = tabsApi.syncCategories(SyncCategoriesRequest(categoryDtos))
                         if (!catRes.isSuccessful) {
-                            log("SYNC_FAIL: Categories (${categories.size}) — HTTP ${catRes.code()}")
+                            log("SYNC_FAIL: Categories (${categories.size}): HTTP ${catRes.code()}")
                         } else {
                             log("SYNC_OK: Categories (${categories.size} pushed)")
                         }
                     } else {
-                        log("SYNC_SKIP: Categories — none found locally")
+                        log("SYNC_SKIP: Categories: none found locally")
                     }
 
                     // 3. Push DIRTY Log Entries
@@ -111,10 +111,10 @@ class SyncManager @Inject constructor(
                             }
                             log("SYNC_OK: Jot Logs (${dirtyEntries.size} dirty entries pushed and marked SYNCED)")
                         } else {
-                            log("SYNC_FAIL: Jot Logs (${dirtyEntries.size}) — HTTP ${entryRes.code()}")
+                            log("SYNC_FAIL: Jot Logs (${dirtyEntries.size}): HTTP ${entryRes.code()}")
                         }
                     } else {
-                        log("SYNC_SKIP: Jot Logs — no dirty entries to push")
+                        log("SYNC_SKIP: Jot Logs: no dirty entries to push")
                     }
 
                 // 4. Documents
@@ -130,7 +130,8 @@ class SyncManager @Inject constructor(
                     generateHistoricalBiometricsInsights()
                     log("SYNC_OK: Biometrics (Health Connect cache rebuilt)")
                 } catch (e: Exception) {
-                    log("SYNC_FAIL: Biometrics — ${e.message}")
+                    Log.e(tag, "Biometrics sync failed: ${e.message}", e)
+                    log("SYNC_FAIL: Biometrics: sync failed")
                 }
 
                 // 8. AI Insights
@@ -160,13 +161,13 @@ class SyncManager @Inject constructor(
                         if (insightRes.isSuccessful) {
                             log("SYNC_OK: AI Insights (${localInsights.size} entries)")
                         } else {
-                            log("SYNC_FAIL: AI Insights — HTTP ${insightRes.code()}")
+                            log("SYNC_FAIL: AI Insights: HTTP ${insightRes.code()}")
                         }
                     } else {
-                        log("SYNC_SKIP: AI Insights — none found locally")
+                        log("SYNC_SKIP: AI Insights: none found locally")
                     }
                 } else {
-                    log("SYNC_SKIP: AI Insights — none found locally")
+                    log("SYNC_SKIP: AI Insights: none found locally")
                 }
                 } else {
                     log("SYNC_SKIP: Skipping categories, entries, documents, coach sessions, biometrics, and insights because onboarding is not complete.")
@@ -175,7 +176,7 @@ class SyncManager @Inject constructor(
                 // 9. Pull cloud data LAST
                 val pullSuccess = pullAllData()
                 if (!pullSuccess) {
-                    log("SYNC_FAIL: Cloud Pull — server unreachable or rejected")
+                    log("SYNC_FAIL: Cloud Pull: server unreachable or rejected")
                 } else {
                     log("SYNC_OK: Cloud Pull (logs, categories, profile, medications, insights)")
                 }
@@ -185,8 +186,8 @@ class SyncManager @Inject constructor(
                 Log.d(tag, "Sync cycle complete!")
             }
         } catch (e: Exception) {
-            log("SYNC_ERROR: ${e.message}")
-            Log.e(tag, "Sync cycle failed: ${e.message}")
+            log("SYNC_ERROR: sync cycle failed")
+            Log.e(tag, "Sync cycle failed: ${e.message}", e)
         } finally {
             syncMutex.unlock()
         }
@@ -440,13 +441,13 @@ class SyncManager @Inject constructor(
                 true
             } else {
                 val errStr = response.errorBody()?.string() ?: "Empty body"
-                lastProfilePushError = "HTTP ${response.code()}: $errStr"
-                Log.e(tag, "pushProfileData failed: $lastProfilePushError")
+                Log.e(tag, "pushProfileData failed: HTTP ${response.code()}: $errStr")
+                lastProfilePushError = "Profile sync failed"
                 false
             }
         } catch (e: Exception) {
-            lastProfilePushError = e.message ?: e.toString()
-            Log.e(tag, "pushProfileData failed: $lastProfilePushError")
+            Log.e(tag, "pushProfileData failed", e)
+            lastProfilePushError = "Profile sync failed"
             false
         }
     }
@@ -890,7 +891,7 @@ class SyncManager @Inject constructor(
                     val newGraphReports = insightsList.filter { (it.type == "Graph Analysis Report" || it.id.startsWith("graph_report_")) && it.id !in localIds }
                     // Only trigger new report notifications/events if:
                     // 1. This isn't a fresh sync/restore (i.e. localInsights is not empty)
-                    //    — kept from the ebae517 logout-leakage fix: a fresh restore must
+                    //   : kept from the ebae517 logout-leakage fix: a fresh restore must
                     //    not resurrect another account's / a stale report's notification.
                     // AND 2. The report was never notified before (persistent notified-ids
                     //    set, so a late first sighting still notifies once, and an id can
@@ -941,7 +942,7 @@ class SyncManager @Inject constructor(
                     log("Account Restored: $logsFound logs & $categoriesFound categories!")
                 }
 
-                // CRITICAL: Fetch habits from the server — habits are stored server-side only
+                // CRITICAL: Fetch habits from the server: habits are stored server-side only
                 // (not in local SQLite), so they must be re-fetched on every login/sync.
                 // This was previously only done in HabitViewModel.init which could run too
                 // late (after the UI has already shown empty habits).

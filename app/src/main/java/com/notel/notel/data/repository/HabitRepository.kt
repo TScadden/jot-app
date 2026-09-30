@@ -8,6 +8,7 @@ import com.notel.notel.data.remote.HabitDtoModel
 import com.notel.notel.data.remote.TabsApi
 import com.notel.notel.data.remote.LogHabitRequest
 import androidx.glance.appwidget.updateAll
+import com.notel.notel.util.FriendlyErrors
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,6 +27,10 @@ class HabitRepository @Inject constructor(
     private val api: TabsApi,
     private val preferences: com.notel.notel.data.preferences.NotelPreferences
 ) {
+    companion object {
+        private const val TAG = "HabitRepository"
+    }
+
     private val _habits = MutableStateFlow<List<HabitDtoModel>>(emptyList())
     val habits = _habits.asStateFlow()
 
@@ -73,11 +78,12 @@ class HabitRepository @Inject constructor(
                 Result.success(Unit)
             } else {
                 val msg = "Failed to load habits: ${response.code()}"
-                _error.value = msg
+                android.util.Log.e(TAG, msg)
+                _error.value = FriendlyErrors.forBackendError(TAG, null, FriendlyErrors.Kind.LOAD).banner
                 Result.failure(Exception(msg))
             }
         } catch (e: Exception) {
-            _error.value = e.message
+            _error.value = FriendlyErrors.forBackendError(TAG, e, FriendlyErrors.Kind.LOAD).banner
             Result.failure(e)
         } finally {
             _isLoading.value = false
@@ -98,11 +104,12 @@ class HabitRepository @Inject constructor(
                 Result.success(habit)
             } else {
                 val msg = "Failed to create habit (${response.code()}). Is the server deployed?"
-                _error.value = msg
+                android.util.Log.e(TAG, msg)
+                _error.value = FriendlyErrors.forBackendError(TAG, null, FriendlyErrors.Kind.SAVE).banner
                 Result.failure(Exception(msg))
             }
         } catch (e: Exception) {
-            _error.value = e.message
+            _error.value = FriendlyErrors.forBackendError(TAG, e, FriendlyErrors.Kind.SAVE).banner
             Result.failure(e)
         }
     }

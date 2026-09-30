@@ -1026,36 +1026,48 @@ private fun FormattedExtractedText(text: String, modifier: Modifier = Modifier) 
 fun PdfViewer(file: File) {
     val bitmaps = remember(file) { mutableStateListOf<Bitmap>() }
     var error by remember { mutableStateOf<String?>(null) }
+    var retryCount by remember { mutableStateOf(0) }
 
-    LaunchedEffect(file) {
+    LaunchedEffect(file, retryCount) {
+        error = null
+        var fileDescriptor: ParcelFileDescriptor? = null
+        var renderer: PdfRenderer? = null
         try {
-            val fileDescriptor = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
-            val renderer = PdfRenderer(fileDescriptor)
+            fileDescriptor = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+            renderer = PdfRenderer(fileDescriptor)
             val pageCount = renderer.pageCount
 
+            bitmaps.clear()
             for (i in 0 until pageCount) {
                 val page = renderer.openPage(i)
-                val bitmap = Bitmap.createBitmap(
-                    page.width * 2,
-                    page.height * 2,
-                    Bitmap.Config.ARGB_8888
-                )
-                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                bitmaps.add(bitmap)
-                page.close()
+                try {
+                    val bitmap = Bitmap.createBitmap(
+                        page.width * 2,
+                        page.height * 2,
+                        Bitmap.Config.ARGB_8888
+                    )
+                    page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                    bitmaps.add(bitmap)
+                } finally {
+                    page.close()
+                }
             }
-            renderer.close()
-            fileDescriptor.close()
         } catch (e: Exception) {
-            error = e.message ?: "Failed to render PDF"
+            error = com.notel.notel.util.FriendlyErrors.forBackendError(
+                "PdfViewer", e, com.notel.notel.util.FriendlyErrors.Kind.EXPORT
+            ).banner
+        } finally {
+            try { renderer?.close() } catch (_: Exception) {}
+            try { fileDescriptor?.close() } catch (_: Exception) {}
         }
     }
 
     if (error != null) {
-        Text(
-            "Error: $error",
-            color = MaterialTheme.colorScheme.error,
-            modifier = Modifier.padding(16.dp)
+        com.notel.notel.ui.component.ErrorStateCard(
+            headline = "Could not open this file",
+            explanation = "The file could not be rendered. Your data is safe and nothing was deleted.",
+            actionLabel = "Try again",
+            onAction = { retryCount++ }
         )
     } else if (bitmaps.isEmpty()) {
         SkeletonBlock(height = 200.dp, cornerRadius = 8.dp)

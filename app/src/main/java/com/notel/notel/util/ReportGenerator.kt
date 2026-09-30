@@ -52,6 +52,10 @@ class ReportGenerator @Inject constructor(
     private val preferences: NotelPreferences
 ) {
 
+    companion object {
+        private const val TAG = "ReportGenerator"
+    }
+
     /**
      * Generates a professional health report as a PDF.
      * Consolidates logs and asks Gemini for a natural language summary first.
@@ -141,7 +145,7 @@ class ReportGenerator @Inject constructor(
         val contentWidth = 505f
 
         // Header
-        canvas.drawText("Tabs — Clinical Audit Report", margin, y, titlePaint)
+        canvas.drawText("Tabs Clinical Audit Report", margin, y, titlePaint)
         y += 12f
         canvas.drawLine(margin, y, margin + contentWidth, y, linePaint)
         y += 20f
@@ -158,7 +162,7 @@ class ReportGenerator @Inject constructor(
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                 isAntiAlias = true
             }
-            canvas.drawText("⚠️ RAW DATA REPORT — AI ANALYSIS UNAVAILABLE AT GENERATION TIME", margin, y, alertPaint)
+            canvas.drawText("⚠️ RAW DATA REPORT: AI ANALYSIS UNAVAILABLE AT GENERATION TIME", margin, y, alertPaint)
             y += 18f
         }
 
@@ -239,10 +243,10 @@ class ReportGenerator @Inject constructor(
             val statusText = when (meta.status) {
                 com.notel.notel.data.model.DataSourceStatus.SUCCESS -> "Available (${meta.recordCount} records)"
                 com.notel.notel.data.model.DataSourceStatus.NO_DATA -> "No data recorded"
-                com.notel.notel.data.model.DataSourceStatus.PERMISSION_DENIED -> "Unavailable — permission not granted"
-                com.notel.notel.data.model.DataSourceStatus.UNAVAILABLE -> "Unavailable — data could not be retrieved"
-                com.notel.notel.data.model.DataSourceStatus.TIMED_OUT -> "Unavailable — data could not be retrieved"
-                com.notel.notel.data.model.DataSourceStatus.ERROR -> "Unavailable — data could not be retrieved"
+                com.notel.notel.data.model.DataSourceStatus.PERMISSION_DENIED -> "Unavailable. Permission not granted."
+                com.notel.notel.data.model.DataSourceStatus.UNAVAILABLE -> "Unavailable. Data could not be retrieved."
+                com.notel.notel.data.model.DataSourceStatus.TIMED_OUT -> "Unavailable. Data could not be retrieved."
+                com.notel.notel.data.model.DataSourceStatus.ERROR -> "Unavailable. Data could not be retrieved."
             }
             canvas.drawText("• ${key.replaceFirstChar { it.uppercase() }}: $statusText", margin + 10f, y, bodyPaint)
             y += 15f
@@ -579,7 +583,7 @@ class ReportGenerator @Inject constructor(
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("ReportGenerator", "saveToDownloads failed", e)
         }
     }
 
@@ -797,7 +801,7 @@ class ReportGenerator @Inject constructor(
             pdfDocument.writeTo(FileOutputStream(cacheFile))
             saveToDownloads(cacheFile, fileName)
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("ReportGenerator", "checkPageBreak failed", e)
             return null
         } finally {
             pdfDocument.close()

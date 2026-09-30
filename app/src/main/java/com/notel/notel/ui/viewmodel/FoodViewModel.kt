@@ -29,6 +29,10 @@ class FoodViewModel @Inject constructor(
     private val preferences: NotelPreferences
 ) : ViewModel() {
 
+    companion object {
+        private const val TAG = "FoodViewModel"
+    }
+
     init {
         // Bug 1: Clear results when opening the screen
         viewModelScope.launch {
@@ -231,7 +235,7 @@ class FoodViewModel @Inject constructor(
                             throw result.exceptionOrNull() ?: Exception("Unknown network failure")
                         }
                     } catch (e: Exception) {
-                        e.printStackTrace()
+                        android.util.Log.e("FoodViewModel", "checkFoodLevels failed", e)
                         errorMsg = e.message ?: "Failed to parse AI food analysis."
                         if (attempts < maxAttempts) {
                             kotlinx.coroutines.delay(400L * attempts) // Exponential backoff delay
@@ -240,11 +244,15 @@ class FoodViewModel @Inject constructor(
                 }
 
                 if (!success) {
-                    _errorMessage.value = errorMsg ?: "Error checking food items. Please check spelling."
+                    android.util.Log.e("FoodViewModel", "AI food analysis failed: $errorMsg")
+                    _errorMessage.value = com.notel.notel.util.FriendlyErrors.forBackendError(
+                        "FoodViewModel", null, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN
+                    ).banner
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
-                _errorMessage.value = e.message ?: "Error checking food items."
+                _errorMessage.value = com.notel.notel.util.FriendlyErrors.forBackendError(
+                    "FoodViewModel", e, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN
+                ).banner
             } finally {
                 _isLoading.value = false
             }
@@ -351,7 +359,7 @@ class FoodViewModel @Inject constructor(
             }
             preferences.setFoodCheckerHistory(mainObj.toString())
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("FoodViewModel", "saveEncyclopedia failed", e)
         }
     }
 
@@ -375,7 +383,7 @@ class FoodViewModel @Inject constructor(
             }
             preferences.setFoodCheckerLastQuery(mainArr.toString())
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("FoodViewModel", "saveLastQuery failed", e)
         }
     }
 }
