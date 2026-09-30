@@ -125,6 +125,8 @@ fun SettingsScreen(
     val habitReminderEnabled by viewModel.habitReminderEnabled.collectAsState()
     val projectReminderEnabled by viewModel.projectReminderEnabled.collectAsState()
     val eventReminderEnabled by viewModel.eventReminderEnabled.collectAsState()
+    // Tabs Lab: daily check-in reminder toggle state
+    val checkInReminderEnabled by viewModel.checkInReminderEnabled.collectAsState()
     val userContextHidden by viewModel.userContextHidden.collectAsState()
     val userNickname by viewModel.userNickname.collectAsState()
     val userTag by viewModel.userTag.collectAsState()
@@ -204,6 +206,11 @@ fun SettingsScreen(
     var disconnectPasswordVisible by remember { mutableStateOf(false) }
     var disconnectConfirmPasswordVisible by remember { mutableStateOf(false) }
     var disconnectErrorMsg by remember { mutableStateOf<String?>(null) }
+
+    // Tabs Lab check-in reminder: pre-prompt rationale dialog + denied notice.
+    // The founder's standing rule: explain before any system prompt appears.
+    var showCheckInRationale by remember { mutableStateOf(false) }
+    var checkInPermissionDenied by remember { mutableStateOf(false) }
 
     fun checkAndToggle(enabled: Boolean, onToggle: (Boolean) -> Unit) {
         if (enabled) {
@@ -400,6 +407,43 @@ fun SettingsScreen(
             // For example, show a snackbar
             // snackbarHostState.showSnackbar("Notification permission denied.")
         }
+    }
+
+    // Tabs Lab check-in reminder: dedicated launcher so the grant/deny result
+    // drives the toggle. Granted -> enable and schedule; denied -> stay off
+    // with a graceful explanation under the row.
+    val checkInPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted: Boolean ->
+        if (granted) {
+            checkInPermissionDenied = false
+            viewModel.setCheckInReminderEnabled(true)
+        } else {
+            checkInPermissionDenied = true
+        }
+    }
+
+    /**
+     * Tabs Lab check-in reminder toggle handler. Turning off persists off and
+     * cancels the alarm. Turning on checks POST_NOTIFICATIONS first: if it is
+     * not granted, the rationale dialog explains why BEFORE the system prompt
+     * appears (founder standing rule); the toggle only flips on a grant.
+     */
+    fun handleCheckInReminderToggle(enabled: Boolean) {
+        if (!enabled) {
+            checkInPermissionDenied = false
+            viewModel.setCheckInReminderEnabled(false)
+            return
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            val status = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
+            if (status != PackageManager.PERMISSION_GRANTED) {
+                checkInPermissionDenied = false
+                showCheckInRationale = true
+                return
+            }
+        }
+        viewModel.setCheckInReminderEnabled(true)
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -3662,7 +3706,64 @@ fun SettingsScreen(
                                 )
                             )
                         }
-                        
+
+                        // Tabs Lab: daily check-in reminder. Fixed 4:00 AM local,
+                        // silent on days the feeling entry is already logged.
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Remind me to log how I feel", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                                Text(
+                                    "Daily at 4:00 AM, only if you have not checked in yet.",
+                                    color = NotelTextSecondary,
+                                    fontSize = 11.sp
+                                )
+                                if (checkInPermissionDenied) {
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        "Notifications are turned off on this phone, so the reminder cannot fire. You can turn them on in system settings.",
+                                        color = NotelTextSecondary,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                            Switch(
+                                checked = checkInReminderEnabled,
+                                onCheckedChange = { handleCheckInReminderToggle(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = NotelPrimary,
+                                    checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
+                                    uncheckedThumbColor = NotelTextSecondary,
+                                    uncheckedTrackColor = NotelSurfaceHigh
+                                )
+                            )
+                        }
+
+                        if (showCheckInRationale) {
+                            AlertDialog(
+                                onDismissRequest = { showCheckInRationale = false },
+                                title = { Text("Allow notifications?", color = NotelTextPrimary, fontWeight = FontWeight.Bold) },
+                                text = {
+                                    Text(
+                                        "Tabs needs permission to send notifications before it can remind you. The reminder fires at 4:00 AM, only on mornings you have not checked in yet.",
+                                        color = NotelTextPrimary
+                                    )
+                                },
+                                confirmButton = {
+                                    TextButton(
+                                        onClick = {
+                                            showCheckInRationale = false
+                                            checkInPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                        }
+                                    ) { Text("Allow", color = NotelPrimary) }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showCheckInRationale = false }) {
+                                        Text("Not now", color = NotelTextSecondary)
+                                    }
+                                }
+                            )
+                        }
+
 
 
                         Column {
