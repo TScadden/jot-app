@@ -407,7 +407,7 @@ fun BodyLoadScreen(
                                         text = if (isCalculatedUp) "Since ${counter.name}" else "Until ${counter.name}",
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.Black,
-                                        color = NotelTextSecondary,
+                                        color = NotelPrimary.copy(alpha = 0.8f),
                                         letterSpacing = 0.5.sp,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
@@ -441,7 +441,7 @@ fun BodyLoadScreen(
                                             ) {
                                                 repeat(activeCounters.size) { iteration ->
                                                     val isCurrent = (pagerState.currentPage % activeCounters.size) == iteration
-                                                    val color = if (isCurrent) NotelAccent else NotelSurfaceHigh.copy(alpha = 0.3f)
+                                                    val color = if (isCurrent) NotelPrimary else NotelSurfaceHigh.copy(alpha = 0.3f)
                                                     Box(
                                                         modifier = Modifier
                                                             .size(if (isCurrent) 4.dp else 3.dp)

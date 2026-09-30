@@ -36,7 +36,8 @@ import java.util.*
 // ── Light-mode polish (Mira spec, 2026-09-27) ─────────────────────────────────
 // This screen used to hardcode the dark "System Vitals" tile palette
 // (TileBackground #0D1428 / TileAccentPurple #7C6EFF). It now resolves through
-// the theme tokens so both themes follow automatically.
+// the theme tokens: dark NotelSurface == #0D1428 and dark NotelPrimary ==
+// #7C6EFF, so dark mode renders byte-identically while light mode picks up
 // the light tokens. Only the deviations the spec calls out branch on
 // isLightTheme. remember{} lambdas capture LocalNotelPalette.current as a
 // plain value (theme getters are @Composable and can't be called there).
@@ -124,11 +125,11 @@ fun HistoryScreen(
                 shape = RoundedCornerShape(14.dp),
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = NotelAccent,
-                    unfocusedBorderColor = NotelBorder,
+                    focusedBorderColor = NotelPrimary,
+                    unfocusedBorderColor = if (isLightTheme) NotelBorder else NotelPrimary.copy(alpha = 0.25f),
                     focusedTextColor = NotelTextPrimary,
                     unfocusedTextColor = NotelTextPrimary,
-                    cursorColor = NotelAccent,
+                    cursorColor = NotelPrimary,
                     unfocusedContainerColor = NotelSurface,
                     focusedContainerColor = NotelSurface
                 )
@@ -144,10 +145,12 @@ fun HistoryScreen(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(Radii.chip))
-                            .background(if (isAllSelected) NotelAccent else NotelSurface)
+                            .background(if (isAllSelected) NotelPrimary else NotelSurface)
                             .border(
                                 width = 1.dp,
-                                color = if (isAllSelected) NotelAccent else NotelBorder,
+                                color = if (isAllSelected) NotelPrimary
+                                    else if (isLightTheme) NotelBorder
+                                    else NotelPrimary.copy(alpha = 0.25f),
                                 shape = RoundedCornerShape(Radii.chip)
                             )
                             .clickable { viewModel.setCategoryFilter(null) }
@@ -155,7 +158,9 @@ fun HistoryScreen(
                     ) {
                         Text(
                             "ALL",
-                            color = if (isAllSelected) NotelOnAccent else NotelTextSecondary,
+                            color = if (isAllSelected) {
+                                if (isLightTheme) NotelOnAccent else LegacyDarkChipInk
+                            } else NotelTextSecondary,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 0.8.sp
@@ -199,22 +204,22 @@ fun HistoryScreen(
             TabRow(
                 selectedTabIndex = selectedTab,
                 containerColor = NotelSurface,
-                contentColor = NotelTextSecondary,
+                contentColor = NotelPrimary,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
             ) {
                 Tab(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
-                    selectedContentColor = NotelAccent,
-                    unselectedContentColor = NotelTextSecondary
+                    selectedContentColor = NotelPrimary,
+                    unselectedContentColor = if (isLightTheme) NotelTextSecondary else NotelPrimary
                 ) {
                     Text("LOGS (${entries.size})", modifier = Modifier.padding(vertical = 10.dp), fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
                 Tab(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    selectedContentColor = NotelAccent,
-                    unselectedContentColor = NotelTextSecondary
+                    selectedContentColor = NotelPrimary,
+                    unselectedContentColor = if (isLightTheme) NotelTextSecondary else NotelPrimary
                 ) {
                     Text("AI INSIGHTS (${aiInsightsWithDetails.size})", modifier = Modifier.padding(vertical = 10.dp), fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
@@ -268,7 +273,7 @@ fun HistoryScreen(
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(16.dp))
                                     .background(NotelSurface)
-                                    .border(1.dp, NotelBorder, RoundedCornerShape(16.dp))
+                                    .border(1.dp, NotelPrimary.copy(alpha = 0.25f), RoundedCornerShape(16.dp))
                                     .padding(16.dp)
                             ) {
                                 Column {
@@ -279,7 +284,7 @@ fun HistoryScreen(
                                     ) {
                                         Text(
                                             text = item.insight.type.lowercase().replaceFirstChar { it.uppercase() },
-                                            color = NotelTextSecondary,
+                                            color = NotelPrimary,
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 11.sp
                                         )
@@ -307,7 +312,7 @@ fun HistoryScreen(
                                     Spacer(Modifier.height(6.dp))
                                     Text(
                                         text = sdf.format(Date(item.insight.timestamp)),
-                                        color = NotelTextSecondary.copy(alpha = 0.7f),
+                                        color = NotelPrimary.copy(alpha = 0.5f),
                                         fontSize = 10.sp
                                     )
                                 }
@@ -339,7 +344,7 @@ private fun EntryCard(
         } else null
     }
 
-    val accentColor = catColor ?: NotelTextSecondary
+    val accentColor = catColor ?: NotelPrimary
 
     // Tabs Lab check-in entries (source "Energy check-in") show their locked
     // "Daily Ranking" tag on the list card instead of the category chip, which
@@ -412,13 +417,13 @@ private fun EntryCard(
                         Icon(
                             Icons.Default.AutoAwesome,
                             contentDescription = "Voice AI",
-                            tint = NotelTextSecondary,
+                            tint = NotelPrimary,
                             modifier = Modifier.size(12.dp)
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(
                             "Voice AI",
-                            color = NotelTextSecondary,
+                            color = NotelPrimary.copy(alpha = 0.75f),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 0.8.sp
@@ -463,7 +468,7 @@ private fun EntryCard(
             ) {
                 Text(
                     text = sdf.format(Date(entry.timestamp)),
-                    color = NotelTextSecondary,
+                    color = if (isLightTheme) NotelTextSecondary else NotelPrimary.copy(alpha = 0.55f),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium,
                     letterSpacing = 0.3.sp
@@ -474,13 +479,13 @@ private fun EntryCard(
                             Icon(
                                 Icons.Default.CloudDone,
                                 contentDescription = "Synced",
-                                tint = NotelSuccess,
+                                tint = if (isLightTheme) NotelSuccess else NotelPrimary.copy(alpha = 0.6f),
                                 modifier = Modifier.size(12.dp)
                             )
                             Spacer(Modifier.width(4.dp))
                             Text(
                                 "Synced",
-                                color = NotelSuccess,
+                                color = if (isLightTheme) NotelSuccess else NotelPrimary.copy(alpha = 0.6f),
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.SemiBold
                             )

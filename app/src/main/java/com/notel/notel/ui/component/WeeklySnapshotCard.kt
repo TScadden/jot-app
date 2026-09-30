@@ -114,7 +114,7 @@ fun WeeklySnapshotCard(
                     Icon(
                         imageVector = Icons.Default.BarChart,
                         contentDescription = null,
-                        tint = NotelTextSecondary,
+                        tint = NotelPrimary,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(Modifier.width(8.dp))
@@ -134,7 +134,7 @@ fun WeeklySnapshotCard(
                     Icon(
                         imageVector = Icons.Default.Refresh,
                         contentDescription = if (isRefreshing) "Refreshing weekly snapshot" else "Refresh weekly snapshot",
-                        tint = if (isRefreshing) NotelAccent else NotelTextSecondary,
+                        tint = if (isRefreshing) NotelPrimary else NotelTextSecondary,
                         modifier = Modifier
                             .size(16.dp)
                             .graphicsLayer {
@@ -230,7 +230,7 @@ fun WeeklySnapshotCard(
                                 ) {
                                     Text(
                                         text = "Syncing latest data...",
-                                        color = NotelTextSecondary,
+                                        color = NotelPrimary,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Medium
                                     )
@@ -675,7 +675,7 @@ private fun WeeklySnapshotInteractiveCanvas(
                 val isSelected = selectedIndex == idx
                 Text(
                     text = pt.dayLabel,
-                    color = if (isSelected) NotelAccent else NotelTextSecondary,
+                    color = if (isSelected) NotelPrimary else NotelTextSecondary,
                     fontSize = 11.sp,
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                     textAlign = TextAlign.Center,

@@ -256,11 +256,11 @@ fun ProfileSetupScreen(
                     .fillMaxWidth()
                     .height(180.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = NotelAccent,
+                    focusedBorderColor = NotelPrimary,
                     unfocusedBorderColor = NotelTextSecondary,
                     focusedTextColor = NotelTextPrimary,
                     unfocusedTextColor = NotelTextPrimary,
-                    cursorColor = NotelAccent
+                    cursorColor = NotelPrimary
                 ),
                 maxLines = 8
             )

@@ -600,7 +600,7 @@ fun BloodPressureScreen(
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = NotelAccent,
+                                    focusedBorderColor = NotelPrimary,
                                     focusedLabelColor = NotelPrimary,
                                     unfocusedBorderColor = NotelTextSecondary.copy(alpha = 0.5f)
                                 )
@@ -616,7 +616,7 @@ fun BloodPressureScreen(
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = NotelAccent,
+                                    focusedBorderColor = NotelPrimary,
                                     focusedLabelColor = NotelPrimary,
                                     unfocusedBorderColor = NotelTextSecondary.copy(alpha = 0.5f)
                                 )

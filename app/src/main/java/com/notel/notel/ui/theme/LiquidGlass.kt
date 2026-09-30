@@ -20,15 +20,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * Solid tile modifier — the quiet card treatment.
+ * Solid dark-navy tile modifier — replaces the old liquid glass effect.
  * Applies:
  *  - Solid [color] background
- *  - Subtle 1dp neutral hairline border ([NotelBorder])
+ *  - Subtle 1dp [NotelPrimary]-tinted border
  *  - Clip to [shape]
- *
- * Cards earn attention through elevation steps and hairlines, not tinted
- * borders — signal blue is reserved for focus and selection only; actions
- * are monochrome.
  */
 @Composable
 fun Modifier.liquidGlass(
@@ -44,16 +40,14 @@ fun Modifier.liquidGlass(
         .then(
             if (showBorder) Modifier.border(
                 width = borderWidth,
-                color = NotelBorder,
+                color = NotelPrimary.copy(alpha = 0.18f),
                 shape = shape
             ) else Modifier
         )
 )
 
 /**
- * A solid-filled monochrome action button (Instrument direction: near-black
- * fill on light, off-white fill on dark). One shared [InstrumentSpring]
- * press-scale so every action in the app moves the same way.
+ * A solid-filled action button using the tile theme's primary cyan color.
  */
 @Composable
 fun GlassyButton(
@@ -103,11 +97,12 @@ fun GlassyButton(
 }
 
 /**
- * Tile-style card — solid surface with a quiet neutral hairline.
+ * Tile-style card — solid deep-navy background with a subtle cyan border.
  * Drop-in replacement for the old GlassyCard.
  *
- * @param borderColor overrides the default neutral hairline (e.g. the
- * error-tint border on alert cards). Null keeps the default.
+ * @param borderColor overrides the default primary-tinted hairline (e.g. the
+ * error-tint border on alert cards). Null keeps the legacy default, so dark
+ * mode renders byte-identically.
  */
 @Composable
 fun GlassyCard(
@@ -121,7 +116,7 @@ fun GlassyCard(
         modifier = modifier
             .clip(shape)
             .background(color)
-            .border(width = 1.dp, color = borderColor ?: NotelBorder, shape = shape)
+            .border(width = 1.dp, color = borderColor ?: NotelPrimary.copy(alpha = 0.18f), shape = shape)
             .padding(16.dp),
         contentAlignment = Alignment.TopStart
     ) {

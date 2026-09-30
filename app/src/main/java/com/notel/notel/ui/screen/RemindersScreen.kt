@@ -323,7 +323,7 @@ private fun ReminderCard(
                 onCheckedChange = { onToggle() },
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = Color.White,
-                    checkedTrackColor = NotelAccent,
+                    checkedTrackColor = NotelPrimary,
                     uncheckedThumbColor = NotelTextSecondary,
                     uncheckedTrackColor = NotelSurfaceHigh.copy(alpha = 0.2f)
                 )
@@ -434,7 +434,7 @@ private fun AddReminderSheet(
                                     onCheckedChange = { customizeDays = it },
                                     colors = SwitchDefaults.colors(
                                         checkedThumbColor = Color.White,
-                                        checkedTrackColor = NotelAccent,
+                                        checkedTrackColor = NotelPrimary,
                                         uncheckedThumbColor = NotelTextSecondary,
                                         uncheckedTrackColor = NotelSurfaceHigh.copy(alpha = 0.2f)
                                     )
@@ -579,17 +579,17 @@ private fun TypeChip(label: String, icon: androidx.compose.ui.graphics.vector.Im
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
-        color = if (selected) NotelAccent.copy(alpha = 0.15f) else NotelSurfaceHigh.copy(alpha = 0.08f),
-        border = BorderStroke(1.dp, if (selected) NotelAccent.copy(alpha = 0.4f) else Color.White.copy(alpha = 0.06f)),
+        color = if (selected) NotelPrimary.copy(alpha = 0.15f) else NotelSurfaceHigh.copy(alpha = 0.08f),
+        border = BorderStroke(1.dp, if (selected) NotelPrimary.copy(alpha = 0.4f) else Color.White.copy(alpha = 0.06f)),
         modifier = Modifier.height(42.dp)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(horizontal = 14.dp)
         ) {
-            Icon(icon, null, tint = if (selected) NotelAccent else NotelTextSecondary, modifier = Modifier.size(16.dp))
+            Icon(icon, null, tint = if (selected) NotelPrimary else NotelTextSecondary, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
-            Text(label, color = if (selected) NotelAccent else NotelTextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text(label, color = if (selected) NotelPrimary else NotelTextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }

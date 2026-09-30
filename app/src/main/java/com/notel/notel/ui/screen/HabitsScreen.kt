@@ -68,14 +68,14 @@ fun HabitsScreen(
                     if (habits.isNotEmpty()) {
                         Surface(
                             shape = RoundedCornerShape(12.dp),
-                            color = NotelSurfaceHigh,
-                            border = BorderStroke(1.dp, NotelBorder),
+                            color = NotelPrimary.copy(alpha = 0.1f),
+                            border = BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.2f)),
                             modifier = Modifier.padding(end = 16.dp)
                         ) {
                             Text(
-                                "$checkedCount/${habits.size} done",
+                                "$checkedCount/${habits.size} DONE",
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                color = NotelTextSecondary,
+                                color = NotelPrimary,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Black,
                                 letterSpacing = 1.sp
@@ -188,11 +188,11 @@ fun HabitsScreen(
                 singleLine = true,
                 textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = NotelAccent.copy(alpha = 0.5f),
+                    focusedBorderColor = NotelPrimary.copy(alpha = 0.5f),
                     unfocusedBorderColor = NotelSurfaceHigh.copy(alpha = 0.2f),
                     focusedTextColor = NotelTextPrimary,
                     unfocusedTextColor = NotelTextPrimary,
-                    cursorColor = NotelAccent,
+                    cursorColor = NotelPrimary,
                     focusedContainerColor = NotelSurfaceHigh.copy(alpha = 0.05f),
                     unfocusedContainerColor = NotelSurfaceHigh.copy(alpha = 0.05f)
                 )
@@ -403,7 +403,7 @@ private fun HabitWeekDots(marks: List<HabitViewModel.HabitDayMark>) {
                         )
                         .then(
                             if (!mark.completed && mark.isToday)
-                                Modifier.border(1.dp, NotelAccent, CircleShape)
+                                Modifier.border(1.dp, NotelPrimary, CircleShape)
                             else Modifier
                         ),
                     contentAlignment = Alignment.Center

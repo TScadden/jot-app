@@ -6,60 +6,62 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-// ── Tabs Lab type scale ("Instrument", 2026-09-30) ───────────────────────────────
-// Instrument discipline: tabular numerals everywhere (tnum) so columns of
-// numbers, streaks, and list values align like a precision instrument.
-// A real ramp with editorial tracking: large sizes pull in tight (negative
-// letter spacing reads premium), body breathes at 1.5 line height, eyebrows
-// stay small caps-free sentence case via SectionLabel in DesignTokens.kt.
+// ── Tabs Lab type scale (pre-overhaul treatment, 2026-09-30) ─────────────────
+// Restored to the original type treatment: Material3 default sizes, weights,
+// and tracking — exactly what the app shipped before the premium overhaul
+// (the pre-2c804a9 Type.kt customized only bodyLarge/labelSmall, which are
+// already the M3 defaults spelled out). The one carry-over from the
+// Instrument pass is tabular numerals (tnum) on every style, so columns of
+// numbers, streaks, and list values still align like a precision instrument.
 //
 // Mapped roles:
-//   Display   → displaySmall   28sp/600/-0.5  — hero numbers, big scores
-//   Headline  → headlineMedium 22sp/600       — screen titles
-//   Title     → titleLarge 20sp / titleMedium 17sp / titleSmall 15sp — cards
-//   Body      → bodyLarge 16sp / bodyMedium 14sp — reading copy
-//   Caption   → labelMedium 12sp / labelSmall 11sp — eyebrows, metadata
+//   Display   → displaySmall
+//   Headline  → headlineMedium
+//   Title     → titleLarge / titleMedium / titleSmall
+//   Body      → bodyLarge / bodyMedium
+//   Caption   → labelLarge / labelMedium / labelSmall
 //
-// Avoid raw fontSize values in new UI code; pick the closest ramp step.
+// Eyebrow section headers use SectionLabel (sentence case, never ALL CAPS).
+// Avoid raw fontSize values in new UI code.
 val Typography = Typography(
     displaySmall = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 28.sp,
-        lineHeight = 36.sp,
-        letterSpacing = (-0.5).sp,
+        fontWeight = FontWeight.Normal,
+        fontSize = 36.sp,
+        lineHeight = 44.sp,
+        letterSpacing = 0.sp,
         fontFeatureSettings = "tnum",
     ),
     headlineMedium = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 22.sp,
-        lineHeight = 28.sp,
+        fontWeight = FontWeight.Normal,
+        fontSize = 28.sp,
+        lineHeight = 36.sp,
         letterSpacing = 0.sp,
         fontFeatureSettings = "tnum",
     ),
     titleLarge = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 20.sp,
-        lineHeight = 26.sp,
+        fontWeight = FontWeight.Normal,
+        fontSize = 22.sp,
+        lineHeight = 28.sp,
         letterSpacing = 0.sp,
         fontFeatureSettings = "tnum",
     ),
     titleMedium = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 17.sp,
-        lineHeight = 22.sp,
-        letterSpacing = 0.sp,
+        fontWeight = FontWeight.Medium,
+        fontSize = 16.sp,
+        lineHeight = 24.sp,
+        letterSpacing = 0.15.sp,
         fontFeatureSettings = "tnum",
     ),
     titleSmall = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 15.sp,
+        fontWeight = FontWeight.Medium,
+        fontSize = 14.sp,
         lineHeight = 20.sp,
-        letterSpacing = 0.sp,
+        letterSpacing = 0.1.sp,
         fontFeatureSettings = "tnum",
     ),
     bodyLarge = TextStyle(
@@ -67,7 +69,7 @@ val Typography = Typography(
         fontWeight = FontWeight.Normal,
         fontSize = 16.sp,
         lineHeight = 24.sp,
-        letterSpacing = 0.25.sp,
+        letterSpacing = 0.5.sp,
         fontFeatureSettings = "tnum",
     ),
     bodyMedium = TextStyle(
@@ -80,26 +82,26 @@ val Typography = Typography(
     ),
     labelLarge = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 13.sp,
-        lineHeight = 18.sp,
-        letterSpacing = 0.25.sp,
+        fontWeight = FontWeight.Medium,
+        fontSize = 14.sp,
+        lineHeight = 20.sp,
+        letterSpacing = 0.1.sp,
         fontFeatureSettings = "tnum",
     ),
     labelMedium = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.SemiBold,
+        fontWeight = FontWeight.Medium,
         fontSize = 12.sp,
         lineHeight = 16.sp,
-        letterSpacing = 0.4.sp,
+        letterSpacing = 0.5.sp,
         fontFeatureSettings = "tnum",
     ),
     labelSmall = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.SemiBold,
+        fontWeight = FontWeight.Medium,
         fontSize = 11.sp,
-        lineHeight = 14.sp,
-        letterSpacing = 0.6.sp,
+        lineHeight = 16.sp,
+        letterSpacing = 0.5.sp,
         fontFeatureSettings = "tnum",
     )
 )

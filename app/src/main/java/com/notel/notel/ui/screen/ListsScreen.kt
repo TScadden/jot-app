@@ -77,7 +77,7 @@ fun ListsScreen(
                             Text(
                                 selectedList!!.name,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = NotelAccent,
+                                color = NotelPrimary,
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
@@ -178,12 +178,12 @@ fun ListsScreen(
                                     .padding(horizontal = 8.dp, vertical = 3.dp)
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(
-                                        if (isSelected) NotelAccent.copy(alpha = 0.18f)
+                                        if (isSelected) NotelPrimary.copy(alpha = 0.18f)
                                         else Color.Transparent
                                     )
                                     .border(
                                         width = if (isSelected) 1.dp else 0.dp,
-                                        color = if (isSelected) NotelAccent.copy(alpha = 0.3f)
+                                        color = if (isSelected) NotelPrimary.copy(alpha = 0.3f)
                                         else Color.Transparent,
                                         shape = RoundedCornerShape(12.dp)
                                     )
@@ -201,7 +201,7 @@ fun ListsScreen(
                                     )
                                     Text(
                                         list.name,
-                                        color = if (isSelected) NotelAccent else NotelTextPrimary,
+                                        color = if (isSelected) NotelPrimary else NotelTextPrimary,
                                         fontSize = 13.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                         maxLines = 2,
@@ -278,11 +278,11 @@ fun ListsScreen(
                         .fillMaxWidth()
                         .focusRequester(focusRequester),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = NotelAccent,
+                        focusedBorderColor = NotelPrimary,
                         unfocusedBorderColor = NotelSurfaceHigh.copy(alpha = 0.3f),
                         focusedTextColor = NotelTextPrimary,
                         unfocusedTextColor = NotelTextPrimary,
-                        cursorColor = NotelAccent
+                        cursorColor = NotelPrimary
                     ),
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.Words,
@@ -421,11 +421,11 @@ private fun ListItemsPanel(
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = NotelAccent.copy(alpha = 0.6f),
+                    focusedBorderColor = NotelPrimary.copy(alpha = 0.6f),
                     unfocusedBorderColor = NotelSurfaceHigh.copy(alpha = 0.2f),
                     focusedTextColor = NotelTextPrimary,
                     unfocusedTextColor = NotelTextPrimary,
-                    cursorColor = NotelAccent,
+                    cursorColor = NotelPrimary,
                     focusedContainerColor = NotelSurfaceHigh.copy(alpha = 0.08f),
                     unfocusedContainerColor = NotelSurfaceHigh.copy(alpha = 0.04f)
                 ),
@@ -512,11 +512,11 @@ private fun ListItemsPanel(
                                     singleLine = true,
                                     shape = RoundedCornerShape(12.dp),
                                     colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = NotelAccent,
+                                        focusedBorderColor = NotelPrimary,
                                         unfocusedBorderColor = NotelSurfaceHigh.copy(alpha = 0.2f),
                                         focusedTextColor = NotelTextPrimary,
                                         unfocusedTextColor = NotelTextPrimary,
-                                        cursorColor = NotelAccent
+                                        cursorColor = NotelPrimary
                                     ),
                                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                                     keyboardActions = KeyboardActions(onDone = {

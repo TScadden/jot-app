@@ -324,7 +324,7 @@ fun CoachScreen(
                             },
                             shape = RoundedCornerShape(24.dp),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = NotelAccent.copy(alpha = 0.5f),
+                                focusedBorderColor = NotelPrimary.copy(alpha = 0.5f),
                                 unfocusedBorderColor = NotelSurfaceHigh.copy(alpha = 0.2f),
                                 focusedContainerColor = NotelSurfaceHigh.copy(alpha = 0.1f),
                                 unfocusedContainerColor = NotelSurfaceHigh.copy(alpha = 0.1f),

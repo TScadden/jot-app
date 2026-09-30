@@ -116,8 +116,8 @@ fun EnergyCheckInCard(
  * Flat 1-5 selector button: no bevel, no gradients, no drawn highlight/shadow
  * edges. A quiet [NotelSurfaceHigh] square with a 1dp [NotelBorder] hairline
  * and a muted number; while pressed it fills [NotelPrimary] with a
- * [NotelOnAccent] number — the monochrome action language of the Instrument
- * direction. The press is spring-animated and confirmed with a haptic; the
+ * [NotelOnAccent] number — the same selected-fill language the app uses
+ * elsewhere. The press is spring-animated and confirmed with a haptic; the
  * tap dispatch, logging, gating, and the slide-left exit animation live
  * outside this button and are unchanged.
  */

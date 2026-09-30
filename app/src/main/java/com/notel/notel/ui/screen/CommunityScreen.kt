@@ -326,7 +326,7 @@ fun CommunityScreen(
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = NotelTextPrimary,
                                 unfocusedTextColor = NotelTextPrimary,
-                                focusedBorderColor = NotelAccent,
+                                focusedBorderColor = NotelPrimary,
                                 unfocusedBorderColor = NotelTextSecondary.copy(alpha = 0.3f),
                                 focusedContainerColor = Color.Transparent,
                                 unfocusedContainerColor = Color.Transparent

@@ -5,22 +5,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
 /**
- * Theme-aware color palette ("Instrument" direction, 2026-09-30).
- *
- * Tabs as a precision instrument: cool near-black neutrals, hairline
- * structure, monochrome primary actions, and ONE cool accent (signal
- * blue) reserved for focus and selection states only. Nothing chromatic
- * is decorative anymore — color carries a single meaning: "this is the
- * thing that has focus / is selected."
- *
- * - `primary` is MONOCHROME (near-black fill on light, off-white fill on
- *   dark): all primary actions, buttons, and text-actions render in it.
- * - `accent` is the signal blue: focus rings, selection chips/borders,
- *   focused text-field borders, active indicators. Light blue is #2563EB
- *   (AA-pinned; white on it is 5.17:1, it on paper is 4.95:1). Dark blue
- *   is #7AA8FF with #06121F content (~8:1).
- * - The semantic ramp (error/success/warning/info) is only for actual
- *   status, and warning stays orange so it never reads as the blue.
+ * Theme-aware color palette (light-mode toggle, 2026-09-27).
  *
  * Every structural color resolves through [LocalNotelPalette], so the whole
  * app follows the user's Light / Dark / System choice with zero call-site
@@ -28,6 +13,13 @@ import androidx.compose.ui.graphics.Color
  * @Composable getters. They MUST only be read from @Composable UI code —
  * never from ViewModels, workers, widgets, or remember{} calculation
  * lambdas (capture LocalNotelPalette.current as a plain value instead).
+ *
+ * Light tokens (Mira spec): soft off-white surfaces (#F4F4F8 family — never
+ * pure-white large surfaces), hairline borders, depth from elevation tints.
+ * Accent verdict: #7C6EFF fails AA on light (3.48:1 as text, 3.80:1 as fill
+ * with white labels), so the light primary is the adjusted variant #5445CC
+ * (6.21:1 as text, 6.77:1 white-on-fill). Status colors get light variants
+ * that pass AA as text; dark variants are the previous values (unchanged).
  */
 data class NotelPalette(
     val background: Color,
@@ -35,8 +27,6 @@ data class NotelPalette(
     val surfaceHigh: Color,
     val primary: Color,
     val accent: Color,
-    /** Readable content color on a solid monochrome-primary or blue-accent fill. */
-    val onAccent: Color,
     val textPrimary: Color,
     val textSecondary: Color,
     val border: Color,
@@ -47,35 +37,33 @@ data class NotelPalette(
 )
 
 internal val DarkNotelPalette = NotelPalette(
-    background    = Color(0xFF08090A),   // Cool near-black — page background
-    surface       = Color(0xFF101214),   // Stepped cool — tile card background
-    surfaceHigh   = Color(0xFF181B1E),   // Elevated cool — nested surfaces
-    primary       = Color(0xFFF2F4F6),   // Monochrome action fill (dark theme)
-    accent        = Color(0xFF7AA8FF),   // Signal blue — focus/selection only
-    onAccent      = Color(0xFF06121F),   // Deep ink on blue AND on white fills
-    textPrimary   = Color(0xFFF2F4F6),   // Cool near-white — primary text
-    textSecondary = Color(0xFF9AA3AD),   // Cool grey — secondary text
-    border        = Color(0xFF23272C),   // Cool hairline
-    error         = Color(0xFFFF6B6B),
-    success       = Color(0xFF4CAF50),
-    warning       = Color(0xFFFF9A44),   // Orange — never reads as the blue
-    info          = Color(0xFF42A5F5),
+    background    = Color(0xFF080E1A),   // Very deep navy — page background
+    surface       = Color(0xFF0D1428),   // Deep navy — tile card background
+    surfaceHigh   = Color(0xFF152040),   // Slightly lighter navy — elevated surfaces
+    primary       = Color(0xFF7C6EFF),   // Purple accent — primary actions, headers
+    accent        = Color(0xFF7C6EFF),   // Purple — secondary accent
+    textPrimary   = Color(0xFFF0EEFF),   // Near-white — primary text
+    textSecondary = Color(0xFF7A8FAF),   // Muted blue-grey — secondary text
+    border        = Color(0x407C6EFF),   // Primary at 25% — hairlines (was Theme.kt outline)
+    error         = Color(0xFFFF6B6B),   // 6.95:1 on dark bg
+    success       = Color(0xFF4CAF50),   // 6.94:1 on dark bg
+    warning       = Color(0xFFFFB74D),   // 11.15:1 on dark bg
+    info          = Color(0xFF42A5F5),   // 7.29:1 on dark bg
 )
 
 internal val LightNotelPalette = NotelPalette(
-    background    = Color(0xFFFAFAFA),   // Cool paper — page background
-    surface       = Color(0xFFFFFFFF),   // Pure white cards
-    surfaceHigh   = Color(0xFFF1F3F5),   // Cool nested / elevated panels
-    primary       = Color(0xFF0A0A0B),   // Monochrome action fill (light theme)
-    accent        = Color(0xFF2563EB),   // Signal blue — focus/selection only
-    onAccent      = Color(0xFFFFFFFF),   // White on blue (5.17:1) and on black fills
-    textPrimary   = Color(0xFF0A0A0B),   // Cool near-black — primary text
-    textSecondary = Color(0xFF6B7280),   // Cool grey — secondary text (4.63:1 AA)
-    border        = Color(0xFFE8E8EA),   // Cool hairline on paper
-    error         = Color(0xFFC62828),
-    success       = Color(0xFF2E7D32),
-    warning       = Color(0xFFC2410C),   // Burnt orange — distinct from blue
-    info          = Color(0xFF1565C0),
+    background    = Color(0xFFF4F4F8),   // Soft off-white — page background
+    surface       = Color(0xFFFAFAFC),   // Soft near-white cards (never pure white)
+    surfaceHigh   = Color(0xFFE9E9F0),   // Nested / elevated panels
+    primary       = Color(0xFF5445CC),   // Adjusted violet — AA on light (see header note)
+    accent        = Color(0xFF5445CC),   // Same — one accent, no negotiation
+    textPrimary   = Color(0xFF14141C),   // Near-black — ~15:1 on bg
+    textSecondary = Color(0xFF5A5A6E),   // Muted slate — ~7:1 on bg
+    border        = Color(0xFFDFDFE8),   // Hairline on light
+    error         = Color(0xFFC62828),   // 5.12:1 on light bg
+    success       = Color(0xFF2E7D32),   // 4.67:1 on light bg
+    warning       = Color(0xFFB45309),   // 4.58:1 on light bg
+    info          = Color(0xFF1565C0),   // 5.24:1 on light bg
 )
 
 val LocalNotelPalette = staticCompositionLocalOf { DarkNotelPalette }
@@ -118,9 +106,6 @@ val NotelPrimary: Color
     @Composable get() = LocalNotelPalette.current.primary
 val NotelAccent: Color
     @Composable get() = LocalNotelPalette.current.accent
-/** Readable content color on a solid monochrome-primary or blue-accent fill (white on dark fills in light mode, deep ink on light fills in dark mode). */
-val NotelOnAccent: Color
-    @Composable get() = LocalNotelPalette.current.onAccent
 val NotelTextPrimary: Color
     @Composable get() = LocalNotelPalette.current.textPrimary
 val NotelTextSecondary: Color
@@ -142,7 +127,7 @@ val NotelInfo: Color
 // values are translucent overlays kept as-is for minor decorative uses.
 val GlassWhite: Color = Color(0x33FFFFFF)
 val GlassWhiteHigh: Color = Color(0x66FFFFFF)
-val GlassPrimary: Color = Color(0x4D2563EB)   // Translucent signal-blue wash — selection highlights
+val GlassPrimary: Color = Color(0x4D7C6EFF)
 val GlassBorder: Color
     @Composable get() = if (isLightTheme) Color(0x2414141E) else Color(0x26FFFFFF)
 val GlassHighlight: Color = Color(0x1AFFFFFF)
@@ -164,9 +149,9 @@ internal const val ErrorTintOnLightArgb = 0xFF9B1C1CL
 val NotelErrorTint: Color
     @Composable get() = if (isLightTheme) Color(ErrorTintSurfaceLightArgb) else Color(ErrorTintSurfaceDarkArgb)
 
-/** Alert card 1dp border — light #EFC7C2 / dark the standard neutral hairline. */
+/** Alert card 1dp border — light #EFC7C2 / dark the standard card hairline. */
 val NotelErrorTintBorder: Color
-    @Composable get() = if (isLightTheme) Color(ErrorTintBorderLightArgb) else NotelBorder
+    @Composable get() = if (isLightTheme) Color(ErrorTintBorderLightArgb) else NotelPrimary.copy(alpha = 0.18f)
 
 /** Icon-circle / rank-badge fill on the alert surface — light #F6D9D7 / dark #4A1820. */
 val NotelErrorTintStrong: Color
@@ -190,21 +175,24 @@ val NotelErrorBadgeText: Color
 // per the audit rule ("no raw color literals in UI code, everything through
 // theme tokens"). All are dark-theme-only except NotelOnAccent.
 
+/** Solid white — text/icons on accent fills (either theme). */
+val NotelOnAccent: Color = Color.White
+
 /** White text/icons on dark surfaces (dark theme only). */
 val LegacyDarkOnDark: Color = Color.White
 
 // Heart-screen pills (Fitbit)
-val LegacyDarkAsleepPill: Color = Color(0xFF1E1E22)
-val LegacyDarkAsleepPillBorder: Color = Color(0xFF2E2E33)
-val LegacyDarkAsleepInk: Color = Color(0xFFA8A29C)
-val LegacyDarkLastPill: Color = Color(0xFF1A1A1E)
-val LegacyDarkLastPillBorder: Color = Color(0xFF2A2A2E)
-val LegacyDarkReviewButton: Color = Color(0xFF1E1E22)
-val LegacyDarkConnectCircle: Color = Color(0xFF232326)
+val LegacyDarkAsleepPill: Color = Color(0xFF1A1B36)
+val LegacyDarkAsleepPillBorder: Color = Color(0xFF2C2E5D)
+val LegacyDarkAsleepInk: Color = Color(0xFFA49BFF)
+val LegacyDarkLastPill: Color = Color(0xFF12233D)
+val LegacyDarkLastPillBorder: Color = Color(0xFF1E3A66)
+val LegacyDarkReviewButton: Color = Color(0xFF19223D)
+val LegacyDarkConnectCircle: Color = Color(0xFF1E284A)
 
 // Dialogs / sheets
-val LegacyDarkDialog: Color = Color(0xFF17171A)
-val LegacyDarkSheet: Color = Color(0xFF1C1C1F)
+val LegacyDarkDialog: Color = Color(0xFF161622)
+val LegacyDarkSheet: Color = Color(0xFF1E293B)
 
 // Food error banner (legacy reds)
 val LegacyDarkFoodErrorSurface: Color = Color(0xFF2C1E1E)
@@ -216,8 +204,8 @@ val LegacyDarkFoodErrorInk: Color = Color(0xFFFFCDD2)
 val LegacyDarkChipInk: Color = Color(0xFF0A0A0E)
 
 // Disabled glass button
-val LegacyDarkDisabledButton: Color = Color(0xFF1E1E22)
-val LegacyDarkDisabledButtonBorder: Color = Color(0xFF2A2A2E)
+val LegacyDarkDisabledButton: Color = Color(0xFF1E2A3A)
+val LegacyDarkDisabledButtonBorder: Color = Color(0xFF253040)
 
 // Dark translucent overlays / hairlines (alpha tints of black/white)
 val LegacyDarkScrim: Color = Color.Black.copy(alpha = 0.3f)

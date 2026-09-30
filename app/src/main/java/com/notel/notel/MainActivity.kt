@@ -871,7 +871,7 @@ class MainActivity : ComponentActivity() {
                                         Text(
                                             "AI Audit Complete! ✨",
                                             style = MaterialTheme.typography.titleMedium,
-                                            color = NotelTextPrimary,
+                                            color = NotelPrimary,
                                             fontWeight = FontWeight.ExtraBold
                                         )
                                         Text(
@@ -934,7 +934,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 confirmButton = {
                                     androidx.compose.material3.TextButton(onClick = { selectWidgetAppWidgetId = -1 }) {
-                                        Text("Cancel", color = NotelTextSecondary)
+                                        Text("Cancel", color = NotelPrimary)
                                     }
                                 },
                                 containerColor = NotelSurface,
@@ -1026,7 +1026,7 @@ fun NavIcon(
             Icon(
                 imageVector = icon,
                 contentDescription = label,
-                tint = if (isSelected) NotelAccent else NotelTextSecondary,
+                tint = if (isSelected) NotelPrimary else NotelTextSecondary,
                 modifier = Modifier.size(22.dp)
             )
             if (showLabel) {
@@ -1035,7 +1035,7 @@ fun NavIcon(
                     text = label,
                     style = MaterialTheme.typography.labelSmall,
                     fontSize = 10.sp,
-                    color = if (isSelected) NotelAccent else NotelTextSecondary,
+                    color = if (isSelected) NotelPrimary else NotelTextSecondary,
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                     maxLines = 1
                 )

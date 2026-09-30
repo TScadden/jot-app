@@ -566,11 +566,11 @@ private fun EditExtractedTextDialog(
                         .fillMaxSize()
                         .padding(16.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = NotelAccent,
+                        focusedBorderColor = NotelPrimary,
                         unfocusedBorderColor = NotelSurfaceHigh,
                         focusedTextColor = NotelTextPrimary,
                         unfocusedTextColor = NotelTextPrimary,
-                        cursorColor = NotelAccent,
+                        cursorColor = NotelPrimary,
                         focusedContainerColor = NotelSurface,
                         unfocusedContainerColor = NotelSurface
                     ),

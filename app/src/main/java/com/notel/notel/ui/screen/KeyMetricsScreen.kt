@@ -109,7 +109,7 @@ fun KeyMetricsScreen(
                                     if (days == -1) includeSpikes = false
                                 },
                                 colors = RadioButtonDefaults.colors(
-                                    selectedColor = NotelAccent,
+                                    selectedColor = NotelPrimary,
                                     unselectedColor = NotelTextSecondary
                                 )
                             )
@@ -135,7 +135,7 @@ fun KeyMetricsScreen(
                             )
                             Text(
                                 text = if (selectedExportDays == -1) "you can not toggle it on when you are on all time" else "Calculates POTS spikes. Turning off makes export instant.", 
-                                color = if (selectedExportDays == -1) NotelAccent else NotelTextSecondary, 
+                                color = if (selectedExportDays == -1) NotelPrimary else NotelTextSecondary, 
                                 fontSize = 12.sp
                             )
                         }
@@ -145,7 +145,7 @@ fun KeyMetricsScreen(
                             enabled = selectedExportDays != -1,
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = Color.White,
-                                checkedTrackColor = NotelAccent,
+                                checkedTrackColor = NotelPrimary,
                                 uncheckedThumbColor = NotelTextSecondary,
                                 uncheckedTrackColor = NotelSurfaceHigh,
                                 disabledCheckedThumbColor = Color.White.copy(alpha = 0.3f),
@@ -305,7 +305,7 @@ fun KeyMetricsScreen(
                     ) {
                         Text(
                             text = date.format(DateTimeFormatter.ofPattern("EEE")), 
-                            color = if (isSelected) NotelAccent else NotelTextSecondary, 
+                            color = if (isSelected) NotelPrimary else NotelTextSecondary, 
                             fontSize = 12.sp, 
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                             modifier = Modifier.padding(bottom = 6.dp)
@@ -314,12 +314,12 @@ fun KeyMetricsScreen(
                             modifier = Modifier
                                 .size(36.dp)
                                 .background(
-                                    if (isSelected) NotelAccent.copy(alpha = 0.2f) else Color.Transparent, 
+                                    if (isSelected) NotelPrimary.copy(alpha = 0.2f) else Color.Transparent, 
                                     CircleShape
                                 )
                                 .border(
                                     width = if (isSelected) 2.dp else 1.dp,
-                                    color = if (isSelected) NotelAccent else if (hasData) NotelSurfaceHigh.copy(alpha = 0.5f) else Color.Gray.copy(alpha = 0.3f),
+                                    color = if (isSelected) NotelPrimary else if (hasData) NotelSurfaceHigh.copy(alpha = 0.5f) else Color.Gray.copy(alpha = 0.3f),
                                     shape = CircleShape
                                 ),
                             contentAlignment = Alignment.Center

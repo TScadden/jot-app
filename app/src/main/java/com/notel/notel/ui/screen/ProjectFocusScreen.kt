@@ -694,8 +694,8 @@ fun ProjectFocusScreen(
                                     Surface(
                                         onClick = { viewModel.selectActiveTest(t.id ?: "") },
                                         shape = RoundedCornerShape(14.dp),
-                                        color = if (isSelected) NotelAccent.copy(alpha = 0.20f) else Color.White.copy(alpha = 0.03f),
-                                        border = BorderStroke(1.dp, if (isSelected) NotelAccent else Color.White.copy(alpha = 0.08f)),
+                                        color = if (isSelected) NotelPrimary.copy(alpha = 0.20f) else Color.White.copy(alpha = 0.03f),
+                                        border = BorderStroke(1.dp, if (isSelected) NotelPrimary else Color.White.copy(alpha = 0.08f)),
                                         modifier = Modifier.widthIn(min = 120.dp, max = 180.dp)
                                     ) {
                                         Column(modifier = Modifier.padding(12.dp)) {
