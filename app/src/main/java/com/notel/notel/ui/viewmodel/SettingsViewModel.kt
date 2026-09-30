@@ -489,6 +489,10 @@ class SettingsViewModel @Inject constructor(
     val habitReminderEnabled = preferences.habitReminderEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
+    // Tabs Lab: daily check-in reminder toggle. Default off.
+    val checkInReminderEnabled = preferences.checkInReminderEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     val projectReminderEnabled = preferences.projectReminderEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
@@ -885,6 +889,22 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             preferences.setProjectReminderEnabled(enabled)
             syncManager.pushProfileData()
+        }
+    }
+
+    /**
+     * Tabs Lab: persists the check-in reminder toggle and arms/cancels the
+     * 4:00 AM alarm to match. Called only after the notification permission
+     * flow completes (see SettingsScreen).
+     */
+    fun setCheckInReminderEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferences.setCheckInReminderEnabled(enabled)
+            if (enabled) {
+                com.notel.notel.notifications.EnergyCheckInReminderScheduler.schedule(context)
+            } else {
+                com.notel.notel.notifications.EnergyCheckInReminderScheduler.cancel(context)
+            }
         }
     }
 

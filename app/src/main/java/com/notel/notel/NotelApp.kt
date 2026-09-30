@@ -49,6 +49,19 @@ class NotelApp : Application(), Configuration.Provider {
         // One-time 180-day HR spike history backfill (no-op once complete).
         // (The Fitbit Web API backfill was retired with the API on Oct 30, 2026.)
         HrSpikeBackfillWorker.schedule(this)
+
+        // Tabs Lab: re-arm the daily check-in reminder alarm on every app start.
+        // Idempotent (same PendingIntent); covers force-stops, which cancel
+        // alarms without a later BOOT_COMPLETED to restore them.
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                if (preferences.checkInReminderEnabled.first()) {
+                    com.notel.notel.notifications.EnergyCheckInReminderScheduler.schedule(this@NotelApp)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("NotelApp", "Failed to re-arm check-in reminder", e)
+            }
+        }
         
         // Start HR Monitor Service safely when app enters foreground
         CoroutineScope(Dispatchers.IO).launch {

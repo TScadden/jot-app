@@ -104,6 +104,9 @@ open class NotelPreferences(
         val HABIT_REMINDER_ENABLED = booleanPreferencesKey("habit_reminder_enabled")
         val PROJECT_REMINDER_ENABLED = booleanPreferencesKey("project_reminder_enabled")
         val EVENT_REMINDER_ENABLED = booleanPreferencesKey("event_reminder_enabled")
+        // Tabs Lab: daily 4:00 AM reminder for the Home "How are you feeling?" check-in.
+        // Additive only; default off. Fixed time, so no time key is stored.
+        val CHECKIN_REMINDER_ENABLED = booleanPreferencesKey("tabs_lab_checkin_reminder_enabled")
         val HR_LAST_ALERT_TIME = longPreferencesKey("hr_last_alert_time")
         val HR_LAST_SAMPLE_TIME = longPreferencesKey("hr_last_sample_time")
         val HABIT_REMINDER_USER_DISABLED = booleanPreferencesKey("habit_reminder_user_disabled")
@@ -354,6 +357,8 @@ open class NotelPreferences(
     val habitReminderEnabled: Flow<Boolean> = context.dataStore.data.map { it[HABIT_REMINDER_ENABLED] ?: false }
     val projectReminderEnabled: Flow<Boolean> = context.dataStore.data.map { it[PROJECT_REMINDER_ENABLED] ?: true }
     val eventReminderEnabled: Flow<Boolean> = context.dataStore.data.map { it[EVENT_REMINDER_ENABLED] ?: true }
+    // Tabs Lab: single on/off toggle; fires at a fixed 4:00 AM local.
+    val checkInReminderEnabled: Flow<Boolean> = context.dataStore.data.map { it[CHECKIN_REMINDER_ENABLED] ?: false }
     val hrLastAlertTime: Flow<Long> = context.dataStore.data.map { it[HR_LAST_ALERT_TIME] ?: 0L }
     val hrLastSampleTime: Flow<Long> = context.dataStore.data.map { it[HR_LAST_SAMPLE_TIME] ?: 0L }
     val habitReminderUserDisabled: Flow<Boolean> = context.dataStore.data.map { it[HABIT_REMINDER_USER_DISABLED] ?: false }
@@ -970,6 +975,12 @@ open class NotelPreferences(
 
     suspend fun setEventReminderEnabled(enabled: Boolean) {
         context.dataStore.edit { it[EVENT_REMINDER_ENABLED] = enabled }
+    }
+
+    // Tabs Lab: persists the check-in reminder toggle only. The fire time is a
+    // fixed 4:00 AM local and is not stored.
+    suspend fun setCheckInReminderEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[CHECKIN_REMINDER_ENABLED] = enabled }
     }
 
     suspend fun autoEnableHabitReminders() {
