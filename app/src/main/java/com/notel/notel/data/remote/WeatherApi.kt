@@ -2,8 +2,18 @@ package com.notel.notel.data.remote
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
+import java.io.IOException
 import java.net.HttpURLConnection
+import java.net.InetAddress
+import java.net.Socket
 import java.net.URL
+import java.net.UnknownHostException
+import javax.net.ssl.HostnameVerifier
+import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SNIHostName
+import javax.net.ssl.SSLParameters
+import javax.net.ssl.SSLSocket
+import javax.net.ssl.SSLSocketFactory
 
 @Serializable
 data class IpLocationResponse(
@@ -48,15 +58,151 @@ class WeatherApi {
         ignoreUnknownKeys = true
     }
 
+    /**
+     * Primary fetch using the device DNS resolver. If the device cannot resolve
+     * the host at all (UnknownHostException), retry once via DNS-over-HTTPS
+     * before giving up. That is the signature failure when a VPN (e.g.
+     * Tailscale) replaces the device resolver with one that cannot answer for
+     * public hosts: every weather call dies in DNS while the IP path itself is
+     * fine. Any other failure (non-2xx, timeout, bad payload) keeps the
+     * existing behavior: no retry, honest unavailable state upstream.
+     */
     private fun fetchUrl(urlString: String): String {
+        return try {
+            fetchUrlDirect(urlString)
+        } catch (e: IOException) {
+            // Retry via DNS-over-HTTPS only for DNS failures. The cause chain
+            // is walked because HTTP stacks may wrap UnknownHostException.
+            if (isDnsFailure(e)) fetchUrlViaDoh(urlString) else throw e
+        }
+    }
+
+    private fun isDnsFailure(e: Throwable): Boolean {
+        var t: Throwable? = e
+        while (t != null) {
+            if (t is UnknownHostException) return true
+            t = t.cause
+        }
+        return false
+    }
+
+    private fun fetchUrlDirect(urlString: String): String {
         val url = URL(urlString)
         val connection = url.openConnection() as HttpURLConnection
         connection.connectTimeout = 10_000
         connection.readTimeout = 15_000
         connection.setRequestProperty("User-Agent", "Tabs-App/1.0")
         val code = connection.responseCode
-        if (code !in 200..299) throw java.io.IOException("Weather request failed (HTTP $code)")
+        if (code !in 200..299) throw IOException("Weather request failed (HTTP $code)")
         return connection.inputStream.bufferedReader().use { it.readText() }
+    }
+
+    /**
+     * Fallback fetch used only when the system DNS cannot resolve the host.
+     * Resolves the hostname via DNS-over-HTTPS, then connects to each resolved
+     * IPv4 address directly (deliberately IPv4-only: under a VPN, unroutable
+     * IPv6 is the common stall). TLS SNI, hostname verification, and the Host
+     * header all stay on the original hostname, so certificate validation is
+     * exactly as strict as the direct path.
+     */
+    private fun fetchUrlViaDoh(urlString: String): String {
+        val url = URL(urlString)
+        val host = url.host
+        val ips = dohResolveIpv4(host)
+        var lastError: IOException = UnknownHostException(host)
+        for (ip in ips) {
+            try {
+                // Same URL, but the socket goes to the literal IP.
+                val ipUrl = URL(url.protocol, ip, url.port, url.file)
+                val connection = ipUrl.openConnection() as HttpsURLConnection
+                connection.connectTimeout = 10_000
+                connection.readTimeout = 15_000
+                connection.setRequestProperty("User-Agent", "Tabs-App/1.0")
+                // The server still needs the original Host for routing and
+                // certificate selection.
+                connection.setRequestProperty("Host", host)
+                connection.sslSocketFactory = sniSocketFactory(host, connection.sslSocketFactory)
+                val defaultVerifier = HttpsURLConnection.getDefaultHostnameVerifier()
+                connection.hostnameVerifier = HostnameVerifier { _, session ->
+                    defaultVerifier.verify(host, session)
+                }
+                val code = connection.responseCode
+                if (code !in 200..299) throw IOException("Weather request failed (HTTP $code)")
+                return connection.inputStream.bufferedReader().use { it.readText() }
+            } catch (e: IOException) {
+                lastError = e
+            }
+        }
+        throw lastError
+    }
+
+    /**
+     * Resolves [host] to IPv4 addresses via DNS-over-HTTPS (Google Public DNS
+     * JSON API), bootstrapped by literal IP so it works even when the system
+     * resolver itself is broken. TLS still fully verifies the dns.google
+     * certificate (SNI + hostname verification target dns.google); only the
+     * transport address is the literal IP. The resolver learns nothing beyond
+     * the API hostname being looked up, the same disclosure as normal DNS.
+     */
+    private fun dohResolveIpv4(host: String): List<String> {
+        val connection = URL("https://8.8.8.8/resolve?name=$host&type=A")
+            .openConnection() as HttpsURLConnection
+        connection.connectTimeout = 8_000
+        connection.readTimeout = 8_000
+        connection.sslSocketFactory = sniSocketFactory("dns.google", connection.sslSocketFactory)
+        val defaultVerifier = HttpsURLConnection.getDefaultHostnameVerifier()
+        connection.hostnameVerifier = HostnameVerifier { _, session ->
+            defaultVerifier.verify("dns.google", session)
+        }
+        connection.setRequestProperty("User-Agent", "Tabs-App/1.0")
+        connection.setRequestProperty("Accept", "application/json")
+        val code = connection.responseCode
+        if (code !in 200..299) throw IOException("DNS fallback request failed (HTTP $code)")
+        val body = connection.inputStream.bufferedReader().use { it.readText() }
+        val answers = try {
+            Json.parseToJsonElement(body).jsonObject["Answer"]?.jsonArray
+        } catch (e: Exception) {
+            null
+        } ?: throw IOException("DNS fallback returned no usable answers")
+        val ipv4Pattern = Regex("^\\d{1,3}(\\.\\d{1,3}){3}$")
+        return answers.mapNotNull { element ->
+            val obj = element as? JsonObject ?: return@mapNotNull null
+            val type = obj["type"]?.jsonPrimitive?.intOrNull ?: return@mapNotNull null
+            val data = obj["data"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            if (type == 1 && ipv4Pattern.matches(data)) data else null
+        }.distinct().ifEmpty { throw IOException("DNS fallback returned no IPv4 addresses") }
+    }
+
+    /**
+     * Wraps [delegate] so every created socket carries [sniHost] as its TLS
+     * Server Name Indication. Required when connecting to a literal IP while
+     * the certificate belongs to [sniHost]; never used to weaken verification.
+     */
+    private fun sniSocketFactory(sniHost: String, delegate: SSLSocketFactory): SSLSocketFactory {
+        return object : SSLSocketFactory() {
+            private fun withSni(socket: Socket): Socket {
+                (socket as? SSLSocket)?.let { ssl ->
+                    val params: SSLParameters = ssl.sslParameters
+                    params.serverNames = listOf(SNIHostName(sniHost))
+                    ssl.sslParameters = params
+                }
+                return socket
+            }
+
+            override fun getDefaultCipherSuites(): Array<String> = delegate.defaultCipherSuites
+            override fun getSupportedCipherSuites(): Array<String> = delegate.supportedCipherSuites
+            override fun createSocket(): Socket = withSni(delegate.createSocket())
+            override fun createSocket(host: String, port: Int): Socket =
+                withSni(delegate.createSocket(host, port))
+            override fun createSocket(host: String, port: Int, localHost: InetAddress, localPort: Int): Socket =
+                withSni(delegate.createSocket(host, port, localHost, localPort))
+            override fun createSocket(host: InetAddress, port: Int): Socket =
+                withSni(delegate.createSocket(host, port))
+            override fun createSocket(address: InetAddress, port: Int, localAddress: InetAddress, localPort: Int): Socket =
+                withSni(delegate.createSocket(address, port, localAddress, localPort))
+            override fun createSocket(s: Socket, host: String, port: Int, autoClose: Boolean): Socket =
+                withSni(delegate.createSocket(s, host, port, autoClose))
+        }
     }
 
     /**
