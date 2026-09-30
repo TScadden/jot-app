@@ -4455,6 +4455,42 @@ fun DebugScreen(
                     Text("Reminder", color = NotelTextPrimary, fontSize = 10.sp)
                 }
             }
+            // Tabs Lab: the 4:00 AM check-in reminder
+            item {
+                GlassyButton(onClick = { viewModel.testCheckInReminderNotification(context) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Check in", color = NotelTextPrimary, fontSize = 10.sp)
+                }
+            }
+            item {
+                GlassyButton(onClick = { viewModel.testMiddayBodyLoadNotification(context) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Midday", color = NotelTextPrimary, fontSize = 10.sp)
+                }
+            }
+            item {
+                GlassyButton(onClick = { viewModel.testBodyLoadUpdateNotification(context) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Body load", color = NotelTextPrimary, fontSize = 10.sp)
+                }
+            }
+            item {
+                GlassyButton(onClick = { viewModel.testEventNotification(context) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Event", color = NotelTextPrimary, fontSize = 10.sp)
+                }
+            }
+            item {
+                GlassyButton(onClick = { viewModel.testGraphReportNotification(context) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Graph", color = NotelTextPrimary, fontSize = 10.sp)
+                }
+            }
+            item {
+                GlassyButton(onClick = { viewModel.testReportReadyNotification(context) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Report", color = NotelTextPrimary, fontSize = 10.sp)
+                }
+            }
+            item {
+                GlassyButton(onClick = { viewModel.testCsvReadyNotification(context) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("CSV", color = NotelTextPrimary, fontSize = 10.sp)
+                }
+            }
             item {
                 GlassyButton(onClick = { viewModel.recoverAccountData() }, modifier = Modifier.fillMaxWidth(), containerColor = NotelSurfaceHigh) {
                     Text("Force Sync", color = NotelTextPrimary, fontSize = 10.sp)

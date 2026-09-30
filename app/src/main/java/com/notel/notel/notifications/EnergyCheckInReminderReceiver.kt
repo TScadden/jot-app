@@ -1,15 +1,8 @@
 package com.notel.notel.notifications
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.Build
-import androidx.core.app.NotificationCompat
-import com.notel.notel.MainActivity
-import com.notel.notel.R
 import com.notel.notel.data.local.dao.LogEntryDao
 import com.notel.notel.data.repository.CategoryRepository
 import com.notel.notel.data.preferences.NotelPreferences
@@ -40,11 +33,6 @@ class EnergyCheckInReminderReceiver : BroadcastReceiver() {
     @Inject lateinit var preferences: NotelPreferences
     @Inject lateinit var categoryRepository: CategoryRepository
     @Inject lateinit var logEntryDao: LogEntryDao
-
-    companion object {
-        const val CHANNEL_ID = "check_in_reminder"
-        private const val NOTIFICATION_ID = 770001
-    }
 
     override fun onReceive(context: Context, intent: Intent) {
         val pendingResult = goAsync()
@@ -92,40 +80,7 @@ class EnergyCheckInReminderReceiver : BroadcastReceiver() {
     }
 
     private fun showNotification(context: Context) {
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Check in reminders",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Daily morning check in reminder"
-            }
-            manager.createNotificationChannel(channel)
-        }
-
-        // Opens the app to the Home screen: MainActivity's splash routes
-        // logged-in users straight to the body_load route.
-        val tapIntent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            NOTIFICATION_ID,
-            tapIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_noti_note)
-            .setContentTitle("How are you feeling?")
-            .setContentText("Tap to log today's check in.")
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
-            .build()
-
-        manager.notify(NOTIFICATION_ID, notification)
+        // The exact notification the Developer Terminal test button fires too.
+        com.notel.notel.util.NotificationHelper(context).showCheckInReminder()
     }
 }

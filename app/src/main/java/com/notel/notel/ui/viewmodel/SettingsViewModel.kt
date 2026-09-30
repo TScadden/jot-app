@@ -1319,6 +1319,61 @@ class SettingsViewModel @Inject constructor(
         context.sendBroadcast(intent)
     }
 
+    // Developer Terminal: one test button per notification the app can send.
+    // Each fires its notification immediately on demand.
+
+    fun testCheckInReminderNotification(context: android.content.Context) {
+        viewModelScope.launch {
+            // Tabs Lab: the exact notification the 4:00 AM receiver posts.
+            com.notel.notel.util.NotificationHelper(context).showCheckInReminder()
+        }
+    }
+
+    fun testMiddayBodyLoadNotification(context: android.content.Context) {
+        viewModelScope.launch {
+            com.notel.notel.util.NotificationHelper(context).showMidDayBodyLoadRefresh()
+        }
+    }
+
+    fun testBodyLoadUpdateNotification(context: android.content.Context) {
+        viewModelScope.launch {
+            // Representative score for the preview; the real one passes the computed score.
+            com.notel.notel.util.NotificationHelper(context).showBodyLoadUpdate(72)
+        }
+    }
+
+    fun testEventNotification(context: android.content.Context) {
+        viewModelScope.launch {
+            com.notel.notel.util.NotificationHelper(context).showEventNotification("Test Event")
+        }
+    }
+
+    fun testGraphReportNotification(context: android.content.Context) {
+        viewModelScope.launch {
+            com.notel.notel.util.NotificationHelper(context).showGraphReportNotification(null)
+        }
+    }
+
+    fun testReportReadyNotification(context: android.content.Context) {
+        viewModelScope.launch {
+            // Placeholder PDF in cache so the share action has a valid file to point at.
+            val file = java.io.File(context.cacheDir, "test_report.pdf").apply {
+                if (!exists()) writeBytes("%PDF-1.4\n%Test placeholder\n".toByteArray())
+            }
+            com.notel.notel.util.NotificationHelper(context).showReportReady(file)
+        }
+    }
+
+    fun testCsvReadyNotification(context: android.content.Context) {
+        viewModelScope.launch {
+            // Placeholder CSV in cache so the share action has a valid file to point at.
+            val file = java.io.File(context.cacheDir, "test_export.csv").apply {
+                if (!exists()) writeText("date,value\n2026-09-30,test\n")
+            }
+            com.notel.notel.util.NotificationHelper(context).showCsvReady(file)
+        }
+    }
+
     fun deleteAiInsight(id: String) {
         viewModelScope.launch {
             val currentStr = preferences.aiInsights.first()
