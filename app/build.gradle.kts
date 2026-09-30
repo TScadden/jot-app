@@ -7,15 +7,46 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// ---- Tabs Play Store release signing ----
+// Credentials come from Gradle properties OUTSIDE source control
+// (e.g. ~/.gradle/gradle.properties). Nothing secret is stored in this repo.
+// Expected properties:
+//   tabsUpload.storeFile      absolute path to the upload keystore
+//   tabsUpload.storePassword  keystore password
+//   tabsUpload.keyAlias       key alias (default: tabs-upload)
+//   tabsUpload.keyPassword    key password (for this PKCS12 keystore it must
+//                             equal the store password - verified 2026-09-29)
+// If the properties are absent, release builds keep their previous behavior
+// (Gradle signs them with the debug key), so machines without secrets still
+// build. Such an AAB will be rejected by Play (wrong upload-key fingerprint).
+val tabsUploadStoreFile: String? = findProperty("tabsUpload.storeFile") as String?
+val tabsUploadStorePassword: String? = findProperty("tabsUpload.storePassword") as String?
+val tabsUploadKeyAlias: String = (findProperty("tabsUpload.keyAlias") as String?) ?: "tabs-upload"
+val tabsUploadKeyPassword: String? = findProperty("tabsUpload.keyPassword") as String?
+val hasTabsUploadSigning = !tabsUploadStoreFile.isNullOrBlank()
+    && !tabsUploadStorePassword.isNullOrBlank()
+    && !tabsUploadKeyPassword.isNullOrBlank()
+
+// ---- CI versionCode override (Play release pipeline) ----
+// Google Play rejects any upload whose versionCode is not higher than the
+// last one. The GitHub Actions workflow passes -PversionCodeOverride=<int>
+// (10000 + the CI run number) so every automated upload is unique and
+// increasing. Local builds without the property keep versionCode 15.
+val versionCodeOverride: Int? = (findProperty("versionCodeOverride") as String?)?.toIntOrNull()
+
 android {
     namespace = "com.notel.notel"
     compileSdk = 36
+
+    if (!hasTabsUploadSigning) {
+        logger.warn("tabsUpload.* signing properties not set - release builds will be signed with the debug key and WILL be rejected by Google Play.")
+    }
 
     defaultConfig {
         applicationId = "com.notel.notel"
         minSdk = 26
         targetSdk = 36
-        versionCode = 15
+        versionCode = versionCodeOverride ?: 15
         versionName = "2.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -32,6 +63,14 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        if (hasTabsUploadSigning) {
+            create("tabsUpload") {
+                storeFile = file(tabsUploadStoreFile!!)
+                storePassword = tabsUploadStorePassword
+                keyAlias = tabsUploadKeyAlias
+                keyPassword = tabsUploadKeyPassword
+            }
+        }
     }
 
     buildTypes {
@@ -45,6 +84,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (hasTabsUploadSigning) {
+                signingConfig = signingConfigs.getByName("tabsUpload")
+            }
         }
     }
     compileOptions {
