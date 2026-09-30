@@ -193,7 +193,7 @@ fun SetupLoadingScreen(
                     ) {
                         Text(
                             text = "Start keeping Tabs",
-                            color = Color.White,
+                            color = NotelOnAccent,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
                         )

@@ -407,7 +407,7 @@ fun BodyLoadScreen(
                                         text = if (isCalculatedUp) "Since ${counter.name}" else "Until ${counter.name}",
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.Black,
-                                        color = NotelPrimary.copy(alpha = 0.8f),
+                                        color = NotelTextSecondary,
                                         letterSpacing = 0.5.sp,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,

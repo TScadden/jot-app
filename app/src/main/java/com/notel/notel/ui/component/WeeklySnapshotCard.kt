@@ -114,7 +114,7 @@ fun WeeklySnapshotCard(
                     Icon(
                         imageVector = Icons.Default.BarChart,
                         contentDescription = null,
-                        tint = NotelPrimary,
+                        tint = NotelTextSecondary,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(Modifier.width(8.dp))
@@ -230,7 +230,7 @@ fun WeeklySnapshotCard(
                                 ) {
                                     Text(
                                         text = "Syncing latest data...",
-                                        color = NotelPrimary,
+                                        color = NotelTextSecondary,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Medium
                                     )

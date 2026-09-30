@@ -107,7 +107,7 @@ fun ConnectionsScreen(
                                 .fillMaxWidth()
                                 .height(54.dp)
                         ) {
-                            Text("Connect Health Data", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            Text("Connect Health Data", color = NotelOnAccent, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                         }
 
                         Spacer(modifier = Modifier.height(8.dp))
@@ -137,7 +137,7 @@ fun ConnectionsScreen(
                 ) {
                     Text(
                         text = if (state.isConnected) "Next" else "Skip for now",
-                        color = Color.White,
+                        color = NotelOnAccent,
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp
                     )

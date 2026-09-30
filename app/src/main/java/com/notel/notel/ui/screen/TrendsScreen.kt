@@ -84,18 +84,18 @@ fun TrendsScreen(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(16.dp))
                         .background(NotelSurface)
-                        .border(1.dp, NotelPrimary.copy(alpha = 0.18f), RoundedCornerShape(16.dp))
+                        .border(1.dp, NotelBorder, RoundedCornerShape(16.dp))
                         .clickable { viewModel.clearSelection() }
                         .padding(16.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.TrendingUp, null, tint = NotelPrimary, modifier = Modifier.size(32.dp))
+                        Icon(Icons.Default.TrendingUp, null, tint = NotelTextSecondary, modifier = Modifier.size(32.dp))
                         Spacer(Modifier.width(16.dp))
                         Column {
-                            SectionLabel("Log volume", color = NotelPrimary)
+                            SectionLabel("Log volume")
                             Text("${state.totalLogs} Total Entries", color = NotelTextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                             if (state.selectedHour != null) {
-                                Text("Tap to reset filter", color = NotelPrimary.copy(alpha = 0.7f), fontSize = 11.sp)
+                                Text("Tap to reset filter", color = NotelTextSecondary, fontSize = 11.sp)
                             }
                         }
                     }
@@ -136,14 +136,13 @@ fun TrendsScreen(
                 
                     Column {
                         SectionLabel(
-                            text = if (state.selectedHour != null) "Logs at ${formatHour(state.selectedHour!!)}" else "Log activity by hour",
-                            color = NotelPrimary
+                            text = if (state.selectedHour != null) "Logs at ${formatHour(state.selectedHour!!)}" else "Log activity by hour"
                         )
                         Spacer(Modifier.height(8.dp))
                         Box(
                             modifier = Modifier.fillMaxWidth().height(220.dp)
                                 .clip(RoundedCornerShape(16.dp)).background(NotelSurface)
-                                .border(1.dp, NotelPrimary.copy(alpha = 0.18f), RoundedCornerShape(16.dp)).padding(16.dp)
+                                .border(1.dp, NotelBorder, RoundedCornerShape(16.dp)).padding(16.dp)
                         ) {
                             HourlyDensityChart(data = state.frequencyByHour, selectedHour = state.selectedHour, onHourSelected = { viewModel.selectHour(it) })
                         }
@@ -168,16 +167,16 @@ fun TrendsScreen(
                     }
 
                     if (state.selectedHour != null && state.filteredLogs.isNotEmpty()) {
-                        SectionLabel("Entries for this hour", color = NotelPrimary)
+                        SectionLabel("Entries for this hour")
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             state.filteredLogs.forEach { entry ->
                                 Box(
                                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                                        .background(NotelSurface).border(1.dp, NotelPrimary.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
+                                        .background(NotelSurface).border(1.dp, NotelBorder, RoundedCornerShape(12.dp))
                                         .clickable { onNavigateToEntry(entry.id) }.padding(12.dp)
                                 ) {
                                     Column {
-                                        Text(SimpleDateFormat("h:mm a, MMM dd", Locale.getDefault()).format(Date(entry.timestamp)), color = NotelPrimary.copy(alpha = 0.6f), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                        Text(SimpleDateFormat("h:mm a, MMM dd", Locale.getDefault()).format(Date(entry.timestamp)), color = NotelTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
                                         Spacer(Modifier.height(4.dp))
                                         Text(entry.body, color = NotelTextPrimary, fontSize = 14.sp)
                                     }
@@ -187,16 +186,16 @@ fun TrendsScreen(
                     }
 
                     if (state.selectedSymptom != null && state.logsForSymptom.isNotEmpty()) {
-                        SectionLabel("Logs for '${state.selectedSymptom}'", color = NotelPrimary)
+                        SectionLabel("Logs for '${state.selectedSymptom}'")
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             state.logsForSymptom.forEach { entry ->
                                 Box(
                                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                                        .background(NotelSurface).border(1.dp, NotelPrimary.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
+                                        .background(NotelSurface).border(1.dp, NotelBorder, RoundedCornerShape(12.dp))
                                         .clickable { onNavigateToEntry(entry.id) }.padding(12.dp)
                                 ) {
                                     Column {
-                                        Text(SimpleDateFormat("h:mm a, MMM dd", Locale.getDefault()).format(Date(entry.timestamp)), color = NotelPrimary.copy(alpha = 0.6f), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                        Text(SimpleDateFormat("h:mm a, MMM dd", Locale.getDefault()).format(Date(entry.timestamp)), color = NotelTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
                                         Spacer(Modifier.height(4.dp))
                                         Text(entry.body, color = NotelTextPrimary, fontSize = 14.sp)
                                     }
@@ -215,10 +214,10 @@ fun TrendsScreen(
                 Box(
                     modifier = Modifier.fillMaxWidth().padding(16.dp)
                         .clip(RoundedCornerShape(20.dp)).background(NotelSurface)
-                        .border(1.dp, NotelPrimary.copy(alpha = 0.25f), RoundedCornerShape(20.dp)).padding(24.dp)
+                        .border(1.dp, NotelBorder, RoundedCornerShape(20.dp)).padding(24.dp)
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        SectionLabel("Most used symptoms", color = NotelPrimary)
+                        SectionLabel("Most used symptoms")
                         Spacer(Modifier.height(16.dp))
                         if (state.topChips.isEmpty()) {
                             Text("No symptoms logged yet.", color = NotelTextSecondary, fontSize = 14.sp)
@@ -230,14 +229,14 @@ fun TrendsScreen(
                                     Box(
                                         modifier = Modifier.clip(RoundedCornerShape(10.dp))
                                             .background(if (isSel) NotelPrimary else NotelSurfaceHigh)
-                                            .border(1.dp, if (isSel) NotelPrimary else NotelPrimary.copy(alpha = 0.25f), RoundedCornerShape(10.dp))
+                                            .border(1.dp, if (isSel) NotelPrimary else NotelBorder, RoundedCornerShape(10.dp))
                                             .clickable { viewModel.selectSymptom(chip); showSymptomsDialog = false }
                                             .padding(horizontal = 12.dp, vertical = 6.dp)
                                     ) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Text(chip, color = if (isSel) Color.White else NotelTextPrimary, fontSize = 13.sp)
                                             Spacer(Modifier.width(6.dp))
-                                            Text(count.toString(), color = if (isSel) Color.White else NotelPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            Text(count.toString(), color = if (isSel) NotelOnAccent else NotelTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }
@@ -348,7 +347,7 @@ fun HourlyDensityChart(
 @Composable
 fun CategoryProgressRow(name: String, count: Int, total: Int, colorHex: String) {
     val percentage = if (total > 0) count.toFloat() / total else 0f
-    val color = try { Color(android.graphics.Color.parseColor(colorHex)) } catch (_: Exception) { NotelPrimary }
+    val color = try { Color(android.graphics.Color.parseColor(colorHex)) } catch (_: Exception) { NotelTextSecondary }
     val animatedPercentage by animateFloatAsState(targetValue = percentage, animationSpec = tween(1000, easing = FastOutSlowInEasing), label = "progress")
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

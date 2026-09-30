@@ -376,7 +376,7 @@ fun ProfileSetupScreen(
                 enabled = isReady
             ) {
                 if (isProcessingFile) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    CircularProgressIndicator(color = NotelOnAccent, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(8.dp))
                     Text("AI is reading your documents...", color = Color.Gray, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 } else {

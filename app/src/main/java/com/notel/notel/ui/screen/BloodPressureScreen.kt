@@ -661,7 +661,7 @@ fun BloodPressureScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary)
                         ) {
                             if (uiState.isSaving) {
-                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                CircularProgressIndicator(color = NotelOnAccent, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                             } else {
                                 Text("Save")
                             }

@@ -425,14 +425,14 @@ fun SleepScreen(
                             modifier = Modifier.weight(1f),
                             containerColor = if (compareMode == "Days") NotelPrimary else NotelSurfaceHigh
                         ) {
-                            Text("Compare Days", color = if (compareMode == "Days") Color.White else NotelTextPrimary, fontWeight = FontWeight.Bold)
+                            Text("Compare Days", color = if (compareMode == "Days") NotelOnAccent else NotelTextPrimary, fontWeight = FontWeight.Bold)
                         }
                         GlassyButton(
                             onClick = { compareMode = "Weeks"; showCompareCalendar = true },
                             modifier = Modifier.weight(1f),
                             containerColor = if (compareMode == "Weeks") NotelPrimary else NotelSurfaceHigh
                         ) {
-                            Text("Compare Weeks", color = if (compareMode == "Weeks") Color.White else NotelTextPrimary, fontWeight = FontWeight.Bold)
+                            Text("Compare Weeks", color = if (compareMode == "Weeks") NotelOnAccent else NotelTextPrimary, fontWeight = FontWeight.Bold)
                         }
                     }
                     

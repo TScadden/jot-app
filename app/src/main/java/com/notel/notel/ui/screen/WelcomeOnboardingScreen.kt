@@ -230,7 +230,7 @@ fun WelcomeOnboardingScreen(
                                 text = "Register",
                                 fontSize = 17.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White
+                                color = NotelOnAccent
                             )
                         }
 

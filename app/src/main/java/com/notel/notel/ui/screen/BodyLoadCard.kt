@@ -164,7 +164,7 @@ fun BodyLoadCard(
                     val pulseColor by if (!state.cupTheorySeen) {
                         infiniteTransition.animateColor(
                             initialValue = NotelTextPrimary,
-                            targetValue = Color(0xFFB388FF), // Light Violet/Purple pulse
+                            targetValue = Color(0xFFD9A441), // Brass pulse on the unseen-theory title
                             animationSpec = infiniteRepeatable(
                                 animation = tween(1200, easing = FastOutSlowInEasing),
                                 repeatMode = RepeatMode.Reverse
@@ -192,7 +192,7 @@ fun BodyLoadCard(
                         Icon(
                             Icons.Default.DateRange,
                             contentDescription = "Back to Today",
-                            tint = NotelPrimary,
+                            tint = NotelTextSecondary,
                             modifier = Modifier.size(20.dp) // Icon itself is bigger
                         )
                     }
@@ -335,7 +335,7 @@ fun BodyLoadCard(
                             MetricItem(
                                 icon = Icons.Default.Favorite,
                                 value = if (state.avgHeartRate > 0) "${state.avgHeartRate}" else "--",
-                                color = NotelPrimary
+                                color = NotelError
                             )
                         }
 
@@ -480,10 +480,10 @@ fun BodyLoadCard(
                             horizontalArrangement = Arrangement.End
                         ) {
                             Text(
-                                text = if (isCalculatedUp) "SINCE ${counter.name.uppercase()}" else "UNTIL ${counter.name.uppercase()}",
+                                text = if (isCalculatedUp) "Since ${counter.name}" else "Until ${counter.name}",
                                 fontSize = 8.sp,
                                 fontWeight = FontWeight.Black,
-                                color = NotelPrimary.copy(alpha = 0.6f),
+                                color = NotelTextSecondary,
                                 letterSpacing = 0.5.sp,
                                 maxLines = 1,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,

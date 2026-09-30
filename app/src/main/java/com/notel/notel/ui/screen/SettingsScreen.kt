@@ -485,7 +485,7 @@ fun SettingsScreen(
                                 viewModel.pullTelemetryFromServer()
                             }
                         ) {
-                            Icon(Icons.Default.ShowChart, "Show Telemetry Graph", tint = NotelPrimary)
+                            Icon(Icons.Default.ShowChart, "Show Telemetry Graph", tint = NotelTextSecondary)
                         }
                     }
                 },
@@ -654,7 +654,7 @@ fun SettingsScreen(
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
                                     if (isUnlimited) "Unlimited" else "Standard",
-                                    color = NotelPrimary,
+                                    color = NotelTextPrimary,
                                     fontSize = 32.sp,
                                     fontWeight = FontWeight.Black
                                 )
@@ -685,16 +685,16 @@ fun SettingsScreen(
                             onClick = { viewModel.billingManager.checkSubscriptionStatus() },
                             modifier = Modifier.align(Alignment.CenterHorizontally),
                             shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.3f))
+                            border = BorderStroke(1.dp, NotelBorder)
                         ) {
                             Icon(
                                 Icons.Default.Sync,
                                 contentDescription = null,
-                                tint = NotelPrimary,
+                                tint = NotelTextSecondary,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(Modifier.width(6.dp))
-                            Text("Refresh Subscription Status", color = NotelPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Refresh Subscription Status", color = NotelTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                         }
 
                         if (!isUnlimited) {
@@ -708,7 +708,7 @@ fun SettingsScreen(
                                 color = if (isMonthlySelected) NotelPrimary.copy(alpha = 0.08f) else NotelSurfaceHigh,
                                 border = BorderStroke(
                                     width = if (isMonthlySelected) 2.dp else 1.dp,
-                                    color = if (isMonthlySelected) NotelPrimary else NotelPrimary.copy(alpha = 0.15f)
+                                    color = if (isMonthlySelected) NotelPrimary else NotelBorder
                                 ),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
@@ -767,7 +767,7 @@ fun SettingsScreen(
                                 color = if (isYearlySelected) NotelPrimary.copy(alpha = 0.08f) else NotelSurfaceHigh,
                                 border = BorderStroke(
                                     width = if (isYearlySelected) 2.dp else 1.dp,
-                                    color = if (isYearlySelected) NotelPrimary else NotelPrimary.copy(alpha = 0.15f)
+                                    color = if (isYearlySelected) NotelPrimary else NotelBorder
                                 ),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
@@ -831,11 +831,11 @@ fun SettingsScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 containerColor = NotelPrimary
                             ) {
-                                Icon(Icons.Default.Star, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Default.Star, null, tint = NotelOnAccent, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
                                 Text(
                                     if (selectedPlan == "monthly") "Start ${trialLabel(monthlyTrialIso)}" else "Start ${trialLabel(yearlyTrialIso)}",
-                                    color = Color.White,
+                                    color = NotelOnAccent,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -915,7 +915,7 @@ fun SettingsScreen(
                                 Icon(
                                     if (userContextHidden) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                                     contentDescription = if (userContextHidden) "Show personal context" else "Hide personal context",
-                                    tint = NotelPrimary,
+                                    tint = NotelTextSecondary,
                                     modifier = Modifier.size(22.dp)
                                 )
                             }
@@ -1118,7 +1118,7 @@ fun SettingsScreen(
                                 .padding(horizontal = 16.dp, vertical = 16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.Favorite, contentDescription = null, tint = NotelPrimary, modifier = Modifier.size(22.dp))
+                            Icon(Icons.Default.Favorite, contentDescription = null, tint = NotelTextSecondary, modifier = Modifier.size(22.dp))
                             Spacer(Modifier.width(16.dp))
                             Text("Connected Apps", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 15.sp, modifier = Modifier.weight(1f))
                             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = NotelTextSecondary.copy(alpha = 0.6f))
@@ -1263,12 +1263,7 @@ fun SettingsScreen(
                                     shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = if (selected) NotelPrimary else NotelSurfaceHigh,
-                                        // White on the dark accent is only 3.80:1, so dark
-                                        // mode uses near-black ink; light mode keeps white
-                                        // on the darker light accent (6.77:1).
-                                        contentColor = if (selected) {
-                                            if (isLightTheme) Color.White else NotelBackground
-                                        } else NotelTextSecondary
+                                        contentColor = if (selected) NotelOnAccent else NotelTextSecondary
                                     ),
                                     contentPadding = PaddingValues(0.dp)
                                 ) {
@@ -1286,19 +1281,19 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("EVENT COUNTERS", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
+                Text("Event counters", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         Icons.Default.CloudDone,
                         contentDescription = null,
-                        tint = NotelPrimary,
+                        tint = NotelSuccess,
                         modifier = Modifier.size(12.dp)
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
                         "Synced",
                         fontSize = 10.sp,
-                        color = NotelPrimary,
+                        color = NotelSuccess,
                         fontWeight = FontWeight.Medium
                     )
                 }
@@ -1319,7 +1314,7 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 containerColor = NotelSurfaceHigh
             ) {
-                Icon(Icons.Default.Add, "Add Counter", tint = NotelPrimary)
+                Icon(Icons.Default.Add, "Add Counter", tint = NotelTextSecondary)
                 Spacer(Modifier.width(8.dp))
                 Text("Add New Counter", color = NotelTextPrimary)
             }
@@ -1355,7 +1350,7 @@ fun SettingsScreen(
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(counter.name, color = NotelTextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                        Text("$daysRemaining days $direction", color = NotelPrimary, fontSize = 11.sp)
+                                        Text("$daysRemaining days $direction", color = NotelTextSecondary, fontSize = 11.sp)
                                     }
                                     IconButton(
                                         onClick = { viewModel.toggleArchiveCounter(counter.id) },
@@ -1563,14 +1558,14 @@ fun SettingsScreen(
                                 Icon(
                                     Icons.Default.CloudDone,
                                     contentDescription = null,
-                                    tint = NotelPrimary,
+                                    tint = NotelSuccess,
                                     modifier = Modifier.size(12.dp)
                                 )
                                 Spacer(Modifier.width(4.dp))
                                 Text(
                                     "Synced",
                                     fontSize = 10.sp,
-                                    color = NotelPrimary,
+                                    color = NotelSuccess,
                                     fontWeight = FontWeight.Medium
                                 )
                             }
@@ -1587,9 +1582,9 @@ fun SettingsScreen(
                         GlassyButton(
                             onClick = { showProfessionalDialog = true },
                             modifier = Modifier.fillMaxWidth(),
-                            containerColor = NotelPrimary.copy(alpha = 0.8f)
+                            containerColor = NotelPrimary
                         ) {
-                            Text("Add $professionalType Update", color = Color.White, fontWeight = FontWeight.Bold)
+                            Text("Add $professionalType Update", color = NotelOnAccent, fontWeight = FontWeight.Bold)
                         }
 
                         if (showProfessionalDialog) {
@@ -1647,11 +1642,11 @@ fun SettingsScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Past $professionalType Updates", color = NotelPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Past $professionalType Updates", color = NotelTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 Icon(
                                     if (isProUpdatesExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                                     contentDescription = "Toggle Updates",
-                                    tint = NotelPrimary
+                                    tint = NotelTextSecondary
                                 )
                             }
 
@@ -2450,7 +2445,7 @@ fun SettingsScreen(
                             healthConnectLauncher.launch(viewModel.healthConnectManager.permissions)
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        containerColor = NotelPrimary.copy(alpha = 0.8f)
+                        containerColor = NotelPrimary
                     ) {
                         Text("Connect Health Data", color = Color.White, fontWeight = FontWeight.Bold)
                     }
@@ -4386,7 +4381,7 @@ fun SettingsMenuCard(
                 .padding(vertical = 12.dp, horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(icon, null, tint = NotelPrimary, modifier = Modifier.size(28.dp))
+            Icon(icon, null, tint = NotelTextSecondary, modifier = Modifier.size(28.dp))
             Spacer(Modifier.width(16.dp))
             Text(title, color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 16.sp, modifier = Modifier.weight(1f))
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = NotelTextSecondary)
@@ -4412,10 +4407,10 @@ fun DebugScreen(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = NotelPrimary)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = NotelTextSecondary)
             }
             Spacer(Modifier.width(8.dp))
-            Text("Internal Debug Terminal", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = NotelPrimary)
+            Text("Internal Debug Terminal", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = NotelTextPrimary)
         }
         Spacer(Modifier.height(16.dp))
         

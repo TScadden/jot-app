@@ -211,16 +211,16 @@ fun EntryDetailScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .background(NotelPrimary.copy(alpha = 0.12f))
-                            .border(1.dp, NotelPrimary.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                            .background(NotelSurfaceHigh)
+                            .border(1.dp, NotelBorder, RoundedCornerShape(12.dp))
                             .padding(horizontal = 16.dp, vertical = 12.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Medication, null, tint = NotelPrimary, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.Medication, null, tint = NotelTextSecondary, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                "LOGGED VIA MEDICATIONS TAB",
-                                color = NotelPrimary,
+                                "Logged via Medications tab",
+                                color = NotelTextSecondary,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 0.8.sp
@@ -247,7 +247,7 @@ fun EntryDetailScreen(
                     }
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("CHANGE CATEGORY", style = MaterialTheme.typography.labelSmall, color = NotelPrimary, letterSpacing = 0.8.sp)
+                        SectionLabel("Change category")
                         androidx.compose.foundation.lazy.LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             modifier = Modifier.fillMaxWidth()
@@ -256,7 +256,7 @@ fun EntryDetailScreen(
                                 val cat = categories[index]
                                 val isSelected = cat.id == e.categoryId
                                 val color = try { Color(android.graphics.Color.parseColor(cat.colorHex)) }
-                                            catch (_: Exception) { NotelPrimary }
+                                            catch (_: Exception) { NotelTextSecondary }
                                 Box(
                                     modifier = Modifier
                                         .height(40.dp)
@@ -326,11 +326,11 @@ fun EntryDetailScreen(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(16.dp))
                         .background(NotelSurface)
-                        .border(1.dp, NotelPrimary.copy(alpha = 0.18f), RoundedCornerShape(16.dp))
+                        .border(1.dp, NotelBorder, RoundedCornerShape(16.dp))
                         .padding(16.dp)
                 ) {
                     Column {
-                        Text("CONTENT", style = MaterialTheme.typography.labelSmall, color = NotelPrimary, letterSpacing = 0.8.sp)
+                        SectionLabel("Content")
                         Spacer(Modifier.height(10.dp))
                         val combinedText = if (e.manualText.isNotBlank()) "${e.body}\n\n${e.manualText}" else e.body
                         Text(combinedText, color = NotelTextPrimary, fontSize = 17.sp, lineHeight = 24.sp, fontWeight = FontWeight.Medium)
@@ -344,11 +344,11 @@ fun EntryDetailScreen(
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(16.dp))
                             .background(NotelSurface)
-                            .border(1.dp, NotelPrimary.copy(alpha = 0.18f), RoundedCornerShape(16.dp))
+                            .border(1.dp, NotelBorder, RoundedCornerShape(16.dp))
                             .padding(16.dp)
                     ) {
                         Column {
-                            Text("ASSOCIATED TILES", style = MaterialTheme.typography.labelSmall, color = NotelPrimary, letterSpacing = 0.8.sp)
+                            SectionLabel("Associated tiles")
                             Spacer(Modifier.height(12.dp))
                             @OptIn(ExperimentalLayoutApi::class)
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -358,7 +358,7 @@ fun EntryDetailScreen(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(20.dp))
                                             .background(NotelSurfaceHigh)
-                                            .border(1.dp, NotelPrimary.copy(alpha = 0.25f), RoundedCornerShape(20.dp))
+                                            .border(1.dp, NotelBorder, RoundedCornerShape(20.dp))
                                             .padding(horizontal = 12.dp, vertical = 6.dp)
                                     ) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {

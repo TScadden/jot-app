@@ -19,7 +19,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.notel.notel.R
-import com.notel.notel.ui.theme.NotelPrimary
 import com.notel.notel.ui.theme.NotelSurfaceHigh
 import com.notel.notel.ui.theme.NotelTextPrimary
 import com.notel.notel.ui.theme.NotelTextSecondary
@@ -65,7 +64,7 @@ fun TopLogoHeader(
                 text = "Tabs",
                 fontSize = 26.sp,
                 fontWeight = FontWeight.Black,
-                color = NotelPrimary,
+                color = NotelTextPrimary,
                 letterSpacing = 1.sp
             )
         }

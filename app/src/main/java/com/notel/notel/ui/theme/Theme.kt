@@ -32,9 +32,9 @@ enum class ThemeMode {
 
 private fun darkScheme(p: NotelPalette) = darkColorScheme(
     primary          = p.primary,
-    onPrimary        = Color(0xFFFFFFFF),
+    onPrimary        = p.onAccent,        // dark ink on brass (~8.1:1) — AA
     secondary        = p.accent,
-    onSecondary      = p.textPrimary,
+    onSecondary      = p.onAccent,
     background       = p.background,
     onBackground     = p.textPrimary,
     surface          = p.surface,
@@ -49,9 +49,9 @@ private fun darkScheme(p: NotelPalette) = darkColorScheme(
 
 private fun lightScheme(p: NotelPalette) = lightColorScheme(
     primary          = p.primary,
-    onPrimary        = Color(0xFFFFFFFF),   // 6.77:1 on #5445CC — AA
+    onPrimary        = p.onAccent,        // white on bronze (~5.6:1) — AA
     secondary        = p.accent,
-    onSecondary      = Color(0xFFFFFFFF),
+    onSecondary      = p.onAccent,
     background       = p.background,
     onBackground     = p.textPrimary,       // ~15:1 — AA
     surface          = p.surface,

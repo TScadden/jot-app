@@ -331,7 +331,7 @@ fun DataConnectionsScreen(
                                 colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary),
                                 shape = RoundedCornerShape(8.dp)
                             ) {
-                                Text("Grant New Permissions", color = Color.White, fontWeight = FontWeight.Bold)
+                                Text("Grant New Permissions", color = NotelOnAccent, fontWeight = FontWeight.Bold)
                             }
                         }
                     }

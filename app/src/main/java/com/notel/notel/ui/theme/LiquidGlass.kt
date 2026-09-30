@@ -20,11 +20,14 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * Solid dark-navy tile modifier — replaces the old liquid glass effect.
+ * Solid tile modifier — the quiet card treatment.
  * Applies:
  *  - Solid [color] background
- *  - Subtle 1dp [NotelPrimary]-tinted border
+ *  - Subtle 1dp neutral hairline border ([NotelBorder])
  *  - Clip to [shape]
+ *
+ * Cards earn attention through elevation steps and hairlines, not tinted
+ * borders — the accent is reserved for actions and selection.
  */
 @Composable
 fun Modifier.liquidGlass(
@@ -40,14 +43,14 @@ fun Modifier.liquidGlass(
         .then(
             if (showBorder) Modifier.border(
                 width = borderWidth,
-                color = NotelPrimary.copy(alpha = 0.18f),
+                color = NotelBorder,
                 shape = shape
             ) else Modifier
         )
 )
 
 /**
- * A solid-filled action button using the tile theme's primary cyan color.
+ * A solid-filled action button in the brass accent color.
  */
 @Composable
 fun GlassyButton(
@@ -97,12 +100,11 @@ fun GlassyButton(
 }
 
 /**
- * Tile-style card — solid deep-navy background with a subtle cyan border.
+ * Tile-style card — solid surface with a quiet neutral hairline.
  * Drop-in replacement for the old GlassyCard.
  *
- * @param borderColor overrides the default primary-tinted hairline (e.g. the
- * error-tint border on alert cards). Null keeps the legacy default, so dark
- * mode renders byte-identically.
+ * @param borderColor overrides the default neutral hairline (e.g. the
+ * error-tint border on alert cards). Null keeps the default.
  */
 @Composable
 fun GlassyCard(
@@ -116,7 +118,7 @@ fun GlassyCard(
         modifier = modifier
             .clip(shape)
             .background(color)
-            .border(width = 1.dp, color = borderColor ?: NotelPrimary.copy(alpha = 0.18f), shape = shape)
+            .border(width = 1.dp, color = borderColor ?: NotelBorder, shape = shape)
             .padding(16.dp),
         contentAlignment = Alignment.TopStart
     ) {

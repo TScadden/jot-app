@@ -744,7 +744,7 @@ class MainActivity : ComponentActivity() {
                                                 Icon(
                                                     imageVector = Icons.Default.Edit,
                                                     contentDescription = "New Note",
-                                                    tint = Color.White,
+                                                    tint = NotelOnAccent,
                                                     modifier = Modifier.size(22.dp)
                                                 )
                                             }
@@ -871,7 +871,7 @@ class MainActivity : ComponentActivity() {
                                         Text(
                                             "AI Audit Complete! ✨",
                                             style = MaterialTheme.typography.titleMedium,
-                                            color = NotelPrimary,
+                                            color = NotelTextPrimary,
                                             fontWeight = FontWeight.ExtraBold
                                         )
                                         Text(
@@ -934,7 +934,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 confirmButton = {
                                     androidx.compose.material3.TextButton(onClick = { selectWidgetAppWidgetId = -1 }) {
-                                        Text("Cancel", color = NotelPrimary)
+                                        Text("Cancel", color = NotelTextSecondary)
                                     }
                                 },
                                 containerColor = NotelSurface,

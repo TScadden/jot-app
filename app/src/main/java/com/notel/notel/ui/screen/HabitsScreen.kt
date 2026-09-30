@@ -68,14 +68,14 @@ fun HabitsScreen(
                     if (habits.isNotEmpty()) {
                         Surface(
                             shape = RoundedCornerShape(12.dp),
-                            color = NotelPrimary.copy(alpha = 0.1f),
-                            border = BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.2f)),
+                            color = NotelSurfaceHigh,
+                            border = BorderStroke(1.dp, NotelBorder),
                             modifier = Modifier.padding(end = 16.dp)
                         ) {
                             Text(
-                                "$checkedCount/${habits.size} DONE",
+                                "$checkedCount/${habits.size} done",
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                color = NotelPrimary,
+                                color = NotelTextSecondary,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Black,
                                 letterSpacing = 1.sp

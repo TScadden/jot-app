@@ -220,9 +220,9 @@ fun QuickLogScreen(
                                 .size(48.dp)
                                 .clip(RoundedCornerShape(14.dp))
                                 .background(NotelSurface)
-                                .border(1.dp, NotelPrimary.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+                                .border(1.dp, NotelBorder, RoundedCornerShape(14.dp))
                         ) {
-                            Icon(Icons.Default.Replay, contentDescription = "Repeat Last Entry", tint = NotelPrimary)
+                            Icon(Icons.Default.Replay, contentDescription = "Repeat Last Entry", tint = NotelTextSecondary)
                         }
                     }
 
@@ -253,14 +253,14 @@ fun QuickLogScreen(
                                     .background(NotelSurface)
                                     .border(
                                         width = 1.dp,
-                                        color = NotelPrimary.copy(alpha = 0.25f),
+                                        color = NotelBorder,
                                         shape = RoundedCornerShape(12.dp)
                                     )
                                     .clickable { viewModel.showAddCategoryDialog() }
                                     .padding(horizontal = 16.dp, vertical = 10.dp)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Add, null, tint = NotelPrimary, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Default.Add, null, tint = NotelTextSecondary, modifier = Modifier.size(16.dp))
                                     Spacer(Modifier.width(4.dp))
                                     Text(
                                         text = "Add",
@@ -488,13 +488,13 @@ fun QuickLogScreen(
                         .padding(16.dp)
                         .clip(RoundedCornerShape(Radii.dialog))
                         .background(NotelSurface)
-                        .border(1.dp, NotelPrimary.copy(alpha = 0.18f), RoundedCornerShape(Radii.dialog))
+                        .border(1.dp, NotelBorder, RoundedCornerShape(Radii.dialog))
                         .padding(24.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = NotelPrimary, modifier = Modifier.size(22.dp))
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = NotelTextSecondary, modifier = Modifier.size(22.dp))
                             Spacer(Modifier.width(8.dp))
                             Text("AI Insights", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = NotelTextPrimary)
                         }
@@ -564,13 +564,13 @@ fun QuickLogScreen(
                         .padding(16.dp)
                         .clip(RoundedCornerShape(Radii.dialog))
                         .background(NotelSurface)
-                        .border(1.dp, NotelPrimary.copy(alpha = 0.18f), RoundedCornerShape(Radii.dialog))
+                        .border(1.dp, NotelBorder, RoundedCornerShape(Radii.dialog))
                         .padding(24.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.CompareArrows, contentDescription = null, tint = NotelPrimary, modifier = Modifier.size(22.dp))
+                            Icon(Icons.Default.CompareArrows, contentDescription = null, tint = NotelTextSecondary, modifier = Modifier.size(22.dp))
                             Spacer(Modifier.width(8.dp))
                             Text("Document Comparison", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = NotelTextPrimary)
                         }
@@ -640,13 +640,13 @@ fun QuickLogScreen(
                         .padding(16.dp)
                         .clip(RoundedCornerShape(Radii.dialog))
                         .background(NotelSurface)
-                        .border(1.dp, NotelPrimary.copy(alpha = 0.18f), RoundedCornerShape(Radii.dialog))
+                        .border(1.dp, NotelBorder, RoundedCornerShape(Radii.dialog))
                         .padding(24.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = NotelPrimary, modifier = Modifier.size(22.dp))
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = NotelTextSecondary, modifier = Modifier.size(22.dp))
                             Spacer(Modifier.width(8.dp))
                             Text("New Category Ideas", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = NotelTextPrimary)
                         }
@@ -720,7 +720,7 @@ fun QuickLogScreen(
                                                     .background(if (isSelected) NotelPrimary else NotelSurface)
                                                     .border(
                                                         width = 1.dp,
-                                                        color = if (isSelected) NotelPrimary else NotelPrimary.copy(alpha = 0.20f),
+                                                        color = if (isSelected) NotelPrimary else NotelTextSecondary,
                                                         shape = RoundedCornerShape(14.dp)
                                                     )
                                                     .clickable { viewModel.toggleSuggestedCategory(name) }
@@ -827,7 +827,7 @@ private fun TodaySummaryStrip(
             Icon(
                 imageVector = Icons.Default.Today,
                 contentDescription = null,
-                tint = NotelPrimary,
+                tint = NotelTextSecondary,
                 modifier = Modifier.size(20.dp)
             )
             Column(modifier = Modifier.weight(1f)) {
@@ -981,7 +981,7 @@ private fun SmartActionCard(
                     Icon(Icons.Default.Lightbulb, contentDescription = null, tint = NotelPrimary, modifier = Modifier.size(18.dp))
                 }
                 Spacer(Modifier.width(10.dp))
-                Text(action.title, style = MaterialTheme.typography.titleMedium, color = NotelPrimary, fontWeight = FontWeight.Bold)
+                Text(action.title, style = MaterialTheme.typography.titleMedium, color = NotelTextPrimary, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
                 IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
                     Icon(Icons.Default.Close, contentDescription = "Dismiss", tint = NotelTextSecondary, modifier = Modifier.size(14.dp))
