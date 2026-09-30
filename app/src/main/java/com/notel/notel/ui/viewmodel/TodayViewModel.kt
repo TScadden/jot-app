@@ -210,7 +210,7 @@ class TodayViewModel @Inject constructor(
         val primaryInsight = args[7] as? AiInsight
         val errorMsg = args[8] as? String
 
-        val activeMeds = medsList.filter { !it.isArchived }
+        val activeMeds = medsList.filter { !it.isArchived && !it.isDeleted }
         val enabledReminders = remindersList.filter { it.isEnabled }
         val currentDateStr = todayStr
 

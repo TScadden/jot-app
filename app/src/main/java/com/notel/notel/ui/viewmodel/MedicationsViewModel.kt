@@ -28,7 +28,7 @@ class MedicationsViewModel @Inject constructor(
     private val allMedsFlow = medicationDao.getAllMedications()
 
     val activeMedications: StateFlow<List<Medication>> = allMedsFlow
-        .map { list -> list.filter { !it.isArchived } }
+        .map { list -> list.filter { !it.isArchived && !it.isDeleted } }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
@@ -36,7 +36,7 @@ class MedicationsViewModel @Inject constructor(
         )
 
     val archivedMedications: StateFlow<List<Medication>> = allMedsFlow
-        .map { list -> list.filter { it.isArchived } }
+        .map { list -> list.filter { it.isArchived && !it.isDeleted } }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
