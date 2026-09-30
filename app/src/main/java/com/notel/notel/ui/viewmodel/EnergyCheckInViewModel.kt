@@ -69,6 +69,14 @@ class EnergyCheckInViewModel @Inject constructor(
     private var energyCategoryId: Int = ENERGY_CATEGORY_FALLBACK_ID
 
     /**
+     * Guards against a double-tap landing two entries before the new row flows
+     * back through the category flow. Reset once the entry is observed (or the
+     * insert fails), and cleared whenever the card is visible again.
+     */
+    @Volatile
+    private var tapInFlight: Boolean = false
+
+    /**
      * Re-emits every minute so a 4am rollover (or a History delete landing via
      * the entry flow) re-evaluates the window without an app restart.
      */
@@ -98,6 +106,7 @@ class EnergyCheckInViewModel @Inject constructor(
                         entry.timestamp in startMillis until endMillis
                 }
             }.collect { hasEntry ->
+                if (hasEntry) tapInFlight = false
                 _uiState.update { it.copy(visible = !hasEntry) }
             }
         }
@@ -108,15 +117,20 @@ class EnergyCheckInViewModel @Inject constructor(
      * The card slides away once the new row flows back through the category flow.
      */
     fun selectLevel(level: Int) {
-        if (level !in 1..5) return
+        if (level !in 1..5 || tapInFlight) return
+        tapInFlight = true
         viewModelScope.launch {
-            logRepository.insertEntry(
-                LogEntry(
-                    categoryId = energyCategoryId,
-                    body = "Energy: $level/5",
-                    source = ENERGY_CHECKIN_SOURCE
+            try {
+                logRepository.insertEntry(
+                    LogEntry(
+                        categoryId = energyCategoryId,
+                        body = "Energy: $level/5",
+                        source = ENERGY_CHECKIN_SOURCE
+                    )
                 )
-            )
+            } catch (e: Exception) {
+                tapInFlight = false
+            }
         }
     }
 }
