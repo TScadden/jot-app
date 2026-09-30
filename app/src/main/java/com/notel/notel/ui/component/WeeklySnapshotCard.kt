@@ -405,6 +405,7 @@ private fun SnapshotDataContent(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    val isInProgressDay = pt.dateStr == java.time.LocalDate.now().toString()
                     val formattedVal = if (pt.secondaryValue != null) {
                         "${pt.value?.toInt() ?: "--"}/${pt.secondaryValue.toInt()} ${metricData.unit}"
                     } else if (pt.value != null) {
@@ -417,6 +418,16 @@ private fun SnapshotDataContent(
                         } else {
                             "${pt.value.toInt()} ${metricData.unit}".trim()
                         }
+                    } else if (isInProgressDay && metricData.metricName in setOf("Resting Heart Rate", "Sleep Hours", "Calories")) {
+                        // The current day is not over yet, so daily aggregates that are only
+                        // written after the day completes (e.g. overnight RHR, sleep, calories)
+                        // cannot have a value. Say so instead of a bare "No data".
+                        val noun = when (metricData.metricName) {
+                            "Resting Heart Rate" -> "resting heart rate"
+                            "Sleep Hours" -> "sleep data"
+                            else -> "calorie data"
+                        }
+                        "Today's $noun isn't ready yet. Check back tomorrow."
                     } else "No data"
 
                     Text(
