@@ -358,7 +358,10 @@ open class NotelPreferences(
     val projectReminderEnabled: Flow<Boolean> = context.dataStore.data.map { it[PROJECT_REMINDER_ENABLED] ?: true }
     val eventReminderEnabled: Flow<Boolean> = context.dataStore.data.map { it[EVENT_REMINDER_ENABLED] ?: true }
     // Tabs Lab: single on/off toggle; fires at a fixed 4:00 AM local.
-    val checkInReminderEnabled: Flow<Boolean> = context.dataStore.data.map { it[CHECKIN_REMINDER_ENABLED] ?: false }
+    // Defaults ON per founder spec: new installs get the reminder out of the
+    // box, and existing installs that never touched the toggle pick it up too.
+    // Users who explicitly turned it off keep their stored false value.
+    val checkInReminderEnabled: Flow<Boolean> = context.dataStore.data.map { it[CHECKIN_REMINDER_ENABLED] ?: true }
     val hrLastAlertTime: Flow<Long> = context.dataStore.data.map { it[HR_LAST_ALERT_TIME] ?: 0L }
     val hrLastSampleTime: Flow<Long> = context.dataStore.data.map { it[HR_LAST_SAMPLE_TIME] ?: 0L }
     val habitReminderUserDisabled: Flow<Boolean> = context.dataStore.data.map { it[HABIT_REMINDER_USER_DISABLED] ?: false }
