@@ -134,6 +134,13 @@ fun QuickLogScreen(
                 )
             ) {
                 item {
+                    TodaySummaryStrip(
+                        count = state.todayEntryCount,
+                        onOpenHistory = onNavigateToHistory
+                    )
+                }
+
+                item {
                     // ── Manual Text Field ─────────────────────────────
                     val context = androidx.compose.ui.platform.LocalContext.current
 
@@ -806,6 +813,63 @@ fun QuickLogScreen(
             }
         }
 
+    }
+}
+
+/**
+ * Proactive "Today so far" summary strip: shows today's log count at the top of
+ * Quick Log and taps through to History. Pure local data, no network.
+ */
+@Composable
+private fun TodaySummaryStrip(
+    count: Int,
+    onOpenHistory: () -> Unit
+) {
+    val countText = when (count) {
+        0 -> "No entries yet today"
+        1 -> "1 entry logged today"
+        else -> "$count entries logged today"
+    }
+    Surface(
+        onClick = onOpenHistory,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = NotelPrimary.copy(alpha = 0.08f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, NotelPrimary.copy(alpha = 0.18f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Today,
+                contentDescription = null,
+                tint = NotelPrimary,
+                modifier = Modifier.size(20.dp)
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Today so far",
+                    color = NotelTextPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    countText,
+                    color = NotelTextSecondary,
+                    fontSize = 12.sp
+                )
+            }
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = "View history",
+                tint = NotelTextSecondary,
+                modifier = Modifier.size(20.dp)
+            )
+        }
     }
 }
 

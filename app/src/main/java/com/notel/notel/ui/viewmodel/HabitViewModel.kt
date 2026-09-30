@@ -64,6 +64,32 @@ class HabitViewModel @Inject constructor(
         return habitRepository.calculateStreak(habit.logs)
     }
 
+    /** One day in the 7 day pacing strip, oldest first. */
+    data class HabitDayMark(
+        val dayLabel: String,
+        val completed: Boolean,
+        val isToday: Boolean
+    )
+
+    /**
+     * Last 7 days ending today, oldest first. Pure local read of the habit's
+     * already synced log dates (yyyy-MM-dd strings); no network, no server writes.
+     */
+    fun getLast7DayMarks(habit: HabitDtoModel): List<HabitDayMark> {
+        val today = java.time.LocalDate.now()
+        val logDates = habit.logs.toSet()
+        val labelFmt = java.time.format.DateTimeFormatter.ofPattern("E", java.util.Locale.getDefault())
+        return (6 downTo 0).map { daysBack ->
+            val date = today.minusDays(daysBack.toLong())
+            val label = date.format(labelFmt).take(1).uppercase(java.util.Locale.getDefault())
+            HabitDayMark(
+                dayLabel = label,
+                completed = date.toString() in logDates,
+                isToday = daysBack == 0
+            )
+        }
+    }
+
     fun getOverallStreak(): Int {
         return habitRepository.calculateOverallStreak(habits.value)
     }

@@ -78,7 +78,9 @@ data class QuickLogUiState(
     val categoryToDelete: Category? = null,
     val isOffline: Boolean = false,
     val recentSuggestions: List<com.notel.notel.data.local.entity.LogEntry> = emptyList(),
-    val lastLoggedEntryId: Long? = null
+    val lastLoggedEntryId: Long? = null,
+    // Proactive "Today so far" summary strip on Quick Log
+    val todayEntryCount: Int = 0
 ) {
     val isLogEnabled: Boolean
         get() = !isSaving && (selectedChips.isNotEmpty() || manualText.trim().isNotBlank())
@@ -201,6 +203,18 @@ class QuickLogViewModel @Inject constructor(
         }
         viewModelScope.launch {
             habitRepository.fetchHabits()
+        }
+        refreshTodayCount()
+    }
+
+    /**
+     * Proactive "Today so far" count for the Quick Log summary strip.
+     * Local read only; refreshed on launch and after every save/undo.
+     */
+    fun refreshTodayCount() {
+        viewModelScope.launch {
+            val count = logRepository.getTodayJotCount()
+            _uiState.update { it.copy(todayEntryCount = count) }
         }
     }
 
@@ -383,6 +397,7 @@ class QuickLogViewModel @Inject constructor(
                     )
                 }
                 _eventFlow.emit(QuickLogEvent.EntryLogged(entryId = savedId, message = loggedMessage("Entry logged")))
+                refreshTodayCount()
                 calculateSmartRanking()
 
                 try {
@@ -769,6 +784,7 @@ class QuickLogViewModel @Inject constructor(
                 ) 
             }
             _eventFlow.emit(QuickLogEvent.EntryLogged(entryId = newId, message = loggedMessage("Entry logged")))
+            refreshTodayCount()
         }
     }
 
@@ -783,6 +799,7 @@ class QuickLogViewModel @Inject constructor(
                 ) 
             }
             _eventFlow.emit(QuickLogEvent.EntryUndone(message = "Entry removed"))
+            refreshTodayCount()
         }
     }
 
@@ -806,6 +823,7 @@ class QuickLogViewModel @Inject constructor(
                 ) 
             }
             _eventFlow.emit(QuickLogEvent.EntryRepeated(entryId = newId, message = loggedMessage("Last entry repeated")))
+            refreshTodayCount()
             syncManager.pushEntries()
         }
     }
