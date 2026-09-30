@@ -19,7 +19,7 @@ import javax.inject.Inject
 
 /**
  * Tabs Lab energy check-in (Sep 2026, redesigned): a prominent card at the top of
- * the Home ("Today") screen. Five square beveled 1-5 buttons. One tap creates a
+ * the Home ("Today") screen. Five flat 1-5 selector buttons. One tap creates a
  * REAL LogEntry (source "Energy check-in") in the Mood & Energy category; the
  * card then slides off to the left for the day.
  *
