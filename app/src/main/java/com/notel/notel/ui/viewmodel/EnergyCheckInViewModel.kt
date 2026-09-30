@@ -2,66 +2,121 @@ package com.notel.notel.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.notel.notel.data.preferences.NotelPreferences
+import com.notel.notel.data.local.entity.LogEntry
+import com.notel.notel.data.repository.CategoryRepository
+import com.notel.notel.data.repository.LogRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import org.json.JSONObject
-import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZonedDateTime
 import javax.inject.Inject
 
 /**
- * Tabs Lab energy check-in (Sep 2026, simplified): a compact 1-5 energy rating
- * that lives on the Quick Log screen. One tap saves today's rating immediately;
- * tapping a different number updates it.
+ * Tabs Lab energy check-in (Sep 2026, redesigned): a prominent card at the top of
+ * the Home ("Today") screen. Five square beveled 1-5 buttons. One tap creates a
+ * REAL LogEntry (source "Energy check-in") in the Mood & Energy category; the
+ * card then slides off to the left for the day.
  *
- * Local only. Reads and writes the existing DataStore key (tabs_lab_morning_checkin),
- * never synced to the server, fully cleared by uninstalling Tabs Lab.
+ * Visibility is driven purely by the existence of today's energy log entry: the
+ * card shows when no such entry exists for the current "energy day" (the day
+ * starting at 4am local). Deleting the entry in History makes the card reappear,
+ * so they can log a new number. There is no local dismissed flag.
  */
 data class EnergyCheckInUiState(
-    val selectedLevel: Int = 0
+    val visible: Boolean = false
 )
+
+/** Identifies energy check-in entries among the Mood & Energy category's rows. */
+const val ENERGY_CHECKIN_SOURCE = "Energy check-in"
+
+/** Seeded "Mood & Energy" category; resolved by slug at runtime with this as fallback id. */
+const val ENERGY_CATEGORY_SLUG = "mood"
+const val ENERGY_CATEGORY_FALLBACK_ID = 6
+
+/** The energy day starts at 4am local time. */
+const val ENERGY_DAY_START_HOUR = 4
+
+/**
+ * Start of the current "energy day": 4am local. Before 4am it is still
+ * yesterday's energy day; the new day begins at 04:00.
+ * Pure function, unit-testable.
+ */
+fun energyDayStart(now: ZonedDateTime = ZonedDateTime.now()): ZonedDateTime {
+    val day = if (now.toLocalTime().isBefore(LocalTime.of(ENERGY_DAY_START_HOUR, 0))) {
+        now.toLocalDate().minusDays(1)
+    } else {
+        now.toLocalDate()
+    }
+    return day.atStartOfDay(now.zone).plusHours(ENERGY_DAY_START_HOUR.toLong())
+}
 
 @HiltViewModel
 class EnergyCheckInViewModel @Inject constructor(
-    private val preferences: NotelPreferences
+    private val logRepository: LogRepository,
+    private val categoryRepository: CategoryRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(EnergyCheckInUiState())
     val uiState = _uiState.asStateFlow()
 
+    @Volatile
+    private var energyCategoryId: Int = ENERGY_CATEGORY_FALLBACK_ID
+
+    /**
+     * Re-emits every minute so a 4am rollover (or a History delete landing via
+     * the entry flow) re-evaluates the window without an app restart.
+     */
+    private val dayTicker = flow {
+        while (true) {
+            emit(System.currentTimeMillis())
+            delay(60_000)
+        }
+    }
+
     init {
         viewModelScope.launch {
-            preferences.morningCheckinLab.collect { json ->
-                if (json.isBlank()) return@collect
-                try {
-                    val obj = JSONObject(json)
-                    if (obj.optString("date", "") == LocalDate.now().toString()) {
-                        val level = obj.optInt("energy", 0).coerceIn(0, 5)
-                        _uiState.update { it.copy(selectedLevel = level) }
-                    } else {
-                        // A rating from a previous day does not carry over.
-                        _uiState.update { it.copy(selectedLevel = 0) }
-                    }
-                } catch (e: Exception) {
-                    // Corrupted local data is ignored, never crashes.
+            energyCategoryId = try {
+                categoryRepository.findCategoryIdBySlug(ENERGY_CATEGORY_SLUG, ENERGY_CATEGORY_FALLBACK_ID)
+            } catch (e: Exception) {
+                ENERGY_CATEGORY_FALLBACK_ID
+            }
+            combine(
+                logRepository.getEntriesByCategory(energyCategoryId),
+                dayTicker
+            ) { entries, _ ->
+                val windowStart = energyDayStart()
+                val startMillis = windowStart.toInstant().toEpochMilli()
+                val endMillis = windowStart.plusDays(1).toInstant().toEpochMilli()
+                entries.any { entry ->
+                    entry.source == ENERGY_CHECKIN_SOURCE &&
+                        entry.timestamp in startMillis until endMillis
                 }
+            }.collect { hasEntry ->
+                _uiState.update { it.copy(visible = !hasEntry) }
             }
         }
     }
 
-    /** One tap saves today's rating. Tapping another number updates it. */
+    /**
+     * One tap logs the rating as a real log entry (DIRTY, syncs like any entry).
+     * The card slides away once the new row flows back through the category flow.
+     */
     fun selectLevel(level: Int) {
         if (level !in 1..5) return
         viewModelScope.launch {
-            val json = JSONObject()
-                .put("date", LocalDate.now().toString())
-                .put("energy", level)
-                .toString()
-            preferences.setMorningCheckinLab(json)
-            _uiState.update { it.copy(selectedLevel = level) }
+            logRepository.insertEntry(
+                LogEntry(
+                    categoryId = energyCategoryId,
+                    body = "Energy: $level/5",
+                    source = ENERGY_CHECKIN_SOURCE
+                )
+            )
         }
     }
 }

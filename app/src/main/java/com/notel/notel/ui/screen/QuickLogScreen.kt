@@ -32,7 +32,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.notel.notel.data.local.entity.Category
 import com.notel.notel.ui.theme.*
-import com.notel.notel.ui.viewmodel.EnergyCheckInViewModel
 import com.notel.notel.ui.viewmodel.QuickLogViewModel
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.*
@@ -52,8 +51,6 @@ fun QuickLogScreen(
     onNavigateToBodyLoad: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsState()
-    val energyViewModel: EnergyCheckInViewModel = hiltViewModel()
-    val energyState by energyViewModel.uiState.collectAsState()
     val isGeneratingWeeklyRecap by viewModel.isGeneratingWeeklyRecap.collectAsState()
     val isGeneratingDeepResearch by viewModel.isGeneratingDeepResearch.collectAsState()
 
@@ -136,13 +133,6 @@ fun QuickLogScreen(
                     bottom = 180.dp
                 )
             ) {
-                item {
-                    EnergyCheckInRow(
-                        selected = energyState.selectedLevel,
-                        onSelect = energyViewModel::selectLevel
-                    )
-                }
-
                 item {
                     TodaySummaryStrip(
                         count = state.todayEntryCount,
@@ -803,57 +793,6 @@ fun QuickLogScreen(
             }
         }
 
-    }
-}
-
-/**
- * Tabs Lab energy check-in: a compact single row. Tap a number 1-5 to save
- * today's energy rating immediately; tapping a different number updates it.
- * Local only, never synced.
- */
-@Composable
-private fun EnergyCheckInRow(
-    selected: Int,
-    onSelect: (Int) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            "Energy today",
-            color = NotelTextSecondary,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.weight(1f)
-        )
-        (1..5).forEach { level ->
-            val isSelected = selected == level
-            Box(
-                modifier = Modifier
-                    // 48dp pitch with a 44dp hit target — thumb-friendly one-tap row.
-                    .padding(horizontal = 2.dp)
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(if (isSelected) NotelPrimary else NotelSurface)
-                    .border(
-                        width = if (isSelected) 1.5.dp else 1.dp,
-                        color = if (isSelected) NotelPrimary else NotelPrimary.copy(alpha = 0.3f),
-                        shape = CircleShape
-                    )
-                    .clickable { onSelect(level) },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    "$level",
-                    color = if (isSelected) NotelOnAccent else NotelTextPrimary,
-                    fontSize = 15.sp,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                )
-            }
-        }
     }
 }
 
