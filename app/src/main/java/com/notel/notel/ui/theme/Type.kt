@@ -28,7 +28,7 @@ val Typography = Typography(
         fontWeight = FontWeight.SemiBold,
         fontSize = 28.sp,
         lineHeight = 36.sp,
-        letterSpacing = (-0.5).sp
+        letterSpacing = (-0.5).sp,
         fontFeatureSettings = FontFeatureSettings("tnum"),
     ),
     headlineMedium = TextStyle(
@@ -36,7 +36,7 @@ val Typography = Typography(
         fontWeight = FontWeight.SemiBold,
         fontSize = 22.sp,
         lineHeight = 28.sp,
-        letterSpacing = 0.sp
+        letterSpacing = 0.sp,
         fontFeatureSettings = FontFeatureSettings("tnum"),
     ),
     titleLarge = TextStyle(
@@ -44,7 +44,7 @@ val Typography = Typography(
         fontWeight = FontWeight.SemiBold,
         fontSize = 20.sp,
         lineHeight = 26.sp,
-        letterSpacing = 0.sp
+        letterSpacing = 0.sp,
         fontFeatureSettings = FontFeatureSettings("tnum"),
     ),
     titleMedium = TextStyle(
@@ -52,7 +52,7 @@ val Typography = Typography(
         fontWeight = FontWeight.SemiBold,
         fontSize = 17.sp,
         lineHeight = 22.sp,
-        letterSpacing = 0.sp
+        letterSpacing = 0.sp,
         fontFeatureSettings = FontFeatureSettings("tnum"),
     ),
     titleSmall = TextStyle(
@@ -60,7 +60,7 @@ val Typography = Typography(
         fontWeight = FontWeight.SemiBold,
         fontSize = 15.sp,
         lineHeight = 20.sp,
-        letterSpacing = 0.sp
+        letterSpacing = 0.sp,
         fontFeatureSettings = FontFeatureSettings("tnum"),
     ),
     bodyLarge = TextStyle(
@@ -68,7 +68,7 @@ val Typography = Typography(
         fontWeight = FontWeight.Normal,
         fontSize = 16.sp,
         lineHeight = 24.sp,
-        letterSpacing = 0.25.sp
+        letterSpacing = 0.25.sp,
         fontFeatureSettings = FontFeatureSettings("tnum"),
     ),
     bodyMedium = TextStyle(
@@ -76,7 +76,7 @@ val Typography = Typography(
         fontWeight = FontWeight.Normal,
         fontSize = 14.sp,
         lineHeight = 20.sp,
-        letterSpacing = 0.25.sp
+        letterSpacing = 0.25.sp,
         fontFeatureSettings = FontFeatureSettings("tnum"),
     ),
     labelLarge = TextStyle(
@@ -84,7 +84,7 @@ val Typography = Typography(
         fontWeight = FontWeight.SemiBold,
         fontSize = 13.sp,
         lineHeight = 18.sp,
-        letterSpacing = 0.25.sp
+        letterSpacing = 0.25.sp,
         fontFeatureSettings = FontFeatureSettings("tnum"),
     ),
     labelMedium = TextStyle(
@@ -92,7 +92,7 @@ val Typography = Typography(
         fontWeight = FontWeight.SemiBold,
         fontSize = 12.sp,
         lineHeight = 16.sp,
-        letterSpacing = 0.4.sp
+        letterSpacing = 0.4.sp,
         fontFeatureSettings = FontFeatureSettings("tnum"),
     ),
     labelSmall = TextStyle(
@@ -100,7 +100,7 @@ val Typography = Typography(
         fontWeight = FontWeight.SemiBold,
         fontSize = 11.sp,
         lineHeight = 14.sp,
-        letterSpacing = 0.6.sp
+        letterSpacing = 0.6.sp,
         fontFeatureSettings = FontFeatureSettings("tnum"),
     )
 )
