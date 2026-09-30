@@ -32,6 +32,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.notel.notel.ui.component.SkeletonLine
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.BodyLoadViewModel
+import com.notel.notel.ui.viewmodel.EnergyCheckInViewModel
 import com.notel.notel.ui.viewmodel.QuickLogViewModel
 import com.notel.notel.ui.viewmodel.HabitViewModel
 import com.notel.notel.ui.viewmodel.ReminderViewModel
@@ -75,7 +76,8 @@ fun BodyLoadScreen(
     reminderViewModel: ReminderViewModel = hiltViewModel(),
     notesViewModel: NotesViewModel = hiltViewModel(),
     listsViewModel: ListsViewModel = hiltViewModel(),
-    todayViewModel: com.notel.notel.ui.viewmodel.TodayViewModel = hiltViewModel()
+    todayViewModel: com.notel.notel.ui.viewmodel.TodayViewModel = hiltViewModel(),
+    energyCheckInViewModel: EnergyCheckInViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
 
@@ -93,6 +95,7 @@ fun BodyLoadScreen(
     val reminders by reminderViewModel.reminders.collectAsState()
     val notes: List<com.notel.notel.data.local.entity.UserListItem> by notesViewModel.notes.collectAsState()
     val lists: List<com.notel.notel.data.local.entity.UserList> by listsViewModel.lists.collectAsState()
+    val energyCheckInState by energyCheckInViewModel.uiState.collectAsState()
 
     val coroutineScope = rememberCoroutineScope()
 
@@ -191,6 +194,14 @@ fun BodyLoadScreen(
             ),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // ── 0. Energy check-in (Tabs Lab) — the day's first interaction ────
+            item {
+                EnergyCheckInCard(
+                    visible = energyCheckInState.visible,
+                    onSelect = energyCheckInViewModel::selectLevel
+                )
+            }
+
             // ── 1. Restored Black Health Metrics Box ─────────────────────────────
             item {
                 Surface(
@@ -393,7 +404,7 @@ fun BodyLoadScreen(
                                     horizontalArrangement = Arrangement.End
                                 ) {
                                     Text(
-                                        text = if (isCalculatedUp) "SINCE ${counter.name.uppercase()}" else "UNTIL ${counter.name.uppercase()}",
+                                        text = if (isCalculatedUp) "Since ${counter.name}" else "Until ${counter.name}",
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.Black,
                                         color = NotelPrimary.copy(alpha = 0.8f),
@@ -414,7 +425,7 @@ fun BodyLoadScreen(
                                                 modifier = Modifier.padding(end = 2.dp)
                                             )
                                             Text(
-                                                text = "DAYS",
+                                                text = "Days",
                                                 fontSize = 8.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = NotelTextSecondary,
@@ -979,7 +990,7 @@ fun BodyLoadScreen(
                     }
                 } else {
                     Text(
-                        text = weather.locationName.uppercase(),
+                        text = weather.locationName,
                         color = NotelTextPrimary,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Black,
@@ -1130,7 +1141,7 @@ fun BodyLoadScreen(
                                                 shape = RoundedCornerShape(4.dp)
                                             ) {
                                                 Text(
-                                                    text = "HIGH RISK",
+                                                    text = "High risk",
                                                     color = NotelAccent,
                                                     fontSize = 8.sp,
                                                     fontWeight = FontWeight.Black,
@@ -1241,7 +1252,7 @@ fun BodyLoadScreen(
                     .padding(bottom = 64.dp)
             ) {
                 Text(
-                    text = "UV INDEX",
+                    text = "UV index",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Black,
                     color = Color.White,
@@ -1459,7 +1470,7 @@ fun BodyLoadScreen(
                     .padding(bottom = 64.dp)
             ) {
                 Text(
-                    text = "TEMPERATURE",
+                    text = "Temperature",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Black,
                     color = Color.White,
@@ -1552,7 +1563,7 @@ fun BodyLoadScreen(
                     .padding(bottom = 64.dp)
             ) {
                 Text(
-                    text = "HUMIDITY",
+                    text = "Humidity",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Black,
                     color = Color.White,
@@ -1652,7 +1663,7 @@ fun BodyLoadScreen(
                     .padding(bottom = 64.dp)
             ) {
                 Text(
-                    text = "WIND VELOCITY",
+                    text = "Wind velocity",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Black,
                     color = Color.White,
@@ -1729,7 +1740,7 @@ fun BodyLoadScreen(
                     .padding(bottom = 64.dp)
             ) {
                 Text(
-                    text = "BAROMETRIC PRESSURE",
+                    text = "Barometric pressure",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Black,
                     color = Color.White,

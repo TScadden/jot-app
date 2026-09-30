@@ -204,6 +204,12 @@
             android:enabled="true"
             android:exported="false" />
 
+        <!-- Tabs Lab: daily energy check-in reminder (4:00 AM local) -->
+        <receiver
+            android:name=".notifications.EnergyCheckInReminderReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
     </application>
 
 </manifest>

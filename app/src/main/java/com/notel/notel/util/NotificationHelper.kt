@@ -438,4 +438,50 @@ class NotificationHelper(private val context: Context) {
 
         manager.notify((eventName + System.currentTimeMillis()).hashCode(), notification)
     }
+
+    /**
+     * Tabs Lab: the daily "How are you feeling?" check-in reminder. Fires at a
+     * fixed 4:00 AM local via EnergyCheckInReminderReceiver, which skips the
+     * post when today's feeling entry is already logged. This helper builds
+     * the exact notification the receiver posts, so the Developer Terminal
+     * test button fires the identical notification on demand.
+     */
+    fun showCheckInReminder() {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val channelId = "check_in_reminder"
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                "Check in reminders",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Daily morning check in reminder"
+            }
+            manager.createNotificationChannel(channel)
+        }
+
+        // Opens the app to the Home screen: MainActivity's splash routes
+        // logged-in users straight to the body_load route.
+        val tapIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            770001,
+            tapIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(R.drawable.ic_noti_note)
+            .setContentTitle("How are you feeling?")
+            .setContentText("Tap to log today's check in.")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build()
+
+        manager.notify(770001, notification)
+    }
 }

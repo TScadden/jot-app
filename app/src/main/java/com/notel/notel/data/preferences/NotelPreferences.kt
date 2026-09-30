@@ -55,6 +55,9 @@ open class NotelPreferences(
         val PROFESSIONAL_UPDATES = stringPreferencesKey("professional_updates")
         val LOGGED_DAYS = stringPreferencesKey("logged_days")
         val AI_INSIGHTS = stringPreferencesKey("ai_insights")
+        // Tabs Lab namespace (Sep 2026): energy check-in experiment data.
+        // Existing key, local only, never synced; cannot collide with production keys.
+        val MORNING_CHECKIN_LAB = stringPreferencesKey("tabs_lab_morning_checkin")
         val NOTIFIED_REPORT_IDS = stringSetPreferencesKey("notified_report_ids")
         val FITBIT_TOKEN = stringPreferencesKey("fitbit_token")
         val FITBIT_REFRESH_TOKEN = stringPreferencesKey("fitbit_refresh_token")
@@ -101,6 +104,9 @@ open class NotelPreferences(
         val HABIT_REMINDER_ENABLED = booleanPreferencesKey("habit_reminder_enabled")
         val PROJECT_REMINDER_ENABLED = booleanPreferencesKey("project_reminder_enabled")
         val EVENT_REMINDER_ENABLED = booleanPreferencesKey("event_reminder_enabled")
+        // Tabs Lab: daily 4:00 AM reminder for the Home "How are you feeling?" check-in.
+        // Additive only; default off. Fixed time, so no time key is stored.
+        val CHECKIN_REMINDER_ENABLED = booleanPreferencesKey("tabs_lab_checkin_reminder_enabled")
         val HR_LAST_ALERT_TIME = longPreferencesKey("hr_last_alert_time")
         val HR_LAST_SAMPLE_TIME = longPreferencesKey("hr_last_sample_time")
         val HABIT_REMINDER_USER_DISABLED = booleanPreferencesKey("habit_reminder_user_disabled")
@@ -351,6 +357,11 @@ open class NotelPreferences(
     val habitReminderEnabled: Flow<Boolean> = context.dataStore.data.map { it[HABIT_REMINDER_ENABLED] ?: false }
     val projectReminderEnabled: Flow<Boolean> = context.dataStore.data.map { it[PROJECT_REMINDER_ENABLED] ?: true }
     val eventReminderEnabled: Flow<Boolean> = context.dataStore.data.map { it[EVENT_REMINDER_ENABLED] ?: true }
+    // Tabs Lab: single on/off toggle; fires at a fixed 4:00 AM local.
+    // Defaults ON per founder spec: new installs get the reminder out of the
+    // box, and existing installs that never touched the toggle pick it up too.
+    // Users who explicitly turned it off keep their stored false value.
+    val checkInReminderEnabled: Flow<Boolean> = context.dataStore.data.map { it[CHECKIN_REMINDER_ENABLED] ?: true }
     val hrLastAlertTime: Flow<Long> = context.dataStore.data.map { it[HR_LAST_ALERT_TIME] ?: 0L }
     val hrLastSampleTime: Flow<Long> = context.dataStore.data.map { it[HR_LAST_SAMPLE_TIME] ?: 0L }
     val habitReminderUserDisabled: Flow<Boolean> = context.dataStore.data.map { it[HABIT_REMINDER_USER_DISABLED] ?: false }
@@ -421,6 +432,14 @@ open class NotelPreferences(
 
     val loggedDays: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[LOGGED_DAYS] ?: ""
+    }
+
+    /**
+     * Tabs Lab energy check-in (Sep 2026, simplified): one-tap 1-5 rating, no note.
+     * Local only, never synced. JSON: {"date":"2026-09-30","energy":3}.
+     */
+    val morningCheckinLab: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[MORNING_CHECKIN_LAB] ?: ""
     }
 
     val aiInsights: Flow<String> = context.dataStore.data.map { prefs ->
@@ -753,6 +772,10 @@ open class NotelPreferences(
         context.dataStore.edit { it[LOGGED_DAYS] = jsonArray }
     }
 
+    suspend fun setMorningCheckinLab(json: String) {
+        context.dataStore.edit { it[MORNING_CHECKIN_LAB] = json }
+    }
+
     suspend fun setAiInsights(jsonArray: String) {
         context.dataStore.edit { it[AI_INSIGHTS] = jsonArray }
     }
@@ -955,6 +978,12 @@ open class NotelPreferences(
 
     suspend fun setEventReminderEnabled(enabled: Boolean) {
         context.dataStore.edit { it[EVENT_REMINDER_ENABLED] = enabled }
+    }
+
+    // Tabs Lab: persists the check-in reminder toggle only. The fire time is a
+    // fixed 4:00 AM local and is not stored.
+    suspend fun setCheckInReminderEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[CHECKIN_REMINDER_ENABLED] = enabled }
     }
 
     suspend fun autoEnableHabitReminders() {

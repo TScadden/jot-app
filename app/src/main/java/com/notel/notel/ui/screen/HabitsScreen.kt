@@ -2,6 +2,7 @@ package com.notel.notel.ui.screen
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -10,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.*
@@ -286,6 +288,7 @@ fun HabitsScreen(
                             row.forEach { habit ->
                                 val isChecked = habitViewModel.isCheckedToday(habit)
                                 val streak = habitViewModel.getStreak(habit)
+                                val weekMarks = remember(habit) { habitViewModel.getLast7DayMarks(habit) }
 
                                 Surface(
                                     onClick = { habitViewModel.toggleHabit(habit.id, !isChecked) },
@@ -355,6 +358,8 @@ fun HabitsScreen(
                                                 fontSize = 10.sp
                                             )
                                         }
+                                        Spacer(Modifier.height(8.dp))
+                                        HabitWeekDots(marks = weekMarks)
                                     }
                                 }
                             }
@@ -365,6 +370,59 @@ fun HabitsScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Visible style pacing row: 7 day dots ending today, with one letter weekday labels.
+ * Filled dot = completed, outlined dot = today still open, faint dot = missed.
+ * Pure local rendering of already synced log dates.
+ */
+@Composable
+private fun HabitWeekDots(marks: List<HabitViewModel.HabitDayMark>) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        marks.forEach { mark ->
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    modifier = Modifier
+                        .size(14.dp)
+                        .clip(CircleShape)
+                        .background(
+                            when {
+                                mark.completed -> NotelPrimary
+                                mark.isToday -> Color.Transparent
+                                else -> NotelTextSecondary.copy(alpha = 0.18f)
+                            }
+                        )
+                        .then(
+                            if (!mark.completed && mark.isToday)
+                                Modifier.border(1.dp, NotelPrimary, CircleShape)
+                            else Modifier
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (mark.completed) {
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(9.dp)
+                        )
+                    }
+                }
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    mark.dayLabel,
+                    fontSize = 8.sp,
+                    fontWeight = if (mark.isToday) FontWeight.Bold else FontWeight.Normal,
+                    color = if (mark.isToday) NotelTextPrimary else NotelTextSecondary
+                )
             }
         }
     }

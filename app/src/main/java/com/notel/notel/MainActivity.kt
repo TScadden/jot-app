@@ -479,6 +479,7 @@ class MainActivity : ComponentActivity() {
                                 onProjectFocusClick = { navController.navigate("project_focus") },
                                 onBloodPressureClick = { navController.navigate("blood_pressure") },
                                 onResearchClick = { navController.navigate("research") },
+                                onTrendsClick = { navController.navigate("trends") },
                                 onNavigateToMembership = { navController.navigate("settings?menu=MEMBERSHIP") },
                                 isUnlimited = isUnlimited,
                                 bloodPressureState = fitbitState.bloodPressureState,
@@ -530,7 +531,7 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToHistory = { navController.navigate("history") },
                                 onNavigateToSettings = { navController.navigate("settings") },
                                 onNavigateToMembership = { navController.navigate("settings?menu=MEMBERSHIP") },
-                                onNavigateToTrends = { /* trends Lego piece coming soon */ },
+                                onNavigateToTrends = { navController.navigate("trends") },
                                 onNavigateToFitbit = { /* fitbit Lego piece coming soon */ },
                                 onNavigateToSleep = { /* sleep Lego piece coming soon */ },
                                 onNavigateToBodyLoad = { navController.navigate("body_load") }
@@ -585,6 +586,12 @@ class MainActivity : ComponentActivity() {
                                 onBack = { navController.popBackStack() },
                                 onNavigateToSpikeReview = { navController.navigate("spike_review") },
                                 onNavigateToHealthConnect = { navController.navigate("data_connections") }
+                            )
+                        }
+                        composable("trends") {
+                            TrendsScreen(
+                                onBack = { navController.popBackStack() },
+                                onNavigateToEntry = { id -> navController.navigate("detail/$id") }
                             )
                         }
                         composable("spike_review") {

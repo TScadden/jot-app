@@ -33,6 +33,10 @@ class BootReceiver : BroadcastReceiver() {
                 reminderRepository.rescheduleAll()
                 // Reschedule event-counter day-of alarms (one-shot exact alarms don't survive reboots either)
                 rescheduleEventCounters(context)
+                // Tabs Lab: re-arm the daily check-in reminder (alarms don't survive reboots)
+                if (preferences.checkInReminderEnabled.first()) {
+                    com.notel.notel.notifications.EnergyCheckInReminderScheduler.schedule(context)
+                }
             }
         }
     }

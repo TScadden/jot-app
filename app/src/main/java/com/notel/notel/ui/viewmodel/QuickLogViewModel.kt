@@ -78,7 +78,9 @@ data class QuickLogUiState(
     val categoryToDelete: Category? = null,
     val isOffline: Boolean = false,
     val recentSuggestions: List<com.notel.notel.data.local.entity.LogEntry> = emptyList(),
-    val lastLoggedEntryId: Long? = null
+    val lastLoggedEntryId: Long? = null,
+    // Proactive "Today so far" summary strip on Quick Log
+    val todayEntryCount: Int = 0
 ) {
     val isLogEnabled: Boolean
         get() = !isSaving && (selectedChips.isNotEmpty() || manualText.trim().isNotBlank())
@@ -202,6 +204,18 @@ class QuickLogViewModel @Inject constructor(
         viewModelScope.launch {
             habitRepository.fetchHabits()
         }
+        refreshTodayCount()
+    }
+
+    /**
+     * Proactive "Today so far" count for the Quick Log summary strip.
+     * Local read only; refreshed on launch and after every save/undo.
+     */
+    fun refreshTodayCount() {
+        viewModelScope.launch {
+            val count = logRepository.getTodayJotCount()
+            _uiState.update { it.copy(todayEntryCount = count) }
+        }
     }
 
     fun selectCategory(category: Category) {
@@ -321,6 +335,12 @@ class QuickLogViewModel @Inject constructor(
 
     fun updateManualText(text: String) = _uiState.update { it.copy(manualText = text) }
 
+    // Confirmation copy that makes today's logging progress visible at a glance.
+    private suspend fun loggedMessage(base: String): String {
+        val count = logRepository.getTodayJotCount()
+        return "$base · $count today"
+    }
+
     fun saveEntry() {
         val snapshot = _uiState.value
         if (snapshot.isSaving || !snapshot.isLogEnabled) return
@@ -376,7 +396,8 @@ class QuickLogViewModel @Inject constructor(
                         manualText = ""
                     )
                 }
-                _eventFlow.emit(QuickLogEvent.EntryLogged(entryId = savedId, message = "Entry logged"))
+                _eventFlow.emit(QuickLogEvent.EntryLogged(entryId = savedId, message = loggedMessage("Entry logged")))
+                refreshTodayCount()
                 calculateSmartRanking()
 
                 try {
@@ -762,7 +783,8 @@ class QuickLogViewModel @Inject constructor(
                     lastLoggedEntryId = newId
                 ) 
             }
-            _eventFlow.emit(QuickLogEvent.EntryLogged(entryId = newId, message = "Entry logged"))
+            _eventFlow.emit(QuickLogEvent.EntryLogged(entryId = newId, message = loggedMessage("Entry logged")))
+            refreshTodayCount()
         }
     }
 
@@ -777,6 +799,7 @@ class QuickLogViewModel @Inject constructor(
                 ) 
             }
             _eventFlow.emit(QuickLogEvent.EntryUndone(message = "Entry removed"))
+            refreshTodayCount()
         }
     }
 
@@ -799,14 +822,15 @@ class QuickLogViewModel @Inject constructor(
                     lastLoggedEntryId = newId
                 ) 
             }
-            _eventFlow.emit(QuickLogEvent.EntryRepeated(entryId = newId, message = "Last entry repeated"))
+            _eventFlow.emit(QuickLogEvent.EntryRepeated(entryId = newId, message = loggedMessage("Last entry repeated")))
+            refreshTodayCount()
             syncManager.pushEntries()
         }
     }
 
     fun onVoiceEntryLogged(message: String = "Voice entry logged") {
         viewModelScope.launch {
-            _eventFlow.emit(QuickLogEvent.EntryLogged(entryId = 0L, message = message))
+            _eventFlow.emit(QuickLogEvent.EntryLogged(entryId = 0L, message = loggedMessage(message)))
         }
     }
 

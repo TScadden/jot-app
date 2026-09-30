@@ -56,6 +56,7 @@ val DEFAULT_INFO_TILES = listOf(
     InfoTile("tips_and_tricks", "Tips and Tricks", Icons.Default.Lightbulb, "Master your data"),
     InfoTile("health_coach", "Health Coach", Icons.Default.QuestionMark, "Personalized Advice"),
     InfoTile("key_metrics", "Key Metrics", Icons.Default.BarChart, "Your Body Data"),
+    InfoTile("trends", "Trends", Icons.Default.TrendingUp, "Patterns over time"),
     InfoTile("blood_pressure", "Blood Pressure", Icons.Default.Favorite, "Systolic & Diastolic"),
     InfoTile("food", "Food", Icons.Default.Restaurant, "Sensitivity Checker"),
     InfoTile("research", "Research", Icons.Default.MenuBook, "Health research library"),
@@ -70,6 +71,7 @@ fun InfoScreen(
     onBodyInfoClick: () -> Unit = {},
     onMedicationsClick: () -> Unit = {},
     onKeyMetricsClick: () -> Unit = {},
+    onTrendsClick: () -> Unit = {},
     onCoachClick: () -> Unit = {},
     onTipsAndTricksClick: () -> Unit = {},
     onFoodClick: () -> Unit = {},
@@ -307,6 +309,7 @@ fun InfoScreen(
                             onBodyInfoClick = onBodyInfoClick,
                             onMedicationsClick = onMedicationsClick,
                             onKeyMetricsClick = onKeyMetricsClick,
+                            onTrendsClick = onTrendsClick,
                             onCoachClick = onCoachClick,
                             onTipsAndTricksClick = onTipsAndTricksClick,
                             onFoodClick = onFoodClick,
@@ -343,6 +346,7 @@ fun InfoTileCard(
     onBodyInfoClick: () -> Unit,
     onMedicationsClick: () -> Unit,
     onKeyMetricsClick: () -> Unit,
+    onTrendsClick: () -> Unit = {},
     onCoachClick: () -> Unit,
     onTipsAndTricksClick: () -> Unit,
     onFoodClick: () -> Unit,
@@ -402,6 +406,7 @@ fun InfoTileCard(
                         "body_info" -> onBodyInfoClick()
                         "medications" -> onMedicationsClick()
                         "key_metrics" -> onKeyMetricsClick()
+                        "trends" -> onTrendsClick()
                         "health_coach" -> onCoachClick()
                         "tips_and_tricks" -> onTipsAndTricksClick()
                         "food" -> onFoodClick()

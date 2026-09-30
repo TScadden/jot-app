@@ -28,6 +28,8 @@ import com.notel.notel.ui.component.NotelSnackbarHost
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.HistoryViewModel
 import com.notel.notel.ui.viewmodel.EntrySyncStatus
+import com.notel.notel.ui.viewmodel.ENERGY_CHECKIN_SOURCE
+import com.notel.notel.ui.viewmodel.ENERGY_CHECKIN_TAG
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -142,14 +144,14 @@ fun HistoryScreen(
                     val isAllSelected = categoryFilter == null
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(Radii.chip))
                             .background(if (isAllSelected) NotelPrimary else NotelSurface)
                             .border(
                                 width = 1.dp,
                                 color = if (isAllSelected) NotelPrimary
                                     else if (isLightTheme) NotelBorder
                                     else NotelPrimary.copy(alpha = 0.25f),
-                                shape = RoundedCornerShape(10.dp)
+                                shape = RoundedCornerShape(Radii.chip)
                             )
                             .clickable { viewModel.setCategoryFilter(null) }
                             .padding(horizontal = 16.dp, vertical = 8.dp)
@@ -176,22 +178,21 @@ fun HistoryScreen(
                     }
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(Radii.chip))
                             .background(if (isSelected) catColor else NotelSurface)
                             .border(
                                 width = 1.dp,
                                 color = if (isSelected) catColor else catColor.copy(alpha = 0.35f),
-                                shape = RoundedCornerShape(10.dp)
+                                shape = RoundedCornerShape(Radii.chip)
                             )
                             .clickable { viewModel.setCategoryFilter(if (isSelected) null else cat.id) }
                             .padding(horizontal = 16.dp, vertical = 8.dp)
                     ) {
                         Text(
-                            cat.name.uppercase(),
+                            cat.name,
                             color = if (isSelected) LegacyDarkChipInk else NotelTextSecondary,
                             fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.8.sp
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
@@ -282,13 +283,13 @@ fun HistoryScreen(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = item.insight.type.uppercase(),
+                                            text = item.insight.type.lowercase().replaceFirstChar { it.uppercase() },
                                             color = NotelPrimary,
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 11.sp
                                         )
                                         Text(
-                                            text = item.category?.name?.uppercase() ?: (item.entry?.let { "CATEGORY ID ${it.categoryId}" } ?: "UNCATEGORIZED"),
+                                            text = item.category?.name ?: (item.entry?.let { "Category ${it.categoryId}" } ?: "Uncategorized"),
                                             color = NotelTextSecondary,
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold
@@ -345,6 +346,14 @@ private fun EntryCard(
 
     val accentColor = catColor ?: NotelPrimary
 
+    // Tabs Lab check-in entries (source "Energy check-in") show their locked
+    // "Daily Ranking" tag on the list card instead of the category chip, which
+    // would otherwise fall back to "General" on installs whose seeded
+    // categories carry no slugs. All other entries keep the category chip.
+    val isCheckInEntry = entry.source == ENERGY_CHECKIN_SOURCE
+    val chipLabel = if (isCheckInEntry) ENERGY_CHECKIN_TAG else category?.name
+    val chipBaseColor = if (isCheckInEntry) NotelPrimary else catColor
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -386,20 +395,19 @@ private fun EntryCard(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.weight(1f)
                 ) {
-                    if (category != null && catColor != null) {
+                    if (chipLabel != null && chipBaseColor != null) {
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(catColor.copy(alpha = 0.15f))
-                                .border(1.dp, catColor.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(chipBaseColor.copy(alpha = 0.15f))
+                                .border(1.dp, chipBaseColor.copy(alpha = 0.45f), RoundedCornerShape(8.dp))
                                 .padding(horizontal = 8.dp, vertical = 3.dp)
                         ) {
                             Text(
-                                text = category.name.uppercase(),
-                                color = tagContentColor(catColor),
+                                text = chipLabel,
+                                color = tagContentColor(chipBaseColor),
                                 fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.8.sp
+                                fontWeight = FontWeight.Bold
                             )
                         }
                         Spacer(Modifier.width(8.dp))
@@ -414,7 +422,7 @@ private fun EntryCard(
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(
-                            "VOICE AI",
+                            "Voice AI",
                             color = NotelPrimary.copy(alpha = 0.75f),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
