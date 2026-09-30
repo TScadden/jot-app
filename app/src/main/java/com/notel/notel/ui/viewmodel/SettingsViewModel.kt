@@ -1398,7 +1398,7 @@ class SettingsViewModel @Inject constructor(
                 } else {
                     android.widget.Toast.makeText(
                         context,
-                        "Recovery failed. Please check your internet connection.",
+                        "Could not recover your account data. Please check your internet connection.",
                         android.widget.Toast.LENGTH_LONG
                     ).show()
                 }
