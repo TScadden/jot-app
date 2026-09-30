@@ -91,6 +91,9 @@ fun BodyLoadCard(
     val context = androidx.compose.ui.platform.LocalContext.current
 
     // ── Location Precision Logic ──────────────────────────────────────
+    // Weather only needs city-level precision: request COARSE only.
+    // FINE stays declared in the manifest for BLE scanning on Android 10/11,
+    // which requires it; it is never requested here.
     val locationClient = remember {
         com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(context)
     }
@@ -118,7 +121,6 @@ fun BodyLoadCard(
     LaunchedEffect(Unit) {
         locationPermissionLauncher.launch(
             arrayOf(
-                android.Manifest.permission.ACCESS_FINE_LOCATION,
                 android.Manifest.permission.ACCESS_COARSE_LOCATION
             )
         )

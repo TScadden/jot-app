@@ -69,13 +69,17 @@ fun MembershipOnboardingScreen(
     val yearlyTrialIso = remember(productsTick) {
         settingsViewModel.billingManager.getFreeTrialPeriodIso("jot_membership_yearly")
     }
+    // Dynamic yearly savings vs monthly, from the live Play catalog (null until catalog loads)
+    val yearlySavingsPct = remember(productsTick) {
+        settingsViewModel.billingManager.getYearlySavingsPercent("jot_membership_monthly", "jot_membership_yearly")
+    }
     fun trialLabel(iso: String?): String = when (iso) {
         "P7D" -> "7-day free trial"
         "P1W" -> "1-week free trial"
         "P14D" -> "14-day free trial"
         "P1M" -> "1-month free trial"
-        null -> "Free trial"
-        else -> "Free trial"
+        null -> "No free trial"
+        else -> "No free trial"
     }
     val monthlyPlanLine = if (monthlyPrice != null) "${trialLabel(monthlyTrialIso)}, then $monthlyPrice/mo"
     else "Pricing shown in Google Play"
@@ -192,6 +196,17 @@ fun MembershipOnboardingScreen(
 
             Spacer(Modifier.height(32.dp))
 
+            // Medical disclaimer (wording pending Juno sign-off)
+            Text(
+                "Tabs Premium features are for education and self tracking only, not medical advice. Talk to your doctor about any health decisions.",
+                color = NotelTextSecondary.copy(alpha = 0.75f),
+                fontSize = 11.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+            )
+
+            Spacer(Modifier.height(16.dp))
+
             // Plan 1: Monthly
             val isMonthlySelected = selectedPlan == "monthly"
             Surface(
@@ -298,7 +313,7 @@ fun MembershipOnboardingScreen(
                         modifier = Modifier.padding(horizontal = 4.dp)
                     ) {
                         Text(
-                            text = "SAVE 45% • BEST VALUE",
+                            text = if (yearlySavingsPct != null) "SAVE $yearlySavingsPct% • BEST VALUE" else "BEST VALUE",
                             color = NotelSuccess,
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,

@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -127,6 +128,40 @@ class BillingManager @Inject constructor(
         // The base recurring phase is the last non-free phase; fall back to the last phase.
         return phases.lastOrNull { it.priceAmountMicros > 0L }?.formattedPrice
             ?: phases.lastOrNull()?.formattedPrice
+    }
+
+    /**
+     * Return the whole-percent savings of the yearly plan versus paying the
+     * monthly price for 12 months (e.g. 45), or null when either catalog
+     * price is unavailable. Used by the UI so the "SAVE x%" badge reflects
+     * the live Play Console prices instead of a hardcoded claim.
+     */
+    fun getYearlySavingsPercent(monthlyProductId: String, yearlyProductId: String): Int? {
+        val monthlyPhase = recurringPhase(monthlyProductId) ?: return null
+        val yearlyPhase = recurringPhase(yearlyProductId) ?: return null
+        val monthlyMonths = monthsInBillingPeriod(monthlyPhase.billingPeriod) ?: return null
+        val yearlyMonths = monthsInBillingPeriod(yearlyPhase.billingPeriod) ?: return null
+        if (monthlyMonths <= 0 || yearlyMonths <= 0) return null
+        val monthlyPerMonth = monthlyPhase.priceAmountMicros.toDouble() / monthlyMonths
+        val yearlyPerMonth = yearlyPhase.priceAmountMicros.toDouble() / yearlyMonths
+        if (monthlyPerMonth <= 0 || yearlyPerMonth >= monthlyPerMonth) return null
+        return ((1.0 - yearlyPerMonth / monthlyPerMonth) * 100).roundToInt()
+    }
+
+    /** The recurring (base) phase of a subscription product, mirroring getSubscriptionFormattedPrice. */
+    private fun recurringPhase(productId: String): PricingPhase? {
+        val details = getProductDetails(productId) ?: return null
+        val phases = details.subscriptionOfferDetails?.firstOrNull()?.pricingPhases?.pricingPhaseList
+            ?: return null
+        return phases.lastOrNull { it.priceAmountMicros > 0L } ?: phases.lastOrNull()
+    }
+
+    /** Months in an ISO-8601 billing period such as P1M or P1Y; null when unparseable. */
+    private fun monthsInBillingPeriod(iso: String): Int? {
+        val match = Regex("^P(?:(\\d+)Y)?(?:(\\d+)M)?$").matchEntire(iso) ?: return null
+        val total = (match.groupValues[1].toIntOrNull() ?: 0) * 12 +
+            (match.groupValues[2].toIntOrNull() ?: 0)
+        return total.takeIf { it > 0 }
     }
 
     private fun queryAvailableProducts() {

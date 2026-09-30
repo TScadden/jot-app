@@ -565,13 +565,17 @@ fun SettingsScreen(
                         val yearlyTrialIso = remember(productsTick) {
                             viewModel.billingManager.getFreeTrialPeriodIso("jot_membership_yearly")
                         }
+                        // Dynamic yearly savings vs monthly, from the live Play catalog (null until catalog loads)
+                        val yearlySavingsPct = remember(productsTick) {
+                            viewModel.billingManager.getYearlySavingsPercent("jot_membership_monthly", "jot_membership_yearly")
+                        }
                         fun trialLabel(iso: String?): String = when (iso) {
                             "P7D" -> "7-day free trial"
                             "P1W" -> "1-week free trial"
                             "P14D" -> "14-day free trial"
                             "P1M" -> "1-month free trial"
-                            null -> "Free trial"
-                            else -> "Free trial"
+                            null -> "No free trial"
+                            else -> "No free trial"
                         }
                         val monthlyPlanLine = if (monthlyPrice != null)
                             "${trialLabel(monthlyTrialIso)}, then $monthlyPrice/mo"
@@ -773,7 +777,7 @@ fun SettingsScreen(
                                         modifier = Modifier.padding(horizontal = 4.dp)
                                     ) {
                                         Text(
-                                            text = "SAVE 45% • BEST VALUE",
+                                            text = if (yearlySavingsPct != null) "SAVE $yearlySavingsPct% • BEST VALUE" else "BEST VALUE",
                                             color = NotelSuccess,
                                             fontSize = 9.sp,
                                             fontWeight = FontWeight.Bold,
