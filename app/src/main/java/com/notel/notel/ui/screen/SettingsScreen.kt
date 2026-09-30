@@ -856,6 +856,17 @@ fun SettingsScreen(
                                 fontWeight = FontWeight.Medium
                             )
                         }
+
+                        Spacer(Modifier.height(12.dp))
+
+                        // Medical disclaimer (wording signed off by Juno, compliance officer)
+                        Text(
+                            "Tabs Premium is for education and personal self tracking only. It does not provide medical advice, diagnosis, or treatment. Talk to a qualified health professional about any health decisions.",
+                            color = NotelTextSecondary,
+                            fontSize = 11.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                        )
                     } // Close GlassyCard
                 } // Close if (currentMenu == SettingsMenu.MEMBERSHIP)
 

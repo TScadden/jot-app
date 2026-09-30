@@ -3,7 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- FINE is required for BLE scanning on Android 10/11 (API 29-30); weather requests COARSE only. -->
+    <!-- FINE is required for BLE scanning (API 26-30); weather requests COARSE only. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />

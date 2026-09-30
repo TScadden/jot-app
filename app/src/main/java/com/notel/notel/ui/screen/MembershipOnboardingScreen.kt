@@ -196,10 +196,10 @@ fun MembershipOnboardingScreen(
 
             Spacer(Modifier.height(32.dp))
 
-            // Medical disclaimer (wording pending Juno sign-off)
+            // Medical disclaimer (wording signed off by Juno, compliance officer)
             Text(
-                "Tabs Premium features are for education and self tracking only, not medical advice. Talk to your doctor about any health decisions.",
-                color = NotelTextSecondary.copy(alpha = 0.75f),
+                "Tabs Premium is for education and personal self tracking only. It does not provide medical advice, diagnosis, or treatment. Talk to a qualified health professional about any health decisions.",
+                color = NotelTextSecondary,
                 fontSize = 11.sp,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)

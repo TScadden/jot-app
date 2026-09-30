@@ -145,7 +145,7 @@ class BillingManager @Inject constructor(
         val monthlyPerMonth = monthlyPhase.priceAmountMicros.toDouble() / monthlyMonths
         val yearlyPerMonth = yearlyPhase.priceAmountMicros.toDouble() / yearlyMonths
         if (monthlyPerMonth <= 0 || yearlyPerMonth >= monthlyPerMonth) return null
-        return ((1.0 - yearlyPerMonth / monthlyPerMonth) * 100).roundToInt()
+        return ((1.0 - yearlyPerMonth / monthlyPerMonth) * 100).roundToInt().takeIf { it > 0 }
     }
 
     /** The recurring (base) phase of a subscription product, mirroring getSubscriptionFormattedPrice. */
