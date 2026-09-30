@@ -28,6 +28,8 @@ import com.notel.notel.ui.component.NotelSnackbarHost
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.HistoryViewModel
 import com.notel.notel.ui.viewmodel.EntrySyncStatus
+import com.notel.notel.ui.viewmodel.ENERGY_CHECKIN_SOURCE
+import com.notel.notel.ui.viewmodel.ENERGY_CHECKIN_TAG
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -344,6 +346,14 @@ private fun EntryCard(
 
     val accentColor = catColor ?: NotelPrimary
 
+    // Tabs Lab check-in entries (source "Energy check-in") show their locked
+    // "Daily Ranking" tag on the list card instead of the category chip, which
+    // would otherwise fall back to "General" on installs whose seeded
+    // categories carry no slugs. All other entries keep the category chip.
+    val isCheckInEntry = entry.source == ENERGY_CHECKIN_SOURCE
+    val chipLabel = if (isCheckInEntry) ENERGY_CHECKIN_TAG else category?.name
+    val chipBaseColor = if (isCheckInEntry) NotelPrimary else catColor
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -385,17 +395,17 @@ private fun EntryCard(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.weight(1f)
                 ) {
-                    if (category != null && catColor != null) {
+                    if (chipLabel != null && chipBaseColor != null) {
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(catColor.copy(alpha = 0.15f))
-                                .border(1.dp, catColor.copy(alpha = 0.45f), RoundedCornerShape(8.dp))
+                                .background(chipBaseColor.copy(alpha = 0.15f))
+                                .border(1.dp, chipBaseColor.copy(alpha = 0.45f), RoundedCornerShape(8.dp))
                                 .padding(horizontal = 8.dp, vertical = 3.dp)
                         ) {
                             Text(
-                                text = category.name,
-                                color = tagContentColor(catColor),
+                                text = chipLabel,
+                                color = tagContentColor(chipBaseColor),
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold
                             )
