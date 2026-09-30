@@ -124,7 +124,7 @@ class EnergyCheckInViewModel @Inject constructor(
                 logRepository.insertEntry(
                     LogEntry(
                         categoryId = energyCategoryId,
-                        body = "Energy: $level/5",
+                        body = "Feeling: $level/5 Today",
                         source = ENERGY_CHECKIN_SOURCE
                     )
                 )
