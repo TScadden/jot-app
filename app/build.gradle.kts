@@ -124,11 +124,12 @@ android {
             assets.srcDir("$projectDir/schemas")
         }
         if (isPlaygroundBuild) {
-            getByName("main") {
-                // Later res dirs win on duplicate resource names, so the
-                // tinted ic_tabs_launcher.png in playground-res overrides
-                // the production icon for Lab builds only. The adaptive-icon
-                // XML (mipmap-anydpi-v26/ic_launcher.xml) needs no changes.
+            // The debug source set overlays main (documented resource-merger
+            // behavior), so the tinted ic_tabs_launcher.png here replaces
+            // the production icon for Lab builds only. Same-name files in
+            // two srcDirs of ONE source set are a duplicate-resource build
+            // error, which is why this lives on the debug source set.
+            getByName("debug") {
                 res.srcDir("playground-res")
             }
         }
