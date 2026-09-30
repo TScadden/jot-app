@@ -2,6 +2,7 @@ package com.notel.notel.ui.theme
 
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -20,13 +21,13 @@ import androidx.compose.ui.platform.LocalHapticFeedback
  * Springs settle in ~200ms — fast enough to feel instant, springy enough to
  * feel physical. One shared spec so the whole app moves like one machine.
  */
-val InstrumentSpring = spring<Float>(
+fun <T> InstrumentSpring(): AnimationSpec<T> = spring(
     dampingRatio = Spring.DampingRatioMediumBouncy,
     stiffness = 700f, // ~200ms settle
 )
 
 /** Gentler spring for larger surfaces (cards appearing, sheets). */
-val InstrumentSurfaceSpring = spring<Float>(
+fun <T> InstrumentSurfaceSpring(): AnimationSpec<T> = spring(
     dampingRatio = Spring.DampingRatioNoBouncy,
     stiffness = 500f,
 )
@@ -44,7 +45,7 @@ fun Modifier.instrumentPress(
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.96f else 1f,
-        animationSpec = InstrumentSpring,
+        animationSpec = InstrumentSpring(),
         label = "instrumentPress",
     )
     this.graphicsLayer { scaleX = scale; scaleY = scale }

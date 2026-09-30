@@ -132,12 +132,12 @@ private fun EnergyNumberButton(
     val shape = RoundedCornerShape(Radii.chip)
     val fillColor by animateColorAsState(
         targetValue = if (isPressed) NotelPrimary else NotelSurfaceHigh,
-        animationSpec = InstrumentSurfaceSpring,
+        animationSpec = InstrumentSurfaceSpring(),
         label = "checkInPressFill",
     )
     val strokeColor by animateColorAsState(
         targetValue = if (isPressed) NotelPrimary else NotelBorder,
-        animationSpec = InstrumentSurfaceSpring,
+        animationSpec = InstrumentSurfaceSpring(),
         label = "checkInPressStroke",
     )
     Box(
