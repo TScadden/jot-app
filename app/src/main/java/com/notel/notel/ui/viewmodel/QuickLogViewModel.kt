@@ -321,6 +321,12 @@ class QuickLogViewModel @Inject constructor(
 
     fun updateManualText(text: String) = _uiState.update { it.copy(manualText = text) }
 
+    // Confirmation copy that makes today's logging progress visible at a glance.
+    private suspend fun loggedMessage(base: String): String {
+        val count = logRepository.getTodayJotCount()
+        return "$base · $count today"
+    }
+
     fun saveEntry() {
         val snapshot = _uiState.value
         if (snapshot.isSaving || !snapshot.isLogEnabled) return
@@ -376,7 +382,7 @@ class QuickLogViewModel @Inject constructor(
                         manualText = ""
                     )
                 }
-                _eventFlow.emit(QuickLogEvent.EntryLogged(entryId = savedId, message = "Entry logged"))
+                _eventFlow.emit(QuickLogEvent.EntryLogged(entryId = savedId, message = loggedMessage("Entry logged")))
                 calculateSmartRanking()
 
                 try {
@@ -762,7 +768,7 @@ class QuickLogViewModel @Inject constructor(
                     lastLoggedEntryId = newId
                 ) 
             }
-            _eventFlow.emit(QuickLogEvent.EntryLogged(entryId = newId, message = "Entry logged"))
+            _eventFlow.emit(QuickLogEvent.EntryLogged(entryId = newId, message = loggedMessage("Entry logged")))
         }
     }
 
@@ -799,14 +805,14 @@ class QuickLogViewModel @Inject constructor(
                     lastLoggedEntryId = newId
                 ) 
             }
-            _eventFlow.emit(QuickLogEvent.EntryRepeated(entryId = newId, message = "Last entry repeated"))
+            _eventFlow.emit(QuickLogEvent.EntryRepeated(entryId = newId, message = loggedMessage("Last entry repeated")))
             syncManager.pushEntries()
         }
     }
 
     fun onVoiceEntryLogged(message: String = "Voice entry logged") {
         viewModelScope.launch {
-            _eventFlow.emit(QuickLogEvent.EntryLogged(entryId = 0L, message = message))
+            _eventFlow.emit(QuickLogEvent.EntryLogged(entryId = 0L, message = loggedMessage(message)))
         }
     }
 

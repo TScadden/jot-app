@@ -101,6 +101,13 @@ fun QuickLogScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = NotelBackground),
                 actions = {
+                    IconButton(onClick = onNavigateToTrends) {
+                        Icon(
+                            imageVector = Icons.Default.TrendingUp,
+                            contentDescription = "Trends",
+                            tint = NotelTextSecondary
+                        )
+                    }
                     IconButton(onClick = onNavigateToHistory) {
                         Icon(
                             imageVector = Icons.Default.History,
