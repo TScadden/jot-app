@@ -705,10 +705,10 @@ fun SettingsScreen(
                             Surface(
                                 onClick = { selectedPlan = "monthly" },
                                 shape = RoundedCornerShape(16.dp),
-                                color = if (isMonthlySelected) NotelPrimary.copy(alpha = 0.08f) else NotelSurfaceHigh,
+                                color = if (isMonthlySelected) NotelAccent.copy(alpha = 0.08f) else NotelSurfaceHigh,
                                 border = BorderStroke(
                                     width = if (isMonthlySelected) 2.dp else 1.dp,
-                                    color = if (isMonthlySelected) NotelPrimary else NotelBorder
+                                    color = if (isMonthlySelected) NotelAccent else NotelBorder
                                 ),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
@@ -722,7 +722,7 @@ fun SettingsScreen(
                                         selected = isMonthlySelected,
                                         onClick = { selectedPlan = "monthly" },
                                         colors = RadioButtonDefaults.colors(
-                                            selectedColor = NotelPrimary,
+                                            selectedColor = NotelAccent,
                                             unselectedColor = NotelTextSecondary
                                         )
                                     )
@@ -764,10 +764,10 @@ fun SettingsScreen(
                             Surface(
                                 onClick = { selectedPlan = "yearly" },
                                 shape = RoundedCornerShape(16.dp),
-                                color = if (isYearlySelected) NotelPrimary.copy(alpha = 0.08f) else NotelSurfaceHigh,
+                                color = if (isYearlySelected) NotelAccent.copy(alpha = 0.08f) else NotelSurfaceHigh,
                                 border = BorderStroke(
                                     width = if (isYearlySelected) 2.dp else 1.dp,
-                                    color = if (isYearlySelected) NotelPrimary else NotelBorder
+                                    color = if (isYearlySelected) NotelAccent else NotelBorder
                                 ),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
@@ -781,7 +781,7 @@ fun SettingsScreen(
                                         selected = isYearlySelected,
                                         onClick = { selectedPlan = "yearly" },
                                         colors = RadioButtonDefaults.colors(
-                                            selectedColor = NotelPrimary,
+                                            selectedColor = NotelAccent,
                                             unselectedColor = NotelTextSecondary
                                         )
                                     )
@@ -942,7 +942,7 @@ fun SettingsScreen(
                                     placeholder = { Text("Add background info here…", color = NotelTextSecondary, fontSize = 12.sp) },
                                     shape = RoundedCornerShape(12.dp),
                                     colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = NotelPrimary, 
+                                        focusedBorderColor = NotelAccent, 
                                         unfocusedBorderColor = NotelSurfaceHigh, 
                                         focusedTextColor = NotelTextPrimary, 
                                         unfocusedTextColor = NotelTextPrimary,
@@ -1226,7 +1226,7 @@ fun SettingsScreen(
                             onCheckedChange = { viewModel.setShowNavLabels(it) },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = NotelTextPrimary,
-                                checkedTrackColor = NotelPrimary
+                                checkedTrackColor = NotelAccent
                             )
                         )
                     }
@@ -1262,7 +1262,7 @@ fun SettingsScreen(
                                         .height(44.dp),
                                     shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (selected) NotelPrimary else NotelSurfaceHigh,
+                                        containerColor = if (selected) NotelAccent else NotelSurfaceHigh,
                                         contentColor = if (selected) NotelOnAccent else NotelTextSecondary
                                     ),
                                     contentPadding = PaddingValues(0.dp)
@@ -1475,7 +1475,7 @@ fun SettingsScreen(
                                 value = editName, onValueChange = { editName = it },
                                 label = { Text("Event Name (e.g. Next Doctor Appt)") },
                                 singleLine = true,
-                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, unfocusedTextColor = NotelTextPrimary, focusedTextColor = NotelTextPrimary)
+                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelAccent, unfocusedTextColor = NotelTextPrimary, focusedTextColor = NotelTextPrimary)
                             )
                             
                             OutlinedTextField(
@@ -1489,7 +1489,7 @@ fun SettingsScreen(
                                     }
                                 },
                                 modifier = Modifier.fillMaxWidth().clickable { datePickerDialog.show() },
-                                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, unfocusedTextColor = NotelTextPrimary, focusedTextColor = NotelTextPrimary)
+                                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelAccent, unfocusedTextColor = NotelTextPrimary, focusedTextColor = NotelTextPrimary)
                             )
                             
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1607,7 +1607,7 @@ fun SettingsScreen(
                                             label = { Text("What did they say?") },
                                             modifier = Modifier.fillMaxWidth().height(150.dp),
                                             colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                                focusedBorderColor = NotelPrimary, unfocusedBorderColor = NotelPrimary.copy(alpha=0.5f),
+                                                focusedBorderColor = NotelAccent, unfocusedBorderColor = NotelAccent.copy(alpha=0.5f),
                                                 focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary
                                             )
                                         )
@@ -1720,7 +1720,7 @@ fun SettingsScreen(
                                                     label = { Text("Update content") },
                                                     modifier = Modifier.fillMaxWidth().height(150.dp),
                                                     colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                                        focusedBorderColor = NotelPrimary, unfocusedBorderColor = NotelPrimary.copy(alpha=0.5f),
+                                                        focusedBorderColor = NotelAccent, unfocusedBorderColor = NotelAccent.copy(alpha=0.5f),
                                                         focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary
                                                     )
                                                 )
@@ -1846,7 +1846,7 @@ fun SettingsScreen(
                                         label = { Text("Title (Optional)") },
                                         modifier = Modifier.fillMaxWidth(),
                                         colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = NotelPrimary, unfocusedBorderColor = NotelPrimary.copy(alpha=0.5f),
+                                            focusedBorderColor = NotelAccent, unfocusedBorderColor = NotelAccent.copy(alpha=0.5f),
                                             focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary
                                         )
                                     )
@@ -1857,7 +1857,7 @@ fun SettingsScreen(
                                         label = { Text("Note content / Text message") },
                                         modifier = Modifier.fillMaxWidth().height(150.dp),
                                         colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = NotelPrimary, unfocusedBorderColor = NotelPrimary.copy(alpha=0.5f),
+                                            focusedBorderColor = NotelAccent, unfocusedBorderColor = NotelAccent.copy(alpha=0.5f),
                                             focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary
                                         )
                                     )
@@ -1992,7 +1992,7 @@ fun SettingsScreen(
                                                 label = { Text("Fact content") },
                                                 modifier = Modifier.fillMaxWidth().height(200.dp),
                                                 colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                                    focusedBorderColor = NotelPrimary, unfocusedBorderColor = NotelPrimary.copy(alpha=0.5f),
+                                                    focusedBorderColor = NotelAccent, unfocusedBorderColor = NotelAccent.copy(alpha=0.5f),
                                                     focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary
                                                 )
                                             )
@@ -2137,7 +2137,7 @@ fun SettingsScreen(
                                 onCheckedChange = { viewModel.setAutoAiSuggestions(it) },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = NotelPrimary,
-                                    checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
+                                    checkedTrackColor = NotelAccent.copy(alpha = 0.4f),
                                     uncheckedThumbColor = NotelTextSecondary,
                                     uncheckedTrackColor = NotelSurfaceHigh
                                 )
@@ -2725,7 +2725,7 @@ fun SettingsScreen(
                                     },
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = NotelPrimary,
+                                        focusedBorderColor = NotelAccent,
                                         unfocusedBorderColor = NotelSurfaceHigh,
                                         focusedLabelColor = NotelPrimary,
                                         unfocusedLabelColor = NotelTextSecondary,
@@ -2755,7 +2755,7 @@ fun SettingsScreen(
                                     },
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = NotelPrimary,
+                                        focusedBorderColor = NotelAccent,
                                         unfocusedBorderColor = NotelSurfaceHigh,
                                         focusedLabelColor = NotelPrimary,
                                         unfocusedLabelColor = NotelTextSecondary,
@@ -2957,8 +2957,8 @@ fun SettingsScreen(
                             singleLine = true,
                             isError = nicknameError != null,
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = NotelPrimary,
-                                cursorColor = NotelPrimary,
+                                focusedBorderColor = NotelAccent,
+                                cursorColor = NotelAccent,
                                 focusedTextColor = NotelTextPrimary,
                                 unfocusedTextColor = NotelTextPrimary
                             ),
@@ -3093,13 +3093,13 @@ fun SettingsScreen(
                                 label = { Text("Age") },
                                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
                                 singleLine = true,
-                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, cursorColor = NotelPrimary, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
+                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelAccent, cursorColor = NotelAccent, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
                             )
                             OutlinedTextField(
                                 value = editGender, onValueChange = { editGender = it },
                                 label = { Text("Gender") },
                                 singleLine = true,
-                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, cursorColor = NotelPrimary, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
+                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelAccent, cursorColor = NotelAccent, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
                             )
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -3112,7 +3112,7 @@ fun SettingsScreen(
                                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
                                     singleLine = true,
                                     modifier = Modifier.weight(1f),
-                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, cursorColor = NotelPrimary, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
+                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelAccent, cursorColor = NotelAccent, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
                                 )
                                 OutlinedTextField(
                                     value = editHeightInches,
@@ -3121,7 +3121,7 @@ fun SettingsScreen(
                                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
                                     singleLine = true,
                                     modifier = Modifier.weight(1f),
-                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, cursorColor = NotelPrimary, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
+                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelAccent, cursorColor = NotelAccent, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
                                 )
                             }
                             OutlinedTextField(
@@ -3129,7 +3129,7 @@ fun SettingsScreen(
                                 label = { Text("Weight") },
                                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
                                 singleLine = true,
-                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, cursorColor = NotelPrimary, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
+                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelAccent, cursorColor = NotelAccent, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
                             )
                         }
                     },
@@ -3279,14 +3279,14 @@ fun SettingsScreen(
                                 onValueChange = { newMedName = it },
                                 label = { Text("Medication Name", color = NotelTextSecondary) },
                                 singleLine = true,
-                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, cursorColor = NotelPrimary, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
+                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelAccent, cursorColor = NotelAccent, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
                             )
                             OutlinedTextField(
                                 value = newMedStartDate,
                                 onValueChange = { newMedStartDate = it },
                                 label = { Text("Started Date (e.g. Jun 2026)", color = NotelTextSecondary) },
                                 singleLine = true,
-                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, cursorColor = NotelPrimary, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
+                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelAccent, cursorColor = NotelAccent, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
                             )
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -3308,7 +3308,7 @@ fun SettingsScreen(
                                     onValueChange = { newMedEndDate = it },
                                     label = { Text("Ended Date (e.g. Jul 2026)", color = NotelTextSecondary) },
                                     singleLine = true,
-                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelPrimary, cursorColor = NotelPrimary, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
+                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NotelAccent, cursorColor = NotelAccent, focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary)
                                 )
                             }
                         }
@@ -3468,8 +3468,8 @@ fun SettingsScreen(
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = NotelPrimary,
-                                    cursorColor = NotelPrimary,
+                                    focusedBorderColor = NotelAccent,
+                                    cursorColor = NotelAccent,
                                     focusedTextColor = NotelTextPrimary,
                                     unfocusedTextColor = NotelTextPrimary
                                 )
@@ -3653,7 +3653,7 @@ fun SettingsScreen(
                                 onCheckedChange = { checkAndToggle(it) { enabled -> viewModel.setHabitReminderEnabled(enabled) } },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = NotelPrimary,
-                                    checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
+                                    checkedTrackColor = NotelAccent.copy(alpha = 0.4f),
                                     uncheckedThumbColor = NotelTextSecondary,
                                     uncheckedTrackColor = NotelSurfaceHigh
                                 )
@@ -3674,7 +3674,7 @@ fun SettingsScreen(
                                 onCheckedChange = { checkAndToggle(it) { enabled -> viewModel.setProjectReminderEnabled(enabled) } },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = NotelPrimary,
-                                    checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
+                                    checkedTrackColor = NotelAccent.copy(alpha = 0.4f),
                                     uncheckedThumbColor = NotelTextSecondary,
                                     uncheckedTrackColor = NotelSurfaceHigh
                                 )
@@ -3695,7 +3695,7 @@ fun SettingsScreen(
                                 onCheckedChange = { checkAndToggle(it) { enabled -> viewModel.setEventReminderEnabled(enabled) } },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = NotelPrimary,
-                                    checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
+                                    checkedTrackColor = NotelAccent.copy(alpha = 0.4f),
                                     uncheckedThumbColor = NotelTextSecondary,
                                     uncheckedTrackColor = NotelSurfaceHigh
                                 )
@@ -3726,7 +3726,7 @@ fun SettingsScreen(
                                 onCheckedChange = { handleCheckInReminderToggle(it) },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = NotelPrimary,
-                                    checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
+                                    checkedTrackColor = NotelAccent.copy(alpha = 0.4f),
                                     uncheckedThumbColor = NotelTextSecondary,
                                     uncheckedTrackColor = NotelSurfaceHigh
                                 )
@@ -3796,7 +3796,7 @@ fun SettingsScreen(
                                     },
                                     colors = SwitchDefaults.colors(
                                         checkedThumbColor = NotelPrimary,
-                                        checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
+                                        checkedTrackColor = NotelAccent.copy(alpha = 0.4f),
                                         uncheckedThumbColor = NotelTextSecondary,
                                         uncheckedTrackColor = NotelSurfaceHigh
                                     )
@@ -3828,7 +3828,7 @@ fun SettingsScreen(
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                         suffix = { Text("BPM", color = NotelTextSecondary, fontSize = 12.sp) },
                                         colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = NotelPrimary,
+                                            focusedBorderColor = NotelAccent,
                                             unfocusedBorderColor = NotelSurfaceHigh,
                                             focusedTextColor = NotelTextPrimary,
                                             unfocusedTextColor = NotelTextPrimary,
@@ -3865,7 +3865,7 @@ fun SettingsScreen(
                                     },
                                     colors = SwitchDefaults.colors(
                                         checkedThumbColor = NotelPrimary,
-                                        checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
+                                        checkedTrackColor = NotelAccent.copy(alpha = 0.4f),
                                         uncheckedThumbColor = NotelTextSecondary,
                                         uncheckedTrackColor = NotelSurfaceHigh
                                     )
@@ -3897,7 +3897,7 @@ fun SettingsScreen(
                                         prefix = { Text("+", color = NotelPrimary) },
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                         colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = NotelPrimary,
+                                            focusedBorderColor = NotelAccent,
                                             unfocusedBorderColor = NotelSurfaceHigh,
                                             focusedTextColor = NotelTextPrimary,
                                             unfocusedTextColor = NotelTextPrimary,
@@ -3942,7 +3942,7 @@ fun SettingsScreen(
                         Switch(
                             checked = shareDataWithFriends,
                             onCheckedChange = { viewModel.setShareDataWithFriends(it) },
-                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = NotelPrimary)
+                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = NotelAccent)
                         )
                     }
                 }
@@ -3966,11 +3966,11 @@ fun SettingsScreen(
                         if (isManualSyncing) {
                             GlassySpinner(size = 20.dp)
                             Spacer(Modifier.width(8.dp))
-                            Text("Syncing...", color = Color.White, fontWeight = FontWeight.Bold)
+                            Text("Syncing...", color = NotelOnAccent, fontWeight = FontWeight.Bold)
                         } else {
-                            Icon(Icons.Default.CloudUpload, "Sync", tint = Color.White)
+                            Icon(Icons.Default.CloudUpload, "Sync", tint = NotelOnAccent)
                             Spacer(Modifier.width(8.dp))
-                            Text("Sync Now", color = Color.White, fontWeight = FontWeight.Bold)
+                            Text("Sync Now", color = NotelOnAccent, fontWeight = FontWeight.Bold)
                         }
                     }
                     if (lastSyncTimeSync > 0L) {
@@ -4518,7 +4518,7 @@ fun DebugScreen(
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = NotelTextPrimary,
                     unfocusedTextColor = NotelTextPrimary,
-                    focusedBorderColor = NotelPrimary,
+                    focusedBorderColor = NotelAccent,
                     unfocusedBorderColor = NotelSurfaceHigh
                 ),
                 singleLine = true
@@ -4531,7 +4531,7 @@ fun DebugScreen(
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = NotelTextPrimary,
                     unfocusedTextColor = NotelTextPrimary,
-                    focusedBorderColor = NotelPrimary,
+                    focusedBorderColor = NotelAccent,
                     unfocusedBorderColor = NotelSurfaceHigh
                 ),
                 singleLine = true
@@ -5045,7 +5045,7 @@ fun TabsLiveScreenContent(
                         modifier = Modifier.scale(0.8f),
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = NotelPrimary,
-                            checkedTrackColor = NotelPrimary.copy(alpha = 0.4f),
+                            checkedTrackColor = NotelAccent.copy(alpha = 0.4f),
                             uncheckedThumbColor = NotelTextSecondary,
                             uncheckedTrackColor = NotelSurfaceHigh
                         )

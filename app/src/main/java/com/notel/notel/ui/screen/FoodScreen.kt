@@ -148,14 +148,14 @@ fun FoodScreen(
                     ) {
                         if (isLoading) {
                             CircularProgressIndicator(
-                                color = Color.White,
+                                color = NotelOnAccent,
                                 modifier = Modifier.size(24.dp),
                                 strokeWidth = 2.dp
                             )
                         } else {
-                            Icon(Icons.Default.Search, null, tint = Color.White)
+                            Icon(Icons.Default.Search, null, tint = NotelOnAccent)
                             Spacer(Modifier.width(8.dp))
-                            Text("Check Sensitivity", color = Color.White, fontWeight = FontWeight.Bold)
+                            Text("Check Sensitivity", color = NotelOnAccent, fontWeight = FontWeight.Bold)
                         }
                     }
                 }

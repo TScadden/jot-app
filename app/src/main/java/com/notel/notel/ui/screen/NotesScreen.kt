@@ -92,11 +92,11 @@ fun NotesScreen(
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = NotelPrimary.copy(alpha = 0.5f),
+                        focusedBorderColor = NotelAccent.copy(alpha = 0.5f),
                         unfocusedBorderColor = Color.Transparent,
                         focusedTextColor = NotelTextPrimary,
                         unfocusedTextColor = NotelTextPrimary,
-                        cursorColor = NotelPrimary,
+                        cursorColor = NotelAccent,
                         focusedContainerColor = NotelSurfaceHigh.copy(alpha = 0.04f),
                         unfocusedContainerColor = Color.Transparent
                     ),
@@ -121,11 +121,11 @@ fun NotesScreen(
                         maxLines = 4,
                         shape = RoundedCornerShape(12.dp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = NotelPrimary.copy(alpha = 0.5f),
+                            focusedBorderColor = NotelAccent.copy(alpha = 0.5f),
                             unfocusedBorderColor = Color.Transparent,
                             focusedTextColor = NotelTextPrimary,
                             unfocusedTextColor = NotelTextPrimary,
-                            cursorColor = NotelPrimary,
+                            cursorColor = NotelAccent,
                             focusedContainerColor = NotelSurfaceHigh.copy(alpha = 0.04f),
                             unfocusedContainerColor = Color.Transparent
                         ),
@@ -147,7 +147,7 @@ fun NotesScreen(
                         shape = CircleShape,
                         colors = IconButtonDefaults.filledIconButtonColors(
                             containerColor = if (noteBody.isNotBlank() || noteTitle.isNotBlank()) NotelPrimary else NotelSurfaceHigh.copy(alpha = 0.3f),
-                            contentColor = Color.White
+                            contentColor = NotelOnAccent
                         ),
                         modifier = Modifier.size(44.dp)
                     ) {
@@ -285,11 +285,11 @@ fun NotesScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = NotelPrimary,
+                            focusedBorderColor = NotelAccent,
                             unfocusedBorderColor = NotelSurfaceHigh.copy(alpha = 0.3f),
                             focusedTextColor = NotelTextPrimary,
                             unfocusedTextColor = NotelTextPrimary,
-                            cursorColor = NotelPrimary
+                            cursorColor = NotelAccent
                         )
                     )
                     Spacer(Modifier.height(8.dp))
@@ -301,11 +301,11 @@ fun NotesScreen(
                         maxLines = 6,
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = NotelPrimary,
+                            focusedBorderColor = NotelAccent,
                             unfocusedBorderColor = NotelSurfaceHigh.copy(alpha = 0.3f),
                             focusedTextColor = NotelTextPrimary,
                             unfocusedTextColor = NotelTextPrimary,
-                            cursorColor = NotelPrimary
+                            cursorColor = NotelAccent
                         )
                     )
                 }

@@ -27,7 +27,8 @@ import androidx.compose.ui.unit.dp
  *  - Clip to [shape]
  *
  * Cards earn attention through elevation steps and hairlines, not tinted
- * borders — the accent is reserved for actions and selection.
+ * borders — signal blue is reserved for focus and selection only; actions
+ * are monochrome.
  */
 @Composable
 fun Modifier.liquidGlass(
@@ -50,7 +51,9 @@ fun Modifier.liquidGlass(
 )
 
 /**
- * A solid-filled action button in the brass accent color.
+ * A solid-filled monochrome action button (Instrument direction: near-black
+ * fill on light, off-white fill on dark). One shared [InstrumentSpring]
+ * press-scale so every action in the app moves the same way.
  */
 @Composable
 fun GlassyButton(
@@ -67,7 +70,7 @@ fun GlassyButton(
 
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.96f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        animationSpec = InstrumentSpring,
         label = "scale"
     )
 

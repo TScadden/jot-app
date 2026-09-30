@@ -164,7 +164,7 @@ fun BodyLoadCard(
                     val pulseColor by if (!state.cupTheorySeen) {
                         infiniteTransition.animateColor(
                             initialValue = NotelTextPrimary,
-                            targetValue = Color(0xFFD9A441), // Brass pulse on the unseen-theory title
+                            targetValue = NotelAccent, // Blue pulse on the unseen-theory title
                             animationSpec = infiniteRepeatable(
                                 animation = tween(1200, easing = FastOutSlowInEasing),
                                 repeatMode = RepeatMode.Reverse

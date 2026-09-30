@@ -139,11 +139,11 @@ fun ConditionsScreen(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = NotelPrimary,
+                        focusedBorderColor = NotelAccent,
                         unfocusedBorderColor = NotelTextSecondary,
                         focusedTextColor = NotelTextPrimary,
                         unfocusedTextColor = NotelTextPrimary,
-                        cursorColor = NotelPrimary
+                        cursorColor = NotelAccent
                     ),
                     singleLine = true
                 )

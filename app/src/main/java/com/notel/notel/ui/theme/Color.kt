@@ -5,14 +5,22 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
 /**
- * Theme-aware color palette (Quiet Instrument direction, 2026-09-30).
+ * Theme-aware color palette ("Instrument" direction, 2026-09-30).
  *
- * The founder's verdict on the old identity: too much purple, not premium.
- * The new system is a quiet instrument — deep neutral ink, warm paper, and
- * ONE restrained accent (brass) used sparingly. Color carries meaning now:
- * neutrals for chrome, brass for the single most important action or state
- * on a screen, and the semantic ramp (error/success/warning/info) only for
- * actual status. Nothing decorative is chromatic anymore.
+ * Tabs as a precision instrument: cool near-black neutrals, hairline
+ * structure, monochrome primary actions, and ONE cool accent (signal
+ * blue) reserved for focus and selection states only. Nothing chromatic
+ * is decorative anymore — color carries a single meaning: "this is the
+ * thing that has focus / is selected."
+ *
+ * - `primary` is MONOCHROME (near-black fill on light, off-white fill on
+ *   dark): all primary actions, buttons, and text-actions render in it.
+ * - `accent` is the signal blue: focus rings, selection chips/borders,
+ *   focused text-field borders, active indicators. Light blue is #2563EB
+ *   (AA-pinned; white on it is 5.17:1, it on paper is 4.95:1). Dark blue
+ *   is #7AA8FF with #06121F content (~8:1).
+ * - The semantic ramp (error/success/warning/info) is only for actual
+ *   status, and warning stays orange so it never reads as the blue.
  *
  * Every structural color resolves through [LocalNotelPalette], so the whole
  * app follows the user's Light / Dark / System choice with zero call-site
@@ -20,18 +28,6 @@ import androidx.compose.ui.graphics.Color
  * @Composable getters. They MUST only be read from @Composable UI code —
  * never from ViewModels, workers, widgets, or remember{} calculation
  * lambdas (capture LocalNotelPalette.current as a plain value instead).
- *
- * Dark "Ink": true neutral near-black (#0B0B0D — the old navy is gone),
- * cards step up in lightness, hairlines are neutral white 8%.
- * Light "Paper": warm paper background (#F6F4EF), warm near-white cards,
- * warm grey text — never cold blue-greys.
- *
- * Accent verdict: brass #D9A441 (dark) / bronze #8A5F14 (light). Dark brass
- * as text on ink is ~8:1; light bronze as text on paper is ~5.2:1 and white
- * on the bronze fill is ~5.6:1 — all WCAG AA. Dark fills pair with the dark
- * ink [NotelPalette.onAccent] (#1A1405, ~8.1:1), never white (white on brass
- * is 2.25:1 and fails). Warning was pushed orange-ward (#FF9A44 / #C2410C)
- * so it never reads as the brass accent.
  */
 data class NotelPalette(
     val background: Color,
@@ -39,7 +35,7 @@ data class NotelPalette(
     val surfaceHigh: Color,
     val primary: Color,
     val accent: Color,
-    /** Readable content color on a solid [primary]/[accent] fill. */
+    /** Readable content color on a solid monochrome-primary or blue-accent fill. */
     val onAccent: Color,
     val textPrimary: Color,
     val textSecondary: Color,
@@ -51,34 +47,34 @@ data class NotelPalette(
 )
 
 internal val DarkNotelPalette = NotelPalette(
-    background    = Color(0xFF0B0B0D),   // Neutral near-black — page background
-    surface       = Color(0xFF141417),   // Stepped neutral — tile card background
-    surfaceHigh   = Color(0xFF1E1E23),   // Elevated neutral — nested surfaces
-    primary       = Color(0xFFD9A441),   // Brass — the one restrained accent
-    accent        = Color(0xFFD9A441),   // Brass — rare signature moments only
-    onAccent      = Color(0xFF1A1405),   // Dark ink on brass (~8.1:1)
-    textPrimary   = Color(0xFFF5F4F2),   // Warm near-white — primary text
-    textSecondary = Color(0xFFA8A29C),   // Warm grey — secondary text
-    border        = Color(0xFF26262B),   // Neutral hairline (no more purple tint)
+    background    = Color(0xFF08090A),   // Cool near-black — page background
+    surface       = Color(0xFF101214),   // Stepped cool — tile card background
+    surfaceHigh   = Color(0xFF181B1E),   // Elevated cool — nested surfaces
+    primary       = Color(0xFFF2F4F6),   // Monochrome action fill (dark theme)
+    accent        = Color(0xFF7AA8FF),   // Signal blue — focus/selection only
+    onAccent      = Color(0xFF06121F),   // Deep ink on blue AND on white fills
+    textPrimary   = Color(0xFFF2F4F6),   // Cool near-white — primary text
+    textSecondary = Color(0xFF9AA3AD),   // Cool grey — secondary text
+    border        = Color(0xFF23272C),   // Cool hairline
     error         = Color(0xFFFF6B6B),
     success       = Color(0xFF4CAF50),
-    warning       = Color(0xFFFF9A44),   // Pushed orange so it never reads as brass
+    warning       = Color(0xFFFF9A44),   // Orange — never reads as the blue
     info          = Color(0xFF42A5F5),
 )
 
 internal val LightNotelPalette = NotelPalette(
-    background    = Color(0xFFF6F4EF),   // Warm paper — page background
-    surface       = Color(0xFFFCFBF7),   // Warm near-white cards
-    surfaceHigh   = Color(0xFFEAE7DD),   // Warm nested / elevated panels
-    primary       = Color(0xFF8A5F14),   // Bronze — AA as text (~5.2:1)
-    accent        = Color(0xFF8A5F14),   // Bronze — rare signature moments only
-    onAccent      = Color(0xFFFFFFFF),   // White on bronze fill (~5.6:1)
-    textPrimary   = Color(0xFF1B1A17),   // Warm near-black — primary text
-    textSecondary = Color(0xFF6F6A5F),   // Warm grey — secondary text
-    border        = Color(0xFFE3DFD3),   // Warm hairline on paper
+    background    = Color(0xFFFAFAFA),   // Cool paper — page background
+    surface       = Color(0xFFFFFFFF),   // Pure white cards
+    surfaceHigh   = Color(0xFFF1F3F5),   // Cool nested / elevated panels
+    primary       = Color(0xFF0A0A0B),   // Monochrome action fill (light theme)
+    accent        = Color(0xFF2563EB),   // Signal blue — focus/selection only
+    onAccent      = Color(0xFFFFFFFF),   // White on blue (5.17:1) and on black fills
+    textPrimary   = Color(0xFF0A0A0B),   // Cool near-black — primary text
+    textSecondary = Color(0xFF6B7280),   // Cool grey — secondary text (4.63:1 AA)
+    border        = Color(0xFFE8E8EA),   // Cool hairline on paper
     error         = Color(0xFFC62828),
     success       = Color(0xFF2E7D32),
-    warning       = Color(0xFFC2410C),   // Burnt orange — distinct from bronze
+    warning       = Color(0xFFC2410C),   // Burnt orange — distinct from blue
     info          = Color(0xFF1565C0),
 )
 
@@ -122,7 +118,7 @@ val NotelPrimary: Color
     @Composable get() = LocalNotelPalette.current.primary
 val NotelAccent: Color
     @Composable get() = LocalNotelPalette.current.accent
-/** Readable content color on a solid primary/accent fill (dark ink on brass in dark mode, white on bronze in light mode). */
+/** Readable content color on a solid monochrome-primary or blue-accent fill (white on dark fills in light mode, deep ink on light fills in dark mode). */
 val NotelOnAccent: Color
     @Composable get() = LocalNotelPalette.current.onAccent
 val NotelTextPrimary: Color
@@ -146,7 +142,7 @@ val NotelInfo: Color
 // values are translucent overlays kept as-is for minor decorative uses.
 val GlassWhite: Color = Color(0x33FFFFFF)
 val GlassWhiteHigh: Color = Color(0x66FFFFFF)
-val GlassPrimary: Color = Color(0x4DD9A441)
+val GlassPrimary: Color = Color(0x4D2563EB)   // Translucent signal-blue wash — selection highlights
 val GlassBorder: Color
     @Composable get() = if (isLightTheme) Color(0x2414141E) else Color(0x26FFFFFF)
 val GlassHighlight: Color = Color(0x1AFFFFFF)

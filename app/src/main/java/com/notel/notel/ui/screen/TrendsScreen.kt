@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFeatureSettings
 import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.notel.notel.ui.theme.*
@@ -228,13 +229,13 @@ fun TrendsScreen(
                                     val isSel = state.selectedSymptom == chip
                                     Box(
                                         modifier = Modifier.clip(RoundedCornerShape(10.dp))
-                                            .background(if (isSel) NotelPrimary else NotelSurfaceHigh)
-                                            .border(1.dp, if (isSel) NotelPrimary else NotelBorder, RoundedCornerShape(10.dp))
+                                            .background(if (isSel) NotelAccent else NotelSurfaceHigh)
+                                            .border(1.dp, if (isSel) NotelAccent else NotelBorder, RoundedCornerShape(10.dp))
                                             .clickable { viewModel.selectSymptom(chip); showSymptomsDialog = false }
                                             .padding(horizontal = 12.dp, vertical = 6.dp)
                                     ) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(chip, color = if (isSel) Color.White else NotelTextPrimary, fontSize = 13.sp)
+                                            Text(chip, color = if (isSel) NotelOnAccent else NotelTextPrimary, fontSize = 13.sp)
                                             Spacer(Modifier.width(6.dp))
                                             Text(count.toString(), color = if (isSel) NotelOnAccent else NotelTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                         }
@@ -304,9 +305,10 @@ fun HourlyDensityChart(
                         Text(
                             text = count.toString(),
                             style = TextStyle(
-                                color = if (isSelected) NotelPrimary else NotelTextSecondary,
+                                color = if (isSelected) NotelAccent else NotelTextSecondary,
                                 fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                fontFeatureSettings = FontFeatureSettings("tnum")
                             ),
                             modifier = Modifier.padding(bottom = 4.dp)
                         )
@@ -332,7 +334,7 @@ fun HourlyDensityChart(
                     Text(
                         text = label,
                         style = TextStyle(
-                            color = if (isSelected) NotelPrimary else NotelTextSecondary,
+                            color = if (isSelected) NotelAccent else NotelTextSecondary,
                             fontSize = 9.sp, 
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                         ),

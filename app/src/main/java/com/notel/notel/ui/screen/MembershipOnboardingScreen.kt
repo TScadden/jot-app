@@ -141,7 +141,7 @@ fun MembershipOnboardingScreen(
                 Icon(
                     Icons.Default.WorkspacePremium,
                     contentDescription = "Premium",
-                    tint = Color.White,
+                    tint = NotelOnAccent,
                     modifier = Modifier.size(48.dp)
                 )
             }
@@ -212,10 +212,10 @@ fun MembershipOnboardingScreen(
             Surface(
                 onClick = { selectedPlan = "monthly" },
                 shape = RoundedCornerShape(16.dp),
-                color = if (isMonthlySelected) NotelPrimary.copy(alpha = 0.08f) else NotelSurfaceHigh,
+                color = if (isMonthlySelected) NotelAccent.copy(alpha = 0.08f) else NotelSurfaceHigh,
                 border = BorderStroke(
                     width = if (isMonthlySelected) 2.dp else 1.dp,
-                    color = if (isMonthlySelected) NotelPrimary else NotelPrimary.copy(alpha = 0.15f)
+                    color = if (isMonthlySelected) NotelAccent else NotelPrimary.copy(alpha = 0.15f)
                 ),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -229,7 +229,7 @@ fun MembershipOnboardingScreen(
                         selected = isMonthlySelected,
                         onClick = { selectedPlan = "monthly" },
                         colors = RadioButtonDefaults.colors(
-                            selectedColor = NotelPrimary,
+                            selectedColor = NotelAccent,
                             unselectedColor = NotelTextSecondary
                         )
                     )
@@ -271,10 +271,10 @@ fun MembershipOnboardingScreen(
             Surface(
                 onClick = { selectedPlan = "yearly" },
                 shape = RoundedCornerShape(16.dp),
-                color = if (isYearlySelected) NotelPrimary.copy(alpha = 0.08f) else NotelSurfaceHigh,
+                color = if (isYearlySelected) NotelAccent.copy(alpha = 0.08f) else NotelSurfaceHigh,
                 border = BorderStroke(
                     width = if (isYearlySelected) 2.dp else 1.dp,
-                    color = if (isYearlySelected) NotelPrimary else NotelPrimary.copy(alpha = 0.15f)
+                    color = if (isYearlySelected) NotelAccent else NotelPrimary.copy(alpha = 0.15f)
                 ),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -288,7 +288,7 @@ fun MembershipOnboardingScreen(
                         selected = isYearlySelected,
                         onClick = { selectedPlan = "yearly" },
                         colors = RadioButtonDefaults.colors(
-                            selectedColor = NotelPrimary,
+                            selectedColor = NotelAccent,
                             unselectedColor = NotelTextSecondary
                         )
                     )

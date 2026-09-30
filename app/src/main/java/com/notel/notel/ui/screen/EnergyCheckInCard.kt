@@ -3,6 +3,7 @@ package com.notel.notel.ui.screen
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -39,12 +40,15 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.notel.notel.ui.theme.InstrumentSurfaceSpring
 import com.notel.notel.ui.theme.NotelBorder
 import com.notel.notel.ui.theme.NotelOnAccent
 import com.notel.notel.ui.theme.NotelPrimary
 import com.notel.notel.ui.theme.NotelSurfaceHigh
 import com.notel.notel.ui.theme.NotelTextSecondary
 import com.notel.notel.ui.theme.Radii
+import com.notel.notel.ui.theme.commitHaptic
+import com.notel.notel.ui.theme.instrumentPress
 
 /**
  * Tabs Lab energy check-in card: the day's first interaction, pinned to the top
@@ -111,11 +115,11 @@ fun EnergyCheckInCard(
 /**
  * Flat 1-5 selector button: no bevel, no gradients, no drawn highlight/shadow
  * edges. A quiet [NotelSurfaceHigh] square with a 1dp [NotelBorder] hairline
- * and a muted number; while pressed it fills [NotelPrimary] with a white
- * number — the same selected-fill language the app uses elsewhere.
- *
- * The tap is dispatched through [onClick]; all logging, gating, and the
- * slide-left exit animation live outside this button and are unchanged.
+ * and a muted number; while pressed it fills [NotelPrimary] with a
+ * [NotelOnAccent] number — the monochrome action language of the Instrument
+ * direction. The press is spring-animated and confirmed with a haptic; the
+ * tap dispatch, logging, gating, and the slide-left exit animation live
+ * outside this button and are unchanged.
  */
 @Composable
 private fun EnergyNumberButton(
@@ -124,17 +128,25 @@ private fun EnergyNumberButton(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
+    val confirmHaptic = commitHaptic()
     val shape = RoundedCornerShape(Radii.chip)
+    val fillColor by animateColorAsState(
+        targetValue = if (isPressed) NotelPrimary else NotelSurfaceHigh,
+        animationSpec = InstrumentSurfaceSpring,
+        label = "checkInPressFill",
+    )
+    val strokeColor by animateColorAsState(
+        targetValue = if (isPressed) NotelPrimary else NotelBorder,
+        animationSpec = InstrumentSurfaceSpring,
+        label = "checkInPressStroke",
+    )
     Box(
         modifier = Modifier
             .size(48.dp)
             .clip(shape)
-            .background(if (isPressed) NotelPrimary else NotelSurfaceHigh)
-            .border(
-                width = 1.dp,
-                color = if (isPressed) NotelPrimary else NotelBorder,
-                shape = shape
-            )
+            .instrumentPress(interactionSource)
+            .background(fillColor)
+            .border(width = 1.dp, color = strokeColor, shape = shape)
             .semantics {
                 contentDescription = "Energy $level of 5"
                 role = Role.Button
@@ -142,7 +154,7 @@ private fun EnergyNumberButton(
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
-                onClick = onClick
+                onClick = { confirmHaptic(); onClick() }
             ),
         contentAlignment = Alignment.Center
     ) {

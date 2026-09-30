@@ -411,7 +411,7 @@ fun EntryDetailScreen(
                                 label = { Text("Note Content") },
                                 modifier = Modifier.fillMaxWidth().height(250.dp),
                                 colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = NotelPrimary, unfocusedBorderColor = NotelPrimary.copy(alpha=0.5f),
+                                    focusedBorderColor = NotelAccent, unfocusedBorderColor = NotelAccent.copy(alpha=0.5f),
                                     focusedTextColor = NotelTextPrimary, unfocusedTextColor = NotelTextPrimary
                                 )
                             )

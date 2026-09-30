@@ -196,11 +196,11 @@ fun TipsAndTricksScreen(
                             shape = RoundedCornerShape(20.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary)
                         ) {
-                            Icon(Icons.Default.AutoAwesome, null, tint = Color.White)
+                            Icon(Icons.Default.AutoAwesome, null, tint = NotelOnAccent)
                             Spacer(Modifier.width(10.dp))
                             Text(
                                 "Generate Custom Tips",
-                                color = Color.White,
+                                color = NotelOnAccent,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp
                             )

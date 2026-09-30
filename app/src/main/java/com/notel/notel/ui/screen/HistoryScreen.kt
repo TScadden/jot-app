@@ -124,11 +124,11 @@ fun HistoryScreen(
                 shape = RoundedCornerShape(14.dp),
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = NotelPrimary,
+                    focusedBorderColor = NotelAccent,
                     unfocusedBorderColor = NotelBorder,
                     focusedTextColor = NotelTextPrimary,
                     unfocusedTextColor = NotelTextPrimary,
-                    cursorColor = NotelPrimary,
+                    cursorColor = NotelAccent,
                     unfocusedContainerColor = NotelSurface,
                     focusedContainerColor = NotelSurface
                 )
@@ -144,10 +144,10 @@ fun HistoryScreen(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(Radii.chip))
-                            .background(if (isAllSelected) NotelPrimary else NotelSurface)
+                            .background(if (isAllSelected) NotelAccent else NotelSurface)
                             .border(
                                 width = 1.dp,
-                                color = if (isAllSelected) NotelPrimary else NotelBorder,
+                                color = if (isAllSelected) NotelAccent else NotelBorder,
                                 shape = RoundedCornerShape(Radii.chip)
                             )
                             .clickable { viewModel.setCategoryFilter(null) }
@@ -205,7 +205,7 @@ fun HistoryScreen(
                 Tab(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
-                    selectedContentColor = NotelPrimary,
+                    selectedContentColor = NotelAccent,
                     unselectedContentColor = NotelTextSecondary
                 ) {
                     Text("LOGS (${entries.size})", modifier = Modifier.padding(vertical = 10.dp), fontWeight = FontWeight.Bold, fontSize = 12.sp)
@@ -213,7 +213,7 @@ fun HistoryScreen(
                 Tab(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    selectedContentColor = NotelPrimary,
+                    selectedContentColor = NotelAccent,
                     unselectedContentColor = NotelTextSecondary
                 ) {
                     Text("AI INSIGHTS (${aiInsightsWithDetails.size})", modifier = Modifier.padding(vertical = 10.dp), fontWeight = FontWeight.Bold, fontSize = 12.sp)

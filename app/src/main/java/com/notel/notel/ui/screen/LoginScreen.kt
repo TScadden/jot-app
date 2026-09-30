@@ -443,10 +443,10 @@ fun LoginScreen(
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                             singleLine = true,
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = NotelPrimary,
+                                focusedBorderColor = NotelAccent,
                                 unfocusedBorderColor = NotelTextSecondary.copy(alpha = 0.4f),
                                 focusedLabelColor = NotelPrimary,
-                                cursorColor = NotelPrimary,
+                                cursorColor = NotelAccent,
                                 focusedTextColor = NotelTextPrimary,
                                 unfocusedTextColor = NotelTextPrimary
                             ),
@@ -476,10 +476,10 @@ fun LoginScreen(
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = NotelPrimary,
+                                    focusedBorderColor = NotelAccent,
                                     unfocusedBorderColor = NotelTextSecondary.copy(alpha = 0.4f),
                                     focusedLabelColor = NotelPrimary,
-                                    cursorColor = NotelPrimary,
+                                    cursorColor = NotelAccent,
                                     focusedTextColor = NotelTextPrimary,
                                     unfocusedTextColor = NotelTextPrimary
                                 ),

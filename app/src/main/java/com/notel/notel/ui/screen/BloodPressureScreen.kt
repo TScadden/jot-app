@@ -97,7 +97,7 @@ fun BloodPressureScreen(
                     showAddDialog = true
                 },
                 containerColor = NotelPrimary,
-                contentColor = Color.White,
+                contentColor = NotelOnAccent,
                 modifier = Modifier.padding(bottom = 80.dp, end = 8.dp)
             ) {
                 Icon(Icons.Default.Add, contentDescription = "Log Blood Pressure")
@@ -600,7 +600,7 @@ fun BloodPressureScreen(
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = NotelPrimary,
+                                    focusedBorderColor = NotelAccent,
                                     focusedLabelColor = NotelPrimary,
                                     unfocusedBorderColor = NotelTextSecondary.copy(alpha = 0.5f)
                                 )
@@ -616,7 +616,7 @@ fun BloodPressureScreen(
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = NotelPrimary,
+                                    focusedBorderColor = NotelAccent,
                                     focusedLabelColor = NotelPrimary,
                                     unfocusedBorderColor = NotelTextSecondary.copy(alpha = 0.5f)
                                 )

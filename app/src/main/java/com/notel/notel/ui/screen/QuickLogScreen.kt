@@ -675,9 +675,9 @@ fun QuickLogScreen(
                                 }
                             },
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = NotelPrimary,
-                                unfocusedBorderColor = NotelPrimary.copy(alpha = 0.3f),
-                                cursorColor = NotelPrimary,
+                                focusedBorderColor = NotelAccent,
+                                unfocusedBorderColor = NotelAccent.copy(alpha = 0.3f),
+                                cursorColor = NotelAccent,
                                 focusedTextColor = NotelTextPrimary,
                                 unfocusedTextColor = NotelTextPrimary
                             ),
@@ -717,10 +717,10 @@ fun QuickLogScreen(
                                             Box(
                                                 modifier = Modifier
                                                     .clip(RoundedCornerShape(14.dp))
-                                                    .background(if (isSelected) NotelPrimary else NotelSurface)
+                                                    .background(if (isSelected) NotelAccent else NotelSurface)
                                                     .border(
                                                         width = 1.dp,
-                                                        color = if (isSelected) NotelPrimary else NotelTextSecondary,
+                                                        color = if (isSelected) NotelAccent else NotelTextSecondary,
                                                         shape = RoundedCornerShape(14.dp)
                                                     )
                                                     .clickable { viewModel.toggleSuggestedCategory(name) }

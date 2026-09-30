@@ -188,11 +188,11 @@ fun HabitsScreen(
                 singleLine = true,
                 textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = NotelPrimary.copy(alpha = 0.5f),
+                    focusedBorderColor = NotelAccent.copy(alpha = 0.5f),
                     unfocusedBorderColor = NotelSurfaceHigh.copy(alpha = 0.2f),
                     focusedTextColor = NotelTextPrimary,
                     unfocusedTextColor = NotelTextPrimary,
-                    cursorColor = NotelPrimary,
+                    cursorColor = NotelAccent,
                     focusedContainerColor = NotelSurfaceHigh.copy(alpha = 0.05f),
                     unfocusedContainerColor = NotelSurfaceHigh.copy(alpha = 0.05f)
                 )
@@ -289,9 +289,10 @@ fun HabitsScreen(
                                 val isChecked = habitViewModel.isCheckedToday(habit)
                                 val streak = habitViewModel.getStreak(habit)
                                 val weekMarks = remember(habit) { habitViewModel.getLast7DayMarks(habit) }
+                                val confirmHaptic = commitHaptic()
 
                                 Surface(
-                                    onClick = { habitViewModel.toggleHabit(habit.id, !isChecked) },
+                                    onClick = { confirmHaptic(); habitViewModel.toggleHabit(habit.id, !isChecked) },
                                     modifier = Modifier
                                         .weight(1f)
                                         .heightIn(min = 100.dp),
@@ -402,7 +403,7 @@ private fun HabitWeekDots(marks: List<HabitViewModel.HabitDayMark>) {
                         )
                         .then(
                             if (!mark.completed && mark.isToday)
-                                Modifier.border(1.dp, NotelPrimary, CircleShape)
+                                Modifier.border(1.dp, NotelAccent, CircleShape)
                             else Modifier
                         ),
                     contentAlignment = Alignment.Center
@@ -411,7 +412,7 @@ private fun HabitWeekDots(marks: List<HabitViewModel.HabitDayMark>) {
                         Icon(
                             Icons.Default.Check,
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = NotelOnAccent,
                             modifier = Modifier.size(9.dp)
                         )
                     }

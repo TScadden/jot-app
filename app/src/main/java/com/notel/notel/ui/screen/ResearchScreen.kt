@@ -200,7 +200,7 @@ fun ResearchScreen(
                                 unfocusedContainerColor = NotelSurface,
                                 focusedContainerColor = NotelSurface,
                                 unfocusedBorderColor = NotelBorder,
-                                focusedBorderColor = NotelPrimary,
+                                focusedBorderColor = NotelAccent,
                                 unfocusedTextColor = NotelTextPrimary,
                                 focusedTextColor = NotelTextPrimary,
                                 unfocusedTrailingIconColor = NotelTextSecondary,

@@ -134,7 +134,7 @@ fun WeeklySnapshotCard(
                     Icon(
                         imageVector = Icons.Default.Refresh,
                         contentDescription = if (isRefreshing) "Refreshing weekly snapshot" else "Refresh weekly snapshot",
-                        tint = if (isRefreshing) NotelPrimary else NotelTextSecondary,
+                        tint = if (isRefreshing) NotelAccent else NotelTextSecondary,
                         modifier = Modifier
                             .size(16.dp)
                             .graphicsLayer {
@@ -675,7 +675,7 @@ private fun WeeklySnapshotInteractiveCanvas(
                 val isSelected = selectedIndex == idx
                 Text(
                     text = pt.dayLabel,
-                    color = if (isSelected) NotelPrimary else NotelTextSecondary,
+                    color = if (isSelected) NotelAccent else NotelTextSecondary,
                     fontSize = 11.sp,
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                     textAlign = TextAlign.Center,
