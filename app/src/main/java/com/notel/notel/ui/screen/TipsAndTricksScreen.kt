@@ -24,6 +24,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.notel.notel.ui.component.SkeletonListRow
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.TipsAndTricksViewModel
 import androidx.compose.foundation.lazy.LazyColumn
@@ -285,14 +286,19 @@ fun TipsAndTricksScreen(
                 
                 if (isTipsLoading) {
                     Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(150.dp),
-                        verticalArrangement = Arrangement.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        CircularProgressIndicator(color = NotelPrimary, modifier = Modifier.size(36.dp))
-                        Spacer(Modifier.height(16.dp))
+                        repeat(3) {
+                            SkeletonListRow(
+                                leadingSize = 24.dp,
+                                leadingRadius = 6.dp,
+                                lines = 2,
+                                cornerRadius = 16.dp,
+                                contentPadding = 14.dp
+                            )
+                        }
                         Text("Drafting targeted tips...", color = NotelTextSecondary, fontSize = 13.sp)
                     }
                 } else if (tips != null) {

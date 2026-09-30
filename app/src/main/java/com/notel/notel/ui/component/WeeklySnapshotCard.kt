@@ -254,11 +254,11 @@ fun WeeklySnapshotCard(
                                 .height(140.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            CircularProgressIndicator(
-                                color = NotelPrimary,
-                                modifier = Modifier.size(24.dp),
-                                strokeWidth = 2.dp
-                            )
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                SkeletonLine(width = 120.dp, height = 12.dp)
+                                Spacer(Modifier.height(8.dp))
+                                SkeletonBlock(height = 110.dp, cornerRadius = 8.dp)
+                            }
                         }
                     }
                 }

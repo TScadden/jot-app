@@ -29,6 +29,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.notel.notel.ui.component.SkeletonLine
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.BodyLoadViewModel
 import com.notel.notel.ui.viewmodel.QuickLogViewModel
@@ -1143,7 +1144,17 @@ fun BodyLoadScreen(
                         }
                     }
                 } else {
-                    CircularProgressIndicator(color = NotelPrimary)
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        repeat(5) { index ->
+                            WeatherSkeletonRow()
+                            if (index < 4) {
+                                HorizontalDivider(
+                                    color = NotelSurfaceHigh.copy(alpha = 0.4f),
+                                    thickness = 0.5.dp
+                                )
+                            }
+                        }
+                    }
                     Spacer(Modifier.height(16.dp))
                     Text("Fetching local weather...", color = NotelTextSecondary, fontSize = 14.sp)
                 }
@@ -1738,6 +1749,26 @@ fun BodyLoadScreen(
                 }
             }
         }
+    }
+}
+
+/** Skeleton mirror of one weather-card row (used while weather is loading). */
+@Composable
+private fun WeatherSkeletonRow() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SkeletonLine(width = 24.dp, height = 24.dp, cornerRadius = 6.dp)
+        Spacer(Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            SkeletonLine(fraction = 0.55f, height = 14.dp)
+            Spacer(Modifier.height(4.dp))
+            SkeletonLine(fraction = 0.8f, height = 11.dp)
+        }
+        SkeletonLine(width = 48.dp, height = 15.dp)
     }
 }
 

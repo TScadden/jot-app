@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
+import com.notel.notel.ui.component.SkeletonBlock
 import com.notel.notel.ui.theme.*
 import java.io.File
 
@@ -1057,14 +1058,7 @@ fun PdfViewer(file: File) {
             modifier = Modifier.padding(16.dp)
         )
     } else if (bitmaps.isEmpty()) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(200.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            CircularProgressIndicator(color = NotelPrimary)
-        }
+        SkeletonBlock(height = 200.dp, cornerRadius = 8.dp)
     } else {
         Column(
             modifier = Modifier

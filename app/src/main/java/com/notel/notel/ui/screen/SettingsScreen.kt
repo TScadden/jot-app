@@ -26,6 +26,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.IntrinsicSize
+import com.notel.notel.ui.component.SkeletonBlock
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.focus.onFocusChanged
@@ -4157,17 +4158,26 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     if (isPullingTelemetry) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(220.dp),
-                            contentAlignment = Alignment.Center
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                CircularProgressIndicator(color = NotelPrimary, modifier = Modifier.size(32.dp))
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Text("Fetching live heart history from server...", color = NotelTextSecondary, fontSize = 11.sp)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(220.dp)
+                            ) {
+                                SkeletonBlock(height = 220.dp, cornerRadius = 12.dp)
+                                HorizontalDivider(
+                                    color = NotelBorder,
+                                    thickness = 0.5.dp,
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(start = 16.dp, end = 16.dp, bottom = 24.dp)
+                                )
                             }
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text("Fetching live heart history from server...", color = NotelTextSecondary, fontSize = 11.sp)
                         }
                     } else {
                         if (telemetryPoints.isEmpty()) {
