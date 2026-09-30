@@ -71,6 +71,10 @@ class EntryDetailViewModel @Inject constructor(
 
     fun updateCategory(categoryId: Int) {
         val current = entry.value ?: return
+        // Energy check-in entries are fully locked: category and text cannot
+        // change. The entry detail UI hides both affordances; this guard is
+        // belt and suspenders for any direct save-path call.
+        if (current.source == ENERGY_CHECKIN_SOURCE) return
         // Prevent modifying category for entries logged from the Medications tab
         if (current.source == "Medications Tab" || current.chips.contains("Medication Tab")) {
             return
@@ -79,7 +83,9 @@ class EntryDetailViewModel @Inject constructor(
             val catName = categories.value.find { it.id == categoryId }?.name ?: ""
             // Energy check-in entries keep their locked "Daily Ranking" tag no
             // matter what else changes on the entry; all other entries keep the
-            // previous behavior (chips become the new category name).
+            // previous behavior (chips become the new category name). The early
+            // return above already blocks check-in edits; this stays as
+            // defense in depth so the tag can never be dropped by an edit path.
             val updatedChipsJson = if (current.source == ENERGY_CHECKIN_SOURCE) {
                 dailyRankingTagJson()
             } else {
@@ -99,6 +105,10 @@ class EntryDetailViewModel @Inject constructor(
 
     fun updateText(body: String, manualText: String) {
         val current = entry.value ?: return
+        // Energy check-in entries are fully locked: text and category cannot
+        // change. The entry detail UI hides both affordances; this guard is
+        // belt and suspenders for any direct save-path call.
+        if (current.source == ENERGY_CHECKIN_SOURCE) return
         viewModelScope.launch {
             val updated = current.copy(
                 body = body,
@@ -150,6 +160,9 @@ fun EntryDetailScreen(
     val categories by viewModel.categories.collectAsState()
     var showDelete by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
+    // Check-in entries are fully locked: hide both edit affordances (text and
+    // category). Delete stays available. Computed here so the top bar can use it.
+    val isCheckInEntry = entry?.source == ENERGY_CHECKIN_SOURCE
     val sdf = remember { SimpleDateFormat("EEEE, MMMM d, yyyy 'at' h:mm a", Locale.getDefault()) }
 
     Scaffold(
@@ -163,8 +176,11 @@ fun EntryDetailScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showEditDialog = true }) {
-                        Icon(Icons.Default.Edit, "Edit", tint = NotelPrimary)
+                    // Locked check-in entries offer no edit path; delete stays.
+                    if (!isCheckInEntry) {
+                        IconButton(onClick = { showEditDialog = true }) {
+                            Icon(Icons.Default.Edit, "Edit", tint = NotelPrimary)
+                        }
                     }
                     IconButton(onClick = { showDelete = true }) {
                         Icon(Icons.Default.Delete, "Delete", tint = Color.Red.copy(alpha = 0.7f))
@@ -190,7 +206,6 @@ fun EntryDetailScreen(
                 verticalArrangement = Arrangement.spacedBy(20.dp) // More spacious
             ) {
                 val isMedTabEntry = e.source == "Medications Tab" || e.chips.contains("Medication Tab")
-                val isCheckInEntry = e.source == ENERGY_CHECKIN_SOURCE
                 if (isMedTabEntry) {
                     Box(
                         modifier = Modifier
@@ -211,6 +226,24 @@ fun EntryDetailScreen(
                                 letterSpacing = 0.8.sp
                             )
                         }
+                    }
+                } else if (isCheckInEntry) {
+                    // Locked check-in entry: no category affordance, and a short
+                    // note (same caption style as the locked-tag line below) in
+                    // place of the edit UI.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Lock,
+                            contentDescription = null,
+                            tint = NotelTextSecondary,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "This entry was logged automatically and cannot be edited.",
+                            color = NotelTextSecondary,
+                            fontSize = 12.sp
+                        )
                     }
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -362,7 +395,7 @@ fun EntryDetailScreen(
 
             }
 
-            if (showEditDialog) {
+            if (showEditDialog && !isCheckInEntry) {
                 var editBody by remember { 
                     mutableStateOf(if (e.manualText.isNotBlank()) "${e.body}\n\n${e.manualText}" else e.body) 
                 }
