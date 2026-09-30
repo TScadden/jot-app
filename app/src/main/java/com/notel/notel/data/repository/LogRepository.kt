@@ -613,7 +613,8 @@ class LogRepository @Inject constructor(
             if (lat == 0.0) return null
             
             com.notel.notel.data.remote.WeatherApi().getDetailedWeather(lat, lon, city)?.let { info ->
-                "ENVIRONMENTAL CONTEXT:\n- Location: ${info.locationName}\n- Temp: ${info.temp}°${info.unit}\n- Condition: ${info.condition}\n- Humidity: ${info.humidity}%\n- Wind: ${info.windSpeed} km/h\n- Pressure: ${info.pressure} hPa\n- UV Index: ${info.uvIndex}"
+                val windUnit = if (info.unit == "F") "mph" else "km/h"
+                "ENVIRONMENTAL CONTEXT:\n- Location: ${info.locationName}\n- Temp: ${info.temp}°${info.unit}\n- Condition: ${info.condition}\n- Humidity: ${info.humidity}%\n- Wind: ${info.windSpeed} $windUnit\n- Pressure: ${info.pressure} hPa\n- UV Index: ${info.uvIndex}"
             }
         } catch (e: Exception) { null }
     }

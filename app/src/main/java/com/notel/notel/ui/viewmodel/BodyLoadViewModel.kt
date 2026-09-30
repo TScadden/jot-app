@@ -42,6 +42,7 @@ data class BodyLoadState(
     val selectedDate: String = LocalDate.now().toString(),
     val isHealthConnected: Boolean = true,
     val weather: WeatherState = WeatherState(),
+    val weatherLoading: Boolean = false,
     val avgHeartRate: Int = 0,
     val currentStreak: Int = 0,
     val bestStreak: Int = 0,
@@ -59,7 +60,10 @@ data class WeatherState(
     val unit: String = "F",
     val humidity: Int = 0,
     val windSpeed: Double = 0.0,
-    val pressure: Double = 0.0
+    val pressure: Double = 0.0,
+    // true only when a fetch completed with real provider data.
+    // Never render the numeric defaults as if they were real readings.
+    val loaded: Boolean = false
 )
 
 @HiltViewModel
@@ -438,26 +442,36 @@ class BodyLoadViewModel @Inject constructor(
 
     private fun fetchWeather() {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val lat = lastKnownLat ?: preferences.lastKnownLat.first().takeIf { it != 0.0 }
-            val lon = lastKnownLon ?: preferences.lastKnownLon.first().takeIf { it != 0.0 }
-            val city = lastKnownCity ?: preferences.lastKnownCity.first()
+            _uiState.update { it.copy(weatherLoading = true) }
+            try {
+                val lat = lastKnownLat ?: preferences.lastKnownLat.first().takeIf { it != 0.0 }
+                val lon = lastKnownLon ?: preferences.lastKnownLon.first().takeIf { it != 0.0 }
+                val city = lastKnownCity ?: preferences.lastKnownCity.first()
 
-            weatherApi.getDetailedWeather(lat, lon, city)?.let { info ->
-                _uiState.update { it.copy(
-                    weather = WeatherState(
-                        temp = info.temp,
-                        condition = info.condition,
-                        uvIndex = info.uvIndex,
-                        icon = info.icon,
-                        locationName = info.locationName,
-                        unit = info.unit,
-                        humidity = info.humidity,
-                        windSpeed = info.windSpeed,
-                        pressure = info.pressure
-                    )
-                ) }
+                weatherApi.getDetailedWeather(lat, lon, city)?.let { info ->
+                    _uiState.update { it.copy(
+                        weather = WeatherState(
+                            temp = info.temp,
+                            condition = info.condition,
+                            uvIndex = info.uvIndex,
+                            icon = info.icon,
+                            locationName = info.locationName,
+                            unit = info.unit,
+                            humidity = info.humidity,
+                            windSpeed = info.windSpeed,
+                            pressure = info.pressure,
+                            loaded = true
+                        )
+                    ) }
+                }
+            } finally {
+                _uiState.update { it.copy(weatherLoading = false) }
             }
         }
+    }
+
+    fun retryWeather() {
+        fetchWeather()
     }
 
     fun markTheorySeen() {

@@ -137,12 +137,15 @@ fun BodyLoadScreen(
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             state.weather?.let { w ->
-                                Text(
-                                    text = "${w.temp}°",
-                                    color = NotelTextPrimary.copy(alpha = 0.8f),
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                // Never show placeholder zeros as a reading: icon only until real data loads.
+                                if (w.loaded) {
+                                    Text(
+                                        text = "${w.temp}°",
+                                        color = NotelTextPrimary.copy(alpha = 0.8f),
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
                             Icon(
                                 imageVector = Icons.Default.Cloud,
@@ -901,7 +904,54 @@ fun BodyLoadScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 val weather = state.weather
-                if (weather != null) {
+                if (state.weatherLoading) {
+                    // Fetch still in flight: skeleton rows.
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        repeat(5) { index ->
+                            WeatherSkeletonRow()
+                            if (index < 4) {
+                                HorizontalDivider(
+                                    color = NotelSurfaceHigh.copy(alpha = 0.4f),
+                                    thickness = 0.5.dp
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    Text("Fetching local weather...", color = NotelTextSecondary, fontSize = 14.sp)
+                } else if (!weather.loaded) {
+                    // Honest unavailable state: never show placeholder zeros as real readings.
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("☁️", fontSize = 40.sp)
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            text = "Couldn't load weather right now",
+                            color = NotelTextPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "Weather needs a connection and your location to load. Check your connection and try again.",
+                            color = NotelTextSecondary,
+                            fontSize = 13.sp,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(Modifier.height(20.dp))
+                        Button(
+                            onClick = { viewModel.retryWeather() },
+                            colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary)
+                        ) {
+                            Text("Try again", color = Color.White, fontWeight = FontWeight.Medium)
+                        }
+                    }
+                } else {
                     Text(
                         text = weather.locationName.uppercase(),
                         color = NotelTextPrimary,
@@ -1143,20 +1193,6 @@ fun BodyLoadScreen(
                             }
                         }
                     }
-                } else {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        repeat(5) { index ->
-                            WeatherSkeletonRow()
-                            if (index < 4) {
-                                HorizontalDivider(
-                                    color = NotelSurfaceHigh.copy(alpha = 0.4f),
-                                    thickness = 0.5.dp
-                                )
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    Text("Fetching local weather...", color = NotelTextSecondary, fontSize = 14.sp)
                 }
             }
         }
