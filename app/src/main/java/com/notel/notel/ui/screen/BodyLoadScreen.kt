@@ -32,6 +32,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.notel.notel.ui.component.SkeletonLine
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.BodyLoadViewModel
+import com.notel.notel.ui.viewmodel.EnergyCheckInViewModel
 import com.notel.notel.ui.viewmodel.QuickLogViewModel
 import com.notel.notel.ui.viewmodel.HabitViewModel
 import com.notel.notel.ui.viewmodel.ReminderViewModel
@@ -75,7 +76,8 @@ fun BodyLoadScreen(
     reminderViewModel: ReminderViewModel = hiltViewModel(),
     notesViewModel: NotesViewModel = hiltViewModel(),
     listsViewModel: ListsViewModel = hiltViewModel(),
-    todayViewModel: com.notel.notel.ui.viewmodel.TodayViewModel = hiltViewModel()
+    todayViewModel: com.notel.notel.ui.viewmodel.TodayViewModel = hiltViewModel(),
+    energyCheckInViewModel: EnergyCheckInViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
 
@@ -93,6 +95,7 @@ fun BodyLoadScreen(
     val reminders by reminderViewModel.reminders.collectAsState()
     val notes: List<com.notel.notel.data.local.entity.UserListItem> by notesViewModel.notes.collectAsState()
     val lists: List<com.notel.notel.data.local.entity.UserList> by listsViewModel.lists.collectAsState()
+    val energyCheckInState by energyCheckInViewModel.uiState.collectAsState()
 
     val coroutineScope = rememberCoroutineScope()
 
@@ -191,6 +194,14 @@ fun BodyLoadScreen(
             ),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // ── 0. Energy check-in (Tabs Lab) — the day's first interaction ────
+            item {
+                EnergyCheckInCard(
+                    visible = energyCheckInState.visible,
+                    onSelect = energyCheckInViewModel::selectLevel
+                )
+            }
+
             // ── 1. Restored Black Health Metrics Box ─────────────────────────────
             item {
                 Surface(
