@@ -75,8 +75,6 @@ data class CategoryValidationResponse(
 )
 
 @Serializable
-
-@Serializable
 data class AiResponse<T>(
     val result: T,
     val error: String? = null
