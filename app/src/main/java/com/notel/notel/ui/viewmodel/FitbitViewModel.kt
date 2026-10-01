@@ -384,7 +384,7 @@ class FitbitViewModel @Inject constructor(
                       val histSleep14 = try { healthConnectCoordinator.getSleepHistory(14) } catch(e: Exception) { emptyList() }
                       // Calories shown as TOTAL (active + basal) to match Health Connect's
                       // "Energy Burned" screen. This also feeds the Home "Today" strip via
-                      // setHistoricalCalories -> BodyLoadViewModel.
+                      // setHistoricalCalories -> TodayMetricsViewModel.
                       val histCal14 = try { healthConnectCoordinator.getTotalCaloriesHistory(14) } catch(e: Exception) { emptyList() }
 
                       _state.update { currentState ->

@@ -1280,14 +1280,6 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun testDailyReminder(context: android.content.Context) {
-        viewModelScope.launch {
-            com.notel.notel.util.NotificationHelper(context).showBodyLoadReminder()
-        }
-    }
-
-    
-
     fun testHabitNotification(context: android.content.Context) {
         viewModelScope.launch {
             // Guaranteed notification for testing/video
@@ -1326,19 +1318,6 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             // Tabs Lab: the exact notification the 4:00 AM receiver posts.
             com.notel.notel.util.NotificationHelper(context).showCheckInReminder()
-        }
-    }
-
-    fun testMiddayBodyLoadNotification(context: android.content.Context) {
-        viewModelScope.launch {
-            com.notel.notel.util.NotificationHelper(context).showMidDayBodyLoadRefresh()
-        }
-    }
-
-    fun testBodyLoadUpdateNotification(context: android.content.Context) {
-        viewModelScope.launch {
-            // Representative score for the preview; the real one passes the computed score.
-            com.notel.notel.util.NotificationHelper(context).showBodyLoadUpdate(72)
         }
     }
 
@@ -1459,38 +1438,6 @@ class SettingsViewModel @Inject constructor(
             } finally {
                 _isManualSyncing.value = false
             }
-        }
-    }
-
-    fun refreshThisWeeksScores() {
-        viewModelScope.launch {
-            var cats = categories.value
-            if (cats.isEmpty()) {
-                addSystemLog("Refresh: categories.value is empty, querying repository flow...")
-                cats = categoryRepository.getAllCategories().first()
-            }
-            if (cats.isEmpty()) {
-                addSystemLog("Refresh: Category list is empty, aborting.")
-                return@launch
-            }
-            addSystemLog("Refresh: Starting force refresh of this week's scores...")
-            val today = java.time.LocalDate.now()
-            
-            val targetDays = (0..6).map { today.minusDays(it.toLong()).toString() }
-            addSystemLog("Refresh: Clearing scores for target week...")
-            logRepository.clearBodyLoadInsightsForDays(targetDays)
-            addSystemLog("Refresh: Saving cleared scores database state...")
-
-            for (i in 0..6) {
-                val dateStr = today.minusDays(i.toLong()).toString()
-                addSystemLog("Refresh: Recalculating score for $dateStr...")
-                logRepository.getBodyLoad(cats, dateStr)
-                addSystemLog("Refresh: Done calculating score for $dateStr.")
-            }
-            
-            addSystemLog("Refresh: Weekly recalculation completed! Performing final sync...")
-            syncManager.syncAllData()
-            addSystemLog("Refresh: Final sync done.")
         }
     }
 

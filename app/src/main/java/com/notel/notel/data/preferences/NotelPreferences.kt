@@ -94,8 +94,6 @@ open class NotelPreferences(
         val EVENT_COUNTERS = stringPreferencesKey("event_counters")
         val COUNTER_HISTORY = stringPreferencesKey("counter_history")
         val SETTINGS_TUTORIAL_SEEN = booleanPreferencesKey("settings_tutorial_seen")
-        val BODY_LOAD_REMINDERS_ENABLED = booleanPreferencesKey("body_load_reminders_enabled")
-        val DAILY_CUP_UPDATES_ENABLED = booleanPreferencesKey("daily_cup_updates_enabled")
         val HR_SPIKE_ALERTS_ENABLED = booleanPreferencesKey("hr_spike_alerts_enabled")
         val SPIKE_THRESHOLD = intPreferencesKey("spike_threshold")
         val HR_DELTA_ENABLED = booleanPreferencesKey("hr_delta_enabled")
@@ -111,15 +109,10 @@ open class NotelPreferences(
         val HR_LAST_SAMPLE_TIME = longPreferencesKey("hr_last_sample_time")
         val HABIT_REMINDER_USER_DISABLED = booleanPreferencesKey("habit_reminder_user_disabled")
         val USER_CONTEXT_LAST_UPDATE = longPreferencesKey("user_context_last_update")
-        val LAST_BODY_LOAD_REFRESH = longPreferencesKey("last_body_load_refresh")
-        val LAST_BODY_LOAD_SCORE = intPreferencesKey("last_body_load_score")
-        val LAST_BODY_LOAD_FACTORS = stringPreferencesKey("last_body_load_factors")
-        val LAST_BODY_LOAD_ADVICE = stringPreferencesKey("last_body_load_advice")
         
         val CURRENT_STREAK = intPreferencesKey("current_streak")
         val BEST_STREAK = intPreferencesKey("best_streak")
         val LAST_OPEN_DATE = stringPreferencesKey("last_open_date")
-        val CUP_THEORY_SEEN = booleanPreferencesKey("cup_theory_seen")
         val LAST_DYNAMIC_NOTIFICATION_DATE = stringPreferencesKey("last_dynamic_notification_date")
         val TODAY_SUMMARY_EXPANDED = booleanPreferencesKey("today_summary_expanded")
         val LAST_KNOWN_STATS = stringPreferencesKey("last_known_stats")
@@ -127,9 +120,7 @@ open class NotelPreferences(
         val LAST_KNOWN_LON = doublePreferencesKey("last_known_lon")
         val LAST_KNOWN_CITY = stringPreferencesKey("last_known_city")
         val WEATHER_LOCATION_PROMPT_SEEN = booleanPreferencesKey("weather_location_prompt_seen")
-        val HIGHEST_CUP_DAILY = intPreferencesKey("highest_cup_daily")
         val USER_CONTEXT_HIDDEN = booleanPreferencesKey("user_context_hidden")
-        val HAS_HISTORICAL_BODY_LOAD = booleanPreferencesKey("has_historical_body_load")
         val LAST_SYNC_TIME = longPreferencesKey("last_sync_time")
         val HISTORICAL_DAILY_STATS = stringPreferencesKey("historical_daily_stats")
         val DAILY_STATS_CACHE_VERSION = intPreferencesKey("daily_stats_cache_version")
@@ -328,9 +319,6 @@ open class NotelPreferences(
     val dailyStatsCacheVersion: Flow<Int> = context.dataStore.data.map { it[DAILY_STATS_CACHE_VERSION] ?: 0 }
     suspend fun setDailyStatsCacheVersion(v: Int) { context.dataStore.edit { it[DAILY_STATS_CACHE_VERSION] = v } }
 
-    val hasHistoricalBodyLoad: Flow<Boolean> = context.dataStore.data.map { it[HAS_HISTORICAL_BODY_LOAD] ?: false }
-    suspend fun setHasHistoricalBodyLoad(v: Boolean) { context.dataStore.edit { it[HAS_HISTORICAL_BODY_LOAD] = v } }
-
     val tipsAndTricksTopics: Flow<String> = context.dataStore.data.map { it[TIPS_AND_TRICKS_TOPICS] ?: "" }
     val tipsAndTricksAnswers: Flow<String> = context.dataStore.data.map { it[TIPS_AND_TRICKS_ANSWERS] ?: "" }
     val foodCheckerHistory: Flow<String> = context.dataStore.data.map { it[FOOD_CHECKER_HISTORY] ?: "{}" }
@@ -354,8 +342,6 @@ open class NotelPreferences(
     val eventCounters: Flow<String> = context.dataStore.data.map { it[EVENT_COUNTERS] ?: "[]" }
     val counterHistory: Flow<String> = context.dataStore.data.map { it[COUNTER_HISTORY] ?: "[]" }
     val settingsTutorialSeen: Flow<Boolean> = context.dataStore.data.map { it[SETTINGS_TUTORIAL_SEEN] ?: false }
-    val bodyLoadRemindersEnabled: Flow<Boolean> = context.dataStore.data.map { it[BODY_LOAD_REMINDERS_ENABLED] ?: true }
-    val dailyCupUpdatesEnabled: Flow<Boolean> = context.dataStore.data.map { it[DAILY_CUP_UPDATES_ENABLED] ?: false }
     val hrSpikeAlertsEnabled: Flow<Boolean> = context.dataStore.data.map { it[HR_SPIKE_ALERTS_ENABLED] ?: false }
     val spikeThreshold: Flow<Int> = context.dataStore.data.map { it[SPIKE_THRESHOLD] ?: 120 }
     val hrDeltaEnabled: Flow<Boolean> = context.dataStore.data.map { it[HR_DELTA_ENABLED] ?: false }
@@ -373,11 +359,7 @@ open class NotelPreferences(
     val hrLastSampleTime: Flow<Long> = context.dataStore.data.map { it[HR_LAST_SAMPLE_TIME] ?: 0L }
     val habitReminderUserDisabled: Flow<Boolean> = context.dataStore.data.map { it[HABIT_REMINDER_USER_DISABLED] ?: false }
     val userContextLastUpdate: Flow<Long> = context.dataStore.data.map { it[USER_CONTEXT_LAST_UPDATE] ?: 0L }
-    val lastBodyLoadRefresh: Flow<Long> = context.dataStore.data.map { it[LAST_BODY_LOAD_REFRESH] ?: 0L }
     val lastSyncTime: Flow<Long> = context.dataStore.data.map { it[LAST_SYNC_TIME] ?: 0L }
-    val lastBodyLoadScore: Flow<Int> = context.dataStore.data.map { it[LAST_BODY_LOAD_SCORE] ?: 0 }
-    val lastBodyLoadFactors: Flow<String> = context.dataStore.data.map { it[LAST_BODY_LOAD_FACTORS] ?: "" }
-    val lastBodyLoadAdvice: Flow<String?> = context.dataStore.data.map { it[LAST_BODY_LOAD_ADVICE] }
     
     val currentStreak: Flow<Int> = context.dataStore.data.map { it[CURRENT_STREAK] ?: 0 }
     val bestStreak: Flow<Int> = context.dataStore.data.map { it[BEST_STREAK] ?: 0 }
@@ -398,7 +380,6 @@ open class NotelPreferences(
         context.dataStore.edit { it[WEEKLY_SCORE] = score }
     }
     
-    val cupTheorySeen: Flow<Boolean> = context.dataStore.data.map { it[CUP_THEORY_SEEN] ?: false }
     val lastDynamicNotificationDate: Flow<String> = context.dataStore.data.map { it[LAST_DYNAMIC_NOTIFICATION_DATE] ?: "" }
     val lastKnownStats: Flow<String> = context.dataStore.data.map { it[LAST_KNOWN_STATS] ?: "{}" }
     val lastKnownLat: Flow<Double> = context.dataStore.data.map { it[LAST_KNOWN_LAT] ?: 0.0 }
@@ -683,17 +664,6 @@ open class NotelPreferences(
     suspend fun setLastSyncTime(timestamp: Long) {
         context.dataStore.edit { prefs -> prefs[LAST_SYNC_TIME] = timestamp }
     }
-    suspend fun setLastBodyLoadRefresh(timestamp: Long) {
-        context.dataStore.edit { prefs -> prefs[LAST_BODY_LOAD_REFRESH] = timestamp }
-    }
-    suspend fun setLastBodyLoadData(score: Int, factors: String, advice: String?) {
-        context.dataStore.edit { prefs ->
-            prefs[LAST_BODY_LOAD_SCORE] = score
-            prefs[LAST_BODY_LOAD_FACTORS] = factors
-            if (advice != null) prefs[LAST_BODY_LOAD_ADVICE] = advice else prefs.remove(LAST_BODY_LOAD_ADVICE)
-        }
-    }
-
     suspend fun updateStreak(clockDate: java.time.LocalDate = java.time.LocalDate.now()) {
         val today = clockDate
         context.dataStore.edit { prefs ->
@@ -939,14 +909,6 @@ open class NotelPreferences(
         context.dataStore.edit { it[SETTINGS_TUTORIAL_SEEN] = seen }
     }
 
-    suspend fun setBodyLoadRemindersEnabled(enabled: Boolean) {
-        context.dataStore.edit { it[BODY_LOAD_REMINDERS_ENABLED] = enabled }
-    }
-
-    suspend fun setDailyCupUpdatesEnabled(enabled: Boolean) {
-        context.dataStore.edit { it[DAILY_CUP_UPDATES_ENABLED] = enabled }
-    }
-
     suspend fun setHrSpikeAlertsEnabled(enabled: Boolean) {
         context.dataStore.edit { it[HR_SPIKE_ALERTS_ENABLED] = enabled }
     }
@@ -1048,10 +1010,6 @@ open class NotelPreferences(
 
     suspend fun setUserEmail(email: String) {
         context.dataStore.edit { it[USER_EMAIL] = email }
-    }
-
-    suspend fun setCupTheorySeen(seen: Boolean) {
-        context.dataStore.edit { it[CUP_THEORY_SEEN] = seen }
     }
 
     suspend fun setLastDynamicNotificationDate(date: String) {

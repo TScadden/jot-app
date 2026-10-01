@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.*
 import dagger.hilt.android.HiltAndroidApp
-import com.notel.notel.worker.BodyLoadReminderWorker
 import com.notel.notel.worker.BiometricsSyncWorker
 import com.notel.notel.worker.HrSpikeBackfillWorker
 import com.notel.notel.worker.HabitReminderWorker
@@ -44,6 +43,8 @@ class NotelApp : Application(), Configuration.Provider {
         HabitReminderWorker.schedule(this)
         WorkManager.getInstance(this).cancelUniqueWork("habit_reminder")
         WorkManager.getInstance(this).cancelUniqueWork("cup_reminder")
+        // Body Load feature removed: stop the deleted worker's periodic refresh.
+        WorkManager.getInstance(this).cancelUniqueWork("BODY_LOAD_REFRESH")
         scheduleProjectReminder()
         BiometricsSyncWorker.schedule(this)
         // One-time 180-day HR spike history backfill (no-op once complete).

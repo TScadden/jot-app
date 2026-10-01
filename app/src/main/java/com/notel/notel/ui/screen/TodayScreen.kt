@@ -31,7 +31,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.notel.notel.ui.component.SkeletonLine
 import com.notel.notel.ui.theme.*
-import com.notel.notel.ui.viewmodel.BodyLoadViewModel
+import com.notel.notel.ui.viewmodel.TodayMetricsViewModel
 import com.notel.notel.ui.viewmodel.EnergyCheckInViewModel
 import com.notel.notel.ui.viewmodel.QuickLogViewModel
 import com.notel.notel.ui.viewmodel.HabitViewModel
@@ -58,8 +58,8 @@ import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun BodyLoadScreen(
-    viewModel: BodyLoadViewModel = hiltViewModel(),
+fun TodayScreen(
+    viewModel: TodayMetricsViewModel = hiltViewModel(),
     quickLogViewModel: QuickLogViewModel = hiltViewModel(),
     weeklySnapshotViewModel: com.notel.notel.ui.viewmodel.WeeklySnapshotViewModel = hiltViewModel(),
     onBack: () -> Unit,

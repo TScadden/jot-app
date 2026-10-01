@@ -26,7 +26,6 @@ data class AiRequest(
     val pastInsights: String? = null,
     val fitbitData: String? = null,
     val habitData: String? = null,
-    val bodyLoadHistory: String? = null,
     val dataAvailability: String? = null,
     val weatherContext: String? = null,
     val documents: List<ProcessDocumentRequest> = emptyList()
@@ -76,25 +75,6 @@ data class CategoryValidationResponse(
 )
 
 @Serializable
-data class BodyLoadEnrichedRequest(
-    val targetDate: String? = null,
-    val entries: List<LogEntryDtoModel> = emptyList(),
-    val categories: Map<Int, String> = emptyMap(),
-    val userContext: String? = null,
-    val knowledgeBase: String? = null,
-    val fitbitData: String? = null,
-    val habitData: String? = null,
-    val pastInsights: String? = null,
-    val weatherContext: String? = null
-)
-
-@Serializable
-data class BodyLoadResponse(
-    var score: Int,
-    var factors: List<String> = emptyList(),
-    val advice: String? = null,
-    val subjectiveImpact: Double = 0.0
-)
 
 @Serializable
 data class AiResponse<T>(
@@ -134,8 +114,7 @@ data class CoachRequest(
     val messages: List<CoachMessageDto>,
     val userContext: String? = null,
     val knowledgeBase: String? = null,
-    val recentEntries: List<LogEntryDtoModel> = emptyList(),
-    val bodyLoadHistory: String? = null
+    val recentEntries: List<LogEntryDtoModel> = emptyList()
 )
 
 @Serializable
@@ -662,12 +641,6 @@ interface TabsApi {
 
     @POST("api/ai/process-document")
     suspend fun processDocument(@Body request: ProcessDocumentRequest): Response<AiResponse<String>>
-
-    @POST("api/ai/body-load")
-    suspend fun getBodyLoad(@Body request: AiRequest): Response<AiResponse<BodyLoadResponse>>
-
-    @POST("api/ai/body-load-enriched")
-    suspend fun getBodyLoadEnriched(@Body request: BodyLoadEnrichedRequest): Response<AiResponse<BodyLoadResponse>>
 
     @POST("api/ai/classify-and-clean")
     suspend fun classifyAndClean(@Body request: ClassifyAndCleanRequest): Response<AiResponse<ClassifyAndCleanResponse>>

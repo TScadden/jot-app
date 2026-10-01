@@ -48,7 +48,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.notel.notel.ui.screen.*
 import com.notel.notel.ui.screen.CoachScreen
 import com.notel.notel.ui.theme.*
-import com.notel.notel.ui.viewmodel.BodyLoadViewModel
+import com.notel.notel.ui.viewmodel.TodayMetricsViewModel
 import com.notel.notel.ui.viewmodel.FitbitViewModel
 import dagger.hilt.android.AndroidEntryPoint
 import androidx.glance.appwidget.updateAll
@@ -85,7 +85,7 @@ class MainActivity : ComponentActivity() {
             // Provide a global instance of FitbitViewModel at the activity level
             // so the shared health-data state is available across navigation destinations.
             val fitbitViewModel: FitbitViewModel = hiltViewModel()
-            val bodyLoadViewModel: BodyLoadViewModel = hiltViewModel()
+            val todayMetricsViewModel: TodayMetricsViewModel = hiltViewModel()
             val quickLogViewModel: com.notel.notel.ui.viewmodel.QuickLogViewModel = hiltViewModel()
             val settingsViewModel: com.notel.notel.ui.viewmodel.SettingsViewModel = hiltViewModel()
             val notelPreferences = remember { com.notel.notel.data.preferences.NotelPreferences(context) }
@@ -95,7 +95,6 @@ class MainActivity : ComponentActivity() {
             
             LaunchedEffect(Unit) {
                 notelPreferences.updateStreak()
-                com.notel.notel.worker.BodyLoadWorker.schedule(context)
                 com.notel.notel.data.BleManager.getInstance(context).scanAndAutoStart(context, notelPreferences)
                 com.notel.notel.util.NotificationHelper(context)
 
@@ -283,7 +282,7 @@ class MainActivity : ComponentActivity() {
                                                 popUpTo("splash") { inclusive = true }
                                             }
                                         } else if (isOnboarded) {
-                                            navController.navigate("body_load") {
+                                            navController.navigate("today") {
                                                 popUpTo("splash") { inclusive = true }
                                             }
                                         } else {
@@ -324,7 +323,7 @@ class MainActivity : ComponentActivity() {
                                             notelPreferences.setHasConsented(true)
                                             notelPreferences.setIntroConsultationSeen(true)
                                             notelPreferences.setOnboardingComplete(true)
-                                            navController.navigate("body_load") {
+                                            navController.navigate("today") {
                                                 popUpTo(0) { inclusive = true }
                                             }
                                         }
@@ -401,14 +400,14 @@ class MainActivity : ComponentActivity() {
                         }
                         composable("setup_loading") {
                             SetupLoadingScreen(onNavigateMain = { 
-                                navController.navigate("body_load") {
+                                navController.navigate("today") {
                                     popUpTo("setup_loading") { inclusive = true }
                                 }
                             })
                         }
-                        composable("body_load") {
-                            BodyLoadScreen(
-                                viewModel = bodyLoadViewModel,
+                        composable("today") {
+                            TodayScreen(
+                                viewModel = todayMetricsViewModel,
                                 quickLogViewModel = quickLogViewModel,
                                 onBack = { /* Root */ },
                                 onNavigateToConnections = { navController.navigate("data_connections") },
@@ -534,7 +533,6 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToTrends = { navController.navigate("trends") },
                                 onNavigateToFitbit = { /* fitbit Lego piece coming soon */ },
                                 onNavigateToSleep = { /* sleep Lego piece coming soon */ },
-                                onNavigateToBodyLoad = { navController.navigate("body_load") }
                             )
                         }
                         composable(
@@ -563,7 +561,7 @@ class MainActivity : ComponentActivity() {
                                 onBack = { navController.popBackStack() },
                                 onRestartOnboarding = {
                                     navController.navigate("profile_setup") {
-                                        popUpTo("body_load") { inclusive = true }
+                                        popUpTo("today") { inclusive = true }
                                     }
                                 },
                                 onLogout = {
@@ -691,11 +689,11 @@ class MainActivity : ComponentActivity() {
                                     NavIcon(
                                         icon = Icons.Default.Home,
                                         label = "Home",
-                                        isSelected = currentRoute == "body_load",
+                                        isSelected = currentRoute == "today",
                                         showLabel = showNavLabels,
                                         onClick = { 
-                                            if (!isReorderingTiles && currentRoute != "body_load") {
-                                                navController.navigate("body_load") {
+                                            if (!isReorderingTiles && currentRoute != "today") {
+                                                navController.navigate("today") {
                                                     popUpTo(navController.graph.startDestinationId) { saveState = true }
                                                     launchSingleTop = true
                                                     restoreState = true

@@ -422,8 +422,6 @@ class SyncManager @Inject constructor(
                     // Newly synced fields
                     medications = preferences.medications.first().let { if (it.isBlank()) null else it },
                     conditions = preferences.userConditions.first().let { if (it.isBlank()) null else it },
-                    bodyLoadRemindersEnabled = preferences.bodyLoadRemindersEnabled.first(),
-                    dailyCupUpdatesEnabled = preferences.dailyCupUpdatesEnabled.first(),
                     hrSpikeAlertsEnabled = preferences.hrSpikeAlertsEnabled.first(),
                     spikeThreshold = preferences.spikeThreshold.first(),
                     hrDeltaEnabled = preferences.hrDeltaEnabled.first(),
@@ -612,7 +610,6 @@ class SyncManager @Inject constructor(
                     profile.onboardingComplete?.let { 
                         if (it) {
                             preferences.setOnboardingComplete(true)
-                            preferences.setCupTheorySeen(true)
                         }
                     }
                     profile.autoAiSuggestions?.let { preferences.setAutoAiSuggestions(it) }
@@ -699,8 +696,6 @@ class SyncManager @Inject constructor(
                         }
                     }
                     // Restore notification & alert settings
-                    profile.bodyLoadRemindersEnabled?.let { preferences.setBodyLoadRemindersEnabled(it) }
-                    profile.dailyCupUpdatesEnabled?.let { preferences.setDailyCupUpdatesEnabled(it) }
                     profile.hrSpikeAlertsEnabled?.let { preferences.setHrSpikeAlertsEnabled(it) }
                     profile.spikeThreshold?.let { preferences.setSpikeThreshold(it) }
                     profile.hrDeltaEnabled?.let { preferences.setHrDeltaEnabled(it) }
@@ -920,16 +915,6 @@ class SyncManager @Inject constructor(
                                         Log.e(tag, "Failed to trigger report notification for ${report.id}: ${e.message}")
                                     }
                                 }
-                            }
-                        }
-                    }
-
-                    // Keep any local today's BodyLoad insight that is not in the server's response
-                    localInsights.forEach { localOn ->
-                        if (localOn.type == "BodyLoad") {
-                            val exists = insightsList.any { it.type == "BodyLoad" && Math.abs(it.timestamp - localOn.timestamp) < 6 * 60 * 60 * 1000 }
-                            if (!exists) {
-                                insightsList.add(0, localOn)
                             }
                         }
                     }
