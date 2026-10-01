@@ -405,7 +405,9 @@ class LogRepository @Inject constructor(
         }
 
         val sleepHistoryRecords = if (isAvailable) try { healthConnectCoordinator.getSleepHistory(14) } catch(e: Exception) { emptyList() } else emptyList()
-        val calorieHistory = if (isAvailable) try { healthConnectCoordinator.getCaloriesHistory(14) } catch(e: Exception) { emptyList() } else emptyList()
+        // Total (active + basal) calories so the Home "Today" strip matches
+        // Health Connect's "Energy Burned" screen. This preference feeds BodyLoadViewModel.
+        val calorieHistory = if (isAvailable) try { healthConnectCoordinator.getTotalCaloriesHistory(14) } catch(e: Exception) { emptyList() } else emptyList()
 
         // UPDATE PREFERENCES TO FIX UI SYNC FOR 7 DAY RECAP
         try {

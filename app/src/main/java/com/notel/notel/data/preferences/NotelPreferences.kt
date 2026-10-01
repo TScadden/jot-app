@@ -132,6 +132,7 @@ open class NotelPreferences(
         val HAS_HISTORICAL_BODY_LOAD = booleanPreferencesKey("has_historical_body_load")
         val LAST_SYNC_TIME = longPreferencesKey("last_sync_time")
         val HISTORICAL_DAILY_STATS = stringPreferencesKey("historical_daily_stats")
+        val DAILY_STATS_CACHE_VERSION = intPreferencesKey("daily_stats_cache_version")
         val TIPS_AND_TRICKS_TOPICS = stringPreferencesKey("tips_and_tricks_topics")
         val TIPS_AND_TRICKS_ANSWERS = stringPreferencesKey("tips_and_tricks_answers")
         val FOOD_CHECKER_HISTORY = stringPreferencesKey("food_checker_history")
@@ -320,6 +321,12 @@ open class NotelPreferences(
 
     val historicalDailyStats: Flow<String> = context.dataStore.data.map { it[HISTORICAL_DAILY_STATS] ?: "{}" }
     suspend fun setHistoricalDailyStats(json: String) { context.dataStore.edit { it[HISTORICAL_DAILY_STATS] = json } }
+
+    // Schema version for the daily-stats cache. v2 stores TOTAL calories (active + basal)
+    // so the Home strip matches Health Connect's "Energy Burned"; v1 entries hold
+    // active-calorie values and are dropped on upgrade.
+    val dailyStatsCacheVersion: Flow<Int> = context.dataStore.data.map { it[DAILY_STATS_CACHE_VERSION] ?: 0 }
+    suspend fun setDailyStatsCacheVersion(v: Int) { context.dataStore.edit { it[DAILY_STATS_CACHE_VERSION] = v } }
 
     val hasHistoricalBodyLoad: Flow<Boolean> = context.dataStore.data.map { it[HAS_HISTORICAL_BODY_LOAD] ?: false }
     suspend fun setHasHistoricalBodyLoad(v: Boolean) { context.dataStore.edit { it[HAS_HISTORICAL_BODY_LOAD] = v } }

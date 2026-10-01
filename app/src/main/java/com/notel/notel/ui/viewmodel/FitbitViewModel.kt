@@ -29,7 +29,7 @@ data class CachedMetrics(
     val todayHRV: Double = 0.0,
     val averageHeartRate: Int = 0,
     val asleepHeartRate: Int = 0,
-    val caloriesBurned: Int = 0,
+    val caloriesBurned: Int = 0, // TOTAL calories (active + basal), matches Health Connect "Energy Burned"
     val intradayHR: List<Pair<Long, Int>> = emptyList()
 )
 
@@ -60,7 +60,7 @@ data class FitbitState(
     val selectedSleepDate: String = "today",
     val selectedHeartRateDate: String = "today",
     val selectedKeyMetricsDate: String = "today",
-    val caloriesBurned: Int = 0,
+    val caloriesBurned: Int = 0, // TOTAL calories (active + basal), matches Health Connect "Energy Burned"
     val isFitbitConnected: Boolean = false,
     val errorMessage: String? = null,
     val historicalSpikes: List<DailyHeartRateSummary> = emptyList(),
@@ -89,6 +89,9 @@ class FitbitViewModel @Inject constructor(
 
     companion object {
         private const val TAG = "FitbitViewModel"
+        // Daily-stats cache schema: v2 stores TOTAL calories (active + basal) to match
+        // Health Connect's "Energy Burned". v1 entries hold active-calorie values.
+        private const val DAILY_STATS_CACHE_VERSION = 2
     }
 
     private val _state = MutableStateFlow(FitbitState(connectedDevices = listOf("Health Connect")))
@@ -109,12 +112,22 @@ class FitbitViewModel @Inject constructor(
             try {
                 // Read daily stats cache on IO thread so startup is instant
                 val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-                try {
-                    val initialStr = preferences.historicalDailyStats.first()
-                    if (initialStr.isNotBlank() && initialStr != "{}") {
-                        cachedDailyStatsMap = json.decodeFromString<Map<String, CachedMetrics>>(initialStr)
-                    }
-                } catch (e: Exception) { /* start with empty map */ }
+                // Drop stale v1 entries: they hold ACTIVE-calorie values, but the cache
+                // now stores TOTAL calories (active + basal) to match Health Connect.
+                // Today's value refreshes from Health Connect on the next sync.
+                val cacheVersion = try { preferences.dailyStatsCacheVersion.first() } catch (e: Exception) { 0 }
+                if (cacheVersion != DAILY_STATS_CACHE_VERSION) {
+                    preferences.setHistoricalDailyStats("{}")
+                    preferences.setDailyStatsCacheVersion(DAILY_STATS_CACHE_VERSION)
+                    cachedDailyStatsMap = emptyMap()
+                } else {
+                    try {
+                        val initialStr = preferences.historicalDailyStats.first()
+                        if (initialStr.isNotBlank() && initialStr != "{}") {
+                            cachedDailyStatsMap = json.decodeFromString<Map<String, CachedMetrics>>(initialStr)
+                        }
+                    } catch (e: Exception) { /* start with empty map */ }
+                }
 
                 launch {
                     preferences.historicalDailyStats.collect { str ->
@@ -289,7 +302,7 @@ class FitbitViewModel @Inject constructor(
 
          val intradayHRDeferred = async { healthConnectCoordinator.getIntradayHeartRate(targetDate, forceRefresh = forceRefresh) }
          val sleepDeferred = async { healthConnectCoordinator.getSleepSession(targetDate) }
-         val activeCalDeferred = async { healthConnectCoordinator.getActiveCalories(targetDate) }
+         val totalCalDeferred = async { healthConnectCoordinator.getTotalCalories(targetDate) }
          val rhrDeferred = async { healthConnectCoordinator.getRestingHeartRate(targetDate) }
          val weightDeferred = async { healthConnectManager.readLatestWeight(targetDate) }
 
@@ -307,7 +320,7 @@ class FitbitViewModel @Inject constructor(
          val asleepHR = if (asleep.isNotEmpty()) asleep.map{it.second}.average().toInt() else 0
          
          val sleepData = try { sleepDeferred.await() } catch(e: Exception) { null }
-         val activeCal = try { activeCalDeferred.await() } catch(e: Exception) { 0 }
+         val totalCal = try { totalCalDeferred.await() } catch(e: Exception) { 0 }
 
          var latest = intradayHR.lastOrNull()?.second ?: 0
          val latestTime = intradayHR.lastOrNull()?.first ?: 0L
@@ -330,7 +343,7 @@ class FitbitViewModel @Inject constructor(
                  latestHeartRate = if (latest > 0) latest else currentState.latestHeartRate,
                  latestHeartRateTime = if (formattedTime.isNotBlank()) formattedTime else currentState.latestHeartRateTime,
                  sleepData = sleepData ?: currentState.sleepData,
-                 caloriesBurned = if (activeCal > 0) activeCal else currentState.caloriesBurned,
+                 caloriesBurned = if (totalCal > 0) totalCal else currentState.caloriesBurned,
                  sleepDebtMins = calculateDebtAtDate(_state.value.selectedSleepDate, currentState.historicalSleep),
                  restingHeartRate = if (rhrValue > 0) rhrValue else currentState.restingHeartRate,
                  weightPounds = if (weightVal > 0f) weightVal else currentState.weightPounds,
@@ -364,7 +377,10 @@ class FitbitViewModel @Inject constructor(
                       val histHR14 = try { healthConnectCoordinator.getHeartRateHistory(14) } catch(e: Exception) { emptyList() }
                       val histSpikes14 = try { healthConnectCoordinator.getHrSpikesHistory(14) } catch(e: Exception) { emptyList() }
                       val histSleep14 = try { healthConnectCoordinator.getSleepHistory(14) } catch(e: Exception) { emptyList() }
-                      val histCal14 = try { healthConnectCoordinator.getCaloriesHistory(14) } catch(e: Exception) { emptyList() }
+                      // Calories shown as TOTAL (active + basal) to match Health Connect's
+                      // "Energy Burned" screen. This also feeds the Home "Today" strip via
+                      // setHistoricalCalories -> BodyLoadViewModel.
+                      val histCal14 = try { healthConnectCoordinator.getTotalCaloriesHistory(14) } catch(e: Exception) { emptyList() }
 
                       _state.update { currentState ->
                           currentState.copy(
@@ -433,16 +449,16 @@ class FitbitViewModel @Inject constructor(
             var intradayHR: List<Pair<Long, Int>> = emptyList()
             var avgHR = 0
             var asleepHR = 0
-            var activeCal = 0
+            var totalCal = 0
             var currentHrv = 0.0
 
             if (hasHC) {
                 val intradayHRDeferred = async(Dispatchers.IO) { healthConnectCoordinator.getIntradayHeartRate(targetDateStr, forceRefresh = false) }
-                val activeCalDeferred = async(Dispatchers.IO) { healthConnectCoordinator.getActiveCalories(targetDateStr, forceRefresh = false) }
+                val totalCalDeferred = async(Dispatchers.IO) { healthConnectCoordinator.getTotalCalories(targetDateStr, forceRefresh = false) }
                 val hrvListDeferred = async(Dispatchers.IO) { healthConnectCoordinator.getHeartRateVariability(1, targetDateStr = targetDateStr, forceRefresh = false) }
 
                 intradayHR = try { intradayHRDeferred.await() } catch(e: Exception) { emptyList() }
-                activeCal = try { activeCalDeferred.await() } catch(e: Exception) { 0 }
+                totalCal = try { totalCalDeferred.await() } catch(e: Exception) { 0 }
                 val hrvList = try { hrvListDeferred.await() } catch(e: Exception) { emptyList() }
 
                 val zoneId = java.time.ZoneId.systemDefault()
@@ -479,9 +495,9 @@ class FitbitViewModel @Inject constructor(
                         asleepHeartRate = asleepHR,
                         latestHeartRate = latest,
                         latestHeartRateTime = formattedTime,
-                        caloriesBurned = activeCal,
+                        caloriesBurned = totalCal,
                         currentHrv = currentHrv,
-                        errorMessage = if (intradayHR.isEmpty() && activeCal == 0 && !hasCachedData) "No data found for this date." else null
+                        errorMessage = if (intradayHR.isEmpty() && totalCal == 0 && !hasCachedData) "No data found for this date." else null
                     )
                 } else {
                     currentState
@@ -489,7 +505,7 @@ class FitbitViewModel @Inject constructor(
             }
 
             // PERSIST to local storage so future visits to this date are instant!
-            if (intradayHR.isNotEmpty() || avgHR > 0 || activeCal > 0) {
+            if (intradayHR.isNotEmpty() || avgHR > 0 || totalCal > 0) {
                 val existing = cachedDailyStatsMap[targetDateStr]
                 val newMetrics = CachedMetrics(
                     latestHeartRate = if (latest > 0) latest else existing?.latestHeartRate ?: 0,
@@ -500,7 +516,7 @@ class FitbitViewModel @Inject constructor(
                     todayHRV = if (currentHrv > 0.0) currentHrv else existing?.todayHRV ?: 0.0,
                     averageHeartRate = if (avgHR > 0) avgHR else existing?.averageHeartRate ?: 0,
                     asleepHeartRate = if (asleepHR > 0) asleepHR else existing?.asleepHeartRate ?: 0,
-                    caloriesBurned = if (activeCal > 0) activeCal else existing?.caloriesBurned ?: 0,
+                    caloriesBurned = if (totalCal > 0) totalCal else existing?.caloriesBurned ?: 0,
                     intradayHR = if (intradayHR.isNotEmpty()) intradayHR else existing?.intradayHR ?: emptyList()
                 )
                 saveDailyStatToCache(targetDateStr, newMetrics)
