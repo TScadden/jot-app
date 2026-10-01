@@ -1488,7 +1488,7 @@ fun TodayScreen(
                         Text("Ambient Temp & Sleep Recovery", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                         Spacer(Modifier.height(12.dp))
                         Text(
-                            text = "Ambient temperature strongly influences body load recovery. Sleep studies show that cooler rooms support deeper, higher-quality sleep.",
+                            text = "Ambient temperature strongly influences overnight recovery. Sleep studies show that cooler rooms support deeper, higher-quality sleep.",
                             color = Color.White.copy(alpha = 0.7f),
                             fontSize = 14.sp,
                             lineHeight = 20.sp

@@ -434,7 +434,7 @@ class CoachViewModel @Inject constructor(
     // Default greeting for new sessions
     private val welcomeMessage = CoachMessage(
         role = "coach",
-        content = "Hi! I'm Tabs Coach. I have context on your recent logs, body load history, and knowledge base. How can I help you today?"
+        content = "Hi! I'm Tabs Coach. I have context on your recent logs, health history, and knowledge base. How can I help you today?"
     )
 
     @OptIn(ExperimentalCoroutinesApi::class)
