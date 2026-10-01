@@ -120,6 +120,11 @@ class FitbitViewModel @Inject constructor(
                     preferences.setHistoricalDailyStats("{}")
                     preferences.setDailyStatsCacheVersion(DAILY_STATS_CACHE_VERSION)
                     cachedDailyStatsMap = emptyMap()
+                    // Also drop the persisted calorie history: v1 entries hold ACTIVE
+                    // calories, but the pref now stores TOTAL. It repopulates on the
+                    // next sync (runs at app start), so the strip never shows a
+                    // wrong-metric number in between.
+                    preferences.setHistoricalCalories("")
                 } else {
                     try {
                         val initialStr = preferences.historicalDailyStats.first()
