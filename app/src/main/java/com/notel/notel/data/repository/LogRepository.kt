@@ -72,12 +72,6 @@ class LogRepository @Inject constructor(
     private val _reportReadyEvent = MutableSharedFlow<java.io.File>()
     val reportReadyEvent = _reportReadyEvent.asSharedFlow()
 
-    private val _isGeneratingWeeklyRecap = MutableStateFlow(false)
-    val isGeneratingWeeklyRecap = _isGeneratingWeeklyRecap.asStateFlow()
-
-    private val _isGeneratingDeepResearch = MutableStateFlow(false)
-    val isGeneratingDeepResearch = _isGeneratingDeepResearch.asStateFlow()
-
     private val _isComparingDocuments = MutableStateFlow(false)
     val isComparingDocuments = _isComparingDocuments.asStateFlow()
 
@@ -107,8 +101,6 @@ class LogRepository @Inject constructor(
         _generatedReport.value = null
         _processError.value = null
         _isGeneratingReport.value = false
-        _isGeneratingWeeklyRecap.value = false
-        _isGeneratingDeepResearch.value = false
         _isComparingDocuments.value = false
     }
 
@@ -200,40 +192,6 @@ class LogRepository @Inject constructor(
     @Deprecated("Use generateProfessionalReportWithSnapshot with structured viewModelScope concurrency")
     fun generateProfessionalReportAsync(allCategories: List<Category>, reportGenerator: com.notel.notel.util.ReportGenerator, last30DaysOnly: Boolean = false) {
         // Safe backward-compatible fallback
-    }
-
-    @OptIn(DelicateCoroutinesApi::class)
-    fun generateWeeklyRecapAsync(allCategories: List<Category>) {
-        if (_isGeneratingWeeklyRecap.value) return
-        _isGeneratingWeeklyRecap.value = true
-        GlobalScope.launch {
-            try {
-                getWeeklyRecap(allCategories).onFailure { e ->
-                    _processError.value = com.notel.notel.util.FriendlyErrors.forBackendError("LogRepository", e, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN).banner
-                }
-            } catch (e: Exception) {
-                _processError.value = com.notel.notel.util.FriendlyErrors.forBackendError("LogRepository", e, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN).banner
-            } finally {
-                _isGeneratingWeeklyRecap.value = false
-            }
-        }
-    }
-
-    @OptIn(DelicateCoroutinesApi::class)
-    fun generateDeepResearchAsync(allCategories: List<Category>) {
-        if (_isGeneratingDeepResearch.value) return
-        _isGeneratingDeepResearch.value = true
-        GlobalScope.launch {
-            try {
-                getDeepResearch(allCategories).onFailure { e ->
-                    _processError.value = com.notel.notel.util.FriendlyErrors.forBackendError("LogRepository", e, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN).banner
-                }
-            } catch (e: Exception) {
-                _processError.value = com.notel.notel.util.FriendlyErrors.forBackendError("LogRepository", e, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN).banner
-            } finally {
-                _isGeneratingDeepResearch.value = false
-            }
-        }
     }
 
     @OptIn(DelicateCoroutinesApi::class)
@@ -852,47 +810,6 @@ class LogRepository @Inject constructor(
         return finalResult
     }
 
-    suspend fun getWeeklyRecap(allCategories: List<Category>): Result<String> {
-        // Fetch last 7 days of entries (this is a simplified proxy by grabbing recent entries)
-        val recent = logEntryDao.getRecentEntriesAll(limit = 35) // Approx 5 entries a day for a week
-        val catMap = allCategories.associate { it.id to it.name }
-        val context = getEnrichedUserContext()
-        val kb = getEnrichedKnowledgeBase()
-        val hasHealthConnect = healthConnectManager.hasAllPermissions()
-        
-        val fitbitData = getFitbitDataSummary()
-        val habitData = getHabitDataSummary()
-
-        val weather = getWeatherContext()
-
-        val result = geminiService.getWeeklyRecap(recent, catMap, userContext = context, knowledgeBase = kb, fitbitData = fitbitData, habitData = habitData, weatherContext = weather, documents = getEnrichedDocuments())
-        result.onSuccess { text ->
-            saveAiInsight(text, "Weekly Recap")
-        }
-        return result
-    }
-
-    suspend fun getDeepResearch(allCategories: List<Category>): Result<String> {
-        // Fetch up to 90 days of entries (get as much context as possible)
-        val recent = logEntryDao.getRecentEntriesAll(limit = 150)
-        val catMap = allCategories.associate { it.id to it.name }
-        val context = getEnrichedUserContext()
-        val kb = getEnrichedKnowledgeBase()
-        val pastInsights = getPastInsightsText()
-        val hasHealthConnect = healthConnectManager.hasAllPermissions()
-
-        val fitbitData = getFitbitDataSummary()
-        val habitData = getHabitDataSummary()
-
-        val weather = getWeatherContext()
-
-        val result = geminiService.getDeepResearch(recent, catMap, userContext = context, knowledgeBase = kb, pastInsights = pastInsights, fitbitData = fitbitData, habitData = habitData, weatherContext = weather, documents = getEnrichedDocuments())
-        result.onSuccess { text ->
-            saveAiInsight(text, "Deep Advice")
-        }
-        return result
-    }
-    
     suspend fun getDocumentComparison(allCategories: List<Category>): Result<String> {
         // Fetch up to 30 days of entries (compare past month)
         val recent = logEntryDao.getRecentEntriesAll(limit = 100)

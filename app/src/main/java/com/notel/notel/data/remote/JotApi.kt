@@ -628,12 +628,6 @@ interface TabsApi {
     @POST("api/ai/report")
     suspend fun getReport(@Body request: AiRequest): Response<AiResponse<String>>
 
-    @POST("api/ai/weekly-recap")
-    suspend fun getWeeklyRecap(@Body request: AiRequest): Response<AiResponse<String>>
-
-    @POST("api/ai/deep-research")
-    suspend fun getDeepResearch(@Body request: AiRequest): Response<AiResponse<String>>
-
     @POST("api/ai/document-comparison")
     suspend fun getDocumentComparison(@Body request: AiRequest): Response<AiResponse<String>>
 

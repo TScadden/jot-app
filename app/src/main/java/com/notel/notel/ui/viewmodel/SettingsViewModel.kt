@@ -568,10 +568,6 @@ class SettingsViewModel @Inject constructor(
 
     val isGeneratingReport = logRepository.isGeneratingReport
 
-    val isGeneratingWeeklyRecap = logRepository.isGeneratingWeeklyRecap
-
-    val isGeneratingDeepResearch = logRepository.isGeneratingDeepResearch
-
     val allLogs = logRepository.getAllEntries().stateIn(
         viewModelScope,
         SharingStarted.Lazily,
@@ -871,14 +867,6 @@ class SettingsViewModel @Inject constructor(
 
     fun resetReportGenerationState() {
         _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Idle
-    }
-
-    fun generateWeeklyRecap() {
-        logRepository.generateWeeklyRecapAsync(categories.value)
-    }
-
-    fun generateDeepResearch() {
-        logRepository.generateDeepResearchAsync(categories.value)
     }
 
     fun setAutoAiSuggestions(enabled: Boolean) {
