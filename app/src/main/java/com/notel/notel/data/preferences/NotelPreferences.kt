@@ -163,6 +163,46 @@ open class NotelPreferences(
         val TODAY_PLAN_EXPANDED = booleanPreferencesKey("today_plan_expanded")
         val WHAT_CHANGED_EXPANDED = booleanPreferencesKey("what_changed_expanded")
         val MANUAL_BLOOD_PRESSURE_LOGS = stringPreferencesKey("manual_blood_pressure_logs")
+        // Progress Reports "prepare for an appointment" card. Additive only;
+        // both default empty. Date stored ISO yyyy-MM-dd; type is
+        // "health" | "training" | "custom".
+        val APPOINTMENT_DATE = stringPreferencesKey("progress_report_appointment_date")
+        val APPOINTMENT_REPORT_TYPE = stringPreferencesKey("progress_report_appointment_type")
+        // Progress Reports continuity: remembers the last-used type and range
+        // so the screen opens where the user left off.
+        val LAST_REPORT_TYPE = stringPreferencesKey("progress_report_last_type")
+        val LAST_REPORT_RANGE_30D = booleanPreferencesKey("progress_report_last_range_30d")
+        // Last successful Progress Reports export timestamp.
+        val LAST_REPORT_EXPORT_TIME = longPreferencesKey("progress_report_last_export_time")
+    }
+
+    val appointmentDate: Flow<String?> = dataStore.data.map { it[APPOINTMENT_DATE] }
+    suspend fun setAppointmentDate(dateIso: String?) {
+        dataStore.edit { prefs ->
+            if (dateIso.isNullOrBlank()) prefs.remove(APPOINTMENT_DATE)
+            else prefs[APPOINTMENT_DATE] = dateIso
+        }
+    }
+
+    val appointmentReportType: Flow<String> = dataStore.data.map { it[APPOINTMENT_REPORT_TYPE] ?: "health" }
+    suspend fun setAppointmentReportType(reportType: String) {
+        dataStore.edit { it[APPOINTMENT_REPORT_TYPE] = reportType }
+    }
+
+    // Remember the last-used report type and range.
+    val lastReportType: Flow<String> = dataStore.data.map { it[LAST_REPORT_TYPE] ?: "health" }
+    val lastReportRange30d: Flow<Boolean> = dataStore.data.map { it[LAST_REPORT_RANGE_30D] ?: true }
+    suspend fun saveLastReportPrefs(reportType: String, range30d: Boolean) {
+        dataStore.edit {
+            it[LAST_REPORT_TYPE] = reportType
+            it[LAST_REPORT_RANGE_30D] = range30d
+        }
+    }
+
+    // Timestamp of the last successful report export.
+    val lastReportExportTime: Flow<Long> = dataStore.data.map { it[LAST_REPORT_EXPORT_TIME] ?: 0L }
+    suspend fun setLastReportExportTime(epochMs: Long) {
+        dataStore.edit { it[LAST_REPORT_EXPORT_TIME] = epochMs }
     }
 
     open val manualBloodPressureLogs: Flow<String> = dataStore.data.map { it[MANUAL_BLOOD_PRESSURE_LOGS] ?: "[]" }

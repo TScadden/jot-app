@@ -37,6 +37,10 @@ class BootReceiver : BroadcastReceiver() {
                 if (preferences.checkInReminderEnabled.first()) {
                     com.notel.notel.notifications.EnergyCheckInReminderScheduler.schedule(context)
                 }
+                // Progress Reports: re-arm the appointment day-before nudge (one-shot alarms don't survive reboots)
+                preferences.appointmentDate.first()?.let { dateIso ->
+                    com.notel.notel.notifications.AppointmentReminderScheduler.schedule(context, dateIso)
+                }
             }
         }
     }
