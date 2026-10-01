@@ -103,9 +103,6 @@ fun SettingsScreen(
     val showProfessionalCheckIn by viewModel.showProfessionalCheckIn.collectAsState()
     val knowledgeDocuments by viewModel.knowledgeDocuments.collectAsState()
     
-    val isGeneratingWeeklyRecap by viewModel.isGeneratingWeeklyRecap.collectAsState()
-    val isGeneratingDeepResearch by viewModel.isGeneratingDeepResearch.collectAsState()
-    
     val healthConnectConnected by viewModel.healthConnectConnected.collectAsState()
     val googleCalendarConnected by viewModel.googleCalendarConnected.collectAsState()
     val googleCalendarEmail by viewModel.googleCalendarEmail.collectAsState()

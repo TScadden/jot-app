@@ -118,8 +118,6 @@ fun ProgressReportsScreen(
     val allLogs by viewModel.allLogs.collectAsState()
     val allCategories by viewModel.categories.collectAsState()
     val reportState by viewModel.reportGenerationState.collectAsState()
-    val isDeepBusy by viewModel.isGeneratingDeepResearch.collectAsState()
-    val isProtocolBusy by viewModel.isGeneratingWeeklyRecap.collectAsState()
 
     val savedAppointmentDate by viewModel.appointmentDate.collectAsState(initial = null)
     val savedAppointmentType by viewModel.appointmentReportType.collectAsState(initial = "health")
@@ -186,7 +184,6 @@ fun ProgressReportsScreen(
 
     val hasAnyLogs = allLogs.isNotEmpty()
     val isGenerating = reportState.isProcessing
-    val isAnyBusy = isGenerating || isDeepBusy || isProtocolBusy
 
     // Pre select all categories for Custom the first time it is opened.
     LaunchedEffect(focus, allCategories) {
@@ -474,7 +471,7 @@ fun ProgressReportsScreen(
                             )
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = !isAnyBusy && hasAnyLogs && selectedCategories.isNotEmpty(),
+                        enabled = !isGenerating && hasAnyLogs && selectedCategories.isNotEmpty(),
                         containerColor = NotelPrimary
                     ) {
                         if (isThisGenerating) {
