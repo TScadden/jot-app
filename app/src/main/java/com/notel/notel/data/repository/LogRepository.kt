@@ -405,7 +405,9 @@ class LogRepository @Inject constructor(
         }
 
         val sleepHistoryRecords = if (isAvailable) try { healthConnectCoordinator.getSleepHistory(14) } catch(e: Exception) { emptyList() } else emptyList()
-        val calorieHistory = if (isAvailable) try { healthConnectCoordinator.getCaloriesHistory(14) } catch(e: Exception) { emptyList() } else emptyList()
+        // Total (active + basal) calories so the Home "Today" strip matches
+        // Health Connect's "Energy Burned" screen. This preference feeds BodyLoadViewModel.
+        val calorieHistory = if (isAvailable) try { healthConnectCoordinator.getTotalCaloriesHistory(14) } catch(e: Exception) { emptyList() } else emptyList()
 
         // UPDATE PREFERENCES TO FIX UI SYNC FOR 7 DAY RECAP
         try {
@@ -1325,7 +1327,7 @@ class LogRepository @Inject constructor(
             summary.append("DAILY SNAPSHOT FOR $targetDate:\n")
             heartHist.find { it.first == targetDate }?.let { summary.append("• Avg HR: ${it.second} bpm\n") }
             sleepHist.find { it.first == targetDate }?.let { summary.append("• Sleep: ${formatSleep(it.second)} \n") }
-            calHist.find { it.first == targetDate }?.let { summary.append("• Active Energy: ${it.second} kcal\n") }
+            calHist.find { it.first == targetDate }?.let { summary.append("• Total Energy: ${it.second} kcal\n") }
             hrvHist.find { it.first == targetDate }?.let { summary.append("• HRV (RMSSD): ${it.second.toInt()} ms\n") }
             spikeHistory.find { it.date == targetDate }?.let {
                 summary.append("• HR Spikes: ${it.spikeCount} events | Max Delta: +${it.maxDelta} bpm | Range: ${it.baseline}-${it.max} bpm\n")
@@ -1500,10 +1502,12 @@ class LogRepository @Inject constructor(
             else emptyList()
         } catch (e: Exception) { emptyList() }
 
-        val calJson = preferences.historicalCalories.first()
-        val calHist = try {
-            if (calJson.isNotBlank()) json.decodeFromString<List<com.notel.notel.data.model.BiomarkerPoint>>(calJson).map { it.date to it.value }
-            else if (healthConnectManager.hasAllPermissions()) healthConnectManager.readHistoricalCalories(180)
+        // Active calories (NOT total): the "Active Calorie Load" factor thresholds
+        // (<1800 / 1800-2800 / >2800) are calibrated for active calories, and the
+        // scorer's intent is exertion. Read Health Connect directly via the
+        // active-preferred history so the total-valued pref can never shift the score.
+        val calHist: List<Pair<String, Int>> = try {
+            if (healthConnectManager.hasAllPermissions()) healthConnectCoordinator.getCaloriesHistory(14)
             else emptyList()
         } catch (e: Exception) { emptyList() }
 
