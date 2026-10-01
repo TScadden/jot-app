@@ -1,5 +1,9 @@
 package com.notel.notel.ui.screen
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -84,9 +88,32 @@ fun ProgressReportsScreen(
 ) {
     val context = LocalContext.current
 
+    // Otto's feature: restore the last-used report type and range.
+    val savedLastType by viewModel.lastReportType.collectAsState(initial = "health")
+    val savedLastRange by viewModel.lastReportRange30d.collectAsState(initial = true)
+    var userTouchedPrefs by remember { mutableStateOf(false) }
+
     var focus by remember { mutableStateOf(ReportFocus.HEALTH) }
     var last30Days by remember { mutableStateOf(true) }
     var customIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
+
+    LaunchedEffect(savedLastType, savedLastRange) {
+        if (!userTouchedPrefs) {
+            focus = ReportFocus.entries.firstOrNull { it.key == savedLastType } ?: ReportFocus.HEALTH
+            last30Days = savedLastRange
+        }
+    }
+    LaunchedEffect(focus, last30Days, userTouchedPrefs) {
+        if (userTouchedPrefs) viewModel.saveLastReportPrefs(focus.key, last30Days)
+    }
+    fun pickFocus(next: ReportFocus) {
+        userTouchedPrefs = true
+        focus = next
+    }
+    fun pickRange(isMonth: Boolean) {
+        userTouchedPrefs = true
+        last30Days = isMonth
+    }
 
     val allLogs by viewModel.allLogs.collectAsState()
     val allCategories by viewModel.categories.collectAsState()
@@ -101,6 +128,30 @@ fun ProgressReportsScreen(
     var showDatePicker by remember { mutableStateOf(false) }
     var pickedDateIso by remember { mutableStateOf<String?>(null) }
     var appointmentFocus by remember { mutableStateOf(ReportFocus.HEALTH) }
+    // Vera's feature: confirm before the share sheet; the PDF holds health data.
+    var pendingShareFile by remember { mutableStateOf<java.io.File?>(null) }
+    // Juno's feature: expandable data-source disclosure.
+    var showSources by remember { mutableStateOf(false) }
+    // Mira's feature: staggered card entrance.
+    var cardsVisible by remember { mutableStateOf(false) }
+
+    // Mason's feature: last successful export timestamp.
+    val lastExportTime by viewModel.lastReportExportTime.collectAsState(initial = 0L)
+
+    fun sharePdf(file: java.io.File) {
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.provider",
+            file
+        )
+        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "application/pdf"
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(android.content.Intent.createChooser(intent, "Share Progress Report"))
+        viewModel.markReportExported()
+    }
 
     val selectedCategories = remember(allCategories, focus, customIds) {
         resolveReportCategories(allCategories, focus, customIds)
@@ -119,6 +170,20 @@ fun ProgressReportsScreen(
     }
     var selectedHour by remember { mutableStateOf<Int?>(null) }
 
+    // Tess's feature: honest data coverage. Distinct days with entries in
+    // range, over the days the range covers (30, or the actual span capped
+    // at the 180 days the full generator reads).
+    val dayMs = 24 * 60 * 60 * 1000L
+    val distinctDaysLogged = remember(logsInRange) {
+        logsInRange.map { it.timestamp / dayMs }.toSet().size
+    }
+    val coverageDenominator = remember(allLogs, last30Days) {
+        if (last30Days) 30 else {
+            val oldest = allLogs.minOfOrNull { it.timestamp } ?: System.currentTimeMillis()
+            (((System.currentTimeMillis() - oldest) / dayMs) + 1).toInt().coerceIn(1, 180)
+        }
+    }
+
     val hasAnyLogs = allLogs.isNotEmpty()
     val isGenerating = reportState.isProcessing
     val isAnyBusy = isGenerating || isDeepBusy || isProtocolBusy
@@ -133,23 +198,18 @@ fun ProgressReportsScreen(
     LaunchedEffect(reportState) {
         val currentState = reportState
         if (currentState is com.notel.notel.ui.state.ReportGenerationState.Ready) {
-            val uri = androidx.core.content.FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.provider",
-                currentState.file
-            )
-            val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                type = "application/pdf"
-                putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            context.startActivity(android.content.Intent.createChooser(intent, "Share Progress Report"))
+            // Vera's feature: hold the file for an explicit share confirmation
+            // instead of opening the share sheet unprompted.
+            pendingShareFile = currentState.file
             viewModel.resetReportGenerationState()
             activeRange = null
         } else if (!currentState.isProcessing) {
             activeRange = null
         }
     }
+
+    // Mira's feature: cards fade and rise in, staggered.
+    LaunchedEffect(Unit) { cardsVisible = true }
 
     // Renders inside the shared Settings scroll column; the outer Settings
     // top bar shows "Progress Reports" and its back button returns to
@@ -159,6 +219,7 @@ fun ProgressReportsScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
             // ---------- One page overview ----------
+            ReportCard(visible = cardsVisible, delayMillis = 0) {
             Surface(
                 shape = RoundedCornerShape(16.dp),
                 color = NotelSurface,
@@ -174,7 +235,7 @@ fun ProgressReportsScreen(
                         ReportFocus.entries.forEach { option ->
                             val selected = focus == option
                             GlassyButton(
-                                onClick = { focus = option },
+                                onClick = { pickFocus(option) },
                                 modifier = Modifier.weight(1f),
                                 containerColor = if (selected) NotelPrimary.copy(alpha = 0.18f) else NotelSurfaceHigh
                             ) {
@@ -245,7 +306,7 @@ fun ProgressReportsScreen(
                         listOf(true to "This Month", false to "All Time").forEach { (isMonth, label) ->
                             val selected = last30Days == isMonth
                             GlassyButton(
-                                onClick = { last30Days = isMonth },
+                                onClick = { pickRange(isMonth) },
                                 modifier = Modifier.weight(1f),
                                 containerColor = if (selected) NotelPrimary.copy(alpha = 0.18f) else NotelSurfaceHigh
                             ) {
@@ -281,13 +342,23 @@ fun ProgressReportsScreen(
                             modifier = Modifier.weight(1f)
                         )
                     }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Logged $distinctDaysLogged of $coverageDenominator days",
+                        color = NotelTextSecondary.copy(alpha = 0.75f),
+                        fontSize = 11.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
 
                     Spacer(Modifier.height(12.dp))
                     MedicalDisclaimerBanner()
                 }
             }
+            }
 
             // ---------- Preview ----------
+            ReportCard(visible = cardsVisible, delayMillis = 90) {
             Surface(
                 shape = RoundedCornerShape(16.dp),
                 color = NotelSurface,
@@ -422,11 +493,61 @@ fun ProgressReportsScreen(
                             fontSize = 11.sp
                         )
                     }
+
+                    // Mason's feature: when the last report was exported.
+                    if (lastExportTime > 0L) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Last exported ${SimpleDateFormat("MMM d, h:mm a", Locale.US).format(Date(lastExportTime))}",
+                            color = NotelTextSecondary.copy(alpha = 0.6f),
+                            fontSize = 11.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    // Juno's feature: honest disclosure of what feeds the report.
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showSources = !showSources }
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("What's in this report", color = NotelTextSecondary, fontSize = 12.sp)
+                        Icon(
+                            if (showSources) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            null,
+                            tint = NotelTextSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    if (showSources) {
+                        Spacer(Modifier.height(4.dp))
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            ReportSourceRow(
+                                "Your logged entries",
+                                "Symptoms, meds, sleep, and notes you recorded"
+                            )
+                            ReportSourceRow(
+                                "Health Connect biometrics",
+                                "Heart rate, sleep, and activity from your device"
+                            )
+                            ReportSourceRow(
+                                "AI generated summary",
+                                "Written by AI from your data. Informational only, not medical advice."
+                            )
+                        }
+                    }
                 }
+            }
             }
 
             // ---------- Details ----------
             if (selectedCategories.isNotEmpty()) {
+                ReportCard(visible = cardsVisible, delayMillis = 180) {
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = NotelSurface,
@@ -449,9 +570,11 @@ fun ProgressReportsScreen(
                         }
                     }
                 }
+                }
             }
 
             // ---------- Prepare for an appointment ----------
+            ReportCard(visible = cardsVisible, delayMillis = 270) {
             Surface(
                 shape = RoundedCornerShape(16.dp),
                 color = NotelSurface,
@@ -503,7 +626,7 @@ fun ProgressReportsScreen(
                                     TextButton(
                                         onClick = {
                                             ReportFocus.entries.firstOrNull { it.key == savedAppointmentType }
-                                                ?.let { focus = it }
+                                                ?.let { pickFocus(it) }
                                         }
                                     ) {
                                         Text("Use this type", color = NotelPrimary, fontSize = 12.sp)
@@ -571,6 +694,7 @@ fun ProgressReportsScreen(
                     }
                 }
             }
+            }
 
             Spacer(Modifier.height(8.dp))
     } // end content column
@@ -602,6 +726,45 @@ fun ProgressReportsScreen(
             DatePicker(state = datePickerState)
         }
     }
+
+    // Vera's feature: explicit confirmation before the share sheet. The PDF
+    // holds health data, so it never opens the share sheet unprompted.
+    if (pendingShareFile != null) {
+        val file = pendingShareFile!!
+        AlertDialog(
+            onDismissRequest = { pendingShareFile = null },
+            title = {
+                Text("Share health report", color = NotelTextPrimary, fontWeight = FontWeight.SemiBold)
+            },
+            text = {
+                Column {
+                    Text(
+                        "This PDF contains your health data. Only share it with people you trust.",
+                        color = NotelTextSecondary,
+                        fontSize = 13.sp
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(file.name, color = NotelTextPrimary, fontSize = 12.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "For informational purposes only. Not medical advice.",
+                        color = NotelTextSecondary.copy(alpha = 0.7f),
+                        fontSize = 11.sp
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { sharePdf(file); pendingShareFile = null }) {
+                    Text("Share", color = NotelPrimary, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingShareFile = null }) {
+                    Text("Not now", color = NotelTextSecondary)
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -609,5 +772,45 @@ private fun OverviewStat(value: String, label: String, modifier: Modifier = Modi
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(value, color = NotelPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         Text(label, color = NotelTextSecondary, fontSize = 11.sp, textAlign = TextAlign.Center)
+    }
+}
+
+/**
+ * Mira's feature: staggered card entrance. Fade plus a short rise, each card
+ * delayed after the previous. Motion only; the purple system is untouched.
+ */
+@Composable
+private fun ReportCard(
+    visible: Boolean,
+    delayMillis: Int,
+    content: @Composable () -> Unit
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(animationSpec = tween(450, delayMillis = delayMillis)) +
+            slideInVertically(
+                animationSpec = tween(450, delayMillis = delayMillis),
+                initialOffsetY = { it / 5 }
+            )
+    ) {
+        Box(modifier = Modifier.fillMaxWidth()) { content() }
+    }
+}
+
+/** Juno's feature: one row of the "What's in this report" disclosure. */
+@Composable
+private fun ReportSourceRow(title: String, detail: String) {
+    Row(verticalAlignment = Alignment.Top) {
+        Icon(
+            Icons.Default.CheckCircle,
+            null,
+            tint = NotelPrimary.copy(alpha = 0.7f),
+            modifier = Modifier.size(16.dp).padding(top = 2.dp)
+        )
+        Spacer(Modifier.width(8.dp))
+        Column {
+            Text(title, color = NotelTextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text(detail, color = NotelTextSecondary, fontSize = 12.sp)
+        }
     }
 }

@@ -176,6 +176,12 @@ open class NotelPreferences(
         // "health" | "training" | "custom".
         val APPOINTMENT_DATE = stringPreferencesKey("progress_report_appointment_date")
         val APPOINTMENT_REPORT_TYPE = stringPreferencesKey("progress_report_appointment_type")
+        // Tabs Lab: Progress Reports continuity (Otto's feature). Remembers the
+        // last-used type and range so the screen opens where the user left off.
+        val LAST_REPORT_TYPE = stringPreferencesKey("progress_report_last_type")
+        val LAST_REPORT_RANGE_30D = booleanPreferencesKey("progress_report_last_range_30d")
+        // Tabs Lab: last successful export timestamp (Mason's feature).
+        val LAST_REPORT_EXPORT_TIME = longPreferencesKey("progress_report_last_export_time")
     }
 
     val appointmentDate: Flow<String?> = dataStore.data.map { it[APPOINTMENT_DATE] }
@@ -189,6 +195,22 @@ open class NotelPreferences(
     val appointmentReportType: Flow<String> = dataStore.data.map { it[APPOINTMENT_REPORT_TYPE] ?: "health" }
     suspend fun setAppointmentReportType(reportType: String) {
         dataStore.edit { it[APPOINTMENT_REPORT_TYPE] = reportType }
+    }
+
+    // Otto's feature: remember the last-used report type and range.
+    val lastReportType: Flow<String> = dataStore.data.map { it[LAST_REPORT_TYPE] ?: "health" }
+    val lastReportRange30d: Flow<Boolean> = dataStore.data.map { it[LAST_REPORT_RANGE_30D] ?: true }
+    suspend fun saveLastReportPrefs(reportType: String, range30d: Boolean) {
+        dataStore.edit {
+            it[LAST_REPORT_TYPE] = reportType
+            it[LAST_REPORT_RANGE_30D] = range30d
+        }
+    }
+
+    // Mason's feature: timestamp of the last successful report export.
+    val lastReportExportTime: Flow<Long> = dataStore.data.map { it[LAST_REPORT_EXPORT_TIME] ?: 0L }
+    suspend fun setLastReportExportTime(epochMs: Long) {
+        dataStore.edit { it[LAST_REPORT_EXPORT_TIME] = epochMs }
     }
 
     open val manualBloodPressureLogs: Flow<String> = dataStore.data.map { it[MANUAL_BLOOD_PRESSURE_LOGS] ?: "[]" }

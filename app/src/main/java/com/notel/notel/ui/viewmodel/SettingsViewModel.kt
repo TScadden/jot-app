@@ -103,6 +103,25 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    // Otto's feature: report type/range continuity for Progress Reports.
+    val lastReportType = preferences.lastReportType
+    val lastReportRange30d = preferences.lastReportRange30d
+
+    fun saveLastReportPrefs(reportType: String, range30d: Boolean) {
+        viewModelScope.launch {
+            preferences.saveLastReportPrefs(reportType, range30d)
+        }
+    }
+
+    // Mason's feature: last successful export timestamp.
+    val lastReportExportTime = preferences.lastReportExportTime
+
+    fun markReportExported() {
+        viewModelScope.launch {
+            preferences.setLastReportExportTime(System.currentTimeMillis())
+        }
+    }
+
     val knowledgeBase = preferences.knowledgeBase
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
