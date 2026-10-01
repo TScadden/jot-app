@@ -17,6 +17,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.filled.AccountBalanceWallet
@@ -76,7 +77,7 @@ import kotlinx.coroutines.*
 
 
 enum class SettingsMenu {
-    MAIN, USER_PROFILE, CUSTOMIZE, CONNECTED_APPS, AI_AND_KNOWLEDGE, EVENT_COUNTERS, MEMBERSHIP, NOTIFICATIONS, SYNC_SETTINGS, JOT_LIVE, DEBUG
+    MAIN, USER_PROFILE, CUSTOMIZE, CONNECTED_APPS, AI_AND_KNOWLEDGE, EVENT_COUNTERS, MEMBERSHIP, NOTIFICATIONS, SYNC_SETTINGS, JOT_LIVE, DEBUG, PROGRESS_REPORTS
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -309,7 +310,12 @@ fun SettingsScreen(
     
     BackHandler(enabled = currentMenu != SettingsMenu.MAIN) {
         viewModel.flushProfilePush()
-        currentMenu = SettingsMenu.MAIN
+        // Tabs Lab: Progress Reports is a sub-screen of AI & Clinical Advocate.
+        currentMenu = if (currentMenu == SettingsMenu.PROGRESS_REPORTS) {
+            SettingsMenu.AI_AND_KNOWLEDGE
+        } else {
+            SettingsMenu.MAIN
+        }
     }
     
     fun shareFile(context: android.content.Context, file: java.io.File) {
@@ -467,12 +473,20 @@ fun SettingsScreen(
                         SettingsMenu.SYNC_SETTINGS -> "Sync Settings"
                         SettingsMenu.JOT_LIVE -> "Tabs Live Beta"
                         SettingsMenu.DEBUG -> "Developer Terminal"
+                        SettingsMenu.PROGRESS_REPORTS -> "Progress Reports"
                     }
                     Text(titleText, fontWeight = FontWeight.Bold, color = NotelTextPrimary) 
                 },
                 navigationIcon = {
                     if (currentMenu != SettingsMenu.MAIN) {
-                        IconButton(onClick = { currentMenu = SettingsMenu.MAIN }) {
+                        IconButton(onClick = {
+                            // Tabs Lab: Progress Reports is a sub-screen of AI & Clinical Advocate.
+                            currentMenu = if (currentMenu == SettingsMenu.PROGRESS_REPORTS) {
+                                SettingsMenu.AI_AND_KNOWLEDGE
+                            } else {
+                                SettingsMenu.MAIN
+                            }
+                        }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = NotelTextSecondary)
                         }
                     }
@@ -2156,222 +2170,32 @@ fun SettingsScreen(
                 Text("CLINICAL ADVOCACY", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(8.dp))
 
+                // Tabs Lab (playground): the old inline Audit (PDF) toggle moved to
+                // the dedicated Progress Reports screen.
                 GlassyCard(
                     shape = RoundedCornerShape(16.dp),
-                    color = NotelSurface
+                    color = NotelSurface,
+                    modifier = Modifier.clickable { currentMenu = SettingsMenu.PROGRESS_REPORTS }
                 ) {
-                    Text("Audit (PDF)", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Generate a data-dense PDF summary of your trends, spikes, and compliance for your physician.",
-                        color = NotelTextSecondary,
-                        fontSize = 12.sp
-                    )
-                    
-                    val reportState by viewModel.reportGenerationState.collectAsState()
-                    val hasLogs = viewModel.allLogs.collectAsState().value.isNotEmpty()
-                    val isDeepBusy by viewModel.isGeneratingDeepResearch.collectAsState()
-                    val isProtocolBusy by viewModel.isGeneratingWeeklyRecap.collectAsState()
-                    
-                    var activeReportType by remember { mutableStateOf<String?>(null) }
-                    val isGenerating = reportState.isProcessing
-                    val isAnyBusy = isGenerating || isDeepBusy || isProtocolBusy
-
-                    LaunchedEffect(reportState) {
-                        val currentState = reportState
-                        if (currentState is com.notel.notel.ui.state.ReportGenerationState.Ready) {
-                            val file = currentState.file
-                            val uri = androidx.core.content.FileProvider.getUriForFile(
-                                context,
-                                "${context.packageName}.provider",
-                                file
-                            )
-                            val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                type = "application/pdf"
-                                putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            }
-                            context.startActivity(android.content.Intent.createChooser(intent, "Share Clinical Audit Report"))
-                            viewModel.resetReportGenerationState()
-                            activeReportType = null
-                        } else if (!currentState.isProcessing) {
-                            activeReportType = null
-                        }
-                    }
-
-                    if (reportState.isProcessing) {
-                        val stageLabel = when (val s = reportState) {
-                            is com.notel.notel.ui.state.ReportGenerationState.CollectingData -> s.stageLabel
-                            is com.notel.notel.ui.state.ReportGenerationState.RefreshingHealthData -> s.stageLabel
-                            is com.notel.notel.ui.state.ReportGenerationState.BuildingSummary -> s.stageLabel
-                            is com.notel.notel.ui.state.ReportGenerationState.RenderingPdf -> s.stageLabel
-                            is com.notel.notel.ui.state.ReportGenerationState.SavingFile -> s.stageLabel
-                            else -> "Generating report..."
-                        }
-                        
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                GlassySpinner(size = 18.dp)
-                                Spacer(Modifier.width(10.dp))
-                                Text(stageLabel, color = NotelPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                            }
-                            Spacer(Modifier.height(8.dp))
-                            TextButton(onClick = { viewModel.cancelReportGeneration() }) {
-                                Text("Cancel Report Generation", color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
-                            }
-                        }
-                        Spacer(Modifier.height(8.dp))
-                    }
-
-                    if (reportState is com.notel.notel.ui.state.ReportGenerationState.Failed) {
-                        val failedState = reportState as com.notel.notel.ui.state.ReportGenerationState.Failed
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 6.dp)
-                        ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Progress Reports", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
+                            Spacer(Modifier.height(4.dp))
                             Text(
-                                failedState.message,
-                                color = MaterialTheme.colorScheme.error,
+                                "Pick a report type, preview your data, and export a PDF for your physician.",
+                                color = NotelTextSecondary,
                                 fontSize = 12.sp
                             )
-                            if (failedState.allowRawFallback) {
-                                Spacer(Modifier.height(4.dp))
-                                TextButton(
-                                    onClick = {
-                                        val is30Days = (activeReportType == "month")
-                                        viewModel.generateProfessionalReport(last30DaysOnly = is30Days, forceRawFallback = true)
-                                    }
-                                ) {
-                                    Text("Generate Raw Data Report (Without AI)", color = NotelPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
                         }
-                        Spacer(Modifier.height(8.dp))
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Max),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        val isFullGenerating = isGenerating && activeReportType == "full"
-                        val isMonthGenerating = isGenerating && activeReportType == "month"
-
-                        GlassyButton(
-                            onClick = {
-                                activeReportType = "full"
-                                viewModel.generateProfessionalReport(last30DaysOnly = false)
-                            },
-                            modifier = Modifier.weight(1f).fillMaxHeight(),
-                            enabled = !isAnyBusy && hasLogs,
-                            containerColor = NotelSurfaceHigh
-                        ) {
-                            if (isFullGenerating) {
-                                GlassySpinner(size = 18.dp)
-                            } else {
-                                Icon(
-                                    Icons.Default.PictureAsPdf,
-                                    null,
-                                    tint = if (!isAnyBusy && hasLogs) NotelPrimary else NotelTextSecondary.copy(alpha = 0.4f),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    "Full Audit",
-                                    color = if (!isAnyBusy && hasLogs) NotelTextPrimary else NotelTextSecondary.copy(alpha = 0.4f),
-                                    fontSize = 12.sp,
-                                    maxLines = 1
-                                )
-                            }
-                        }
-
-                        GlassyButton(
-                            onClick = {
-                                activeReportType = "month"
-                                viewModel.generateProfessionalReport(last30DaysOnly = true)
-                            },
-                            modifier = Modifier.weight(1f).fillMaxHeight(),
-                            enabled = !isAnyBusy && hasLogs,
-                            containerColor = NotelSurfaceHigh
-                        ) {
-                            if (isMonthGenerating) {
-                                GlassySpinner(size = 18.dp)
-                            } else {
-                                Icon(
-                                    Icons.Default.PictureAsPdf,
-                                    null,
-                                    tint = if (!isAnyBusy && hasLogs) NotelPrimary else NotelTextSecondary.copy(alpha = 0.4f),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    "This Month",
-                                    color = if (!isAnyBusy && hasLogs) NotelTextPrimary else NotelTextSecondary.copy(alpha = 0.4f),
-                                    fontSize = 12.sp,
-                                    maxLines = 1
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(Modifier.height(16.dp))
-                    HorizontalDivider(color = NotelSurfaceHigh, thickness = 0.5.dp)
-                    Spacer(Modifier.height(16.dp))
-
-                    // NEW: Deep Research & Protocol Comparison
-                    Text("AI Research Terminal", color = NotelTextPrimary, fontWeight = FontWeight.Medium)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Run advanced multi-point analysis on your long-term data and uploaded protocols.",
-                        color = NotelTextSecondary,
-                        fontSize = 12.sp
-                    )
-                    Spacer(Modifier.height(16.dp))
-
-                    Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        GlassyButton(
-                            onClick = { viewModel.generateDeepResearch() },
-                            modifier = Modifier.weight(1f).fillMaxHeight(),
-                            enabled = !isAnyBusy && hasLogs,
-                            containerColor = NotelSurfaceHigh
-                        ) {
-                            if (isDeepBusy) GlassySpinner(size = 18.dp)
-                            else {
-                                Icon(Icons.Default.Search, null, tint = if (!isAnyBusy && hasLogs) NotelPrimary else NotelTextSecondary.copy(alpha = 0.4f), modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("Deep Audit", color = if (!isAnyBusy && hasLogs) NotelTextPrimary else NotelTextSecondary.copy(alpha = 0.4f), fontSize = 12.sp, maxLines = 1)
-                            }
-                        }
-
-                        GlassyButton(
-                            onClick = { viewModel.generateWeeklyRecap() },
-                            modifier = Modifier.weight(1f).fillMaxHeight(),
-                            enabled = !isAnyBusy && hasLogs,
-                            containerColor = NotelSurfaceHigh
-                        ) {
-                            if (isProtocolBusy) GlassySpinner(size = 18.dp)
-                            else {
-                                Icon(Icons.Default.AssignmentTurnedIn, null, tint = if (!isAnyBusy && hasLogs) NotelPrimary else NotelTextSecondary.copy(alpha = 0.4f), modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("Weekly Recap", color = if (!isAnyBusy && hasLogs) NotelTextPrimary else NotelTextSecondary.copy(alpha = 0.4f), fontSize = 11.sp, maxLines = 1, softWrap = false)
-                            }
-                        }
-                    }
-
-                    if (!hasLogs) {
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            "Add some notes first to generate a report.",
-                            color = NotelTextSecondary.copy(alpha = 0.5f),
-                            fontSize = 11.sp
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowForward,
+                            null,
+                            tint = NotelPrimary,
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                 }
@@ -2412,6 +2236,10 @@ fun SettingsScreen(
                     }
                 }
                 Spacer(Modifier.height(24.dp))
+            }
+            // Tabs Lab (playground): dedicated Progress Reports screen.
+            if (currentMenu == SettingsMenu.PROGRESS_REPORTS) {
+                ProgressReportsScreen(viewModel = viewModel)
             }
             if (currentMenu == SettingsMenu.CONNECTED_APPS) {
                 
@@ -4459,6 +4287,12 @@ fun DebugScreen(
             item {
                 GlassyButton(onClick = { viewModel.testCheckInReminderNotification(context) }, modifier = Modifier.fillMaxWidth()) {
                     Text("Check in", color = NotelTextPrimary, fontSize = 10.sp)
+                }
+            }
+            // Tabs Lab: the appointment day-before nudge
+            item {
+                GlassyButton(onClick = { viewModel.testAppointmentReminderNotification(context) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Visit nudge", color = NotelTextPrimary, fontSize = 10.sp)
                 }
             }
             item {

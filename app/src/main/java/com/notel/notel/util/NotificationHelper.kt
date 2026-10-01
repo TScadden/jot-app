@@ -484,4 +484,46 @@ class NotificationHelper(private val context: Context) {
 
         manager.notify(770001, notification)
     }
+
+    /**
+     * Tabs Lab: day-before nudge for a saved Progress Reports appointment.
+     * Dash-free, sentence case copy per the notification copy rule.
+     */
+    fun showAppointmentReminder(reportTypeLabel: String, dateLabel: String) {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val channelId = "appointment_reminder"
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                "Appointment reminders",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Day before reminder to export your progress report"
+            }
+            manager.createNotificationChannel(channel)
+        }
+
+        // Opens the app; the report itself is exported from Progress Reports.
+        val tapIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            770002,
+            tapIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(R.drawable.ic_noti_note)
+            .setContentTitle("Appointment tomorrow")
+            .setContentText("Your visit is on $dateLabel. Export your $reportTypeLabel report so it is ready.")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build()
+
+        manager.notify(770002, notification)
+    }
 }
