@@ -75,6 +75,24 @@ class SettingsViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
     val lastSyncTime = preferences.lastSyncTime
+
+    // Playground: Progress Reports appointment card (persisted in DataStore).
+    val appointmentDate = preferences.appointmentDate
+    val appointmentReportType = preferences.appointmentReportType
+
+    fun saveAppointment(dateIso: String?, reportType: String) {
+        viewModelScope.launch {
+            preferences.setAppointmentDate(dateIso)
+            preferences.setAppointmentReportType(reportType)
+        }
+    }
+
+    fun clearAppointment() {
+        viewModelScope.launch {
+            preferences.setAppointmentDate(null)
+            preferences.setAppointmentReportType("health")
+        }
+    }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
 
     val knowledgeBase = preferences.knowledgeBase
@@ -773,13 +791,21 @@ class SettingsViewModel @Inject constructor(
 
     private var reportJob: kotlinx.coroutines.Job? = null
 
-    fun generateProfessionalReport(last30DaysOnly: Boolean = false, forceRawFallback: Boolean = false) {
+    fun generateProfessionalReport(
+        last30DaysOnly: Boolean = false,
+        forceRawFallback: Boolean = false,
+        // Playground: Progress Reports type picker. Optional override for which
+        // categories feed the report. Null keeps the legacy all-categories path.
+        // The generators and the AI prompt are NOT changed by this.
+        categoriesOverride: List<com.notel.notel.data.local.entity.Category>? = null
+    ) {
         reportJob?.cancel()
         reportJob = viewModelScope.launch {
             try {
+                val cats = categoriesOverride ?: categories.value
                 if (forceRawFallback) {
                     _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.CollectingData("Collecting patient data for Raw Data report...")
-                    val snapshot = logRepository.clinicalReportDataCollector.collectReportData(categories.value, last30DaysOnly)
+                    val snapshot = logRepository.clinicalReportDataCollector.collectReportData(cats, last30DaysOnly)
                     _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.RenderingPdf("Rendering Raw Data PDF...")
                     val file = reportGenerator.generateReport(snapshot, aiSummary = null, isRawFallback = true)
                     if (file != null) {
@@ -790,7 +816,7 @@ class SettingsViewModel @Inject constructor(
                     }
                 } else {
                     logRepository.generateProfessionalReportWithSnapshot(
-                        categories = categories.value,
+                        categories = cats,
                         reportGenerator = reportGenerator,
                         last30DaysOnly = last30DaysOnly,
                         onStateUpdate = { state ->

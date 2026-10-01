@@ -171,6 +171,24 @@ open class NotelPreferences(
         val TODAY_PLAN_EXPANDED = booleanPreferencesKey("today_plan_expanded")
         val WHAT_CHANGED_EXPANDED = booleanPreferencesKey("what_changed_expanded")
         val MANUAL_BLOOD_PRESSURE_LOGS = stringPreferencesKey("manual_blood_pressure_logs")
+        // Tabs Lab: Progress Reports "prepare for an appointment" card (playground).
+        // Additive only; both default empty. Date stored ISO yyyy-MM-dd; type is
+        // "health" | "training" | "custom".
+        val APPOINTMENT_DATE = stringPreferencesKey("progress_report_appointment_date")
+        val APPOINTMENT_REPORT_TYPE = stringPreferencesKey("progress_report_appointment_type")
+    }
+
+    val appointmentDate: Flow<String?> = dataStore.data.map { it[APPOINTMENT_DATE] }
+    suspend fun setAppointmentDate(dateIso: String?) {
+        dataStore.edit { prefs ->
+            if (dateIso.isNullOrBlank()) prefs.remove(APPOINTMENT_DATE)
+            else prefs[APPOINTMENT_DATE] = dateIso
+        }
+    }
+
+    val appointmentReportType: Flow<String> = dataStore.data.map { it[APPOINTMENT_REPORT_TYPE] ?: "health" }
+    suspend fun setAppointmentReportType(reportType: String) {
+        dataStore.edit { it[APPOINTMENT_REPORT_TYPE] = reportType }
     }
 
     open val manualBloodPressureLogs: Flow<String> = dataStore.data.map { it[MANUAL_BLOOD_PRESSURE_LOGS] ?: "[]" }
