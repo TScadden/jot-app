@@ -38,7 +38,7 @@ private data class PremiumFeature(
 private val premiumFeatures = listOf(
     PremiumFeature(Icons.Default.AutoAwesome, "AI Clinical Advocate", "Get a personalized AI coach that understands your health history, goals, and biometric data."),
     PremiumFeature(Icons.Default.Insights, "Smart Tiles & Trends", "Intelligent tiles that analyze your logs and surface patterns you didn't know existed."),
-    PremiumFeature(Icons.Default.Science, "Deep Research Reports", "Generate clinical-quality weekly summaries of your body load, sleep, and heart data.")
+    PremiumFeature(Icons.Default.Science, "Deep Research Reports", "Generate clinical-quality weekly summaries of your sleep, heart, and activity data.")
 )
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -4429,12 +4429,6 @@ fun DebugScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             item {
-                GlassyButton(onClick = { viewModel.testDailyReminder(context) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Daily", color = NotelTextPrimary, fontSize = 10.sp)
-                }
-            }
-            
-            item {
                 GlassyButton(onClick = { viewModel.testHabitNotification(context) }, modifier = Modifier.fillMaxWidth()) {
                     Text("Habit", color = NotelTextPrimary, fontSize = 10.sp)
                 }
@@ -4462,16 +4456,6 @@ fun DebugScreen(
                 }
             }
             item {
-                GlassyButton(onClick = { viewModel.testMiddayBodyLoadNotification(context) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Midday", color = NotelTextPrimary, fontSize = 10.sp)
-                }
-            }
-            item {
-                GlassyButton(onClick = { viewModel.testBodyLoadUpdateNotification(context) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Body load", color = NotelTextPrimary, fontSize = 10.sp)
-                }
-            }
-            item {
                 GlassyButton(onClick = { viewModel.testEventNotification(context) }, modifier = Modifier.fillMaxWidth()) {
                     Text("Event", color = NotelTextPrimary, fontSize = 10.sp)
                 }
@@ -4494,11 +4478,6 @@ fun DebugScreen(
             item {
                 GlassyButton(onClick = { viewModel.recoverAccountData() }, modifier = Modifier.fillMaxWidth(), containerColor = NotelSurfaceHigh) {
                     Text("Force Sync", color = NotelTextPrimary, fontSize = 10.sp)
-                }
-            }
-            item {
-                GlassyButton(onClick = { viewModel.refreshThisWeeksScores() }, modifier = Modifier.fillMaxWidth(), containerColor = NotelSurfaceHigh) {
-                    Text("Refresh Week", color = NotelTextPrimary, fontSize = 10.sp)
                 }
             }
         }

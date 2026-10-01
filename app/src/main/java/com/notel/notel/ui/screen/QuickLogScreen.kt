@@ -47,8 +47,7 @@ fun QuickLogScreen(
     onNavigateToMembership: () -> Unit = {},
     onNavigateToTrends: () -> Unit,
     onNavigateToFitbit: () -> Unit,
-    onNavigateToSleep: () -> Unit,
-    onNavigateToBodyLoad: () -> Unit = {}
+    onNavigateToSleep: () -> Unit
 ) {
     val state by viewModel.uiState.collectAsState()
     val isGeneratingWeeklyRecap by viewModel.isGeneratingWeeklyRecap.collectAsState()

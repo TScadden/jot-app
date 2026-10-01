@@ -31,7 +31,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.notel.notel.ui.component.SkeletonLine
 import com.notel.notel.ui.theme.*
-import com.notel.notel.ui.viewmodel.BodyLoadViewModel
+import com.notel.notel.ui.viewmodel.TodayMetricsViewModel
 import com.notel.notel.ui.viewmodel.EnergyCheckInViewModel
 import com.notel.notel.ui.viewmodel.QuickLogViewModel
 import com.notel.notel.ui.viewmodel.HabitViewModel
@@ -58,8 +58,8 @@ import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun BodyLoadScreen(
-    viewModel: BodyLoadViewModel = hiltViewModel(),
+fun TodayScreen(
+    viewModel: TodayMetricsViewModel = hiltViewModel(),
     quickLogViewModel: QuickLogViewModel = hiltViewModel(),
     weeklySnapshotViewModel: com.notel.notel.ui.viewmodel.WeeklySnapshotViewModel = hiltViewModel(),
     onBack: () -> Unit,
@@ -1488,7 +1488,7 @@ fun BodyLoadScreen(
                         Text("Ambient Temp & Sleep Recovery", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                         Spacer(Modifier.height(12.dp))
                         Text(
-                            text = "Ambient temperature strongly influences body load recovery. Sleep studies show that cooler rooms support deeper, higher-quality sleep.",
+                            text = "Ambient temperature strongly influences overnight recovery. Sleep studies show that cooler rooms support deeper, higher-quality sleep.",
                             color = Color.White.copy(alpha = 0.7f),
                             fontSize = 14.sp,
                             lineHeight = 20.sp

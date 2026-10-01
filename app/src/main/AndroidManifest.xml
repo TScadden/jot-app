@@ -160,9 +160,6 @@
             android:enabled="true"
             android:exported="false">
             <intent-filter>
-                <action android:name="com.notel.notel.TEST_BODY_LOAD" />
-                <action android:name="com.notel.notel.TEST_MIDDAY_BODY_LOAD" />
-                <action android:name="com.notel.notel.TEST_BODY_LOAD_REMINDER" />
                 <action android:name="com.notel.notel.TEST_HABIT" />
                 <action android:name="com.notel.notel.TEST_SPIKE" />
                 <action android:name="com.notel.notel.TEST_REMINDER" />

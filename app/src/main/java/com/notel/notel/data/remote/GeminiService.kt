@@ -246,7 +246,6 @@ class GeminiService @Inject constructor(
         pastInsights: String = "",
         fitbitData: String = "",
         habitData: String = "",
-        bodyLoadHistory: String = "",
         weatherContext: String? = null,
         documents: List<ProcessDocumentRequest> = emptyList()
     ): Result<String> {
@@ -260,7 +259,6 @@ class GeminiService @Inject constructor(
                     pastInsights = pastInsights,
                     fitbitData = fitbitData,
                     habitData = habitData,
-                    bodyLoadHistory = bodyLoadHistory,
                     weatherContext = weatherContext,
                     documents = documents
                 )
@@ -383,7 +381,6 @@ class GeminiService @Inject constructor(
                     userContext = enrichedContext,
                     knowledgeBase = snapshot.knowledgeDocuments.joinToString("\n\n").ifBlank { null },
                     fitbitData = healthSummary,
-                    bodyLoadHistory = snapshot.bodyLoadHistory.ifBlank { null },
                     dataAvailability = availabilityText.ifBlank { null }
                 )
             )
@@ -574,109 +571,6 @@ class GeminiService @Inject constructor(
     ): Result<String> {
         return try {
             val response = tabsApi.processDocument(ProcessDocumentRequest(mimeType, base64Data))
-            val result = response.body()?.result
-            if (response.isSuccessful && result != null) {
-                Result.success(result)
-            } else {
-                val errorBody = response.errorBody()?.string()
-                var errorMessage = "Unknown API Error"
-                if (errorBody != null) {
-                    try {
-                        val json = org.json.JSONObject(errorBody)
-                        if (json.has("error")) {
-                            errorMessage = json.getString("error")
-                        } else if (json.has("message")) {
-                            errorMessage = json.getString("message")
-                        } else {
-                            errorMessage = errorBody
-                        }
-                    } catch (e: Exception) {
-                        errorMessage = errorBody
-                    }
-                }
-                Result.failure(IOException(errorMessage))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-    suspend fun getBodyLoad(
-        recentEntries: List<LogEntry>,
-        categories: Map<Int, String>,
-        userContext: String = "",
-        knowledgeBase: String = "",
-        fitbitData: String = "",
-        habitData: String = "",
-        pastInsights: String = "",
-        weatherContext: String? = null,
-        documents: List<ProcessDocumentRequest> = emptyList()
-    ): Result<BodyLoadResponse> {
-        return try {
-            val response = tabsApi.getBodyLoad(
-                AiRequest(
-                    entries = recentEntries.toDto(),
-                    categories = categories,
-                    userContext = userContext,
-                    knowledgeBase = knowledgeBase,
-                    fitbitData = fitbitData,
-                    habitData = habitData,
-                    pastInsights = pastInsights,
-                    weatherContext = weatherContext,
-                    documents = documents
-                )
-            )
-            val result = response.body()?.result
-            if (response.isSuccessful && result != null) {
-                Result.success(result)
-            } else {
-                val errorBody = response.errorBody()?.string()
-                var errorMessage = "Unknown API Error"
-                if (errorBody != null) {
-                    try {
-                        val json = org.json.JSONObject(errorBody)
-                        if (json.has("error")) {
-                            errorMessage = json.getString("error")
-                        } else if (json.has("message")) {
-                            errorMessage = json.getString("message")
-                        } else {
-                            errorMessage = errorBody
-                        }
-                    } catch (e: Exception) {
-                        errorMessage = errorBody
-                    }
-                }
-                Result.failure(IOException(errorMessage))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    suspend fun getBodyLoadEnriched(
-        targetDate: String,
-        recentEntries: List<LogEntry>,
-        categories: Map<Int, String>,
-        userContext: String = "",
-        knowledgeBase: String = "",
-        fitbitData: String = "",
-        habitData: String = "",
-        pastInsights: String = "",
-        weatherContext: String? = null
-    ): Result<BodyLoadResponse> {
-        return try {
-            val response = tabsApi.getBodyLoadEnriched(
-                BodyLoadEnrichedRequest(
-                    targetDate = targetDate,
-                    entries = recentEntries.toDto(),
-                    categories = categories,
-                    userContext = userContext,
-                    knowledgeBase = knowledgeBase,
-                    fitbitData = fitbitData,
-                    habitData = habitData,
-                    pastInsights = pastInsights,
-                    weatherContext = weatherContext
-                )
-            )
             val result = response.body()?.result
             if (response.isSuccessful && result != null) {
                 Result.success(result)
