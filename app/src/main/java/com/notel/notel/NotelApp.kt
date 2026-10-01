@@ -58,6 +58,11 @@ class NotelApp : Application(), Configuration.Provider {
                 if (preferences.checkInReminderEnabled.first()) {
                     com.notel.notel.notifications.EnergyCheckInReminderScheduler.schedule(this@NotelApp)
                 }
+                // Tabs Lab: re-arm the appointment day-before nudge on every app
+                // start (idempotent; covers force-stops which cancel alarms).
+                preferences.appointmentDate.first()?.let { dateIso ->
+                    com.notel.notel.notifications.AppointmentReminderScheduler.schedule(this@NotelApp, dateIso)
+                }
             } catch (e: Exception) {
                 android.util.Log.e("NotelApp", "Failed to re-arm check-in reminder", e)
             }

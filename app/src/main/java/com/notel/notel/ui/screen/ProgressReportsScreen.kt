@@ -30,10 +30,10 @@ import java.util.*
  * which log categories feed the report; the underlying 30 day and all time
  * generators and the AI prompt are reused exactly as they are.
  */
-enum class ReportFocus(val key: String, val label: String) {
-    HEALTH("health", "Health"),
-    TRAINING("training", "Training"),
-    CUSTOM("custom", "Custom")
+enum class ReportFocus(val key: String, val label: String, val description: String) {
+    HEALTH("health", "Health", "Symptoms, meds, sleep, mood, and vitals"),
+    TRAINING("training", "Training", "Habits, vitals, and food"),
+    CUSTOM("custom", "Custom", "You pick the categories")
 }
 
 /** Category slugs bundled into each preset focus. */
@@ -57,6 +57,24 @@ private fun formatIsoDate(iso: String): String = try {
     if (parsed != null) SimpleDateFormat("MMM d, yyyy", Locale.US).format(parsed) else iso
 } catch (_: Exception) {
     iso
+}
+
+/** "today" / "tomorrow" / "in N days", or null when the date is past or unparsable. */
+private fun appointmentCountdown(iso: String): String? = try {
+    val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+        timeZone = TimeZone.getTimeZone("UTC")
+    }
+    val target = fmt.parse(iso)?.time ?: return null
+    val today = fmt.parse(fmt.format(Date()))?.time ?: return null
+    val days = ((target - today) / (24 * 60 * 60 * 1000L)).toInt()
+    when {
+        days < 0 -> null
+        days == 0 -> "today"
+        days == 1 -> "tomorrow"
+        else -> "in $days days"
+    }
+} catch (_: Exception) {
+    null
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -170,11 +188,31 @@ fun ProgressReportsScreen(
                             }
                         }
                     }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        focus.description,
+                        color = NotelTextSecondary.copy(alpha = 0.75f),
+                        fontSize = 11.sp
+                    )
 
                     if (focus == ReportFocus.CUSTOM) {
                         Spacer(Modifier.height(12.dp))
-                        Text("Include these categories", color = NotelTextSecondary, fontSize = 12.sp)
-                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Include these categories", color = NotelTextSecondary, fontSize = 12.sp)
+                            Row {
+                                TextButton(onClick = { customIds = allCategories.map { it.id }.toSet() }) {
+                                    Text("Select all", color = NotelPrimary, fontSize = 12.sp)
+                                }
+                                TextButton(onClick = { customIds = emptySet() }) {
+                                    Text("Clear", color = NotelTextSecondary, fontSize = 12.sp)
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(4.dp))
                         allCategories.forEach { category ->
                             val checked = category.id in customIds
                             Row(
@@ -273,6 +311,35 @@ fun ProgressReportsScreen(
                                 data = hourlyData,
                                 selectedHour = selectedHour,
                                 onHourSelected = { selectedHour = if (selectedHour == it) null else it }
+                            )
+                        }
+                    } else {
+                        Spacer(Modifier.height(12.dp))
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                Icons.Default.BarChart,
+                                null,
+                                tint = NotelTextSecondary.copy(alpha = 0.5f),
+                                modifier = Modifier.size(40.dp)
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                if (selectedCategories.isEmpty()) "No categories selected"
+                                else "Nothing to preview yet",
+                                color = NotelTextPrimary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                if (selectedCategories.isEmpty()) "Pick at least one category above to see a preview."
+                                else "Log symptoms, meds, or sleep and your activity will show up here.",
+                                color = NotelTextSecondary.copy(alpha = 0.7f),
+                                fontSize = 12.sp,
+                                textAlign = TextAlign.Center
                             )
                         }
                     }
@@ -399,7 +466,7 @@ fun ProgressReportsScreen(
                     }
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "Save the date and the report type you want ready for your visit.",
+                        "Save the date and the report type you want ready for your visit. We will remind you the day before to export it.",
                         color = NotelTextSecondary,
                         fontSize = 12.sp
                     )
@@ -407,6 +474,7 @@ fun ProgressReportsScreen(
 
                     if (savedAppointmentDate != null) {
                         val typeLabel = ReportFocus.entries.firstOrNull { it.key == savedAppointmentType }?.label ?: "Health"
+                        val countdown = appointmentCountdown(savedAppointmentDate!!)
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = NotelPrimary.copy(alpha = 0.12f),
@@ -417,9 +485,10 @@ fun ProgressReportsScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Column {
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        "Appointment: ${formatIsoDate(savedAppointmentDate!!)}",
+                                        "Appointment: ${formatIsoDate(savedAppointmentDate!!)}" +
+                                            (countdown?.let { " ($it)" } ?: ""),
                                         color = NotelTextPrimary,
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.Medium
@@ -430,8 +499,18 @@ fun ProgressReportsScreen(
                                         fontSize = 12.sp
                                     )
                                 }
-                                TextButton(onClick = { viewModel.clearAppointment() }) {
-                                    Text("Clear", color = NotelPrimary, fontSize = 12.sp)
+                                Column(horizontalAlignment = Alignment.End) {
+                                    TextButton(
+                                        onClick = {
+                                            ReportFocus.entries.firstOrNull { it.key == savedAppointmentType }
+                                                ?.let { focus = it }
+                                        }
+                                    ) {
+                                        Text("Use this type", color = NotelPrimary, fontSize = 12.sp)
+                                    }
+                                    TextButton(onClick = { viewModel.clearAppointment() }) {
+                                        Text("Clear", color = NotelTextSecondary, fontSize = 12.sp)
+                                    }
                                 }
                             }
                         }

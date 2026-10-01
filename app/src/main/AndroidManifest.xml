@@ -210,6 +210,12 @@
             android:enabled="true"
             android:exported="false" />
 
+        <!-- Tabs Lab: Progress Reports appointment day-before nudge -->
+        <receiver
+            android:name=".notifications.AppointmentReminderReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
     </application>
 
 </manifest>

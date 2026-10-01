@@ -75,6 +75,7 @@ class SettingsViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
     val lastSyncTime = preferences.lastSyncTime
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
 
     // Playground: Progress Reports appointment card (persisted in DataStore).
     val appointmentDate = preferences.appointmentDate
@@ -84,6 +85,13 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             preferences.setAppointmentDate(dateIso)
             preferences.setAppointmentReportType(reportType)
+            // Day-before nudge: schedule (or reschedule) the 9 AM reminder.
+            // No-ops when exact alarms are revoked or the fire time passed.
+            if (dateIso != null) {
+                com.notel.notel.notifications.AppointmentReminderScheduler.schedule(context, dateIso)
+            } else {
+                com.notel.notel.notifications.AppointmentReminderScheduler.cancel(context)
+            }
         }
     }
 
@@ -91,9 +99,9 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             preferences.setAppointmentDate(null)
             preferences.setAppointmentReportType("health")
+            com.notel.notel.notifications.AppointmentReminderScheduler.cancel(context)
         }
     }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
 
     val knowledgeBase = preferences.knowledgeBase
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
@@ -1352,6 +1360,14 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             // Tabs Lab: the exact notification the 4:00 AM receiver posts.
             com.notel.notel.util.NotificationHelper(context).showCheckInReminder()
+        }
+    }
+
+    fun testAppointmentReminderNotification(context: android.content.Context) {
+        viewModelScope.launch {
+            // Tabs Lab: the exact notification the day-before appointment receiver posts.
+            com.notel.notel.util.NotificationHelper(context)
+                .showAppointmentReminder("Health", "Oct 15")
         }
     }
 

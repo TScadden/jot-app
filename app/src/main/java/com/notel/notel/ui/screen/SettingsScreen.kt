@@ -4289,6 +4289,12 @@ fun DebugScreen(
                     Text("Check in", color = NotelTextPrimary, fontSize = 10.sp)
                 }
             }
+            // Tabs Lab: the appointment day-before nudge
+            item {
+                GlassyButton(onClick = { viewModel.testAppointmentReminderNotification(context) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Visit nudge", color = NotelTextPrimary, fontSize = 10.sp)
+                }
+            }
             item {
                 GlassyButton(onClick = { viewModel.testMiddayBodyLoadNotification(context) }, modifier = Modifier.fillMaxWidth()) {
                     Text("Midday", color = NotelTextPrimary, fontSize = 10.sp)
