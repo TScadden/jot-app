@@ -928,8 +928,6 @@ class LogRepository @Inject constructor(
             .take(5)
             .joinToString("\n") { "[${it.type}] ${it.text}" }
     }
-    
-    }
     suspend fun sendCoachMessage(
         messages: List<com.notel.notel.data.remote.CoachMessageDto>,
         userContext: String? = null,
