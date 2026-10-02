@@ -915,11 +915,17 @@ class ReportGenerator @Inject constructor(
             val baseline = if (lx > row0Right + 3f) {
                 row0Right = right
                 chartY - 4f
-            } else {
-                row1Right = maxOf(row1Right, right)
+            } else if (lx > row1Right + 3f) {
+                row1Right = right
                 chartY - 14f
+            } else {
+                // Both rows occupied here: skip the label rather than draw it
+                // on top of a neighbor.
+                null
             }
-            w.canvas.drawText(label, lx, baseline, markerLabel)
+            if (baseline != null) {
+                w.canvas.drawText(label, lx, baseline, markerLabel)
+            }
         }
 
         // X labels: up to 6, collision-checked (never overlapping).

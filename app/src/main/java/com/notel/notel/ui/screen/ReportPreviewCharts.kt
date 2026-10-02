@@ -207,6 +207,22 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.labelPaint(
     }
 
 /**
+ * Truncates [text] to fit [maxWidth] at a word boundary; never mid-word.
+ * Same helper as the PDF chart marker labels (ReportGenerator.kt).
+ */
+private fun truncateToWords(text: String, paint: android.graphics.Paint, maxWidth: Float): String {
+    if (paint.measureText(text) <= maxWidth) return text
+    val ellipsisW = paint.measureText("…")
+    var acc = ""
+    for (word in text.split(' ')) {
+        val trial = if (acc.isEmpty()) word else "$acc $word"
+        if (paint.measureText(trial) + ellipsisW > maxWidth) break
+        acc = trial
+    }
+    return (acc.ifBlank { text.take(18) }) + "…"
+}
+
+/**
  * Canvas line chart with true gaps (the polyline breaks where buckets have
  * no data), up to ~5 x labels, and vertical event markers.
  */
@@ -267,9 +283,14 @@ fun PreviewLineChart(
                     drawContext.canvas.nativeCanvas.drawText(vLabel, 4f, gy + 3.5f, textPaint)
                 }
 
-                // Event markers (dashed verticals + short labels at top).
+                // Event markers (dashed verticals + short labels at top, staggered
+                // on two rows so neighbors never collide; labels truncated at
+                // word boundaries, never mid-word).
                 val dash = PathEffect.dashPathEffect(floatArrayOf(6f, 5f), 0f)
                 val markerColor = NotelWarning
+                val markerPaint = labelPaint(9f, android.graphics.Color.rgb(160, 110, 20))
+                var row0Right = -Float.MAX_VALUE
+                var row1Right = -Float.MAX_VALUE
                 events.forEach { ev ->
                     if (ev.dateMs in start..end) {
                         val ex = xFor(ev.dateMs)
@@ -277,10 +298,21 @@ fun PreviewLineChart(
                             markerColor, Offset(ex, padT - 14f), Offset(ex, padT + ch),
                             strokeWidth = 1.5f, pathEffect = dash
                         )
-                        drawContext.canvas.nativeCanvas.drawText(
-                            ev.label, (ex + 3f).coerceAtMost(w - 90f), padT - 6f,
-                            labelPaint(9f, android.graphics.Color.rgb(160, 110, 20))
-                        )
+                        val label = truncateToWords(ev.label, markerPaint, 90f)
+                        val lx = (ex + 3f).coerceAtMost(w - 90f)
+                        val right = lx + markerPaint.measureText(label)
+                        val baseline = if (lx > row0Right + 3f) {
+                            row0Right = right
+                            padT - 6f
+                        } else if (lx > row1Right + 3f) {
+                            row1Right = right
+                            padT - 18f
+                        } else {
+                            null
+                        }
+                        if (baseline != null) {
+                            drawContext.canvas.nativeCanvas.drawText(label, lx, baseline, markerPaint)
+                        }
                     }
                 }
 
