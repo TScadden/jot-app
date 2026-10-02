@@ -558,7 +558,7 @@ fun ProgressReportsScreen(
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            "Preview uses cached data only — no live device reads. Numbers match the export when computed from the same data.",
+                            "Preview uses cached data only. No live device reads. Numbers match the export when computed from the same data.",
                             color = NotelTextSecondary.copy(alpha = 0.7f),
                             fontSize = 10.sp
                         )
@@ -574,7 +574,7 @@ fun ProgressReportsScreen(
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
-                                "Secondary — logging activity by hour answers when you log, not how you are trending.",
+                                "Secondary. Logging activity by hour answers when you log, not how you are trending.",
                                 color = NotelTextSecondary.copy(alpha = 0.7f),
                                 fontSize = 10.sp
                             )
@@ -657,7 +657,7 @@ fun ProgressReportsScreen(
                             onClick = { viewModel.cancelReportGeneration() },
                             modifier = Modifier.align(Alignment.CenterHorizontally)
                         ) {
-                            Text("Cancel Report Generation", color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                            Text("Cancel report generation", color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
                         }
                     }
 
@@ -676,7 +676,7 @@ fun ProgressReportsScreen(
                                     )
                                 }
                             ) {
-                                Text("Generate Raw Data Report (Without AI)", color = NotelPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("Generate raw data report (without AI)", color = NotelPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                         Spacer(Modifier.height(8.dp))

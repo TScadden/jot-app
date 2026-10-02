@@ -30,6 +30,13 @@ enum class BucketSize(val label: String) {
     MONTHLY("monthly")
 }
 
+/** Singular word for captions ("Logged symptom entries per week"). */
+fun BucketSize.singularLabel(): String = when (this) {
+    BucketSize.DAILY -> "day"
+    BucketSize.WEEKLY -> "week"
+    BucketSize.MONTHLY -> "month"
+}
+
 /** Resolves the aggregation bucket for a span. Pure; unit-tested. */
 fun bucketSizeForSpan(spanDays: Long): BucketSize = when {
     spanDays <= 45 -> BucketSize.DAILY

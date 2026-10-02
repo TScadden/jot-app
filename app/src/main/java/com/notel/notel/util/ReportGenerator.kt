@@ -175,23 +175,7 @@ class ReportGenerator @Inject constructor(
         val meta = paint(gray, 9f)
         val caption = paint(gray, 9f, italic = true)
 
-        fun userNote(key: String) {
-            val note = options.highlightOverrides[key]
-            if (!note.isNullOrBlank()) {
-                w.ensureSpace(60f)
-                w.y += 6f
-                val boxTop = w.y - 12f
-                drawWrapped("Your note: $note", w.margin + 8f, w.contentWidth - 16f, w, BB, B, BI)
-                val boxBottom = w.y + 4f
-                w.canvas.drawRect(w.margin, boxTop, w.margin + w.contentWidth, boxBottom, Paint().apply {
-                    color = purple; alpha = 18; style = Paint.Style.FILL
-                })
-                w.canvas.drawRect(w.margin, boxTop, w.margin + w.contentWidth, boxBottom, Paint().apply {
-                    color = purple; alpha = 90; style = Paint.Style.STROKE; strokeWidth = 1f
-                })
-                w.y += 8f
-            }
-        }
+        fun userNote(key: String) = userNoteBox(w, options, key, BB, B, BI)
 
         // ══ PAGE 1 — no decorative cover, straight into content ══
         w.canvas.drawText("Progress Report", w.margin, w.y, title)
@@ -258,7 +242,7 @@ class ReportGenerator @Inject constructor(
         // Headline metrics with units + coverage.
         val metrics = headlineMetrics(snapshot)
         if (metrics.isNotEmpty()) {
-            w.ensureSpace(70f)
+            w.ensureSpace(80f)
             w.canvas.drawText("At a glance", w.margin, w.y, sec); w.y += 15f
             val colW = w.contentWidth / 3f
             var col = 0
@@ -294,7 +278,7 @@ class ReportGenerator @Inject constructor(
 
         // AI narrative (kept: it explains the deterministic numbers above).
         w.ensureSpace(60f)
-        w.canvas.drawText("Analysis", w.margin, w.y, sec); w.y += 6f
+        w.canvas.drawText("Analysis", w.margin, w.y, sec); w.y += 15f
         renderAiSummary(w, effectiveSummary, B, BB, BI, sec, caption)
 
         // ══ CHARTS ══
@@ -330,7 +314,7 @@ class ReportGenerator @Inject constructor(
             c.drawText(w.headerText, w.margin, 34f, headerPaint)
             val pageLabel = "Page ${idx + 1} of $total"
             c.drawText(pageLabel, 595f - w.margin - footerPaint.measureText(pageLabel), 822f, footerPaint)
-            val disc = "Informational only — not medical advice."
+            val disc = "Informational only. Not medical advice."
             c.drawText(disc, (595f - footerPaint.measureText(disc)) / 2f, 822f, footerPaint)
             if (options.synthetic) {
                 val sw = "SYNTHETIC SAMPLE — NOT REAL DATA"
@@ -393,6 +377,38 @@ class ReportGenerator @Inject constructor(
 
     // ── CHARTS section ──
 
+    /**
+     * "Your note" overlay box (WS-G): the translucent purple fill is drawn
+     * FIRST, under the glyphs, then the border. Used by every section that
+     * supports a note, including the CHARTS note at the end of renderCharts.
+     */
+    private fun userNoteBox(
+        w: PdfReportWriter,
+        options: ReportRenderOptions,
+        key: String,
+        base: Paint,
+        body: Paint,
+        italic: Paint
+    ) {
+        val note = options.highlightOverrides[key]
+        if (!note.isNullOrBlank()) {
+            w.ensureSpace(60f)
+            w.y += 6f
+            val boxTop = w.y - 12f
+            // Pre-measure so the fill renders before (under) the text.
+            val textHeight = wrapText("Your note: $note", w.contentWidth - 16f, base).size * 15f
+            val boxBottom = boxTop + 12f + textHeight + 6f
+            w.canvas.drawRect(w.margin, boxTop, w.margin + w.contentWidth, boxBottom, Paint().apply {
+                color = purple; alpha = 18; style = Paint.Style.FILL
+            })
+            w.canvas.drawRect(w.margin, boxTop, w.margin + w.contentWidth, boxBottom, Paint().apply {
+                color = purple; alpha = 90; style = Paint.Style.STROKE; strokeWidth = 1f
+            })
+            drawWrapped("Your note: $note", w.margin + 8f, w.contentWidth - 16f, w, base, body, italic)
+            w.y += 8f
+        }
+    }
+
     private fun renderCharts(
         w: PdfReportWriter,
         snapshot: ClinicalReportData,
@@ -450,7 +466,7 @@ class ReportGenerator @Inject constructor(
             val buckets = bucketizeCounts(symptomEntries, startMs, endMs, tz, bucketSize)
             drawPdfBarChart(
                 w, "Symptom frequency", buckets, "#4F46E5", events, "entries",
-                "Logged symptom entries per ${aggWord.dropLast(1)}. Top symptoms by distinct days are listed below."
+                "Logged symptom entries per ${bucketSize.singularLabel()}. Top symptoms by distinct days are listed below."
             )
             w.y += 10f
             val sec = paint(purpleDark, 12f, bold = true)
@@ -482,23 +498,20 @@ class ReportGenerator @Inject constructor(
                 }
                 drawPdfBarChart(
                     w, "Training volume", summed, "#6D28D9", events, "kcal",
-                    "Calorie totals per ${aggWord.dropLast(1)}. Tabs has no distance/pace sensors — volume comes from logged activity only."
+                    "Calorie totals per ${bucketSize.singularLabel()}. Tabs has no distance/pace sensors. Volume comes from logged activity only."
                 )
             } else {
                 val buckets = bucketizeCounts(snapshot.logEntries, startMs, endMs, tz, bucketSize)
                 drawPdfBarChart(
                     w, "Training volume", buckets, "#6D28D9", events, "entries",
-                    "Logged entries per ${aggWord.dropLast(1)}. Tabs has no distance/pace sensors — volume comes from logged activity only."
+                    "Logged entries per ${bucketSize.singularLabel()}. Tabs has no distance/pace sensors. Volume comes from logged activity only."
                 )
             }
         }
 
         val note = options.highlightOverrides[ReportSections.CHARTS]
         if (!note.isNullOrBlank()) {
-            w.ensureSpace(50f)
-            w.y += 6f
-            drawWrapped("Your note: $note", w.margin, w.contentWidth, w, bold, body, italic)
-            w.y += 8f
+            userNoteBox(w, options, ReportSections.CHARTS, bold, body, italic)
         }
     }
 
@@ -815,6 +828,19 @@ class ReportGenerator @Inject constructor(
         }
     }
 
+    /** Truncates [text] to fit [maxWidth] at a word boundary; never mid-word. */
+    private fun truncateToWords(text: String, paint: Paint, maxWidth: Float): String {
+        if (paint.measureText(text) <= maxWidth) return text
+        val ellipsisW = paint.measureText("…")
+        var acc = ""
+        for (word in text.split(' ')) {
+            val trial = if (acc.isEmpty()) word else "$acc $word"
+            if (paint.measureText(trial) + ellipsisW > maxWidth) break
+            acc = trial
+        }
+        return (acc.ifBlank { text.take(18) }) + "…"
+    }
+
     /**
      * Bucketed line chart: the polyline BREAKS at gap buckets (missing data
      * is never interpolated). Event markers are dashed verticals with short
@@ -872,13 +898,28 @@ class ReportGenerator @Inject constructor(
             pathEffect = dash
         }
         val markerLabel = paint(Color.rgb(160, 110, 20), 7.5f)
+        // Event-marker labels: staggered on two rows so neighbors never
+        // collide, each row collision-checked; truncated at word boundaries,
+        // never mid-word.
+        var row0Right = -Float.MAX_VALUE
+        var row1Right = -Float.MAX_VALUE
         events.forEach { e ->
             val ms = e.dateMs ?: return@forEach
             if (ms < buckets.first().startMs || ms > buckets.last().endMs) return@forEach
             val ex = xFor(ms)
             val p = Path().apply { moveTo(ex, chartY - 12f); lineTo(ex, chartY + chartH) }
             w.canvas.drawPath(p, markerPaint)
-            w.canvas.drawText(eventMarkerLabel(e).take(22), (ex + 3f).coerceAtMost(chartX + chartW - 120f), chartY - 4f, markerLabel)
+            val label = truncateToWords(eventMarkerLabel(e), markerLabel, 120f)
+            val lx = (ex + 3f).coerceAtMost(chartX + chartW - 120f)
+            val right = lx + markerLabel.measureText(label)
+            val baseline = if (lx > row0Right + 3f) {
+                row0Right = right
+                chartY - 4f
+            } else {
+                row1Right = maxOf(row1Right, right)
+                chartY - 14f
+            }
+            w.canvas.drawText(label, lx, baseline, markerLabel)
         }
 
         // X labels: up to 6, collision-checked (never overlapping).

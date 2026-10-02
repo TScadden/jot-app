@@ -61,7 +61,7 @@ fun ReportCustomizeCard(
             SectionLabel("Customize report", color = NotelPrimary)
             Spacer(Modifier.height(4.dp))
             Text(
-                "Choose which sections the PDF includes. Your notes appear as labeled boxes — they never change your records or the calculated numbers.",
+                "Choose which sections the PDF includes. Your notes appear as labeled boxes. They never change your records or the calculated numbers.",
                 color = NotelTextSecondary,
                 fontSize = 12.sp
             )
@@ -226,7 +226,7 @@ fun SavedReportsCard(
             }
             Spacer(Modifier.height(4.dp))
             Text(
-                "Every export is kept here. Refresh creates a new version — nothing is overwritten.",
+                "Every export is kept here. Refresh creates a new version. Nothing is overwritten.",
                 color = NotelTextSecondary,
                 fontSize = 12.sp
             )
@@ -262,7 +262,7 @@ fun SavedReportsCard(
                                             fontWeight = FontWeight.Medium
                                         )
                                         Text(
-                                            "$focusLabel · ${savedDateLabel(report.rangeStartMs)} – ${savedDateLabel(report.rangeEndMs)}",
+                                            "$focusLabel · ${savedDateLabel(report.rangeStartMs)} to ${savedDateLabel(report.rangeEndMs)}",
                                             color = NotelTextSecondary,
                                             fontSize = 12.sp
                                         )
@@ -285,7 +285,7 @@ fun SavedReportsCard(
                                         )
                                         Spacer(Modifier.width(6.dp))
                                         Text(
-                                            "File unavailable — the PDF is no longer in Downloads.",
+                                            "File unavailable. The PDF is no longer in Downloads.",
                                             color = NotelWarning, fontSize = 12.sp
                                         )
                                     }
@@ -385,7 +385,7 @@ fun LabSamplePdfsCard(viewModel: SettingsViewModel) {
             }
             Spacer(Modifier.height(4.dp))
             Text(
-                "Generates 4 clearly-watermarked SYNTHETIC sample PDFs (Health 30d, Training 30d, Custom sparse, Health 2-year) into Downloads. Fabricated data only — no real health data is used.",
+                "Generates 4 clearly watermarked SYNTHETIC sample PDFs (Health 30d, Training 30d, Custom sparse, Health 2-year) into Downloads. Fabricated data only. No real health data is used.",
                 color = NotelTextSecondary,
                 fontSize = 12.sp
             )

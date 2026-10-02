@@ -4,6 +4,7 @@ import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -69,7 +70,7 @@ fun ReportEventsCard(viewModel: SettingsViewModel) {
             }
             Spacer(Modifier.height(4.dp))
             Text(
-                "Tabs prepares a report draft automatically before a visit. You review it in the preview — sharing is always your explicit choice.",
+                "Tabs prepares a report draft automatically before a visit. You review it in the preview. Sharing is always your explicit choice.",
                 color = NotelTextSecondary,
                 fontSize = 12.sp
             )
@@ -147,16 +148,20 @@ private fun ReportEventRow(
             event.lastRunStatus == "ready" ->
                 "Draft ready" + (event.lastDataCutoffMs?.let { " · data cutoff ${eventMsLabel(it, event.timezoneId)}" } ?: "")
             event.lastRunStatus == "failed" ->
-                "Last run failed${event.lastError?.let { ": $it" } ?: ""} — will retry"
+                "Last run failed${event.lastError?.let { ": $it" } ?: ""}. It will retry automatically."
             else -> {
                 val fireAt = prepFireTimeMs(event)
                 if (fireAt != null) "Prep ${prepTimingLabel(event).lowercase()} · ${eventMsLabel(fireAt, event.timezoneId)}"
-                else if (event.isReminderOnly) "Reminder only — no auto-draft"
+                else if (event.isReminderOnly) "Reminder only. No draft is prepared automatically."
                 else "No prep scheduled"
             }
         }
     }
-    val typeLabel = REPORT_EVENT_TYPES[event.type] ?: "Custom"
+    val statusColor = remember(event, workInfo) {
+        if (event.lastRunStatus == "failed" &&
+            workInfo?.state != WorkInfo.State.RUNNING && workInfo?.state != WorkInfo.State.ENQUEUED
+        ) MaterialTheme.colorScheme.error else NotelPrimary
+    }
     val focusLabel = ReportFocus.fromKey(event.focusKey).label
 
     Surface(
@@ -175,7 +180,7 @@ private fun ReportEventRow(
                 color = NotelTextSecondary.copy(alpha = 0.8f), fontSize = 11.sp
             )
             Spacer(Modifier.height(4.dp))
-            Text(statusText, color = NotelPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text(statusText, color = statusColor, fontSize = 12.sp, fontWeight = FontWeight.Medium)
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 TextButton(onClick = onGenerateNow) {
@@ -214,7 +219,7 @@ private fun ReportEventRow(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun ReportEventEditor(
     initial: ScheduledReportEvent,
@@ -252,7 +257,9 @@ private fun ReportEventEditor(
         },
         text = {
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 OutlinedTextField(
@@ -268,7 +275,10 @@ private fun ReportEventEditor(
                 )
 
                 Text("Event type", color = NotelTextSecondary, fontSize = 12.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     REPORT_EVENT_TYPES.forEach { (key, label) ->
                         val selected = type == key
                         FilterChip(
@@ -312,7 +322,10 @@ private fun ReportEventEditor(
                 }
 
                 Text("Report focus", color = NotelTextSecondary, fontSize = 12.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     ReportFocus.entries.forEach { option ->
                         val selected = focusKey == option.key
                         FilterChip(
@@ -327,7 +340,10 @@ private fun ReportEventEditor(
                 }
 
                 Text("Report range", color = NotelTextSecondary, fontSize = 12.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     listOf("last30days" to "Last 30 days", "sincelastmeeting" to "Since last meeting", "alltime" to "All time").forEach { (key, label) ->
                         val selected = rangeType == key
                         FilterChip(
@@ -385,7 +401,7 @@ private fun ReportEventEditor(
                     }
                 } else {
                     Text(
-                        "Reminder-only: you will get the usual day-before nudge, but no draft is generated.",
+                        "Reminder only: you will get the usual nudge the day before, but no draft is generated.",
                         color = NotelTextSecondary.copy(alpha = 0.75f), fontSize = 11.sp
                     )
                 }
