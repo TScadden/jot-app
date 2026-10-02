@@ -189,7 +189,18 @@ object AppointmentEventLink {
         if (linkId != null && preferences.appointmentEventOwned.first()) {
             val counters = readCounters(preferences)
             if (counters.any { it.id == linkId }) {
-                writeCounters(preferences, counters.filterNot { it.id == linkId })
+                // Tombstone the deleted id atomically with the removal, same as
+                // SettingsViewModel.endCounterAndSave: otherwise a concurrent
+                // sync's pull phase could resurrect it from a stale server copy.
+                val tombstones = try {
+                    val raw = preferences.deletedEventCounterIds.first()
+                    if (raw.isNotBlank()) Json.decodeFromString<MutableSet<String>>(raw) else mutableSetOf()
+                } catch(e: Exception) { mutableSetOf() }
+                tombstones.add(linkId)
+                preferences.setEventCountersAndTombstones(
+                    Json.encodeToString(ListSerializer(EventCounterDto.serializer()), counters.filterNot { it.id == linkId }),
+                    Json.encodeToString(tombstones)
+                )
                 pushProfile()
             }
             EventScheduler.cancelEventNotification(context, linkId)

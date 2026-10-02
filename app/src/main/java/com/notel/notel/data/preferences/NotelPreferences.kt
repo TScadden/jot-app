@@ -93,6 +93,10 @@ open class NotelPreferences(
 
         val EVENT_COUNTERS = stringPreferencesKey("event_counters")
         val COUNTER_HISTORY = stringPreferencesKey("counter_history")
+        // Tombstones for locally-deleted event counters. The profile pull merge is a
+        // union, so without these a stale server copy would resurrect a deleted
+        // counter when a sync's pull phase lands after the local delete.
+        val DELETED_EVENT_COUNTER_IDS = stringPreferencesKey("deleted_event_counter_ids")
         val SETTINGS_TUTORIAL_SEEN = booleanPreferencesKey("settings_tutorial_seen")
         val HR_SPIKE_ALERTS_ENABLED = booleanPreferencesKey("hr_spike_alerts_enabled")
         val SPIKE_THRESHOLD = intPreferencesKey("spike_threshold")
@@ -403,6 +407,7 @@ open class NotelPreferences(
 
     val eventCounters: Flow<String> = context.dataStore.data.map { it[EVENT_COUNTERS] ?: "[]" }
     val counterHistory: Flow<String> = context.dataStore.data.map { it[COUNTER_HISTORY] ?: "[]" }
+    val deletedEventCounterIds: Flow<String> = context.dataStore.data.map { it[DELETED_EVENT_COUNTER_IDS] ?: "[]" }
     val settingsTutorialSeen: Flow<Boolean> = context.dataStore.data.map { it[SETTINGS_TUTORIAL_SEEN] ?: false }
     val hrSpikeAlertsEnabled: Flow<Boolean> = context.dataStore.data.map { it[HR_SPIKE_ALERTS_ENABLED] ?: false }
     val spikeThreshold: Flow<Int> = context.dataStore.data.map { it[SPIKE_THRESHOLD] ?: 120 }
@@ -965,6 +970,22 @@ open class NotelPreferences(
 
     suspend fun setCounterHistory(jsonArray: String) {
         context.dataStore.edit { it[COUNTER_HISTORY] = jsonArray }
+    }
+
+    suspend fun setDeletedEventCounterIds(jsonArray: String) {
+        context.dataStore.edit { it[DELETED_EVENT_COUNTER_IDS] = jsonArray }
+    }
+
+    /**
+     * Atomically writes the counter list and tombstone set in one DataStore
+     * transaction, so a concurrent profile pull can never observe the list
+     * without its matching tombstones (which would resurrect a deleted counter).
+     */
+    suspend fun setEventCountersAndTombstones(countersJson: String, tombstonesJson: String) {
+        context.dataStore.edit {
+            it[EVENT_COUNTERS] = countersJson
+            it[DELETED_EVENT_COUNTER_IDS] = tombstonesJson
+        }
     }
 
     suspend fun setSettingsTutorialSeen(seen: Boolean) {
