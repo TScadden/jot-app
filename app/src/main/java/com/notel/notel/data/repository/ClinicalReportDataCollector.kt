@@ -255,8 +255,11 @@ class ClinicalReportDataCollector @Inject constructor(
                 return@async cached
             }
             // Fallback: raw Health Connect read, chunked per 30 days with a
-            // 30s window per chunk so a cold cache still has a chance.
-            val (raw, timedOut) = chunkedHcRead(daysToFetch, targetToday) { n, end ->
+            // 60s window per chunk. Spike detection reads raw paginated HR
+            // samples — the heaviest Health Connect query in this pipeline —
+            // so it gets double the headroom of the other sections. (A cold
+            // cache + 30s chunks timed out every chunk on a background run.)
+            val (raw, timedOut) = chunkedHcRead(daysToFetch, targetToday, perChunkTimeoutMs = 60_000L) { n, end ->
                 healthConnectCoordinator.getHrSpikesHistory(days = n, targetToday = end)
             }
             val merged = raw.distinctBy { it.date }.sortedBy { it.date }
