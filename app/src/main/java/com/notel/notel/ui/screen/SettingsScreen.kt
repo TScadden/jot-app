@@ -307,6 +307,16 @@ fun SettingsScreen(
             restore = { SettingsMenu.valueOf(it) }
         )
     ) { mutableStateOf(initialMenu) }
+
+    // Phase 2 (WS-H): a tapped "report draft ready" notification lands here.
+    // Switch to Progress Reports and consume the request.
+    val deepLinkRequest by viewModel.reportDeepLinkRequest.collectAsState()
+    LaunchedEffect(deepLinkRequest) {
+        if (deepLinkRequest != null) {
+            currentMenu = SettingsMenu.PROGRESS_REPORTS
+            viewModel.consumeReportDeepLink()
+        }
+    }
     
     BackHandler(enabled = currentMenu != SettingsMenu.MAIN) {
         viewModel.flushProfilePush()

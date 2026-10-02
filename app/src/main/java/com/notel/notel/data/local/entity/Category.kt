@@ -13,16 +13,12 @@ data class Category(
     val sortOrder: Int = 0,
     val slug: String? = null
 ) {
+    /**
+     * Stable slug for prefs keys and list identity. Falls back to the
+     * canonical [DefaultCategories.slugById] mapping when the stored slug is
+     * null (older databases predate the slug column backfill).
+     */
     val stableKey: String
-        get() = slug ?: when (id) {
-            1 -> "heart_rate"
-            2 -> "calories"
-            3 -> "sleep"
-            4 -> "mood"
-            5 -> "symptoms"
-            6 -> "personal"
-            7 -> "general"
-            8 -> "medication"
-            else -> "custom_${name.lowercase().replace(" ", "_")}"
-        }
+        get() = slug ?: com.notel.notel.data.local.DefaultCategories.slugById[id]
+            ?: "custom_${name.lowercase().replace(" ", "_")}"
 }

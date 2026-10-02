@@ -19,7 +19,9 @@ sealed class ReportGenerationState {
     data class Ready(
         val file: File,
         val isPartial: Boolean = false,
-        val isRawFallback: Boolean = false
+        val isRawFallback: Boolean = false,
+        /** Durable Downloads URI for saved-report records (WS-G); null when the copy failed. */
+        val downloadsUri: String? = null
     ) : ReportGenerationState()
     
     data class Failed(

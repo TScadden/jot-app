@@ -526,4 +526,54 @@ class NotificationHelper(private val context: Context) {
 
         manager.notify(770002, notification)
     }
+
+    /**
+     * Tabs Lab (Phase 2, WS-H): a scheduled report draft finished
+     * generating. Tapping opens the Progress Reports preview (via
+     * ReportDeepLink); sharing stays a separate explicit action in the app.
+     */
+    fun showReportDraftReady(eventName: String, eventId: String, isRawFallback: Boolean) {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val channelId = "report_prep"
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                "Report drafts",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notifications when a scheduled report draft is ready to review"
+            }
+            manager.createNotificationChannel(channel)
+        }
+
+        val tapIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            putExtra("notel.open_progress_reports", true)
+            putExtra("notel.report_event_id", eventId)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            780001,
+            tapIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val body = if (isRawFallback)
+            "Your draft for \"$eventName\" is ready (raw data — the AI summary was unavailable). Tap to preview."
+        else
+            "Your draft for \"$eventName\" is ready. Tap to preview."
+
+        val notification = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(R.drawable.ic_noti_note)
+            .setContentTitle("Report draft ready")
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build()
+
+        manager.notify(780001, notification)
+    }
 }

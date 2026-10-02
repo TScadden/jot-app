@@ -69,6 +69,10 @@ android {
         }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Phase 2 (WS-D..H): Lab-only debug actions (e.g. synthetic sample PDF
+        // generation) gate on this. False for every production build.
+        buildConfigField("boolean", "TABS_LAB", isPlaygroundBuild.toString())
         
         ksp {
             arg("room.schemaLocation", "$projectDir/schemas")
@@ -117,6 +121,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     sourceSets {

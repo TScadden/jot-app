@@ -128,14 +128,24 @@ class LogRepository @Inject constructor(
     suspend fun generateProfessionalReportWithSnapshot(
         categories: List<Category>,
         reportGenerator: com.notel.notel.util.ReportGenerator,
-        last30DaysOnly: Boolean = false,
+        range: com.notel.notel.data.model.ReportRange = com.notel.notel.data.model.ReportRange.Last30Days,
+        focus: com.notel.notel.data.model.ReportFocus = com.notel.notel.data.model.ReportFocus.Health,
+        customCategoryIds: Set<Int> = emptySet(),
+        renderOptions: com.notel.notel.util.ReportRenderOptions = com.notel.notel.util.ReportRenderOptions(),
         onStateUpdate: (com.notel.notel.ui.state.ReportGenerationState) -> Unit = {}
     ): File? {
         if (_isGeneratingReport.value) return null
         _isGeneratingReport.value = true
         try {
             onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.CollectingData())
-            val collected = clinicalReportDataCollector.collectReportData(categories, last30DaysOnly)
+            // WS-A: one consistent snapshot — the collector resolves the range
+            // once, and this same snapshot feeds the AI narrative and the PDF.
+            val collected = clinicalReportDataCollector.collectReportData(
+                allCategories = categories,
+                range = range,
+                focus = focus,
+                customCategoryIds = customCategoryIds
+            )
             // The snapshot collector leaves bodyLoadHistory empty; fill it from the AI-insights
             // store like the legacy report path did so the server actually receives it.
             val snapshot = collected.copy(bodyLoadHistory = getBodyLoadHistorySummary())
@@ -165,8 +175,12 @@ class LogRepository @Inject constructor(
             val isRawFallback = (aiSummary == null)
             onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.RenderingPdf())
             
-            val file = reportGenerator.generateReport(snapshot, aiSummary, isRawFallback = isRawFallback)
-            if (file == null) {
+            val result = reportGenerator.generateReportDetailed(
+                snapshot, aiSummary,
+                isRawFallback = isRawFallback,
+                options = renderOptions
+            )
+            if (result == null) {
                 onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Failed(
                 com.notel.notel.util.FriendlyErrors.forBackendError(
                     "LogRepository", null, com.notel.notel.util.FriendlyErrors.Kind.EXPORT
@@ -175,12 +189,13 @@ class LogRepository @Inject constructor(
             ))
                 return null
             }
+            val file = result.file
 
             onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.SavingFile())
             _generatedReport.value = file
             _reportReadyEvent.emit(file)
             
-            onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Ready(file, isPartial = snapshot.sectionMetadata.values.any { it.status != com.notel.notel.data.model.DataSourceStatus.SUCCESS }, isRawFallback = isRawFallback))
+            onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Ready(file, isPartial = snapshot.sectionMetadata.values.any { it.status != com.notel.notel.data.model.DataSourceStatus.SUCCESS }, isRawFallback = isRawFallback, downloadsUri = result.downloadsUri))
             return file
         } catch (e: kotlinx.coroutines.CancellationException) {
             onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Cancelled)

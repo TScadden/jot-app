@@ -41,6 +41,8 @@ class BootReceiver : BroadcastReceiver() {
                 preferences.appointmentDate.first()?.let { dateIso ->
                     com.notel.notel.notifications.AppointmentReminderScheduler.schedule(context, dateIso)
                 }
+                // Phase 2 (WS-H): re-arm scheduled report-prep alarms.
+                rearmReportPrep(context)
             }
         }
     }
@@ -56,6 +58,26 @@ class BootReceiver : BroadcastReceiver() {
         // scheduleEventNotification no-ops for past dates; skip archived and count-up events.
         counters.filter { !it.isArchived && !it.isUp }.forEach { counter ->
             EventScheduler.scheduleEventNotification(context, counter.id, counter.name, counter.targetDate)
+        }
+    }
+
+    /**
+     * Phase 2 (WS-H): re-arm scheduled report-prep alarms after boot.
+     * Idempotent; no-ops for reminder-only events and past fire times.
+     */
+    private suspend fun rearmReportPrep(context: Context) {
+        try {
+            val raw = preferences.reportEvents.first()
+            if (raw.isBlank()) return
+            val events = Json.decodeFromString(
+                kotlinx.serialization.builtins.ListSerializer(
+                    com.notel.notel.data.model.ScheduledReportEvent.serializer()
+                ),
+                raw
+            )
+            com.notel.notel.notifications.ReportPrepScheduler.scheduleAll(context, events)
+        } catch (e: Exception) {
+            android.util.Log.w("BootReceiver", "rearmReportPrep failed: ${e.javaClass.simpleName}")
         }
     }
 }

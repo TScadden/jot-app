@@ -19,7 +19,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.notel.notel.data.local.entity.Category
+import com.notel.notel.data.model.ReportFocus
+import com.notel.notel.data.model.ReportRange
+import com.notel.notel.data.model.resolveFocusCategoryIds
 import com.notel.notel.ui.component.MedicalDisclaimerBanner
 import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.SettingsViewModel
@@ -29,30 +31,14 @@ import java.util.*
 /**
  * Progress Reports (Tabs Lab, playground only).
  *
- * Dedicated report screen that replaces the old AI Settings 30 day / all time
- * toggle. The report TYPE picker (Health / Training / Custom) only changes
- * which log categories feed the report; the underlying 30 day and all time
- * generators and the AI prompt are reused exactly as they are.
+ * Dedicated report screen. The report TYPE picker (Health / Training / Custom)
+ * filters which log categories feed the report — focus reaches the real
+ * collection pipeline (Phase 1, WS-F). Date windows: Last 30 days, All time,
+ * Since last meeting, Custom range (Phase 1, WS-A). One snapshot feeds the AI
+ * narrative and the PDF.
  */
-enum class ReportFocus(val key: String, val label: String, val description: String) {
-    HEALTH("health", "Health", "Symptoms, meds, sleep, mood, and vitals"),
-    TRAINING("training", "Training", "Habits, vitals, and food"),
-    CUSTOM("custom", "Custom", "You pick the categories")
-}
 
-/** Category slugs bundled into each preset focus. */
-private val HEALTH_SLUGS = setOf("symptoms", "medication", "sleep", "mood", "heart_rate")
-private val TRAINING_SLUGS = setOf("personal", "heart_rate", "calories")
-
-private fun resolveReportCategories(
-    allCategories: List<Category>,
-    focus: ReportFocus,
-    customIds: Set<Int>
-): List<Category> = when (focus) {
-    ReportFocus.HEALTH -> allCategories.filter { it.slug in HEALTH_SLUGS }
-    ReportFocus.TRAINING -> allCategories.filter { it.slug in TRAINING_SLUGS }
-    ReportFocus.CUSTOM -> allCategories.filter { it.id in customIds }
-}
+private const val DAY_MS = 24 * 60 * 60 * 1000L
 
 private fun formatIsoDate(iso: String): String = try {
     val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
@@ -63,6 +49,18 @@ private fun formatIsoDate(iso: String): String = try {
     iso
 }
 
+private fun formatDateMs(ms: Long): String =
+    SimpleDateFormat("MMM d, yyyy", Locale.US).format(Date(ms))
+
+/** Parses an ISO yyyy-MM-dd date (UTC) to start-of-day millis, or null. */
+private fun parseIsoToMs(iso: String): Long? = try {
+    SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+        timeZone = TimeZone.getTimeZone("UTC")
+    }.parse(iso)?.time
+} catch (_: Exception) {
+    null
+}
+
 /** "today" / "tomorrow" / "in N days", or null when the date is past or unparsable. */
 private fun appointmentCountdown(iso: String): String? = try {
     val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
@@ -70,7 +68,7 @@ private fun appointmentCountdown(iso: String): String? = try {
     }
     val target = fmt.parse(iso)?.time ?: return null
     val today = fmt.parse(fmt.format(Date()))?.time ?: return null
-    val days = ((target - today) / (24 * 60 * 60 * 1000L)).toInt()
+    val days = ((target - today) / DAY_MS).toInt()
     when {
         days < 0 -> null
         days == 0 -> "today"
@@ -81,6 +79,9 @@ private fun appointmentCountdown(iso: String): String? = try {
     null
 }
 
+/** Which date the single DatePickerDialog is currently editing. */
+private enum class ReportDateTarget { APPOINTMENT, MEETING, CUSTOM_START, CUSTOM_END }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProgressReportsScreen(
@@ -90,46 +91,106 @@ fun ProgressReportsScreen(
 
     // Otto's feature: restore the last-used report type and range.
     val savedLastType by viewModel.lastReportType.collectAsState(initial = "health")
-    val savedLastRange by viewModel.lastReportRange30d.collectAsState(initial = true)
+    val savedLastRangeKey by viewModel.lastReportRangeKey.collectAsState(initial = "last30days")
+    val savedRangeStart by viewModel.lastReportRangeStart.collectAsState(initial = 0L)
+    val savedRangeEnd by viewModel.lastReportRangeEnd.collectAsState(initial = 0L)
+    val savedFocusText by viewModel.lastReportFocusText.collectAsState(initial = "")
     var userTouchedPrefs by remember { mutableStateOf(false) }
 
-    var focus by remember { mutableStateOf(ReportFocus.HEALTH) }
-    var last30Days by remember { mutableStateOf(true) }
+    var focusKey by remember { mutableStateOf("health") }
+    var customFocusText by remember { mutableStateOf("") }
+    var range by remember { mutableStateOf<ReportRange>(ReportRange.Last30Days) }
     var customIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
 
-    LaunchedEffect(savedLastType, savedLastRange) {
-        if (!userTouchedPrefs) {
-            focus = ReportFocus.entries.firstOrNull { it.key == savedLastType } ?: ReportFocus.HEALTH
-            last30Days = savedLastRange
-        }
-    }
-    LaunchedEffect(focus, last30Days, userTouchedPrefs) {
-        if (userTouchedPrefs) viewModel.saveLastReportPrefs(focus.key, last30Days)
-    }
-    fun pickFocus(next: ReportFocus) {
-        userTouchedPrefs = true
-        focus = next
-    }
-    fun pickRange(isMonth: Boolean) {
-        userTouchedPrefs = true
-        last30Days = isMonth
+    // Concrete dates behind the Since-last-meeting / Custom ranges.
+    var meetingDateMs by remember { mutableStateOf<Long?>(null) }
+    var customStartMs by remember { mutableStateOf<Long?>(null) }
+    var customEndMs by remember { mutableStateOf<Long?>(null) }
+
+    val focus = remember(focusKey, customFocusText) {
+        ReportFocus.fromKey(focusKey, customFocusText)
     }
 
     val allLogs by viewModel.allLogs.collectAsState()
     val allCategories by viewModel.categories.collectAsState()
     val reportState by viewModel.reportGenerationState.collectAsState()
+    // Phase 2 (WS-D): lightweight trend-preview snapshot — local logs plus
+    // cached metrics only, same range/focus filter as the export.
+    val previewSnapshot by viewModel.reportPreviewSnapshot.collectAsState()
     val isDeepBusy by viewModel.isGeneratingDeepResearch.collectAsState()
     val isProtocolBusy by viewModel.isGeneratingWeeklyRecap.collectAsState()
 
     val savedAppointmentDate by viewModel.appointmentDate.collectAsState(initial = null)
     val savedAppointmentType by viewModel.appointmentReportType.collectAsState(initial = "health")
+    // Phase 2 (WS-H): scheduled report-prep events.
+    val reportEvents by viewModel.reportEvents.collectAsState()
 
-    var activeRange by remember { mutableStateOf<Boolean?>(null) }
-    var showDatePicker by remember { mutableStateOf(false) }
+    // "Since last meeting" defaults to the saved appointment date when set.
+    val defaultMeetingMs = remember(savedAppointmentDate) {
+        savedAppointmentDate?.let { parseIsoToMs(it) } ?: (System.currentTimeMillis() - 30L * DAY_MS)
+    }
+
+    fun restoreRange(): ReportRange = when (savedLastRangeKey) {
+        "alltime" -> ReportRange.AllTime
+        "sincelastmeeting" -> ReportRange.SinceLastMeeting(
+            if (savedRangeStart > 0L) savedRangeStart else defaultMeetingMs
+        )
+        "custom" -> if (savedRangeStart > 0L && savedRangeEnd >= savedRangeStart) {
+            ReportRange.Custom(savedRangeStart, savedRangeEnd)
+        } else {
+            ReportRange.Custom(System.currentTimeMillis() - 30L * DAY_MS, System.currentTimeMillis())
+        }
+        else -> ReportRange.Last30Days
+    }
+
+    LaunchedEffect(savedLastType, savedLastRangeKey, savedRangeStart, savedRangeEnd, savedFocusText, savedAppointmentDate) {
+        if (!userTouchedPrefs) {
+            focusKey = savedLastType
+            customFocusText = savedFocusText
+            range = restoreRange()
+            // Seed the date states from the restored range so the pickers show it.
+            when (val r = range) {
+                is ReportRange.SinceLastMeeting -> meetingDateMs = r.meetingDateEpochMs
+                is ReportRange.Custom -> {
+                    customStartMs = r.startEpochMs
+                    customEndMs = r.endEpochMs
+                }
+                else -> Unit
+            }
+        }
+    }
+    LaunchedEffect(focusKey, range, customFocusText, userTouchedPrefs) {
+        if (userTouchedPrefs) viewModel.saveLastReportPrefs(focusKey, range, customFocusText)
+    }
+    fun pickFocus(next: ReportFocus) {
+        userTouchedPrefs = true
+        focusKey = next.key
+    }
+    fun pickRange(next: ReportRange) {
+        userTouchedPrefs = true
+        range = next
+    }
+    fun pickRangeKind(kind: String) {
+        val next = when (kind) {
+            "alltime" -> ReportRange.AllTime
+            "sincelastmeeting" -> ReportRange.SinceLastMeeting(meetingDateMs ?: defaultMeetingMs)
+            "custom" -> ReportRange.Custom(
+                customStartMs ?: (System.currentTimeMillis() - 30L * DAY_MS),
+                customEndMs ?: System.currentTimeMillis()
+            )
+            else -> ReportRange.Last30Days
+        }
+        pickRange(next)
+    }
+
+    var activeRange by remember { mutableStateOf<ReportRange?>(null) }
+    var datePickerTarget by remember { mutableStateOf<ReportDateTarget?>(null) }
     var pickedDateIso by remember { mutableStateOf<String?>(null) }
-    var appointmentFocus by remember { mutableStateOf(ReportFocus.HEALTH) }
+    var appointmentFocus by remember { mutableStateOf<ReportFocus>(ReportFocus.Health) }
     // Vera's feature: confirm before the share sheet; the PDF holds health data.
     var pendingShareFile by remember { mutableStateOf<java.io.File?>(null) }
+    // Phase 2 (WS-G): same confirmation for saved-report content URIs.
+    var pendingShareUri by remember { mutableStateOf<android.net.Uri?>(null) }
     // Juno's feature: expandable data-source disclosure.
     var showSources by remember { mutableStateOf(false) }
     // Mira's feature: staggered card entrance.
@@ -138,12 +199,7 @@ fun ProgressReportsScreen(
     // Mason's feature: last successful export timestamp.
     val lastExportTime by viewModel.lastReportExportTime.collectAsState(initial = 0L)
 
-    fun sharePdf(file: java.io.File) {
-        val uri = androidx.core.content.FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.provider",
-            file
-        )
+    fun sharePdfUri(uri: android.net.Uri) {
         val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
             type = "application/pdf"
             putExtra(android.content.Intent.EXTRA_STREAM, uri)
@@ -153,13 +209,27 @@ fun ProgressReportsScreen(
         viewModel.markReportExported()
     }
 
+    fun sharePdf(file: java.io.File) {
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.provider",
+            file
+        )
+        sharePdfUri(uri)
+    }
+
+    val clinicalRange = remember(range) { range.toClinicalReportRange(System.currentTimeMillis()) }
     val selectedCategories = remember(allCategories, focus, customIds) {
-        resolveReportCategories(allCategories, focus, customIds)
+        val ids = resolveFocusCategoryIds(allCategories, focus, customIds)
+        allCategories.filter { it.id in ids }
     }
     val selectedIds = remember(selectedCategories) { selectedCategories.map { it.id }.toSet() }
-    val cutoff = if (last30Days) System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000 else 0L
-    val logsInRange = remember(allLogs, cutoff, selectedIds) {
-        allLogs.filter { it.timestamp >= cutoff && it.categoryId in selectedIds }
+    val logsInRange = remember(allLogs, clinicalRange, selectedIds) {
+        allLogs.filter {
+            it.timestamp >= clinicalRange.startEpochMs &&
+                it.timestamp <= clinicalRange.endEpochMs &&
+                it.categoryId in selectedIds
+        }
     }
     val hourlyData = remember(logsInRange) {
         val cal = Calendar.getInstance()
@@ -171,26 +241,41 @@ fun ProgressReportsScreen(
     var selectedHour by remember { mutableStateOf<Int?>(null) }
 
     // Tess's feature: honest data coverage. Distinct days with entries in
-    // range, over the days the range covers (30, or the actual span capped
-    // at the 180 days the full generator reads).
-    val dayMs = 24 * 60 * 60 * 1000L
+    // range, over the days the range covers. Phase 1 (WS-A): the denominator
+    // is the actual range span — the old 180-day cap is gone, and All time
+    // uses the real span of stored history.
     val distinctDaysLogged = remember(logsInRange) {
-        logsInRange.map { it.timestamp / dayMs }.toSet().size
+        logsInRange.map { it.timestamp / DAY_MS }.toSet().size
     }
-    val coverageDenominator = remember(allLogs, last30Days) {
-        if (last30Days) 30 else {
-            val oldest = allLogs.minOfOrNull { it.timestamp } ?: System.currentTimeMillis()
-            (((System.currentTimeMillis() - oldest) / dayMs) + 1).toInt().coerceIn(1, 180)
+    val coverageDenominator = remember(allLogs, range, clinicalRange) {
+        when (range) {
+            ReportRange.Last30Days -> 30
+            ReportRange.AllTime -> {
+                val oldest = allLogs.minOfOrNull { it.timestamp } ?: System.currentTimeMillis()
+                (((System.currentTimeMillis() - oldest) / DAY_MS) + 1).toInt().coerceAtLeast(1)
+            }
+            else -> clinicalRange.durationDays
         }
+    }
+    val daysCoveredLabel = when (range) {
+        ReportRange.Last30Days -> "30"
+        ReportRange.AllTime -> "All"
+        else -> clinicalRange.durationDays.toString()
     }
 
     val hasAnyLogs = allLogs.isNotEmpty()
     val isGenerating = reportState.isProcessing
     val isAnyBusy = isGenerating || isDeepBusy || isProtocolBusy
 
+    // Phase 2 (WS-D): refresh the lightweight trend preview whenever the
+    // range, focus, or custom selection changes. Cheap local reads only.
+    LaunchedEffect(range, focus, customIds) {
+        viewModel.refreshReportPreview(range, focus, customIds)
+    }
+
     // Pre select all categories for Custom the first time it is opened.
-    LaunchedEffect(focus, allCategories) {
-        if (focus == ReportFocus.CUSTOM && customIds.isEmpty() && allCategories.isNotEmpty()) {
+    LaunchedEffect(focusKey, allCategories) {
+        if (focusKey == "custom" && customIds.isEmpty() && allCategories.isNotEmpty()) {
             customIds = allCategories.map { it.id }.toSet()
         }
     }
@@ -233,7 +318,7 @@ fun ProgressReportsScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         ReportFocus.entries.forEach { option ->
-                            val selected = focus == option
+                            val selected = focusKey == option.key
                             GlassyButton(
                                 onClick = { pickFocus(option) },
                                 modifier = Modifier.weight(1f),
@@ -256,7 +341,24 @@ fun ProgressReportsScreen(
                         fontSize = 11.sp
                     )
 
-                    if (focus == ReportFocus.CUSTOM) {
+                    if (focusKey == "custom") {
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = customFocusText,
+                            onValueChange = {
+                                customFocusText = it
+                                userTouchedPrefs = true
+                            },
+                            label = { Text("Describe your focus (optional)", fontSize = 12.sp) },
+                            placeholder = { Text("e.g. migraine triggers and sleep", fontSize = 12.sp) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = NotelPrimary,
+                                focusedLabelColor = NotelPrimary,
+                                cursorColor = NotelPrimary
+                            )
+                        )
                         Spacer(Modifier.height(12.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -299,22 +401,89 @@ fun ProgressReportsScreen(
                     Spacer(Modifier.height(12.dp))
                     SectionLabel("Time range", color = NotelPrimary)
                     Spacer(Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf(true to "This Month", false to "All Time").forEach { (isMonth, label) ->
-                            val selected = last30Days == isMonth
+                    // Phase 1 (WS-A): Last 30 days / All time / Since last
+                    // meeting / Custom range. "This Month" was renamed — it
+                    // was always rolling-30 semantics.
+                    val rangeKinds = listOf(
+                        "last30days" to "Last 30 days",
+                        "alltime" to "All time",
+                        "sincelastmeeting" to "Since last meeting",
+                        "custom" to "Custom"
+                    )
+                    val currentKind = range.prefsKey
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        rangeKinds.chunked(2).forEach { rowKinds ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                rowKinds.forEach { (kind, label) ->
+                                    val selected = currentKind == kind
+                                    GlassyButton(
+                                        onClick = { pickRangeKind(kind) },
+                                        modifier = Modifier.weight(1f),
+                                        containerColor = if (selected) NotelPrimary.copy(alpha = 0.18f) else NotelSurfaceHigh
+                                    ) {
+                                        Text(
+                                            label,
+                                            color = if (selected) NotelPrimary else NotelTextSecondary,
+                                            fontSize = 13.sp,
+                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                                if (rowKinds.size == 1) Spacer(Modifier.weight(1f))
+                            }
+                        }
+                    }
+
+                    // Date controls for the meeting/custom ranges.
+                    val meetingRange = range as? ReportRange.SinceLastMeeting
+                    if (meetingRange != null) {
+                        Spacer(Modifier.height(8.dp))
+                        GlassyButton(
+                            onClick = { datePickerTarget = ReportDateTarget.MEETING },
+                            modifier = Modifier.fillMaxWidth(),
+                            containerColor = NotelSurfaceHigh
+                        ) {
+                            Icon(Icons.Default.CalendarMonth, null, tint = NotelPrimary, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Last meeting: ${formatDateMs(meetingDateMs ?: meetingRange.meetingDateEpochMs)}",
+                                color = NotelTextPrimary,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                    val customRange = range as? ReportRange.Custom
+                    if (customRange != null) {
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                             GlassyButton(
-                                onClick = { pickRange(isMonth) },
+                                onClick = { datePickerTarget = ReportDateTarget.CUSTOM_START },
                                 modifier = Modifier.weight(1f),
-                                containerColor = if (selected) NotelPrimary.copy(alpha = 0.18f) else NotelSurfaceHigh
+                                containerColor = NotelSurfaceHigh
                             ) {
                                 Text(
-                                    label,
-                                    color = if (selected) NotelPrimary else NotelTextSecondary,
-                                    fontSize = 13.sp,
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                    "Start: ${formatDateMs(customStartMs ?: customRange.startEpochMs)}",
+                                    color = NotelTextPrimary,
+                                    fontSize = 12.sp,
+                                    maxLines = 1
+                                )
+                            }
+                            GlassyButton(
+                                onClick = { datePickerTarget = ReportDateTarget.CUSTOM_END },
+                                modifier = Modifier.weight(1f),
+                                containerColor = NotelSurfaceHigh
+                            ) {
+                                Text(
+                                    "End: ${formatDateMs(customEndMs ?: customRange.endEpochMs)}",
+                                    color = NotelTextPrimary,
+                                    fontSize = 12.sp,
                                     maxLines = 1
                                 )
                             }
@@ -337,7 +506,7 @@ fun ProgressReportsScreen(
                             modifier = Modifier.weight(1f)
                         )
                         OverviewStat(
-                            value = if (last30Days) "30" else "All",
+                            value = daysCoveredLabel,
                             label = "Days covered",
                             modifier = Modifier.weight(1f)
                         )
@@ -368,23 +537,56 @@ fun ProgressReportsScreen(
                     SectionLabel("Preview", color = NotelPrimary)
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "${focus.label} report, ${if (last30Days) "this month" else "all time"}. " +
+                        "${focus.label} report, ${range.label.replaceFirstChar { it.lowercase() }}. " +
                             "${logsInRange.size} entries across ${selectedCategories.size} categories.",
                         color = NotelTextSecondary,
                         fontSize = 13.sp
                     )
 
-                    if (logsInRange.isNotEmpty()) {
+                    // Phase 2 (WS-D): the primary preview is actual metric trends
+                    // (sleep / heart / HRV lines, symptom & training bars) from
+                    // the same range/focus as the export. The hourly chart
+                    // stays as a secondary "when do you log" view.
+                    val preview = previewSnapshot
+                    if (preview != null && preview.hasAnyData) {
                         Spacer(Modifier.height(8.dp))
-                        Text("Log activity by hour", color = NotelTextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                        Box(modifier = Modifier.fillMaxWidth().height(210.dp)) {
-                            HourlyDensityChart(
-                                data = hourlyData,
-                                selectedHour = selectedHour,
-                                onHourSelected = { selectedHour = if (selectedHour == it) null else it }
+                        Text(
+                            "Trends in this report",
+                            color = NotelTextPrimary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Preview uses cached data only. No live device reads. Numbers match the export when computed from the same data.",
+                            color = NotelTextSecondary.copy(alpha = 0.7f),
+                            fontSize = 10.sp
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        ReportTrendPreview(snapshot = preview)
+
+                        if (logsInRange.isNotEmpty()) {
+                            Spacer(Modifier.height(20.dp))
+                            Text(
+                                "When do you log",
+                                color = NotelTextPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium
                             )
+                            Text(
+                                "Secondary. Logging activity by hour answers when you log, not how you are trending.",
+                                color = NotelTextSecondary.copy(alpha = 0.7f),
+                                fontSize = 10.sp
+                            )
+                            Box(modifier = Modifier.fillMaxWidth().height(210.dp)) {
+                                HourlyDensityChart(
+                                    data = hourlyData,
+                                    selectedHour = selectedHour,
+                                    onHourSelected = { selectedHour = if (selectedHour == it) null else it }
+                                )
+                            }
                         }
-                    } else {
+                    } else if (preview != null) {
                         Spacer(Modifier.height(12.dp))
                         Column(
                             modifier = Modifier.fillMaxWidth(),
@@ -407,10 +609,25 @@ fun ProgressReportsScreen(
                             Spacer(Modifier.height(4.dp))
                             Text(
                                 if (selectedCategories.isEmpty()) "Pick at least one category above to see a preview."
-                                else "Log symptoms, meds, or sleep and your activity will show up here.",
+                                else "Log symptoms, meds, or sleep and your trends will show up here.",
                                 color = NotelTextSecondary.copy(alpha = 0.7f),
                                 fontSize = 12.sp,
                                 textAlign = TextAlign.Center
+                            )
+                        }
+                    } else {
+                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            GlassySpinner(size = 16.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Loading preview…",
+                                color = NotelTextSecondary,
+                                fontSize = 12.sp
                             )
                         }
                     }
@@ -440,7 +657,7 @@ fun ProgressReportsScreen(
                             onClick = { viewModel.cancelReportGeneration() },
                             modifier = Modifier.align(Alignment.CenterHorizontally)
                         ) {
-                            Text("Cancel Report Generation", color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                            Text("Cancel report generation", color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
                         }
                     }
 
@@ -450,27 +667,29 @@ fun ProgressReportsScreen(
                         if (failedState.allowRawFallback) {
                             TextButton(
                                 onClick = {
-                                    activeRange = last30Days
+                                    activeRange = range
                                     viewModel.generateProfessionalReport(
-                                        last30DaysOnly = last30Days,
-                                        forceRawFallback = true,
-                                        categoriesOverride = selectedCategories
+                                        range = range,
+                                        focus = focus,
+                                        customCategoryIds = customIds,
+                                        forceRawFallback = true
                                     )
                                 }
                             ) {
-                                Text("Generate Raw Data Report (Without AI)", color = NotelPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("Generate raw data report (without AI)", color = NotelPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                         Spacer(Modifier.height(8.dp))
                     }
 
-                    val isThisGenerating = isGenerating && activeRange == last30Days
+                    val isThisGenerating = isGenerating && activeRange == range
                     GlassyButton(
                         onClick = {
-                            activeRange = last30Days
+                            activeRange = range
                             viewModel.generateProfessionalReport(
-                                last30DaysOnly = last30Days,
-                                categoriesOverride = selectedCategories
+                                range = range,
+                                focus = focus,
+                                customCategoryIds = customIds
                             )
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -539,10 +758,40 @@ fun ProgressReportsScreen(
                                 "AI generated summary",
                                 "Written by AI from your data. Informational only, not medical advice."
                             )
+                            if (focusKey == "training") {
+                                ReportSourceRow(
+                                    "Training data gap",
+                                    "Tabs has no distance, pace, or duration sensors. Training details come from what you logged; the report says so when volume can't be determined."
+                                )
+                            }
                         }
                     }
                 }
             }
+            }
+
+            // ---------- Customize (WS-G: preview fidelity) ----------
+            ReportCard(visible = cardsVisible, delayMillis = 135) {
+                ReportCustomizeCard(
+                    viewModel = viewModel,
+                    preview = previewSnapshot
+                )
+            }
+
+            // ---------- Saved reports (WS-G) ----------
+            ReportCard(visible = cardsVisible, delayMillis = 160) {
+                SavedReportsCard(
+                    viewModel = viewModel,
+                    onShare = { report ->
+                        // Vera's feature, same as fresh exports: explicit
+                        // confirmation before the share sheet.
+                        viewModel.savedReportShareUri(report)?.let { pendingShareUri = it }
+                    },
+                    // WS-H: link saved drafts back to their scheduled event.
+                    eventNameFor = { id ->
+                        reportEvents.firstOrNull { it.id == id }?.name
+                    }
+                )
             }
 
             // ---------- Details ----------
@@ -641,7 +890,7 @@ fun ProgressReportsScreen(
                     }
 
                     GlassyButton(
-                        onClick = { showDatePicker = true },
+                        onClick = { datePickerTarget = ReportDateTarget.APPOINTMENT },
                         modifier = Modifier.fillMaxWidth(),
                         containerColor = NotelSurfaceHigh
                     ) {
@@ -660,7 +909,7 @@ fun ProgressReportsScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         ReportFocus.entries.forEach { option ->
-                            val selected = appointmentFocus == option
+                            val selected = appointmentFocus.key == option.key
                             GlassyButton(
                                 onClick = { appointmentFocus = option },
                                 modifier = Modifier.weight(1f),
@@ -696,29 +945,76 @@ fun ProgressReportsScreen(
             }
             }
 
+            // ---------- Scheduled report prep (WS-H) ----------
+            // The card above stays as the simple reminder-only path; this
+            // adds automatic draft generation before a visit.
+            ReportCard(visible = cardsVisible, delayMillis = 300) {
+                ReportEventsCard(viewModel = viewModel)
+            }
+
+            // ---------- Lab tools (TABS_LAB builds only) ----------
+            // Clearly-marked SYNTHETIC sample PDFs into Downloads for
+            // on-device layout review. Never uses real data.
+            if (com.notel.notel.BuildConfig.TABS_LAB) {
+                ReportCard(visible = cardsVisible, delayMillis = 330) {
+                    LabSamplePdfsCard(viewModel = viewModel)
+                }
+            }
+
             Spacer(Modifier.height(8.dp))
     } // end content column
 
-    if (showDatePicker) {
+    // One DatePickerDialog serving the appointment, meeting-date, and custom
+    // start/end pickers (Phase 1, WS-A).
+    val target = datePickerTarget
+    if (target != null) {
         val datePickerState = rememberDatePickerState(
             initialSelectedDateMillis = System.currentTimeMillis()
         )
         DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
+            onDismissRequest = { datePickerTarget = null },
             confirmButton = {
                 TextButton(
                     onClick = {
                         datePickerState.selectedDateMillis?.let { millis ->
-                            pickedDateIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
-                                timeZone = TimeZone.getTimeZone("UTC")
-                            }.format(Date(millis))
+                            when (target) {
+                                ReportDateTarget.APPOINTMENT -> {
+                                    pickedDateIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                                        timeZone = TimeZone.getTimeZone("UTC")
+                                    }.format(Date(millis))
+                                }
+                                ReportDateTarget.MEETING -> {
+                                    meetingDateMs = millis
+                                    pickRange(ReportRange.SinceLastMeeting(millis))
+                                }
+                                ReportDateTarget.CUSTOM_START -> {
+                                    customStartMs = millis
+                                    pickRange(
+                                        ReportRange.Custom(
+                                            millis,
+                                            customEndMs ?: System.currentTimeMillis()
+                                        )
+                                    )
+                                }
+                                ReportDateTarget.CUSTOM_END -> {
+                                    // End of the picked day so the range covers it fully.
+                                    val endMs = millis + DAY_MS - 1
+                                    customEndMs = endMs
+                                    pickRange(
+                                        ReportRange.Custom(
+                                            customStartMs ?: (System.currentTimeMillis() - 30L * DAY_MS),
+                                            endMs
+                                        )
+                                    )
+                                }
+                            }
                         }
-                        showDatePicker = false
+                        datePickerTarget = null
                     }
                 ) { Text("OK", color = NotelPrimary) }
             },
             dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) {
+                TextButton(onClick = { datePickerTarget = null }) {
                     Text("Cancel", color = NotelTextSecondary)
                 }
             }
@@ -765,6 +1061,43 @@ fun ProgressReportsScreen(
             }
         )
     }
+
+    // Vera's feature for saved reports: same explicit confirmation before
+    // the share sheet — the PDF holds health data.
+    if (pendingShareUri != null) {
+        val uri = pendingShareUri!!
+        AlertDialog(
+            onDismissRequest = { pendingShareUri = null },
+            title = {
+                Text("Share health report", color = NotelTextPrimary, fontWeight = FontWeight.SemiBold)
+            },
+            text = {
+                Column {
+                    Text(
+                        "This PDF contains your health data. Only share it with people you trust.",
+                        color = NotelTextSecondary,
+                        fontSize = 13.sp
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "For informational purposes only. Not medical advice.",
+                        color = NotelTextSecondary.copy(alpha = 0.7f),
+                        fontSize = 11.sp
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { sharePdfUri(uri); pendingShareUri = null }) {
+                    Text("Share", color = NotelPrimary, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingShareUri = null }) {
+                    Text("Not now", color = NotelTextSecondary)
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -799,8 +1132,7 @@ private fun ReportCard(
 
 /** Juno's feature: one row of the "What's in this report" disclosure. */
 @Composable
-private fun ReportSourceRow(title: String, detail: String) {
-    Row(verticalAlignment = Alignment.Top) {
+private fun ReportSourceRow(title: String, detail: String) {    Row(verticalAlignment = Alignment.Top) {
         Icon(
             Icons.Default.CheckCircle,
             null,
