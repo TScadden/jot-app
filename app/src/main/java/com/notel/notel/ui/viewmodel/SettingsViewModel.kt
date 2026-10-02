@@ -104,12 +104,28 @@ class SettingsViewModel @Inject constructor(
     }
 
     // Otto's feature: report type/range continuity for Progress Reports.
+    // Phase 1 (WS-A): the boolean range became a range key + concrete bounds.
     val lastReportType = preferences.lastReportType
-    val lastReportRange30d = preferences.lastReportRange30d
+    val lastReportRangeKey = preferences.lastReportRangeKey
+    val lastReportRangeStart = preferences.lastReportRangeStart
+    val lastReportRangeEnd = preferences.lastReportRangeEnd
+    val lastReportFocusText = preferences.lastReportFocusText
 
-    fun saveLastReportPrefs(reportType: String, range30d: Boolean) {
+    fun saveLastReportPrefs(
+        reportType: String,
+        range: com.notel.notel.data.model.ReportRange,
+        focusText: String = ""
+    ) {
         viewModelScope.launch {
-            preferences.saveLastReportPrefs(reportType, range30d)
+            val now = System.currentTimeMillis()
+            val resolved = range.toClinicalReportRange(now)
+            preferences.saveLastReportPrefs(
+                reportType = reportType,
+                rangeKey = range.prefsKey,
+                rangeStartMs = resolved.startEpochMs,
+                rangeEndMs = resolved.endEpochMs,
+                focusText = focusText
+            )
         }
     }
 
@@ -818,21 +834,29 @@ class SettingsViewModel @Inject constructor(
 
     private var reportJob: kotlinx.coroutines.Job? = null
 
+    /**
+     * Phase 1 (WS-A/WS-F): the screen passes a [ReportRange] and [ReportFocus];
+     * both are threaded screen -> collector -> GeminiService -> snapshot, and
+     * that ONE snapshot feeds the AI narrative and the PDF.
+     */
     fun generateProfessionalReport(
-        last30DaysOnly: Boolean = false,
-        forceRawFallback: Boolean = false,
-        // Playground: Progress Reports type picker. Optional override for which
-        // categories feed the report. Null keeps the legacy all-categories path.
-        // The generators and the AI prompt are NOT changed by this.
-        categoriesOverride: List<com.notel.notel.data.local.entity.Category>? = null
+        range: com.notel.notel.data.model.ReportRange = com.notel.notel.data.model.ReportRange.Last30Days,
+        focus: com.notel.notel.data.model.ReportFocus = com.notel.notel.data.model.ReportFocus.Health,
+        customCategoryIds: Set<Int> = emptySet(),
+        forceRawFallback: Boolean = false
     ) {
         reportJob?.cancel()
         reportJob = viewModelScope.launch {
             try {
-                val cats = categoriesOverride ?: categories.value
+                val cats = categories.value
                 if (forceRawFallback) {
                     _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.CollectingData("Collecting patient data for Raw Data report...")
-                    val snapshot = logRepository.clinicalReportDataCollector.collectReportData(cats, last30DaysOnly)
+                    val snapshot = logRepository.clinicalReportDataCollector.collectReportData(
+                        allCategories = cats,
+                        range = range,
+                        focus = focus,
+                        customCategoryIds = customCategoryIds
+                    )
                     _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.RenderingPdf("Rendering Raw Data PDF...")
                     val file = reportGenerator.generateReport(snapshot, aiSummary = null, isRawFallback = true)
                     if (file != null) {
@@ -845,7 +869,9 @@ class SettingsViewModel @Inject constructor(
                     logRepository.generateProfessionalReportWithSnapshot(
                         categories = cats,
                         reportGenerator = reportGenerator,
-                        last30DaysOnly = last30DaysOnly,
+                        range = range,
+                        focus = focus,
+                        customCategoryIds = customCategoryIds,
                         onStateUpdate = { state ->
                             _reportGenerationState.value = state
                             if (state is com.notel.notel.ui.state.ReportGenerationState.Ready) {
@@ -860,6 +886,25 @@ class SettingsViewModel @Inject constructor(
                 _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Failed(com.notel.notel.util.FriendlyErrors.forBackendError(TAG, e, com.notel.notel.util.FriendlyErrors.Kind.EXPORT).banner, allowRawFallback = true)
             }
         }
+    }
+
+    @Deprecated("Use generateProfessionalReport(range, focus, customCategoryIds)")
+    fun generateProfessionalReport(
+        last30DaysOnly: Boolean = false,
+        forceRawFallback: Boolean = false,
+        // Playground: Progress Reports type picker. Optional override for which
+        // categories feed the report. Null keeps the legacy all-categories path.
+        categoriesOverride: List<com.notel.notel.data.local.entity.Category>? = null
+    ) {
+        generateProfessionalReport(
+            range = if (last30DaysOnly) com.notel.notel.data.model.ReportRange.Last30Days
+            else com.notel.notel.data.model.ReportRange.AllTime,
+            // Legacy path never filtered entries by focus; Custom over every
+            // category (or the override list) preserves that exactly.
+            focus = com.notel.notel.data.model.ReportFocus.Custom(""),
+            customCategoryIds = (categoriesOverride ?: categories.value).map { it.id }.toSet(),
+            forceRawFallback = forceRawFallback
+        )
     }
 
     fun cancelReportGeneration() {

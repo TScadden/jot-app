@@ -180,6 +180,13 @@ open class NotelPreferences(
         // last-used type and range so the screen opens where the user left off.
         val LAST_REPORT_TYPE = stringPreferencesKey("progress_report_last_type")
         val LAST_REPORT_RANGE_30D = booleanPreferencesKey("progress_report_last_range_30d")
+        // Phase 1 (WS-A): the boolean range is replaced by a range key
+        // ("last30days" | "alltime" | "sincelastmeeting" | "custom") plus the
+        // concrete start/end the user picked, and the custom focus text.
+        val LAST_REPORT_RANGE_KEY = stringPreferencesKey("progress_report_last_range_key")
+        val LAST_REPORT_RANGE_START = longPreferencesKey("progress_report_last_range_start")
+        val LAST_REPORT_RANGE_END = longPreferencesKey("progress_report_last_range_end")
+        val LAST_REPORT_FOCUS_TEXT = stringPreferencesKey("progress_report_last_focus_text")
         // Tabs Lab: last successful export timestamp (Mason's feature).
         val LAST_REPORT_EXPORT_TIME = longPreferencesKey("progress_report_last_export_time")
     }
@@ -199,11 +206,26 @@ open class NotelPreferences(
 
     // Otto's feature: remember the last-used report type and range.
     val lastReportType: Flow<String> = dataStore.data.map { it[LAST_REPORT_TYPE] ?: "health" }
+    @Deprecated("Replaced by lastReportRangeKey (Phase 1 WS-A)")
     val lastReportRange30d: Flow<Boolean> = dataStore.data.map { it[LAST_REPORT_RANGE_30D] ?: true }
-    suspend fun saveLastReportPrefs(reportType: String, range30d: Boolean) {
+    // Phase 1 (WS-A): string range key + concrete bounds + custom focus text.
+    val lastReportRangeKey: Flow<String> = dataStore.data.map { it[LAST_REPORT_RANGE_KEY] ?: "last30days" }
+    val lastReportRangeStart: Flow<Long> = dataStore.data.map { it[LAST_REPORT_RANGE_START] ?: 0L }
+    val lastReportRangeEnd: Flow<Long> = dataStore.data.map { it[LAST_REPORT_RANGE_END] ?: 0L }
+    val lastReportFocusText: Flow<String> = dataStore.data.map { it[LAST_REPORT_FOCUS_TEXT] ?: "" }
+    suspend fun saveLastReportPrefs(
+        reportType: String,
+        rangeKey: String,
+        rangeStartMs: Long = 0L,
+        rangeEndMs: Long = 0L,
+        focusText: String = ""
+    ) {
         dataStore.edit {
             it[LAST_REPORT_TYPE] = reportType
-            it[LAST_REPORT_RANGE_30D] = range30d
+            it[LAST_REPORT_RANGE_KEY] = rangeKey
+            it[LAST_REPORT_RANGE_START] = rangeStartMs
+            it[LAST_REPORT_RANGE_END] = rangeEndMs
+            it[LAST_REPORT_FOCUS_TEXT] = focusText
         }
     }
 

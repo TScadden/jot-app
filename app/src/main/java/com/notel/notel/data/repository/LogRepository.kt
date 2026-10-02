@@ -128,14 +128,23 @@ class LogRepository @Inject constructor(
     suspend fun generateProfessionalReportWithSnapshot(
         categories: List<Category>,
         reportGenerator: com.notel.notel.util.ReportGenerator,
-        last30DaysOnly: Boolean = false,
+        range: com.notel.notel.data.model.ReportRange = com.notel.notel.data.model.ReportRange.Last30Days,
+        focus: com.notel.notel.data.model.ReportFocus = com.notel.notel.data.model.ReportFocus.Health,
+        customCategoryIds: Set<Int> = emptySet(),
         onStateUpdate: (com.notel.notel.ui.state.ReportGenerationState) -> Unit = {}
     ): File? {
         if (_isGeneratingReport.value) return null
         _isGeneratingReport.value = true
         try {
             onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.CollectingData())
-            val collected = clinicalReportDataCollector.collectReportData(categories, last30DaysOnly)
+            // WS-A: one consistent snapshot — the collector resolves the range
+            // once, and this same snapshot feeds the AI narrative and the PDF.
+            val collected = clinicalReportDataCollector.collectReportData(
+                allCategories = categories,
+                range = range,
+                focus = focus,
+                customCategoryIds = customCategoryIds
+            )
             // The snapshot collector leaves bodyLoadHistory empty; fill it from the AI-insights
             // store like the legacy report path did so the server actually receives it.
             val snapshot = collected.copy(bodyLoadHistory = getBodyLoadHistorySummary())

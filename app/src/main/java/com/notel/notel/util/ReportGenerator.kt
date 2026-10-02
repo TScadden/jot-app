@@ -70,7 +70,14 @@ class ReportGenerator @Inject constructor(
         categories: List<com.notel.notel.data.local.entity.Category>,
         last30DaysOnly: Boolean = false
     ): File? {
-        val snapshot = dataCollector.collectReportData(categories, last30DaysOnly)
+        // Legacy path: no focus filtering (Custom over every category).
+        val snapshot = dataCollector.collectReportData(
+            allCategories = categories,
+            range = if (last30DaysOnly) com.notel.notel.data.model.ReportRange.Last30Days
+            else com.notel.notel.data.model.ReportRange.AllTime,
+            focus = com.notel.notel.data.model.ReportFocus.Custom(""),
+            customCategoryIds = categories.map { it.id }.toSet()
+        )
         val summaryResult = logRepository.getMedicalReportSummary(categories, last30DaysOnly = last30DaysOnly)
         val summary = summaryResult.getOrNull()
         return generateReport(snapshot, summary, isRawFallback = (summary == null))
@@ -150,9 +157,23 @@ class ReportGenerator @Inject constructor(
         canvas.drawLine(margin, y, margin + contentWidth, y, linePaint)
         y += 20f
         
-        val rangeLabel = if (snapshot.range.type == com.notel.notel.data.model.ClinicalReportRangeType.LAST_30_DAYS) "30-Day Audit" else "Full Audit"
+        val rangeLabel = when (snapshot.range.type) {
+            com.notel.notel.data.model.ClinicalReportRangeType.LAST_30_DAYS -> "30-Day Audit"
+            com.notel.notel.data.model.ClinicalReportRangeType.SINCE_LAST_MEETING -> "Since-Last-Meeting Audit"
+            com.notel.notel.data.model.ClinicalReportRangeType.CUSTOM -> "Custom Range Audit"
+            else -> "Full History Audit"
+        }
         val genTimeStr = SimpleDateFormat("MMM dd, yyyy - hh:mm a", Locale.getDefault()).format(Date(snapshot.generationTimestamp))
-        canvas.drawText("Report Range: $rangeLabel (${snapshot.range.durationDays} Days) • Generated: $genTimeStr", margin, y, metaPaint)
+        // Phase 1 (WS-A): exact covered dates + timezone from the one snapshot,
+        // plus the report focus. One line; keep it short for the header.
+        val zone = try {
+            java.time.ZoneId.of(snapshot.range.timezoneId)
+        } catch (_: Exception) { java.time.ZoneId.systemDefault() }
+        val dateFmt = java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US).withZone(zone)
+        val startLabel = dateFmt.format(java.time.Instant.ofEpochMilli(snapshot.range.startEpochMs.coerceAtLeast(0L)))
+        val endLabel = dateFmt.format(java.time.Instant.ofEpochMilli(snapshot.range.endEpochMs))
+        val focusLabel = com.notel.notel.data.model.ReportFocus.fromKey(snapshot.focusKey).label
+        canvas.drawText("Report Range: $rangeLabel ($startLabel to $endLabel, ${snapshot.range.timezoneId}) • Focus: $focusLabel • Generated: $genTimeStr", margin, y, metaPaint)
         y += 16f
 
         if (isRawFallback) {
