@@ -9,6 +9,7 @@ import com.notel.notel.data.local.entity.AiInsight
 import com.notel.notel.data.preferences.NotelPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
+import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.Assert.*
@@ -52,15 +53,20 @@ class ClinicalReportDataCollectorBiometricsSpikesTest {
         )
     }
 
+    @OptIn(ExperimentalStdlibApi::class)
     @Suppress("UNCHECKED_CAST")
-    private fun readBiometricsSpikes(minDate: String): List<DailyHeartRateSummary> {
-        val method = ClinicalReportDataCollector::class.java
-            .getDeclaredMethod("readBiometricsSpikes", String::class.java)
-        method.isAccessible = true
-        return runBlocking {
-            method.invoke(collector, minDate) as List<DailyHeartRateSummary>
+    private fun readBiometricsSpikes(minDate: String): List<DailyHeartRateSummary> =
+        runBlocking {
+            // Private suspend funs compile to JVM methods with a trailing
+            // Continuation parameter, so invoke with the coroutine's own
+            // continuation (directly or after suspension).
+            val method = ClinicalReportDataCollector::class.java.declaredMethods
+                .first { it.name == "readBiometricsSpikes" }
+            method.isAccessible = true
+            suspendCoroutineUninterceptedOrReturn { cont ->
+                method.invoke(collector, minDate, cont)
+            } as List<DailyHeartRateSummary>
         }
-    }
 
     @Test
     fun `insight with spikes 5 produces one entry with spikeCount 5`() {
