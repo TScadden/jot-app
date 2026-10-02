@@ -952,6 +952,15 @@ fun ProgressReportsScreen(
                 ReportEventsCard(viewModel = viewModel)
             }
 
+            // ---------- Lab tools (TABS_LAB builds only) ----------
+            // Clearly-marked SYNTHETIC sample PDFs into Downloads for
+            // on-device layout review. Never uses real data.
+            if (com.notel.notel.BuildConfig.TABS_LAB) {
+                ReportCard(visible = cardsVisible, delayMillis = 330) {
+                    LabSamplePdfsCard(viewModel = viewModel)
+                }
+            }
+
             Spacer(Modifier.height(8.dp))
     } // end content column
 
@@ -1123,8 +1132,7 @@ private fun ReportCard(
 
 /** Juno's feature: one row of the "What's in this report" disclosure. */
 @Composable
-private fun ReportSourceRow(title: String, detail: String) {
-    Row(verticalAlignment = Alignment.Top) {
+private fun ReportSourceRow(title: String, detail: String) {    Row(verticalAlignment = Alignment.Top) {
         Icon(
             Icons.Default.CheckCircle,
             null,

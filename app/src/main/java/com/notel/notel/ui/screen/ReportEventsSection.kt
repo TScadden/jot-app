@@ -21,7 +21,6 @@ import com.notel.notel.ui.theme.*
 import com.notel.notel.ui.viewmodel.SettingsViewModel
 import java.text.SimpleDateFormat
 import java.time.Instant
-import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.util.*

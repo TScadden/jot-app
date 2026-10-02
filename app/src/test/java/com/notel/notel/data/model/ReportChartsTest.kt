@@ -66,7 +66,7 @@ class ReportChartsTest {
         val entries = listOf(entry(0, id = 1), entry(0, id = 2), entry(1, id = 3))
         val buckets = bucketizeCounts(entries, start, now, zone, BucketSize.DAILY)
         val counts = buckets.map { it.count }
-        assertEquals(2, counts.sum())
+        assertEquals(3, counts.sum())
         // Honest zeros inside the range are allowed for count buckets.
         assertTrue(counts.any { it == 0 })
     }

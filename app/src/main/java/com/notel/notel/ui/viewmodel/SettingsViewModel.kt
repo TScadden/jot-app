@@ -356,9 +356,61 @@ class SettingsViewModel @Inject constructor(
             .getWorkInfosForUniqueWorkFlow(com.notel.notel.worker.ReportPrepWorker.workName(eventId))
             .map { infos -> infos.firstOrNull() }
 
+    // Phase 2: Lab-only clearly-marked SYNTHETIC sample PDFs into Downloads,
+    // so the founder can render and inspect every page on-device. Gated on
+    // the TABS_LAB build flag — invisible in production builds.
+    private val _labSampleResult = MutableStateFlow<String?>(null)
+    val labSampleResult = _labSampleResult.asStateFlow()
+
+    fun generateLabSamplePdfs() {
+        if (!com.notel.notel.BuildConfig.TABS_LAB) return
+        viewModelScope.launch {
+            _labSampleResult.value = "Generating synthetic samples…"
+            try {
+                val samples = com.notel.notel.util.ReportSampleData.buildSamples()
+                val made = mutableListOf<String>()
+                for (sample in samples) {
+                    val snapshot = sample.data
+                    val result = reportGenerator.generateReportDetailed(
+                        snapshot = snapshot,
+                        aiSummary = com.notel.notel.util.ReportSampleData.syntheticSummary(sample.title),
+                        isRawFallback = false,
+                        options = com.notel.notel.util.ReportRenderOptions(synthetic = true),
+                        userIdentifier = "Sample User (SYNTHETIC)"
+                    )
+                    if (result != null) {
+                        val rangeKey = when (snapshot.range.type) {
+                            com.notel.notel.data.model.ClinicalReportRangeType.LAST_30_DAYS -> "last30days"
+                            com.notel.notel.data.model.ClinicalReportRangeType.SINCE_LAST_MEETING -> "sincelastmeeting"
+                            com.notel.notel.data.model.ClinicalReportRangeType.CUSTOM -> "custom"
+                            else -> "alltime"
+                        }
+                        recordSavedReport(
+                            title = "SYNTHETIC · ${sample.title}",
+                            focusKey = snapshot.focusKey,
+                            focusText = snapshot.focusText,
+                            rangeType = rangeKey,
+                            rangeStartMs = snapshot.range.startEpochMs,
+                            rangeEndMs = snapshot.range.endEpochMs,
+                            customCategoryIds = emptySet(),
+                            downloadsUri = result.downloadsUri,
+                            isRawFallback = false,
+                            isSynthetic = true
+                        )
+                        made.add(result.file.name)
+                    }
+                }
+                _labSampleResult.value =
+                    "Saved ${made.size} synthetic sample PDFs to Downloads:\n${made.joinToString("\n")}"
+            } catch (e: Exception) {
+                android.util.Log.w(TAG, "generateLabSamplePdfs failed: ${e.javaClass.simpleName}")
+                _labSampleResult.value = "Failed: ${e.javaClass.simpleName}. No health data was used."
+            }
+        }
+    }
+
     /** Re-arms every auto-prepare event (called on boot / app start / tz change). */
-    suspend fun rearmReportPrepAlarms() {
-        try {
+    suspend fun rearmReportPrepAlarms() {        try {
             com.notel.notel.notifications.ReportPrepScheduler.scheduleAll(context, reportEvents.first())
         } catch (e: Exception) {
             android.util.Log.w(TAG, "rearmReportPrepAlarms failed: ${e.javaClass.simpleName}")

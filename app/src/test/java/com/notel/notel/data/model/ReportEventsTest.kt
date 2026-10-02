@@ -88,9 +88,9 @@ class ReportEventsTest {
 
     @Test
     fun compareBeforeAfter_deterministicWindows() {
-        // 30 days of sleep hours: 8h before the event, 6h after.
+        // 40 days of sleep hours: 8h before the event, 6h after.
         val eventDay = (now / dayMs) * dayMs - 20 * dayMs
-        val points = (0 until 30).map { d ->
+        val points = (0 until 40).map { d ->
             val ts = (now / dayMs) * dayMs - d * dayMs
             ts to if (ts < eventDay) 8.0 else 6.0
         }

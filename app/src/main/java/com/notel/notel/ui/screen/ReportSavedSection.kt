@@ -351,3 +351,66 @@ fun SavedReportsCard(
         )
     }
 }
+
+/**
+ * Lab-only (TABS_LAB builds): generates clearly-marked SYNTHETIC sample
+ * PDFs (Health / Training / Custom sparse / 2-year history) into Downloads
+ * for on-device layout review. Never touches real data.
+ */
+@Composable
+fun LabSamplePdfsCard(viewModel: SettingsViewModel) {
+    val result by viewModel.labSampleResult.collectAsState()
+    var busy by remember { mutableStateOf(false) }
+
+    LaunchedEffect(result) {
+        if (result != null && !result!!.startsWith("Generating")) busy = false
+    }
+
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = NotelSurface,
+        modifier = Modifier.fillMaxWidth(),
+        border = androidx.compose.foundation.BorderStroke(1.dp, NotelWarning.copy(alpha = 0.4f))
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Science, null, tint = NotelWarning, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "Lab: synthetic sample PDFs",
+                    color = NotelTextPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Generates 4 clearly-watermarked SYNTHETIC sample PDFs (Health 30d, Training 30d, Custom sparse, Health 2-year) into Downloads. Fabricated data only — no real health data is used.",
+                color = NotelTextSecondary,
+                fontSize = 12.sp
+            )
+            Spacer(Modifier.height(12.dp))
+            GlassyButton(
+                onClick = {
+                    busy = true
+                    viewModel.generateLabSamplePdfs()
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !busy,
+                containerColor = NotelWarning.copy(alpha = 0.25f)
+            ) {
+                if (busy) {
+                    GlassySpinner(size = 18.dp)
+                } else {
+                    Icon(Icons.Default.PictureAsPdf, null, tint = NotelWarning, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Generate synthetic samples", color = NotelTextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            if (result != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(result!!, color = NotelTextSecondary, fontSize = 12.sp)
+            }
+        }
+    }
+}
