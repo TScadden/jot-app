@@ -151,15 +151,17 @@ fun bucketizeCounts(
 }
 
 /** Parses an ISO yyyy-MM-dd date key to start-of-day millis (UTC). Null-safe. */
-fun isoDateKeyToMs(dateKey: String): Long? = try {
-    val parts = dateKey.split("-")
-    if (parts.size != 3) return null
-    val y = parts[0].toInt(); val m = parts[1].toInt(); val d = parts[2].toInt()
-    java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply {
-        isLenient = false
-        set(y, m - 1, d, 0, 0, 0); set(java.util.Calendar.MILLISECOND, 0)
-    }.timeInMillis
-} catch (_: Exception) { null }
+fun isoDateKeyToMs(dateKey: String): Long? {
+    return try {
+        val parts = dateKey.split("-")
+        if (parts.size != 3) return null
+        val y = parts[0].toInt(); val m = parts[1].toInt(); val d = parts[2].toInt()
+        java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply {
+            isLenient = false
+            set(y, m - 1, d, 0, 0, 0); set(java.util.Calendar.MILLISECOND, 0)
+        }.timeInMillis
+    } catch (_: Exception) { null }
+}
 
 /**
  * Converts a snapshot's yyyy-MM-dd keyed metric series to (epochMs, value)

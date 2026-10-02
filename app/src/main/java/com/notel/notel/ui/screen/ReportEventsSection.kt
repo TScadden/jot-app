@@ -4,6 +4,7 @@ import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -157,12 +158,16 @@ private fun ReportEventRow(
             }
         }
     }
-    val statusColor = remember(event, workInfo) {
+    // Hoisted out of remember: @Composable color reads are not allowed inside remember's calculation.
+    val errorColor = MaterialTheme.colorScheme.error
+    val primaryColor = NotelPrimary
+    val statusColor = remember(event, workInfo, errorColor, primaryColor) {
         if (event.lastRunStatus == "failed" &&
             workInfo?.state != WorkInfo.State.RUNNING && workInfo?.state != WorkInfo.State.ENQUEUED
-        ) MaterialTheme.colorScheme.error else NotelPrimary
+        ) errorColor else primaryColor
     }
     val focusLabel = ReportFocus.fromKey(event.focusKey).label
+    val typeLabel = REPORT_EVENT_TYPES[event.type] ?: event.type
 
     Surface(
         shape = RoundedCornerShape(12.dp),

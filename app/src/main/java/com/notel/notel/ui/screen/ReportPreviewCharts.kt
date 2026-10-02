@@ -245,6 +245,7 @@ fun PreviewLineChart(
         } else {
             val gridColor = NotelTextSecondary.copy(alpha = 0.25f)
             val labelColorInt = android.graphics.Color.GRAY
+            val markerColor = NotelWarning
             Canvas(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -287,7 +288,6 @@ fun PreviewLineChart(
                 // on two rows so neighbors never collide; labels truncated at
                 // word boundaries, never mid-word).
                 val dash = PathEffect.dashPathEffect(floatArrayOf(6f, 5f), 0f)
-                val markerColor = NotelWarning
                 val markerPaint = labelPaint(9f, android.graphics.Color.rgb(160, 110, 20))
                 var row0Right = -Float.MAX_VALUE
                 var row1Right = -Float.MAX_VALUE
@@ -386,6 +386,7 @@ fun PreviewBarChart(
         } else {
             val gridColor = NotelTextSecondary.copy(alpha = 0.25f)
             val labelColorInt = android.graphics.Color.GRAY
+            val markerColor = NotelWarning
             Canvas(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -422,7 +423,7 @@ fun PreviewBarChart(
                     if (ev.dateMs in start..end) {
                         val ex = padL + ((ev.dateMs - start).toFloat() / span) * cw
                         drawLine(
-                            NotelWarning, Offset(ex, padT - 14f), Offset(ex, padT + ch),
+                            markerColor, Offset(ex, padT - 14f), Offset(ex, padT + ch),
                             strokeWidth = 1.5f, pathEffect = dash
                         )
                     }

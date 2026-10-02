@@ -199,15 +199,6 @@ fun ProgressReportsScreen(
     // Mason's feature: last successful export timestamp.
     val lastExportTime by viewModel.lastReportExportTime.collectAsState(initial = 0L)
 
-    fun sharePdf(file: java.io.File) {
-        val uri = androidx.core.content.FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.provider",
-            file
-        )
-        sharePdfUri(uri)
-    }
-
     fun sharePdfUri(uri: android.net.Uri) {
         val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
             type = "application/pdf"
@@ -216,6 +207,15 @@ fun ProgressReportsScreen(
         }
         context.startActivity(android.content.Intent.createChooser(intent, "Share Progress Report"))
         viewModel.markReportExported()
+    }
+
+    fun sharePdf(file: java.io.File) {
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.provider",
+            file
+        )
+        sharePdfUri(uri)
     }
 
     val clinicalRange = remember(range) { range.toClinicalReportRange(System.currentTimeMillis()) }

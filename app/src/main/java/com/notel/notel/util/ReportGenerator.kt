@@ -882,7 +882,7 @@ class ReportGenerator @Inject constructor(
         fun xFor(ms: Long) = chartX + ((ms - buckets.first().startMs).toFloat() / span) * chartW
         fun yFor(v: Double) = (chartY + chartH - ((v - lo) / (hi - lo)).toFloat() * chartH)
 
-        val grid = Paint().apply { color = hairline; strokeWidth = 1f }
+        val grid = Paint().apply { this.color = hairline; strokeWidth = 1f }
         for (i in 0..3) {
             val ratio = i / 3f
             val gy = chartY + chartH * (1f - ratio)
@@ -894,7 +894,7 @@ class ReportGenerator @Inject constructor(
         // Event markers.
         val dash = android.graphics.DashPathEffect(floatArrayOf(5f, 4f), 0f)
         val markerPaint = Paint().apply {
-            color = Color.rgb(160, 110, 20); strokeWidth = 1.25f; style = Paint.Style.STROKE
+            this.color = Color.rgb(160, 110, 20); strokeWidth = 1.25f; style = Paint.Style.STROKE
             pathEffect = dash
         }
         val markerLabel = paint(Color.rgb(160, 110, 20), 7.5f)
@@ -945,8 +945,8 @@ class ReportGenerator @Inject constructor(
         if ((buckets.size - 1) % step != 0) xLabel(buckets.size - 1)
 
         // Polyline segments (broken at gaps) + points.
-        val linePaint = Paint().apply { color = color; strokeWidth = 2f; style = Paint.Style.STROKE; isAntiAlias = true }
-        val fillPaint = Paint().apply { color = color; alpha = 22; style = Paint.Style.FILL; isAntiAlias = true }
+        val linePaint = Paint().apply { this.color = color; strokeWidth = 2f; style = Paint.Style.STROKE; isAntiAlias = true }
+        val fillPaint = Paint().apply { this.color = color; alpha = 22; style = Paint.Style.FILL; isAntiAlias = true }
         var seg = mutableListOf<PointF>()
         fun flush() {
             if (seg.size >= 2) {
@@ -965,8 +965,8 @@ class ReportGenerator @Inject constructor(
             if (b.hasData) seg.add(PointF(xFor((b.startMs + b.endMs) / 2), yFor(b.mean!!))) else flush()
         }
         flush()
-        val dotPaint = Paint().apply { color = color; style = Paint.Style.FILL; isAntiAlias = true }
-        val dotBorder = Paint().apply { color = Color.WHITE; style = Paint.Style.FILL; isAntiAlias = true }
+        val dotPaint = Paint().apply { this.color = color; style = Paint.Style.FILL; isAntiAlias = true }
+        val dotBorder = Paint().apply { this.color = Color.WHITE; style = Paint.Style.FILL; isAntiAlias = true }
         if (withData.size <= 60) {
             withData.forEach { b ->
                 val p = PointF(xFor((b.startMs + b.endMs) / 2), yFor(b.mean!!))
@@ -1006,7 +1006,7 @@ class ReportGenerator @Inject constructor(
         val slot = chartW / buckets.size.coerceAtLeast(1)
         val barW = (slot * 0.62f).coerceAtLeast(2f)
 
-        val grid = Paint().apply { color = hairline; strokeWidth = 1f }
+        val grid = Paint().apply { this.color = hairline; strokeWidth = 1f }
         w.canvas.drawLine(chartX, chartY, chartX + chartW, chartY, grid)
         w.canvas.drawText(maxC.toString(), w.margin, chartY + 3f, labelPaint)
         w.canvas.drawLine(chartX, chartY + chartH, chartX + chartW, chartY + chartH, grid)
@@ -1016,7 +1016,7 @@ class ReportGenerator @Inject constructor(
         val span = (buckets.last().endMs - buckets.first().startMs).coerceAtLeast(1L)
         val dash = android.graphics.DashPathEffect(floatArrayOf(5f, 4f), 0f)
         val markerPaint = Paint().apply {
-            color = Color.rgb(160, 110, 20); strokeWidth = 1.25f; style = Paint.Style.STROKE
+            this.color = Color.rgb(160, 110, 20); strokeWidth = 1.25f; style = Paint.Style.STROKE
             pathEffect = dash
         }
         events.forEach { e ->
@@ -1027,7 +1027,7 @@ class ReportGenerator @Inject constructor(
             w.canvas.drawPath(p, markerPaint)
         }
 
-        val barPaint = Paint().apply { color = color; alpha = 215; style = Paint.Style.FILL }
+        val barPaint = Paint().apply { this.color = color; alpha = 215; style = Paint.Style.FILL }
         buckets.forEachIndexed { i, b ->
             val bh = (b.count.toFloat() / maxC) * chartH
             if (bh > 0.5f) {
