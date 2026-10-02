@@ -146,6 +146,146 @@ class SettingsViewModel @Inject constructor(
     private val _reportPreviewSnapshot =
         MutableStateFlow<com.notel.notel.data.model.ClinicalReportData?>(null)
     val reportPreviewSnapshot = _reportPreviewSnapshot.asStateFlow()
+    // Phase 2 (WS-G): preview fidelity — section include/exclude toggles and
+    // editable narrative highlights. Highlights are overlay text only; they
+    // never mutate original records or calculated values.
+    data class ReportPreviewConfig(
+        val includedSections: Set<String> = com.notel.notel.util.ReportSections.ALL,
+        val highlightOverrides: Map<String, String> = emptyMap()
+    )
+
+    private val _reportPreviewConfig = MutableStateFlow(ReportPreviewConfig())
+    val reportPreviewConfig = _reportPreviewConfig.asStateFlow()
+
+    fun toggleReportSection(key: String) {
+        _reportPreviewConfig.update { cfg ->
+            cfg.copy(
+                includedSections =
+                    if (key in cfg.includedSections) cfg.includedSections - key
+                    else cfg.includedSections + key
+            )
+        }
+    }
+
+    fun setReportHighlight(key: String, text: String) {
+        _reportPreviewConfig.update { cfg ->
+            cfg.copy(
+                highlightOverrides =
+                    if (text.isBlank()) cfg.highlightOverrides - key
+                    else cfg.highlightOverrides + (key to text)
+            )
+        }
+    }
+
+    private fun currentRenderOptions(): com.notel.notel.util.ReportRenderOptions =
+        com.notel.notel.util.ReportRenderOptions(
+            includedSections = _reportPreviewConfig.value.includedSections,
+            highlightOverrides = _reportPreviewConfig.value.highlightOverrides
+        )
+
+    // Phase 2 (WS-G): saved reports — metadata + durable Downloads URI refs.
+    // Refresh inserts a NEW version row; nothing is ever overwritten.
+    val savedReports: StateFlow<List<com.notel.notel.data.local.entity.SavedReport>> =
+        database.savedReportDao().observeAll()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private suspend fun recordSavedReport(
+        title: String,
+        focusKey: String,
+        focusText: String,
+        rangeType: String,
+        rangeStartMs: Long,
+        rangeEndMs: Long,
+        customCategoryIds: Set<Int>,
+        downloadsUri: String?,
+        isRawFallback: Boolean,
+        eventId: String? = null,
+        isSynthetic: Boolean = false
+    ) {
+        try {
+            val dao = database.savedReportDao()
+            val nextVersion = (dao.maxVersionFor(title, focusKey) ?: 0) + 1
+            dao.insert(
+                com.notel.notel.data.local.entity.SavedReport(
+                    title = title,
+                    focusKey = focusKey,
+                    focusText = focusText,
+                    rangeType = rangeType,
+                    rangeStartMs = rangeStartMs,
+                    rangeEndMs = rangeEndMs,
+                    eventId = eventId,
+                    pdfUri = downloadsUri,
+                    version = nextVersion,
+                    isRawFallback = isRawFallback,
+                    isSynthetic = isSynthetic,
+                    customCategoryIdsCsv = customCategoryIds.joinToString(",")
+                )
+            )
+        } catch (e: Exception) {
+            android.util.Log.w(TAG, "recordSavedReport failed: ${e.javaClass.simpleName}")
+        }
+    }
+
+    /** Opens a saved report in a PDF viewer; [onMissingFile] when the URI is gone. */
+    fun openSavedReport(report: com.notel.notel.data.local.entity.SavedReport, onMissingFile: () -> Unit) {
+        val uriString = report.pdfUri
+        if (uriString.isNullOrBlank()) {
+            onMissingFile()
+            return
+        }
+        try {
+            val uri = android.net.Uri.parse(uriString)
+            // Verify it still resolves before handing it to a viewer.
+            context.contentResolver.openInputStream(uri)?.close() ?: run {
+                onMissingFile()
+                return
+            }
+            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/pdf")
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            android.util.Log.w(TAG, "openSavedReport failed: ${e.javaClass.simpleName}")
+            onMissingFile()
+        }
+    }
+
+    /** Content URI for the share sheet (Vera's confirm dialog stays screen-side). */
+    fun savedReportShareUri(report: com.notel.notel.data.local.entity.SavedReport): android.net.Uri? =
+        report.pdfUri?.takeIf { it.isNotBlank() }?.let { android.net.Uri.parse(it) }
+
+    /** Deletes the record. The PDF file itself stays in Downloads (stated in the UI). */
+    fun deleteSavedReport(report: com.notel.notel.data.local.entity.SavedReport) {
+        viewModelScope.launch {
+            try {
+                database.savedReportDao().deleteById(report.id)
+            } catch (e: Exception) {
+                android.util.Log.w(TAG, "deleteSavedReport failed: ${e.javaClass.simpleName}")
+            }
+        }
+    }
+
+    /** Refresh: regenerates with the stored range/focus and records a NEW version. */
+    fun refreshSavedReport(report: com.notel.notel.data.local.entity.SavedReport) {
+        val range = when (report.rangeType) {
+            "alltime" -> com.notel.notel.data.model.ReportRange.AllTime
+            "sincelastmeeting" -> com.notel.notel.data.model.ReportRange.SinceLastMeeting(report.rangeStartMs)
+            "custom" -> com.notel.notel.data.model.ReportRange.Custom(report.rangeStartMs, report.rangeEndMs)
+            else -> com.notel.notel.data.model.ReportRange.Last30Days
+        }
+        val focus = com.notel.notel.data.model.ReportFocus.fromKey(report.focusKey, report.focusText)
+        val customIds = report.customCategoryIdsCsv.split(",").mapNotNull { it.toIntOrNull() }.toSet()
+        generateProfessionalReport(
+            range = range,
+            focus = focus,
+            customCategoryIds = customIds,
+            eventId = report.eventId
+        )
+    }
+
+
     private var previewJob: kotlinx.coroutines.Job? = null
 
     fun refreshReportPreview(
@@ -879,12 +1019,22 @@ class SettingsViewModel @Inject constructor(
         range: com.notel.notel.data.model.ReportRange = com.notel.notel.data.model.ReportRange.Last30Days,
         focus: com.notel.notel.data.model.ReportFocus = com.notel.notel.data.model.ReportFocus.Health,
         customCategoryIds: Set<Int> = emptySet(),
-        forceRawFallback: Boolean = false
+        forceRawFallback: Boolean = false,
+        // Phase 2 (WS-G): explicit render options (section toggles + notes);
+        // null falls back to the screen's preview config. WS-H passes the
+        // scheduled event id so the saved record links back to its event.
+        renderOptions: com.notel.notel.util.ReportRenderOptions? = null,
+        eventId: String? = null
     ) {
         reportJob?.cancel()
         reportJob = viewModelScope.launch {
             try {
                 val cats = categories.value
+                val opts = renderOptions ?: currentRenderOptions()
+                // Captured for the saved-report record on Ready.
+                val resolved = range.toClinicalReportRange(System.currentTimeMillis())
+                val titleBase = "${focus.label} report · ${range.label}"
+                val focusText = (focus as? com.notel.notel.data.model.ReportFocus.Custom)?.focusText.orEmpty()
                 if (forceRawFallback) {
                     _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.CollectingData("Collecting patient data for Raw Data report...")
                     val snapshot = logRepository.clinicalReportDataCollector.collectReportData(
@@ -899,6 +1049,13 @@ class SettingsViewModel @Inject constructor(
                     if (file != null) {
                         _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Ready(file, isRawFallback = true, downloadsUri = result.downloadsUri)
                         com.notel.notel.util.NotificationHelper(context).showReportReady(file)
+                        recordSavedReport(
+                            title = titleBase, focusKey = focus.key, focusText = focusText,
+                            rangeType = range.prefsKey,
+                            rangeStartMs = resolved.startEpochMs, rangeEndMs = resolved.endEpochMs,
+                            customCategoryIds = customCategoryIds,
+                            downloadsUri = result.downloadsUri, isRawFallback = true, eventId = eventId
+                        )
                     } else {
                         _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Failed("Failed generating Raw Data report file.")
                     }
@@ -909,10 +1066,21 @@ class SettingsViewModel @Inject constructor(
                         range = range,
                         focus = focus,
                         customCategoryIds = customCategoryIds,
+                        renderOptions = opts,
                         onStateUpdate = { state ->
                             _reportGenerationState.value = state
                             if (state is com.notel.notel.ui.state.ReportGenerationState.Ready) {
                                 com.notel.notel.util.NotificationHelper(context).showReportReady(state.file)
+                                viewModelScope.launch {
+                                    recordSavedReport(
+                                        title = titleBase, focusKey = focus.key, focusText = focusText,
+                                        rangeType = range.prefsKey,
+                                        rangeStartMs = resolved.startEpochMs, rangeEndMs = resolved.endEpochMs,
+                                        customCategoryIds = customCategoryIds,
+                                        downloadsUri = state.downloadsUri,
+                                        isRawFallback = state.isRawFallback, eventId = eventId
+                                    )
+                                }
                             }
                         }
                     )

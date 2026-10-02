@@ -187,6 +187,8 @@ fun ProgressReportsScreen(
     var appointmentFocus by remember { mutableStateOf<ReportFocus>(ReportFocus.Health) }
     // Vera's feature: confirm before the share sheet; the PDF holds health data.
     var pendingShareFile by remember { mutableStateOf<java.io.File?>(null) }
+    // Phase 2 (WS-G): same confirmation for saved-report content URIs.
+    var pendingShareUri by remember { mutableStateOf<android.net.Uri?>(null) }
     // Juno's feature: expandable data-source disclosure.
     var showSources by remember { mutableStateOf(false) }
     // Mira's feature: staggered card entrance.
@@ -201,6 +203,10 @@ fun ProgressReportsScreen(
             "${context.packageName}.provider",
             file
         )
+        sharePdfUri(uri)
+    }
+
+    fun sharePdfUri(uri: android.net.Uri) {
         val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
             type = "application/pdf"
             putExtra(android.content.Intent.EXTRA_STREAM, uri)
@@ -762,6 +768,26 @@ fun ProgressReportsScreen(
             }
             }
 
+            // ---------- Customize (WS-G: preview fidelity) ----------
+            ReportCard(visible = cardsVisible, delayMillis = 135) {
+                ReportCustomizeCard(
+                    viewModel = viewModel,
+                    preview = previewSnapshot
+                )
+            }
+
+            // ---------- Saved reports (WS-G) ----------
+            ReportCard(visible = cardsVisible, delayMillis = 160) {
+                SavedReportsCard(
+                    viewModel = viewModel,
+                    onShare = { report ->
+                        // Vera's feature, same as fresh exports: explicit
+                        // confirmation before the share sheet.
+                        viewModel.savedReportShareUri(report)?.let { pendingShareUri = it }
+                    }
+                )
+            }
+
             // ---------- Details ----------
             if (selectedCategories.isNotEmpty()) {
                 ReportCard(visible = cardsVisible, delayMillis = 180) {
@@ -1008,6 +1034,43 @@ fun ProgressReportsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { pendingShareFile = null }) {
+                    Text("Not now", color = NotelTextSecondary)
+                }
+            }
+        )
+    }
+
+    // Vera's feature for saved reports: same explicit confirmation before
+    // the share sheet — the PDF holds health data.
+    if (pendingShareUri != null) {
+        val uri = pendingShareUri!!
+        AlertDialog(
+            onDismissRequest = { pendingShareUri = null },
+            title = {
+                Text("Share health report", color = NotelTextPrimary, fontWeight = FontWeight.SemiBold)
+            },
+            text = {
+                Column {
+                    Text(
+                        "This PDF contains your health data. Only share it with people you trust.",
+                        color = NotelTextSecondary,
+                        fontSize = 13.sp
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "For informational purposes only. Not medical advice.",
+                        color = NotelTextSecondary.copy(alpha = 0.7f),
+                        fontSize = 11.sp
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { sharePdfUri(uri); pendingShareUri = null }) {
+                    Text("Share", color = NotelPrimary, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingShareUri = null }) {
                     Text("Not now", color = NotelTextSecondary)
                 }
             }

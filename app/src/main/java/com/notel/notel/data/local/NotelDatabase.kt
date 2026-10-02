@@ -33,9 +33,10 @@ import kotlinx.coroutines.launch
         com.notel.notel.data.local.entity.MedicationSideEffectCache::class,
         com.notel.notel.data.local.entity.AiInsight::class,
         com.notel.notel.data.local.entity.ScheduledDoseOccurrence::class,
-        com.notel.notel.data.local.entity.InsightEntryCrossRef::class
+        com.notel.notel.data.local.entity.InsightEntryCrossRef::class,
+        com.notel.notel.data.local.entity.SavedReport::class
     ],
-    version = 31,
+    version = 32,
     exportSchema = true
 )
 abstract class NotelDatabase : RoomDatabase() {
@@ -49,9 +50,36 @@ abstract class NotelDatabase : RoomDatabase() {
     abstract fun medicationDao(): com.notel.notel.data.local.dao.MedicationDao
     abstract fun aiInsightDao(): com.notel.notel.data.local.dao.AiInsightDao
     abstract fun scheduledDoseOccurrenceDao(): com.notel.notel.data.local.dao.ScheduledDoseOccurrenceDao
+    abstract fun savedReportDao(): com.notel.notel.data.local.dao.SavedReportDao
 
     companion object {
         @Volatile private var INSTANCE: NotelDatabase? = null
+
+        val MIGRATION_31_32 = object : Migration(31, 32) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Phase 2 (WS-G): saved Progress Reports.
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS saved_reports (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        title TEXT NOT NULL,
+                        focusKey TEXT NOT NULL,
+                        focusText TEXT NOT NULL DEFAULT '',
+                        rangeType TEXT NOT NULL,
+                        rangeStartMs INTEGER NOT NULL,
+                        rangeEndMs INTEGER NOT NULL,
+                        generatedAtMs INTEGER NOT NULL,
+                        eventId TEXT,
+                        pdfUri TEXT,
+                        version INTEGER NOT NULL DEFAULT 1,
+                        isRawFallback INTEGER NOT NULL DEFAULT 0,
+                        isSynthetic INTEGER NOT NULL DEFAULT 0,
+                        customCategoryIdsCsv TEXT NOT NULL DEFAULT ''
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
 
         val MIGRATION_29_30 = object : Migration(29, 30) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -364,7 +392,7 @@ abstract class NotelDatabase : RoomDatabase() {
                     "notel_db"
                 )
                     .fallbackToDestructiveMigration()
-                    .addMigrations(MIGRATION_1_2, MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32)
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)

@@ -131,6 +131,7 @@ class LogRepository @Inject constructor(
         range: com.notel.notel.data.model.ReportRange = com.notel.notel.data.model.ReportRange.Last30Days,
         focus: com.notel.notel.data.model.ReportFocus = com.notel.notel.data.model.ReportFocus.Health,
         customCategoryIds: Set<Int> = emptySet(),
+        renderOptions: com.notel.notel.util.ReportRenderOptions = com.notel.notel.util.ReportRenderOptions(),
         onStateUpdate: (com.notel.notel.ui.state.ReportGenerationState) -> Unit = {}
     ): File? {
         if (_isGeneratingReport.value) return null
@@ -174,7 +175,11 @@ class LogRepository @Inject constructor(
             val isRawFallback = (aiSummary == null)
             onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.RenderingPdf())
             
-            val result = reportGenerator.generateReportDetailed(snapshot, aiSummary, isRawFallback = isRawFallback)
+            val result = reportGenerator.generateReportDetailed(
+                snapshot, aiSummary,
+                isRawFallback = isRawFallback,
+                options = renderOptions
+            )
             if (result == null) {
                 onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Failed(
                 com.notel.notel.util.FriendlyErrors.forBackendError(
