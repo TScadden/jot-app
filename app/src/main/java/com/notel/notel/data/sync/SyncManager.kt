@@ -740,7 +740,7 @@ class SyncManager @Inject constructor(
                                 val serverIds = serverList.map { it.id }.toSet()
                                 val remaining = tombstones.filter { it in serverIds }.toSet()
                                 if (remaining.size != tombstones.size) {
-                                    preferences.setDeletedEventCounterIds(Json.encodeToString(remaining))
+                                    preferences.setDeletedEventCounterIds(Json.encodeToString(kotlinx.serialization.builtins.SetSerializer(kotlinx.serialization.builtins.serializer()), remaining))
                                 }
                             }
                         }

@@ -1310,7 +1310,7 @@ class SettingsViewModel @Inject constructor(
                 }
                 preferences.setEventCountersAndTombstones(
                     Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(EventCounterDto.serializer()), current),
-                    Json.encodeToString(tombstones)
+                    Json.encodeToString(kotlinx.serialization.builtins.SetSerializer(kotlinx.serialization.builtins.serializer()), tombstones)
                 )
                 
                 val historyStr = preferences.counterHistory.first()

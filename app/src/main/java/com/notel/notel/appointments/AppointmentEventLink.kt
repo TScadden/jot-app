@@ -199,7 +199,7 @@ object AppointmentEventLink {
                 tombstones.add(linkId)
                 preferences.setEventCountersAndTombstones(
                     Json.encodeToString(ListSerializer(EventCounterDto.serializer()), counters.filterNot { it.id == linkId }),
-                    Json.encodeToString(tombstones)
+                    Json.encodeToString(kotlinx.serialization.builtins.SetSerializer(kotlinx.serialization.builtins.serializer()), tombstones)
                 )
                 pushProfile()
             }
