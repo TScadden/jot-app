@@ -189,6 +189,10 @@ open class NotelPreferences(
         val LAST_REPORT_FOCUS_TEXT = stringPreferencesKey("progress_report_last_focus_text")
         // Tabs Lab: last successful export timestamp (Mason's feature).
         val LAST_REPORT_EXPORT_TIME = longPreferencesKey("progress_report_last_export_time")
+        // Phase 2 (WS-H): scheduled report-preparation events (JSON list of
+        // ScheduledReportEvent). The legacy appointment date/type keys above
+        // stay untouched — reminder-only nudges keep working.
+        val REPORT_EVENTS = stringPreferencesKey("progress_report_events")
     }
 
     val appointmentDate: Flow<String?> = dataStore.data.map { it[APPOINTMENT_DATE] }
@@ -233,6 +237,14 @@ open class NotelPreferences(
     val lastReportExportTime: Flow<Long> = dataStore.data.map { it[LAST_REPORT_EXPORT_TIME] ?: 0L }
     suspend fun setLastReportExportTime(epochMs: Long) {
         dataStore.edit { it[LAST_REPORT_EXPORT_TIME] = epochMs }
+    }
+
+    // Phase 2 (WS-H): scheduled report-preparation events, JSON-encoded.
+    // Counts are tiny (a handful of events); a list column is enough — no
+    // new Room entity justified (WS-E/WS-H minimal-storage rule).
+    val reportEvents: Flow<String> = dataStore.data.map { it[REPORT_EVENTS] ?: "[]" }
+    suspend fun setReportEvents(json: String) {
+        dataStore.edit { it[REPORT_EVENTS] = json }
     }
 
     open val manualBloodPressureLogs: Flow<String> = dataStore.data.map { it[MANUAL_BLOOD_PRESSURE_LOGS] ?: "[]" }

@@ -40,12 +40,17 @@ class SettingsViewModel @Inject constructor(
     private val habitRepository: com.notel.notel.data.repository.HabitRepository,
     private val tabsApi: com.notel.notel.data.remote.TabsApi,
     val conditionRepository: com.notel.notel.data.repository.ConditionRepository,
-    @ApplicationContext private val context: android.content.Context
+    @ApplicationContext private val context: android.content.Context,
+    private val reportDeepLink: com.notel.notel.util.ReportDeepLink
 ) : ViewModel() {
 
     companion object {
         private const val TAG = "SettingsViewModel"
     }
+
+    // Phase 2 (WS-H): notification-tap deep link into Progress Reports.
+    val reportDeepLinkRequest = reportDeepLink.openProgressReports
+    fun consumeReportDeepLink() = reportDeepLink.consume()
 
     private val _systemLogs = MutableStateFlow<List<SystemLog>>(emptyList())
     val systemLogs = _systemLogs.asStateFlow()
@@ -267,9 +272,101 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    // Phase 2 (WS-H): scheduled report-preparation events.
+    private val reportEventJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
+    private fun parseReportEvents(raw: String): List<com.notel.notel.data.model.ScheduledReportEvent> =
+        try {
+            if (raw.isBlank()) emptyList()
+            else reportEventJson.decodeFromString(
+                kotlinx.serialization.builtins.ListSerializer(
+                    com.notel.notel.data.model.ScheduledReportEvent.serializer()
+                ),
+                raw
+            )
+        } catch (_: Exception) {
+            emptyList()
+        }
+
+    val reportEvents: StateFlow<List<com.notel.notel.data.model.ScheduledReportEvent>> =
+        preferences.reportEvents
+            .map { parseReportEvents(it) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private suspend fun persistReportEvents(events: List<com.notel.notel.data.model.ScheduledReportEvent>) {
+        preferences.setReportEvents(
+            reportEventJson.encodeToString(
+                kotlinx.serialization.builtins.ListSerializer(
+                    com.notel.notel.data.model.ScheduledReportEvent.serializer()
+                ),
+                events
+            )
+        )
+    }
+
+    /**
+     * Saves (insert or update) a scheduled event, then arms the right
+     * trigger: the prep alarm for auto-prepare events, the legacy
+     * day-before nudge for the explicit reminder-only alternative.
+     */
+    fun saveReportEvent(event: com.notel.notel.data.model.ScheduledReportEvent) {
+        viewModelScope.launch {
+            val updated = reportEvents.value.filter { it.id != event.id } + event
+            persistReportEvents(updated)
+            if (event.isReminderOnly) {
+                com.notel.notel.notifications.ReportPrepScheduler.cancel(context, event.id)
+                // Reminder-only keeps the existing nudge path: convert the
+                // event datetime to an ISO date in its own timezone.
+                val zone = try { java.time.ZoneId.of(event.timezoneId) }
+                catch (_: Exception) { java.time.ZoneId.systemDefault() }
+                val iso = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
+                    .withZone(zone).format(java.time.Instant.ofEpochMilli(event.dateTimeMs))
+                com.notel.notel.notifications.AppointmentReminderScheduler.schedule(context, iso)
+            } else {
+                com.notel.notel.notifications.ReportPrepScheduler.schedule(context, event)
+            }
+        }
+    }
+
+    /** Deletes an event: cancels its alarm and any pending prep work. */
+    fun deleteReportEvent(eventId: String) {
+        viewModelScope.launch {
+            persistReportEvents(reportEvents.value.filter { it.id != eventId })
+            com.notel.notel.notifications.ReportPrepScheduler.cancel(context, eventId)
+            com.notel.notel.worker.ReportPrepWorker.cancel(context, eventId)
+        }
+    }
+
+    /** Manual generation: enqueues the prep worker immediately (deduped). */
+    fun generateEventDraftNow(eventId: String) {
+        val event = reportEvents.value.firstOrNull { it.id == eventId } ?: return
+        viewModelScope.launch {
+            persistReportEvents(
+                reportEvents.value.map {
+                    if (it.id == eventId) it.copy(lastRunStatus = "scheduled", lastError = null) else it
+                }
+            )
+        }
+        com.notel.notel.worker.ReportPrepWorker.enqueue(context, eventId)
+    }
+
+    /** Live WorkManager status for one event's prep job (for the status row). */
+    fun reportEventWorkStatus(eventId: String): kotlinx.coroutines.flow.Flow<androidx.work.WorkInfo?> =
+        androidx.work.WorkManager.getInstance(context)
+            .getWorkInfosForUniqueWorkFlow(com.notel.notel.worker.ReportPrepWorker.workName(eventId))
+            .map { infos -> infos.firstOrNull() }
+
+    /** Re-arms every auto-prepare event (called on boot / app start / tz change). */
+    suspend fun rearmReportPrepAlarms() {
+        try {
+            com.notel.notel.notifications.ReportPrepScheduler.scheduleAll(context, reportEvents.first())
+        } catch (e: Exception) {
+            android.util.Log.w(TAG, "rearmReportPrepAlarms failed: ${e.javaClass.simpleName}")
+        }
+    }
+
     /** Refresh: regenerates with the stored range/focus and records a NEW version. */
-    fun refreshSavedReport(report: com.notel.notel.data.local.entity.SavedReport) {
-        val range = when (report.rangeType) {
+    fun refreshSavedReport(report: com.notel.notel.data.local.entity.SavedReport) {        val range = when (report.rangeType) {
             "alltime" -> com.notel.notel.data.model.ReportRange.AllTime
             "sincelastmeeting" -> com.notel.notel.data.model.ReportRange.SinceLastMeeting(report.rangeStartMs)
             "custom" -> com.notel.notel.data.model.ReportRange.Custom(report.rangeStartMs, report.rangeEndMs)

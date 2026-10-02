@@ -61,11 +61,24 @@ class MainActivity : ComponentActivity() {
     @javax.inject.Inject
     lateinit var syncManager: com.notel.notel.data.sync.SyncManager
 
+    @javax.inject.Inject
+    lateinit var reportDeepLink: com.notel.notel.util.ReportDeepLink
+
     val selectWidgetAppWidgetIdState = mutableStateOf(-1)
+
+    /** Forwards report-draft notification taps to the in-app deep link. */
+    private fun forwardReportDeepLink(intent: android.content.Intent?) {
+        if (intent?.getBooleanExtra("notel.open_progress_reports", false) == true) {
+            reportDeepLink.request(intent.getStringExtra("notel.report_event_id"))
+            intent.removeExtra("notel.open_progress_reports")
+            intent.removeExtra("notel.report_event_id")
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        forwardReportDeepLink(intent)
         
         android.util.Log.d("MainActivityWidget", "onCreate: intent=$intent, extras=${intent?.extras?.keySet()?.associateWith { intent.extras?.get(it) }}")
         val isSelectAction = intent?.action?.startsWith("com.notel.notel.ACTION_SELECT_HABIT_") == true
@@ -952,6 +965,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        forwardReportDeepLink(intent)
         android.util.Log.d("MainActivityWidget", "onNewIntent: intent=$intent, extras=${intent.extras?.keySet()?.associateWith { intent.extras?.get(it) }}")
         val isSelectAction = intent.action?.startsWith("com.notel.notel.ACTION_SELECT_HABIT_") == true
         val widgetId = if (isSelectAction) {

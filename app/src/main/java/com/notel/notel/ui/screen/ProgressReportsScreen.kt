@@ -122,6 +122,8 @@ fun ProgressReportsScreen(
 
     val savedAppointmentDate by viewModel.appointmentDate.collectAsState(initial = null)
     val savedAppointmentType by viewModel.appointmentReportType.collectAsState(initial = "health")
+    // Phase 2 (WS-H): scheduled report-prep events.
+    val reportEvents by viewModel.reportEvents.collectAsState()
 
     // "Since last meeting" defaults to the saved appointment date when set.
     val defaultMeetingMs = remember(savedAppointmentDate) {
@@ -784,6 +786,10 @@ fun ProgressReportsScreen(
                         // Vera's feature, same as fresh exports: explicit
                         // confirmation before the share sheet.
                         viewModel.savedReportShareUri(report)?.let { pendingShareUri = it }
+                    },
+                    // WS-H: link saved drafts back to their scheduled event.
+                    eventNameFor = { id ->
+                        reportEvents.firstOrNull { it.id == id }?.name
                     }
                 )
             }
@@ -937,6 +943,13 @@ fun ProgressReportsScreen(
                     }
                 }
             }
+            }
+
+            // ---------- Scheduled report prep (WS-H) ----------
+            // The card above stays as the simple reminder-only path; this
+            // adds automatic draft generation before a visit.
+            ReportCard(visible = cardsVisible, delayMillis = 300) {
+                ReportEventsCard(viewModel = viewModel)
             }
 
             Spacer(Modifier.height(8.dp))
