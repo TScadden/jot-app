@@ -162,7 +162,7 @@ object AppointmentEventLink {
             name = APPOINTMENT_EVENT_TITLE,
             targetDate = dayMs,
             isUp = false,
-            autoUp = false,
+            autoUp = true,
             isFavorite = false,
             isArchived = false
         )
