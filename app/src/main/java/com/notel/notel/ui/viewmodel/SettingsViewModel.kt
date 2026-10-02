@@ -32,7 +32,6 @@ class SettingsViewModel @Inject constructor(
     private val logRepository: LogRepository,
     private val preferences: NotelPreferences,
     private val categoryRepository: CategoryRepository,
-    private val reportGenerator: com.notel.notel.util.ReportGenerator,
     val healthConnectManager: HealthConnectManager,
     val billingManager: com.notel.notel.data.billing.BillingManager,
     val syncManager: SyncManager,
@@ -822,10 +821,10 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    private val _reportGenerationState = MutableStateFlow<com.notel.notel.ui.state.ReportGenerationState>(com.notel.notel.ui.state.ReportGenerationState.Idle)
-    val reportGenerationState = _reportGenerationState.asStateFlow()
-
-    private var reportJob: kotlinx.coroutines.Job? = null
+    // Report pipeline state is owned by LogRepository (app-scoped) so
+    // ReportGenerationService can publish progress while the app is
+    // backgrounded; the UI observes it here exactly as before.
+    val reportGenerationState = logRepository.reportGenerationState
 
     fun generateProfessionalReport(
         last30DaysOnly: Boolean = false,
@@ -835,51 +834,28 @@ class SettingsViewModel @Inject constructor(
         // The generators and the AI prompt are NOT changed by this.
         categoriesOverride: List<com.notel.notel.data.local.entity.Category>? = null
     ) {
-        reportJob?.cancel()
-        reportJob = viewModelScope.launch {
-            try {
-                val cats = categoriesOverride ?: categories.value
-                if (forceRawFallback) {
-                    _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.CollectingData("Collecting patient data for Raw Data report...")
-                    val snapshot = logRepository.clinicalReportDataCollector.collectReportData(cats, last30DaysOnly)
-                    _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.RenderingPdf("Rendering Raw Data PDF...")
-                    val file = reportGenerator.generateReport(snapshot, aiSummary = null, isRawFallback = true)
-                    if (file != null) {
-                        _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Ready(file, isRawFallback = true)
-                        com.notel.notel.util.NotificationHelper(context).showReportReady(file)
-                    } else {
-                        _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Failed("Failed generating Raw Data report file.")
-                    }
-                } else {
-                    logRepository.generateProfessionalReportWithSnapshot(
-                        categories = cats,
-                        reportGenerator = reportGenerator,
-                        last30DaysOnly = last30DaysOnly,
-                        onStateUpdate = { state ->
-                            _reportGenerationState.value = state
-                            if (state is com.notel.notel.ui.state.ReportGenerationState.Ready) {
-                                com.notel.notel.util.NotificationHelper(context).showReportReady(state.file)
-                            }
-                        }
-                    )
-                }
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Cancelled
-            } catch (e: Exception) {
-                _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Failed(com.notel.notel.util.FriendlyErrors.forBackendError(TAG, e, com.notel.notel.util.FriendlyErrors.Kind.EXPORT).banner, allowRawFallback = true)
-            }
-        }
+        // Generation runs in a foreground service (Doze-resilient): the whole
+        // pipeline — data collection, AI summary, PDF render — survives the
+        // founder leaving the app mid-generation. Progress still flows to
+        // reportGenerationState, and the "report ready" notification fires on
+        // completion, so the UX is unchanged.
+        val cats = categoriesOverride ?: categories.value
+        com.notel.notel.service.ReportGenerationService.start(
+            context = context,
+            last30DaysOnly = last30DaysOnly,
+            forceRawFallback = forceRawFallback,
+            categoryIds = cats.map { it.id }.toIntArray()
+        )
     }
 
     fun cancelReportGeneration() {
-        reportJob?.cancel()
-        reportJob = null
-        _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Cancelled
+        com.notel.notel.service.ReportGenerationService.cancel(context)
+        logRepository.updateReportGenerationState(com.notel.notel.ui.state.ReportGenerationState.Cancelled)
         logRepository.resetGeneratedReport()
     }
 
     fun resetReportGenerationState() {
-        _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Idle
+        logRepository.updateReportGenerationState(com.notel.notel.ui.state.ReportGenerationState.Idle)
     }
 
     fun setAutoAiSuggestions(enabled: Boolean) {
