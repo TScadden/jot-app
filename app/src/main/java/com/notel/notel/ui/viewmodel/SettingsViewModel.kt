@@ -138,6 +138,42 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    // Phase 2 (WS-D): lightweight trend-preview snapshot. Local logs (same
+    // range/focus filter as the export) plus cached metrics only — no live
+    // Health Connect reads, so it stays fast and deterministic. Aggregated
+    // with the same pure functions as the PDF, so preview and export agree
+    // for identical inputs.
+    private val _reportPreviewSnapshot =
+        MutableStateFlow<com.notel.notel.data.model.ClinicalReportData?>(null)
+    val reportPreviewSnapshot = _reportPreviewSnapshot.asStateFlow()
+    private var previewJob: kotlinx.coroutines.Job? = null
+
+    fun refreshReportPreview(
+        range: com.notel.notel.data.model.ReportRange = com.notel.notel.data.model.ReportRange.Last30Days,
+        focus: com.notel.notel.data.model.ReportFocus = com.notel.notel.data.model.ReportFocus.Health,
+        customCategoryIds: Set<Int> = emptySet()
+    ) {
+        previewJob?.cancel()
+        previewJob = viewModelScope.launch {
+            try {
+                val cats = categories.value
+                _reportPreviewSnapshot.value =
+                    logRepository.clinicalReportDataCollector.collectPreviewSnapshot(
+                        allCategories = cats,
+                        range = range,
+                        focus = focus,
+                        customCategoryIds = customCategoryIds
+                    )
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // The preview is advisory; a failure here must never break the
+                // export path. The previous snapshot (if any) stays on screen.
+                android.util.Log.w(TAG, "Report preview snapshot failed: ${e.javaClass.simpleName}")
+            }
+        }
+    }
+
     val knowledgeBase = preferences.knowledgeBase
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
@@ -858,9 +894,10 @@ class SettingsViewModel @Inject constructor(
                         customCategoryIds = customCategoryIds
                     )
                     _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.RenderingPdf("Rendering Raw Data PDF...")
-                    val file = reportGenerator.generateReport(snapshot, aiSummary = null, isRawFallback = true)
+                    val result = reportGenerator.generateReport(snapshot, aiSummary = null, isRawFallback = true)
+                    val file = result?.file
                     if (file != null) {
-                        _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Ready(file, isRawFallback = true)
+                        _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Ready(file, isRawFallback = true, downloadsUri = result.downloadsUri)
                         com.notel.notel.util.NotificationHelper(context).showReportReady(file)
                     } else {
                         _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Failed("Failed generating Raw Data report file.")

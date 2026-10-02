@@ -141,32 +141,7 @@ class ClinicalReportDataCollector @Inject constructor(
         // 4. Medications
         val medicationsDeferred = async {
             try {
-                val medsStr = preferences.medications.first()
-                val meds = if (medsStr.isNotBlank()) {
-                    // The DataStore JSON is always written with the
-                    // com.notel.notel.ui.viewmodel.Medication serializer (id is a UUID
-                    // String) — never the Room entity serializer. Decoding it as the
-                    // entity type threw on the String->Long id coercion, which surfaced
-                    // as a spurious "Medications: Unavailable" with real data behind it.
-                    kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-                        .decodeFromString<List<com.notel.notel.ui.viewmodel.Medication>>(medsStr)
-                        .filter { !it.isDeleted && it.isPresent }
-                        .map { vm ->
-                            Medication(
-                                uuid = vm.id,
-                                name = vm.name,
-                                dose = vm.dose,
-                                frequency = vm.frequency,
-                                startedDate = vm.startDate.ifBlank { null },
-                                endedDate = if (vm.isPresent || vm.endDate.isBlank()
-                                    || vm.endDate.equals("Present", ignoreCase = true)
-                                ) null else vm.endDate,
-                                isArchived = false,
-                                updatedAt = vm.updatedAt,
-                                isDeleted = vm.isDeleted
-                            )
-                        }
-                } else emptyList()
+                val meds = readMedications()
                 metadataMap["medications"] = SectionMetadata("medications", DataSourceStatus.SUCCESS, meds.size)
                 meds
             } catch (e: Exception) {
@@ -423,6 +398,199 @@ class ClinicalReportDataCollector @Inject constructor(
         )
     }
 
+    /**
+     * Reads the stored medication list from DataStore and maps it to Room
+     * entities (Phase 2: extracted so the preview path can reuse it).
+     *
+     * The DataStore JSON is always written with the
+     * com.notel.notel.ui.viewmodel.Medication serializer (id is a UUID
+     * String) — never the Room entity serializer. Decoding it as the
+     * entity type threw on the String->Long id coercion, which surfaced
+     * as a spurious "Medications: Unavailable" with real data behind it.
+     */
+    private suspend fun readMedications(): List<Medication> {
+        val medsStr = preferences.medications.first()
+        if (medsStr.isBlank()) return emptyList()
+        return kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+            .decodeFromString<List<com.notel.notel.ui.viewmodel.Medication>>(medsStr)
+            .filter { !it.isDeleted && it.isPresent }
+            .map { vm ->
+                Medication(
+                    uuid = vm.id,
+                    name = vm.name,
+                    dose = vm.dose,
+                    frequency = vm.frequency,
+                    startedDate = vm.startDate.ifBlank { null },
+                    endedDate = if (vm.isPresent || vm.endDate.isBlank()
+                        || vm.endDate.equals("Present", ignoreCase = true)
+                    ) null else vm.endDate,
+                    isArchived = false,
+                    updatedAt = vm.updatedAt,
+                    isDeleted = vm.isDeleted
+                )
+            }
+    }
+
+    /**
+     * Lightweight preview snapshot (Phase 2, WS-D).
+     *
+     * The full collection path does live Health Connect reads that can take
+     * 30s+; the preview must stay fast and deterministic. This path reads
+     * ONLY cheap local sources: Room logs (range-bounded, focus-filtered —
+     * same filter as the export) plus the on-device metric caches the export
+     * itself prefers (per-day Biometrics entries, HR/HR-spike/calorie
+     * DataStore caches). No live Health Connect reads, no network.
+     *
+     * Consistency rule: the preview aggregates with the SAME pure functions
+     * (ReportCharts.kt) as the PDF, from the same cache-first series the
+     * export uses first. When the export's cache is cold it falls back to
+     * live reads and may cover additional days — that divergence is
+     * disclosed in the section metadata, never hidden.
+     */
+    suspend fun collectPreviewSnapshot(
+        allCategories: List<Category>,
+        range: ReportRange,
+        focus: ReportFocus,
+        customCategoryIds: Set<Int> = emptySet()
+    ): ClinicalReportData {
+        val now = System.currentTimeMillis()
+        val clinicalRange = range.toClinicalReportRange(now)
+        val start = clinicalRange.startEpochMs
+        val zone = try { ZoneId.of(clinicalRange.timezoneId) } catch (_: Exception) { ZoneId.systemDefault() }
+        val minDateStr = LocalDate.ofInstant(
+            Instant.ofEpochMilli(start.coerceAtLeast(0L)), zone
+        ).toString()
+
+        val focusIds = resolveFocusCategoryIds(allCategories, focus, customCategoryIds)
+        val metadata = mutableMapOf<String, SectionMetadata>()
+        metadata["previewMode"] = SectionMetadata(
+            "previewMode", DataSourceStatus.SUCCESS, 0,
+            "Preview snapshot: local logs and cached metrics only — no live Health Connect reads. " +
+                "The export may cover additional days when its cache is cold and it falls back to live reads."
+        )
+
+        val entries = try {
+            val e = logEntryDao.getRecentEntriesInRange(start, now).filter { it.categoryId in focusIds }
+            metadata["logs"] = SectionMetadata("logs", DataSourceStatus.SUCCESS, e.size,
+                "Focus '${focus.key}': ${focusIds.size} of ${allCategories.size} categories included (preview)")
+            e
+        } catch (e: Exception) {
+            metadata["logs"] = SectionMetadata("logs", DataSourceStatus.ERROR, 0, e.javaClass.simpleName)
+            emptyList()
+        }
+
+        val profile = ProfileTuple(
+            preferences.userContext.first(),
+            preferences.userAge.first(),
+            preferences.userHeight.first(),
+            preferences.userWeight.first(),
+            preferences.userGender.first()
+        )
+        val conds = try {
+            conditionRepository.conditions.first()
+        } catch (_: Exception) { emptyList() }
+        metadata["conditions"] = SectionMetadata("conditions", DataSourceStatus.SUCCESS, conds.size)
+        val meds = try { readMedications() } catch (_: Exception) { emptyList() }
+        metadata["medications"] = SectionMetadata("medications", DataSourceStatus.SUCCESS, meds.size)
+        val docs = try {
+            knowledgeDocumentDao.getAllDocuments().first().mapNotNull { it.extractedText?.ifBlank { null } }
+        } catch (_: Exception) { emptyList<String>() }
+        metadata["documents"] = SectionMetadata("documents", DataSourceStatus.SUCCESS, docs.size)
+        val bp = try {
+            val all = bloodPressureRepository.getAllRecords()
+            if (range is ReportRange.AllTime) all else all.filter { it.timeEpochMs >= start }
+        } catch (_: Exception) { emptyList() }
+        metadata["bloodPressure"] = SectionMetadata("bloodPressure", DataSourceStatus.SUCCESS, bp.size)
+
+        // Cached metrics only — the same caches the export prefers.
+        val sleep = readCachedSleep(minDateStr)
+        metadata["sleep"] = SectionMetadata("sleep", if (sleep.isEmpty()) DataSourceStatus.NO_DATA else DataSourceStatus.SUCCESS,
+            sleep.size, "Preview: cached data only")
+        val hr = readCachedHeartRate(minDateStr)
+        metadata["heartRate"] = SectionMetadata("heartRate", if (hr.isEmpty()) DataSourceStatus.NO_DATA else DataSourceStatus.SUCCESS,
+            hr.size, "Preview: cached data only")
+        val hrv = readCachedHrv(minDateStr)
+        metadata["hrv"] = SectionMetadata("hrv", if (hrv.isEmpty()) DataSourceStatus.NO_DATA else DataSourceStatus.SUCCESS,
+            hrv.size, "Preview: cached data only")
+        val spikes = readCachedHrSpikes(minDateStr)
+        metadata["hrSpikes"] = SectionMetadata("hrSpikes", if (spikes.isEmpty()) DataSourceStatus.NO_DATA else DataSourceStatus.SUCCESS,
+            spikes.size, "Preview: cached data only")
+        val calories = readCachedCalories(minDateStr)
+        metadata["calories"] = SectionMetadata("calories", if (calories.isEmpty()) DataSourceStatus.NO_DATA else DataSourceStatus.SUCCESS,
+            calories.size, "Preview: cached data only")
+        val deepSleep = readCachedDeepSleep(minDateStr)
+        metadata["deepSleep"] = SectionMetadata("deepSleep", if (deepSleep.isEmpty()) DataSourceStatus.NO_DATA else DataSourceStatus.SUCCESS,
+            deepSleep.size, "Preview: cached data only")
+
+        val catMap = allCategories.associate { it.id to it.name }
+        return ClinicalReportData(
+            range = clinicalRange,
+            generationTimestamp = now,
+            focusKey = focus.key,
+            focusText = (focus as? ReportFocus.Custom)?.focusText.orEmpty(),
+            logEntries = entries,
+            categoriesMap = catMap,
+            userContext = profile.userContext,
+            userAge = profile.age,
+            userHeight = profile.height,
+            userWeight = profile.weight,
+            userGender = profile.gender,
+            conditions = conds,
+            medications = meds,
+            knowledgeDocuments = docs,
+            heartRateSeries = hr,
+            sleepSeries = sleep,
+            deepSleepSeries = deepSleep,
+            caloriesSeries = calories,
+            hrvSeries = hrv,
+            heartRateSpikes = spikes,
+            bloodPressureSeries = bp,
+            bodyLoadHistory = "",
+            sectionMetadata = metadata
+        )
+    }
+
+    /**
+     * Cache-first sleep minutes: per-day "Biometrics" AiInsight entries (v6)
+     * carry sleepMins in their JSON payload.
+     */
+    private suspend fun readCachedSleep(minDate: String): List<Pair<String, Int>> {
+        return try {
+            readBiometricsEntries(minDate).mapNotNull { (date, payload) ->
+                val mins = payload["sleepMins"]?.jsonPrimitive?.intOrNull ?: 0
+                if (mins > 0) date to mins else null
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    /** Cache-first deep-sleep minutes from the same Biometrics entries. */
+    private suspend fun readCachedDeepSleep(minDate: String): List<Pair<String, Int>> {
+        return try {
+            readBiometricsEntries(minDate).mapNotNull { (date, payload) ->
+                val mins = payload["deepSleepMins"]?.jsonPrimitive?.intOrNull ?: 0
+                if (mins > 0) date to mins else null
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    /**
+     * Cache-first calories: per-day "Biometrics" AiInsight entries first,
+     * then the Fitbit Web API calorie cache (retired API, but the stored
+     * cache is still honest history) for dates the Biometrics entries miss.
+     */
+    private suspend fun readCachedCalories(minDate: String): List<Pair<String, Int>> {
+        return try {
+            val merged = mutableMapOf<String, Int>()
+            readBiometricsEntries(minDate).forEach { (date, payload) ->
+                val cals = payload["calories"]?.jsonPrimitive?.intOrNull ?: 0
+                if (cals > 0) merged[date] = cals
+            }
+            readFitbitCachedCalories(minDate).forEach { (date, cals) ->
+                if (!merged.containsKey(date)) merged[date] = cals
+            }
+            merged.toList().sortedBy { it.first }
+        } catch (e: Exception) { emptyList() }
+    }
     /**
      * Runs a Health Connect history read in per-[chunkDays] chunks for large
      * day counts (each chunk gets its own timeout), or as a single bounded

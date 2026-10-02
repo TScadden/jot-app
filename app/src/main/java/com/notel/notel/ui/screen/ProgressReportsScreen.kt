@@ -114,6 +114,9 @@ fun ProgressReportsScreen(
     val allLogs by viewModel.allLogs.collectAsState()
     val allCategories by viewModel.categories.collectAsState()
     val reportState by viewModel.reportGenerationState.collectAsState()
+    // Phase 2 (WS-D): lightweight trend-preview snapshot — local logs plus
+    // cached metrics only, same range/focus filter as the export.
+    val previewSnapshot by viewModel.reportPreviewSnapshot.collectAsState()
     val isDeepBusy by viewModel.isGeneratingDeepResearch.collectAsState()
     val isProtocolBusy by viewModel.isGeneratingWeeklyRecap.collectAsState()
 
@@ -255,6 +258,12 @@ fun ProgressReportsScreen(
     val hasAnyLogs = allLogs.isNotEmpty()
     val isGenerating = reportState.isProcessing
     val isAnyBusy = isGenerating || isDeepBusy || isProtocolBusy
+
+    // Phase 2 (WS-D): refresh the lightweight trend preview whenever the
+    // range, focus, or custom selection changes. Cheap local reads only.
+    LaunchedEffect(range, focus, customIds) {
+        viewModel.refreshReportPreview(range, focus, customIds)
+    }
 
     // Pre select all categories for Custom the first time it is opened.
     LaunchedEffect(focusKey, allCategories) {
@@ -526,17 +535,50 @@ fun ProgressReportsScreen(
                         fontSize = 13.sp
                     )
 
-                    if (logsInRange.isNotEmpty()) {
+                    // Phase 2 (WS-D): the primary preview is actual metric trends
+                    // (sleep / heart / HRV lines, symptom & training bars) from
+                    // the same range/focus as the export. The hourly chart
+                    // stays as a secondary "when do you log" view.
+                    val preview = previewSnapshot
+                    if (preview != null && preview.hasAnyData) {
                         Spacer(Modifier.height(8.dp))
-                        Text("Log activity by hour", color = NotelTextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                        Box(modifier = Modifier.fillMaxWidth().height(210.dp)) {
-                            HourlyDensityChart(
-                                data = hourlyData,
-                                selectedHour = selectedHour,
-                                onHourSelected = { selectedHour = if (selectedHour == it) null else it }
+                        Text(
+                            "Trends in this report",
+                            color = NotelTextPrimary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Preview uses cached data only — no live device reads. Numbers match the export when computed from the same data.",
+                            color = NotelTextSecondary.copy(alpha = 0.7f),
+                            fontSize = 10.sp
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        ReportTrendPreview(snapshot = preview)
+
+                        if (logsInRange.isNotEmpty()) {
+                            Spacer(Modifier.height(20.dp))
+                            Text(
+                                "When do you log",
+                                color = NotelTextPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium
                             )
+                            Text(
+                                "Secondary — logging activity by hour answers when you log, not how you are trending.",
+                                color = NotelTextSecondary.copy(alpha = 0.7f),
+                                fontSize = 10.sp
+                            )
+                            Box(modifier = Modifier.fillMaxWidth().height(210.dp)) {
+                                HourlyDensityChart(
+                                    data = hourlyData,
+                                    selectedHour = selectedHour,
+                                    onHourSelected = { selectedHour = if (selectedHour == it) null else it }
+                                )
+                            }
                         }
-                    } else {
+                    } else if (preview != null) {
                         Spacer(Modifier.height(12.dp))
                         Column(
                             modifier = Modifier.fillMaxWidth(),
@@ -559,10 +601,25 @@ fun ProgressReportsScreen(
                             Spacer(Modifier.height(4.dp))
                             Text(
                                 if (selectedCategories.isEmpty()) "Pick at least one category above to see a preview."
-                                else "Log symptoms, meds, or sleep and your activity will show up here.",
+                                else "Log symptoms, meds, or sleep and your trends will show up here.",
                                 color = NotelTextSecondary.copy(alpha = 0.7f),
                                 fontSize = 12.sp,
                                 textAlign = TextAlign.Center
+                            )
+                        }
+                    } else {
+                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            GlassySpinner(size = 16.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Loading preview…",
+                                color = NotelTextSecondary,
+                                fontSize = 12.sp
                             )
                         }
                     }
