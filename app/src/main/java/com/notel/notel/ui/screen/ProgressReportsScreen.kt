@@ -693,6 +693,12 @@ fun ProgressReportsScreen(
                                 "AI generated summary",
                                 "Written by AI from your data. Informational only, not medical advice."
                             )
+                            if (focusKey == "training") {
+                                ReportSourceRow(
+                                    "Training data gap",
+                                    "Tabs has no distance, pace, or duration sensors. Training details come from what you logged; the report says so when volume can't be determined."
+                                )
+                            }
                         }
                     }
                 }
