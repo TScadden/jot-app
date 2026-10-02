@@ -448,7 +448,8 @@ class ClinicalReportDataCollector @Inject constructor(
                     min = 0,
                     baseline = 0,
                     spikeCount = spikes,
-                    maxDelta = 0
+                    maxDelta = 0,
+                    totalReadings = 0
                 )
             }
         } catch (e: Exception) { emptyList() }
