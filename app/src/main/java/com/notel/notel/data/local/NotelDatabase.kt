@@ -35,7 +35,7 @@ import kotlinx.coroutines.launch
         com.notel.notel.data.local.entity.ScheduledDoseOccurrence::class,
         com.notel.notel.data.local.entity.InsightEntryCrossRef::class
     ],
-    version = 30,
+    version = 31,
     exportSchema = true
 )
 abstract class NotelDatabase : RoomDatabase() {
@@ -56,6 +56,32 @@ abstract class NotelDatabase : RoomDatabase() {
         val MIGRATION_29_30 = object : Migration(29, 30) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("DROP TABLE IF EXISTS pinned_templates")
+            }
+        }
+
+        val MIGRATION_30_31 = object : Migration(30, 31) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Backfill category slugs. The slug column was added in
+                // MIGRATION_22_23 without backfilling existing rows, and the
+                // onCreate seed did not write slugs, so databases created
+                // before this migration have NULL slugs — which broke
+                // slug-based filtering (Progress Reports showed 0 entries /
+                // 0 categories on the Health preset).
+                db.execSQL(
+                    """
+                    UPDATE categories SET slug = CASE id
+                        WHEN 1 THEN 'symptoms'
+                        WHEN 2 THEN 'calories'
+                        WHEN 3 THEN 'heart_rate'
+                        WHEN 4 THEN 'personal'
+                        WHEN 5 THEN 'sleep'
+                        WHEN 6 THEN 'mood'
+                        WHEN 7 THEN 'general'
+                        WHEN 8 THEN 'medication'
+                        ELSE slug END
+                    WHERE slug IS NULL
+                    """.trimIndent()
+                )
             }
         }
 
@@ -338,15 +364,16 @@ abstract class NotelDatabase : RoomDatabase() {
                     "notel_db"
                 )
                     .fallbackToDestructiveMigration()
-                    .addMigrations(MIGRATION_1_2, MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31)
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)
                             // Seed default categories on first launch using raw SQL for reliability
                             DefaultCategories.all.forEach { cat ->
+                                val slugValue = cat.slug?.let { "'$it'" } ?: "NULL"
                                 db.execSQL("""
-                                    INSERT INTO categories (id, name, icon, colorHex, isDefault, sortOrder)
-                                    VALUES (${cat.id}, '${cat.name}', '${cat.icon}', '${cat.colorHex}', ${if (cat.isDefault) 1 else 0}, ${cat.sortOrder})
+                                    INSERT INTO categories (id, name, icon, colorHex, isDefault, sortOrder, slug)
+                                    VALUES (${cat.id}, '${cat.name}', '${cat.icon}', '${cat.colorHex}', ${if (cat.isDefault) 1 else 0}, ${cat.sortOrder}, $slugValue)
                                 """.trimIndent())
                             }
                         }
