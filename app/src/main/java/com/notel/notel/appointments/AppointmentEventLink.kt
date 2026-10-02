@@ -162,7 +162,10 @@ object AppointmentEventLink {
             name = APPOINTMENT_EVENT_TITLE,
             targetDate = dayMs,
             isUp = false,
-            autoUp = false,
+            // Card-created appointments auto-switch to count-up once the day
+            // passes (founder request). The manual New Counter dialog keeps
+            // its own default.
+            autoUp = true,
             isFavorite = false,
             isArchived = false
         )
