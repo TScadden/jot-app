@@ -174,8 +174,8 @@ class LogRepository @Inject constructor(
             val isRawFallback = (aiSummary == null)
             onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.RenderingPdf())
             
-            val file = reportGenerator.generateReport(snapshot, aiSummary, isRawFallback = isRawFallback)
-            if (file == null) {
+            val result = reportGenerator.generateReportDetailed(snapshot, aiSummary, isRawFallback = isRawFallback)
+            if (result == null) {
                 onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Failed(
                 com.notel.notel.util.FriendlyErrors.forBackendError(
                     "LogRepository", null, com.notel.notel.util.FriendlyErrors.Kind.EXPORT
@@ -184,12 +184,13 @@ class LogRepository @Inject constructor(
             ))
                 return null
             }
+            val file = result.file
 
             onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.SavingFile())
             _generatedReport.value = file
             _reportReadyEvent.emit(file)
             
-            onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Ready(file, isPartial = snapshot.sectionMetadata.values.any { it.status != com.notel.notel.data.model.DataSourceStatus.SUCCESS }, isRawFallback = isRawFallback))
+            onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Ready(file, isPartial = snapshot.sectionMetadata.values.any { it.status != com.notel.notel.data.model.DataSourceStatus.SUCCESS }, isRawFallback = isRawFallback, downloadsUri = result.downloadsUri))
             return file
         } catch (e: kotlinx.coroutines.CancellationException) {
             onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Cancelled)
