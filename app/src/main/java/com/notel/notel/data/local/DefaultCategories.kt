@@ -17,4 +17,13 @@ object DefaultCategories {
         Category(id = 6, name = "Mood & Energy",    icon = "Mood", colorHex = "#FFD93D", sortOrder = 6, slug = "mood"),
         Category(id = 7, name = "General",          icon = "Notes", colorHex = "#B0B0B0", sortOrder = 7, slug = "general"),
     )
+
+    /**
+     * Canonical slug for each default category id. Used as a fallback when a
+     * stored category row has a NULL slug (the slug column was added in
+     * MIGRATION_22_23 without backfilling, and the onCreate seed did not
+     * write slugs until later) so slug-based filtering keeps working on
+     * older databases.
+     */
+    val slugById: Map<Int, String> = all.associate { it.id to (it.slug ?: "") }
 }

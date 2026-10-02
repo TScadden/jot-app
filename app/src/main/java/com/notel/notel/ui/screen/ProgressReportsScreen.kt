@@ -44,13 +44,23 @@ enum class ReportFocus(val key: String, val label: String, val description: Stri
 private val HEALTH_SLUGS = setOf("symptoms", "medication", "sleep", "mood", "heart_rate")
 private val TRAINING_SLUGS = setOf("personal", "heart_rate", "calories")
 
+/**
+ * Effective slug for preset matching. Stored slugs are null on databases
+ * created before the slug column was backfilled, so fall back to the
+ * canonical slug for the category id.
+ */
+private fun effectiveSlug(category: Category): String =
+    category.slug
+        ?: com.notel.notel.data.local.DefaultCategories.slugById[category.id]
+        ?: ""
+
 private fun resolveReportCategories(
     allCategories: List<Category>,
     focus: ReportFocus,
     customIds: Set<Int>
 ): List<Category> = when (focus) {
-    ReportFocus.HEALTH -> allCategories.filter { it.slug in HEALTH_SLUGS }
-    ReportFocus.TRAINING -> allCategories.filter { it.slug in TRAINING_SLUGS }
+    ReportFocus.HEALTH -> allCategories.filter { effectiveSlug(it) in HEALTH_SLUGS }
+    ReportFocus.TRAINING -> allCategories.filter { effectiveSlug(it) in TRAINING_SLUGS }
     ReportFocus.CUSTOM -> allCategories.filter { it.id in customIds }
 }
 
