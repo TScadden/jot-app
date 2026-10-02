@@ -12,6 +12,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.serializer
 import kotlinx.serialization.json.*
 import com.notel.notel.data.local.entity.AiInsight
 import com.notel.notel.data.healthconnect.HealthConnectManager
@@ -1310,7 +1311,7 @@ class SettingsViewModel @Inject constructor(
                 }
                 preferences.setEventCountersAndTombstones(
                     Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(EventCounterDto.serializer()), current),
-                    Json.encodeToString(kotlinx.serialization.builtins.SetSerializer(kotlinx.serialization.builtins.serializer()), tombstones)
+                    Json.encodeToString(kotlinx.serialization.builtins.SetSerializer(serializer<String>()), tombstones)
                 )
                 
                 val historyStr = preferences.counterHistory.first()

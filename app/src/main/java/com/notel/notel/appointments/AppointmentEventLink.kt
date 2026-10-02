@@ -8,6 +8,7 @@ import com.notel.notel.ui.viewmodel.EventCounterDto
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.serializer
 import java.util.Calendar
 import java.util.UUID
 
@@ -199,7 +200,7 @@ object AppointmentEventLink {
                 tombstones.add(linkId)
                 preferences.setEventCountersAndTombstones(
                     Json.encodeToString(ListSerializer(EventCounterDto.serializer()), counters.filterNot { it.id == linkId }),
-                    Json.encodeToString(kotlinx.serialization.builtins.SetSerializer(kotlinx.serialization.builtins.serializer()), tombstones)
+                    Json.encodeToString(kotlinx.serialization.builtins.SetSerializer(serializer<String>()), tombstones)
                 )
                 pushProfile()
             }

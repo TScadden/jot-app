@@ -19,6 +19,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.serializer
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.sync.Mutex
@@ -740,7 +741,7 @@ class SyncManager @Inject constructor(
                                 val serverIds = serverList.map { it.id }.toSet()
                                 val remaining = tombstones.filter { it in serverIds }.toSet()
                                 if (remaining.size != tombstones.size) {
-                                    preferences.setDeletedEventCounterIds(Json.encodeToString(kotlinx.serialization.builtins.SetSerializer(kotlinx.serialization.builtins.serializer()), remaining))
+                                    preferences.setDeletedEventCounterIds(Json.encodeToString(kotlinx.serialization.builtins.SetSerializer(serializer<String>()), remaining))
                                 }
                             }
                         }
