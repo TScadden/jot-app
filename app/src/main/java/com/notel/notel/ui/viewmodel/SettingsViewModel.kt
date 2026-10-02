@@ -89,8 +89,17 @@ class SettingsViewModel @Inject constructor(
             // No-ops when exact alarms are revoked or the fire time passed.
             if (dateIso != null) {
                 com.notel.notel.notifications.AppointmentReminderScheduler.schedule(context, dateIso)
+                // Mirror the appointment into the Events system: links to a
+                // same-day similar event when one exists, otherwise creates a
+                // single card-owned "Doctor appointment" event.
+                com.notel.notel.appointments.AppointmentEventLink.onAppointmentSaved(
+                    preferences, context, { syncManager.pushProfileData() }, dateIso
+                )
             } else {
                 com.notel.notel.notifications.AppointmentReminderScheduler.cancel(context)
+                com.notel.notel.appointments.AppointmentEventLink.onAppointmentCleared(
+                    preferences, context, { syncManager.pushProfileData() }
+                )
             }
         }
     }
@@ -100,6 +109,10 @@ class SettingsViewModel @Inject constructor(
             preferences.setAppointmentDate(null)
             preferences.setAppointmentReportType("health")
             com.notel.notel.notifications.AppointmentReminderScheduler.cancel(context)
+            // Remove the card-owned event (never a user-created one).
+            com.notel.notel.appointments.AppointmentEventLink.onAppointmentCleared(
+                preferences, context, { syncManager.pushProfileData() }
+            )
         }
     }
 
@@ -1317,6 +1330,10 @@ class SettingsViewModel @Inject constructor(
                 history.add(0, CounterHistoryItem(counter.name, counter.targetDate, System.currentTimeMillis()))
                 preferences.setCounterHistory(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(CounterHistoryItem.serializer()), history.take(20)))
                 syncManager.pushProfileData()
+                // Progress Reports: the appointment card may link to this event.
+                // If the user just deleted the linked one, clear the stale
+                // appointment (and cancel its nudge) rather than resurrecting it.
+                com.notel.notel.appointments.AppointmentEventLink.reconcileAppointmentLink(preferences, context)
             }
         }
     }

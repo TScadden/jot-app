@@ -168,6 +168,13 @@ open class NotelPreferences(
         // "health" | "training" | "custom".
         val APPOINTMENT_DATE = stringPreferencesKey("progress_report_appointment_date")
         val APPOINTMENT_REPORT_TYPE = stringPreferencesKey("progress_report_appointment_type")
+        // Link between the Progress Reports appointment card and the Events
+        // system (event counters). Stores the linked counter id, plus whether
+        // the card created it (card-owned: the card may move or delete it) or
+        // merely linked to a user-created event (linked only: the card never
+        // touches the event itself). Nonsensitive: a UUID + a boolean.
+        val APPOINTMENT_EVENT_ID = stringPreferencesKey("progress_report_appointment_event_id")
+        val APPOINTMENT_EVENT_OWNED = booleanPreferencesKey("progress_report_appointment_event_owned")
         // Progress Reports continuity: remembers the last-used type and range
         // so the screen opens where the user left off.
         val LAST_REPORT_TYPE = stringPreferencesKey("progress_report_last_type")
@@ -187,6 +194,21 @@ open class NotelPreferences(
     val appointmentReportType: Flow<String> = dataStore.data.map { it[APPOINTMENT_REPORT_TYPE] ?: "health" }
     suspend fun setAppointmentReportType(reportType: String) {
         dataStore.edit { it[APPOINTMENT_REPORT_TYPE] = reportType }
+    }
+
+    // Event counter linked to the saved appointment (null = no link).
+    val appointmentEventId: Flow<String?> = dataStore.data.map { it[APPOINTMENT_EVENT_ID] }
+    suspend fun setAppointmentEventId(eventId: String?) {
+        dataStore.edit { prefs ->
+            if (eventId.isNullOrBlank()) prefs.remove(APPOINTMENT_EVENT_ID)
+            else prefs[APPOINTMENT_EVENT_ID] = eventId
+        }
+    }
+
+    // True when the appointment card created the linked event (card-owned).
+    val appointmentEventOwned: Flow<Boolean> = dataStore.data.map { it[APPOINTMENT_EVENT_OWNED] ?: false }
+    suspend fun setAppointmentEventOwned(owned: Boolean) {
+        dataStore.edit { it[APPOINTMENT_EVENT_OWNED] = owned }
     }
 
     // Remember the last-used report type and range.

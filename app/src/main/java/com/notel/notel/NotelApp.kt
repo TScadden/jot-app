@@ -64,6 +64,10 @@ class NotelApp : Application(), Configuration.Provider {
                 preferences.appointmentDate.first()?.let { dateIso ->
                     com.notel.notel.notifications.AppointmentReminderScheduler.schedule(this@NotelApp, dateIso)
                 }
+                // Progress Reports: if the event linked to the saved appointment was
+                // deleted (Events tab) or dropped by a sync merge, clear the stale
+                // appointment instead of resurrecting the event.
+                com.notel.notel.appointments.AppointmentEventLink.reconcileAppointmentLink(preferences, this@NotelApp)
             } catch (e: Exception) {
                 android.util.Log.e("NotelApp", "Failed to re-arm check-in reminder", e)
             }
