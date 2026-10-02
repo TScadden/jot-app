@@ -404,7 +404,9 @@ class GeminiService @Inject constructor(
                         errorMessage = errorBody
                     }
                 }
-                Result.failure(IOException(errorMessage))
+                // Include the HTTP status so LogRepository's AiReport diagnostics can
+                // distinguish auth/rate-limit/server failures without logcat spelunking.
+                Result.failure(IOException("HTTP ${response.code()}: $errorMessage"))
             }
         } catch (e: Exception) {
             Result.failure(e)
