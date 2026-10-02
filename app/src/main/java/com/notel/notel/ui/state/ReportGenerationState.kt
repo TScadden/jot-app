@@ -19,7 +19,8 @@ sealed class ReportGenerationState {
     data class Ready(
         val file: File,
         val isPartial: Boolean = false,
-        val isRawFallback: Boolean = false
+        val isRawFallback: Boolean = false,
+        val aiFailureReason: String? = null
     ) : ReportGenerationState()
     
     data class Failed(

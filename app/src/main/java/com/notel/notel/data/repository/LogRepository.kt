@@ -142,6 +142,9 @@ class LogRepository @Inject constructor(
             var aiSummary: String? = null
             var attempts = 2
             var aiAttemptNumber = 0
+            // Why the AI summary failed, in plain language the founder can see
+            // (PDF banner line + export UI). Kept from the last attempt.
+            var aiFailureReason: String? = null
             while (attempts > 0) {
                 aiAttemptNumber++
                 val res = kotlinx.coroutines.withTimeoutOrNull(60_000L) {
@@ -151,6 +154,11 @@ class LogRepository @Inject constructor(
                     aiSummary = res.getOrNull()
                     break
                 }
+                // Surface the actual failure reason instead of a mystery:
+                // timeout (res == null) or the mapped API/network failure.
+                aiFailureReason = com.notel.notel.util.AiFailureReasons.plainReason(
+                    if (res == null) null else res.exceptionOrNull()
+                )
                 // Diagnostic logging: distinguish a coroutine timeout (res == null)
                 // from an API failure (Result.failure) so the next "AI ANALYSIS
                 // UNAVAILABLE" report can be diagnosed from logcat. Metadata only:
@@ -165,13 +173,13 @@ class LogRepository @Inject constructor(
                 if (attempts > 0) kotlinx.coroutines.delay(1000L)
             }
             if (aiSummary == null) {
-                android.util.Log.e("AiReport", "AI summary unavailable after 2 attempts; generating graphs-only PDF (raw fallback)")
+                android.util.Log.e("AiReport", "AI summary unavailable after 2 attempts ($aiFailureReason); generating graphs-only PDF (raw fallback)")
             }
 
             val isRawFallback = (aiSummary == null)
             onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.RenderingPdf())
             
-            val file = reportGenerator.generateReport(snapshot, aiSummary, isRawFallback = isRawFallback)
+            val file = reportGenerator.generateReport(snapshot, aiSummary, isRawFallback = isRawFallback, aiFailureReason = aiFailureReason)
             if (file == null) {
                 onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Failed(
                 com.notel.notel.util.FriendlyErrors.forBackendError(
@@ -186,7 +194,7 @@ class LogRepository @Inject constructor(
             _generatedReport.value = file
             _reportReadyEvent.emit(file)
             
-            onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Ready(file, isPartial = snapshot.sectionMetadata.values.any { it.status != com.notel.notel.data.model.DataSourceStatus.SUCCESS }, isRawFallback = isRawFallback))
+            onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Ready(file, isPartial = snapshot.sectionMetadata.values.any { it.status != com.notel.notel.data.model.DataSourceStatus.SUCCESS }, isRawFallback = isRawFallback, aiFailureReason = aiFailureReason))
             return file
         } catch (e: kotlinx.coroutines.CancellationException) {
             onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Cancelled)

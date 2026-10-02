@@ -82,7 +82,8 @@ class ReportGenerator @Inject constructor(
     suspend fun generateReport(
         snapshot: com.notel.notel.data.model.ClinicalReportData,
         aiSummary: String? = null,
-        isRawFallback: Boolean = false
+        isRawFallback: Boolean = false,
+        aiFailureReason: String? = null
     ): File? {
         if (!snapshot.hasAnyData) {
             android.util.Log.w("ReportGenerator", "Snapshot contains no data. Refusing to generate empty report PDF.")
@@ -164,6 +165,18 @@ class ReportGenerator @Inject constructor(
             }
             canvas.drawText("⚠️ RAW DATA REPORT: AI ANALYSIS UNAVAILABLE AT GENERATION TIME", margin, y, alertPaint)
             y += 18f
+            // Founder-visible reason: why the AI summary never made it into
+            // this report (timeout, signed out, no connection, ...). Plain
+            // one-liner only, never a stack trace.
+            if (!aiFailureReason.isNullOrBlank()) {
+                val reasonPaint = Paint().apply {
+                    color = Color.rgb(110, 110, 110)
+                    textSize = 10f
+                    isAntiAlias = true
+                }
+                canvas.drawText("AI unavailable: $aiFailureReason", margin, y, reasonPaint)
+                y += 16f
+            }
         }
 
         // Profile & Summary Text Rendering

@@ -138,6 +138,9 @@ fun ProgressReportsScreen(
     var appointmentFocus by remember { mutableStateOf(ReportFocus.HEALTH) }
     // Vera's feature: confirm before the share sheet; the PDF holds health data.
     var pendingShareFile by remember { mutableStateOf<java.io.File?>(null) }
+    // Why the AI summary is missing when the share dialog shows a raw-fallback
+    // report (null = AI summary present, or user explicitly asked for raw).
+    var pendingShareAiReason by remember { mutableStateOf<String?>(null) }
     // Juno's feature: expandable data-source disclosure.
     var showSources by remember { mutableStateOf(false) }
     // Mira's feature: staggered card entrance.
@@ -208,6 +211,7 @@ fun ProgressReportsScreen(
             // Vera's feature: hold the file for an explicit share confirmation
             // instead of opening the share sheet unprompted.
             pendingShareFile = currentState.file
+            pendingShareAiReason = currentState.aiFailureReason
             viewModel.resetReportGenerationState()
             activeRange = null
         } else if (!currentState.isProcessing) {
@@ -739,7 +743,7 @@ fun ProgressReportsScreen(
     if (pendingShareFile != null) {
         val file = pendingShareFile!!
         AlertDialog(
-            onDismissRequest = { pendingShareFile = null },
+            onDismissRequest = { pendingShareFile = null; pendingShareAiReason = null },
             title = {
                 Text("Share health report", color = NotelTextPrimary, fontWeight = FontWeight.SemiBold)
             },
@@ -758,15 +762,25 @@ fun ProgressReportsScreen(
                         color = NotelTextSecondary.copy(alpha = 0.7f),
                         fontSize = 11.sp
                     )
+                    // Honest failure reason: the AI summary never made it into
+                    // this report, so the founder sees why at a glance.
+                    if (pendingShareAiReason != null) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "AI summary unavailable: ${pendingShareAiReason}",
+                            color = NotelTextSecondary,
+                            fontSize = 11.sp
+                        )
+                    }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { sharePdf(file); pendingShareFile = null }) {
+                TextButton(onClick = { sharePdf(file); pendingShareFile = null; pendingShareAiReason = null }) {
                     Text("Share", color = NotelPrimary, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { pendingShareFile = null }) {
+                TextButton(onClick = { pendingShareFile = null; pendingShareAiReason = null }) {
                     Text("Not now", color = NotelTextSecondary)
                 }
             }
