@@ -72,6 +72,18 @@ class LogRepository @Inject constructor(
     private val _reportReadyEvent = MutableSharedFlow<java.io.File>()
     val reportReadyEvent = _reportReadyEvent.asSharedFlow()
 
+    // Report generation pipeline state. Owned here (app-scoped singleton) so
+    // ReportGenerationService can publish progress/completion and the UI can
+    // observe it even when the founder leaves the app mid-generation.
+    private val _reportGenerationState = MutableStateFlow<com.notel.notel.ui.state.ReportGenerationState>(
+        com.notel.notel.ui.state.ReportGenerationState.Idle
+    )
+    val reportGenerationState = _reportGenerationState.asStateFlow()
+
+    fun updateReportGenerationState(state: com.notel.notel.ui.state.ReportGenerationState) {
+        _reportGenerationState.value = state
+    }
+
     private val _isComparingDocuments = MutableStateFlow(false)
     val isComparingDocuments = _isComparingDocuments.asStateFlow()
 
@@ -102,6 +114,7 @@ class LogRepository @Inject constructor(
         _processError.value = null
         _isGeneratingReport.value = false
         _isComparingDocuments.value = false
+        _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Idle
     }
 
     fun resetGeneratedReport() {
