@@ -254,6 +254,15 @@ class ClinicalReportDataCollector @Inject constructor(
                 metadataMap["hrSpikes"] = SectionMetadata("hrSpikes", DataSourceStatus.SUCCESS, cached.size, "Cached data")
                 return@async cached
             }
+            // Middle layer: per-day "Biometrics" AiInsight entries (v6) carry
+            // the day's spike count in their JSON payload — the same source
+            // the web dashboard's HR-spike graph reads. Much cheaper than the
+            // raw Health Connect chunked read below.
+            val insightSpikes = readBiometricsSpikes(minDateStr)
+            if (insightSpikes.isNotEmpty()) {
+                metadataMap["hrSpikes"] = SectionMetadata("hrSpikes", DataSourceStatus.SUCCESS, insightSpikes.size, "Biometrics insights")
+                return@async insightSpikes
+            }
             // Fallback: raw Health Connect read, chunked per 30 days with a
             // 60s window per chunk. Spike detection reads raw paginated HR
             // samples — the heaviest Health Connect query in this pipeline —
@@ -414,6 +423,34 @@ class ClinicalReportDataCollector @Inject constructor(
                 .decodeFromString<List<com.notel.notel.data.healthconnect.DailyHeartRateSummary>>(raw)
                 .filter { it.date >= minDate }
                 .sortedBy { it.date }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    /**
+     * Middle-layer HR spikes: per-day "Biometrics" AiInsight entries (v6)
+     * carry the day's spike count in the "spikes" key of their JSON payload
+     * ({"sleepMins":N,...,"spikes":N}). A day counts as having spike data iff
+     * the payload contains the "spikes" key — the same rule the web
+     * dashboard's HR-spike graph uses. Note the documented ambiguity: a
+     * "spikes":0 can mean a true zero-spike day OR spikes-unknown (the
+     * insight generator defaults missing cache rows to 0). The dashboard
+     * treats it as data, and we stay consistent with the dashboard.
+     * Downstream only needs date + spikeCount.
+     */
+    private suspend fun readBiometricsSpikes(minDate: String): List<com.notel.notel.data.healthconnect.DailyHeartRateSummary> {
+        return try {
+            readBiometricsEntries(minDate).mapNotNull { (date, payload) ->
+                val spikes = payload["spikes"]?.jsonPrimitive?.intOrNull ?: return@mapNotNull null
+                com.notel.notel.data.healthconnect.DailyHeartRateSummary(
+                    date = date,
+                    avg = 0,
+                    max = 0,
+                    min = 0,
+                    baseline = 0,
+                    spikeCount = spikes,
+                    maxDelta = 0
+                )
+            }
         } catch (e: Exception) { emptyList() }
     }
 
