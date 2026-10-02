@@ -141,7 +141,9 @@ class LogRepository @Inject constructor(
             // Maximum 2 attempts for AI summary, with bounded 60s timeout per attempt
             var aiSummary: String? = null
             var attempts = 2
+            var aiAttemptNumber = 0
             while (attempts > 0) {
+                aiAttemptNumber++
                 val res = kotlinx.coroutines.withTimeoutOrNull(60_000L) {
                     geminiService.getMedicalReportSummaryFromSnapshot(snapshot)
                 }
@@ -149,8 +151,21 @@ class LogRepository @Inject constructor(
                     aiSummary = res.getOrNull()
                     break
                 }
+                // Diagnostic logging: distinguish a coroutine timeout (res == null)
+                // from an API failure (Result.failure) so the next "AI ANALYSIS
+                // UNAVAILABLE" report can be diagnosed from logcat. Metadata only:
+                // never logs the snapshot, entries, or narrative text.
+                if (res == null) {
+                    android.util.Log.e("AiReport", "AI summary attempt $aiAttemptNumber/2 timed out after 60s (withTimeoutOrNull returned null)")
+                } else {
+                    val ex = res.exceptionOrNull()
+                    android.util.Log.e("AiReport", "AI summary attempt $aiAttemptNumber/2 failed: ${ex?.javaClass?.simpleName}: ${ex?.message}")
+                }
                 attempts--
                 if (attempts > 0) kotlinx.coroutines.delay(1000L)
+            }
+            if (aiSummary == null) {
+                android.util.Log.e("AiReport", "AI summary unavailable after 2 attempts; generating graphs-only PDF (raw fallback)")
             }
 
             val isRawFallback = (aiSummary == null)
