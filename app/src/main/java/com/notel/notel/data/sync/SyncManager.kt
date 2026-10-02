@@ -19,6 +19,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.serializer
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.sync.Mutex
@@ -719,10 +720,30 @@ class SyncManager @Inject constructor(
                             val localJson = preferences.eventCounters.first()
                             val localList = try { if (localJson.isNotBlank()) Json.decodeFromString<List<com.notel.notel.ui.viewmodel.EventCounterDto>>(localJson) else emptyList() } catch(e: Exception) { emptyList() }
                             val serverList = try { Json.decodeFromString<List<com.notel.notel.ui.viewmodel.EventCounterDto>>(serverJson) } catch(e: Exception) { emptyList() }
-                            
+
+                            // Tombstoned ids were deleted locally. A concurrent sync whose
+                            // pull lands after the local delete but before the delete's
+                            // push reaches the server would otherwise resurrect them
+                            // from the stale server copy, so filter them out here.
+                            val tombstones = try {
+                                val raw = preferences.deletedEventCounterIds.first()
+                                if (raw.isNotBlank()) Json.decodeFromString<Set<String>>(raw) else emptySet()
+                            } catch(e: Exception) { emptySet() }
+                            val filteredServer = if (tombstones.isEmpty()) serverList else serverList.filter { it.id !in tombstones }
+
                             // Merge: Server items update local ones, but we keep local items that aren't on server yet
-                            val merged = (localList + serverList).distinctBy { it.id }
+                            val merged = (localList + filteredServer).distinctBy { it.id }
                             preferences.setEventCounters(Json.encodeToString(merged))
+
+                            // Self-clean: once the server no longer carries a tombstoned
+                            // id, the delete has propagated and the tombstone can go.
+                            if (tombstones.isNotEmpty()) {
+                                val serverIds = serverList.map { it.id }.toSet()
+                                val remaining = tombstones.filter { it in serverIds }.toSet()
+                                if (remaining.size != tombstones.size) {
+                                    preferences.setDeletedEventCounterIds(Json.encodeToString(kotlinx.serialization.builtins.SetSerializer(serializer<String>()), remaining))
+                                }
+                            }
                         }
                     }
                     profile.counterHistory?.let { serverJson ->

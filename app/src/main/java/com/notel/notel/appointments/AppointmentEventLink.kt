@@ -8,6 +8,7 @@ import com.notel.notel.ui.viewmodel.EventCounterDto
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.serializer
 import java.util.Calendar
 import java.util.UUID
 
@@ -189,7 +190,18 @@ object AppointmentEventLink {
         if (linkId != null && preferences.appointmentEventOwned.first()) {
             val counters = readCounters(preferences)
             if (counters.any { it.id == linkId }) {
-                writeCounters(preferences, counters.filterNot { it.id == linkId })
+                // Tombstone the deleted id atomically with the removal, same as
+                // SettingsViewModel.endCounterAndSave: otherwise a concurrent
+                // sync's pull phase could resurrect it from a stale server copy.
+                val tombstones = try {
+                    val raw = preferences.deletedEventCounterIds.first()
+                    if (raw.isNotBlank()) Json.decodeFromString<MutableSet<String>>(raw) else mutableSetOf()
+                } catch(e: Exception) { mutableSetOf() }
+                tombstones.add(linkId)
+                preferences.setEventCountersAndTombstones(
+                    Json.encodeToString(ListSerializer(EventCounterDto.serializer()), counters.filterNot { it.id == linkId }),
+                    Json.encodeToString(kotlinx.serialization.builtins.SetSerializer(serializer<String>()), tombstones)
+                )
                 pushProfile()
             }
             EventScheduler.cancelEventNotification(context, linkId)

@@ -12,6 +12,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.serializer
 import kotlinx.serialization.json.*
 import com.notel.notel.data.local.entity.AiInsight
 import com.notel.notel.data.healthconnect.HealthConnectManager
@@ -1294,11 +1295,24 @@ class SettingsViewModel @Inject constructor(
             val index = current.indexOfFirst { it.id == id }
             if (index >= 0) {
                 val counter = current[index]
+                // Tombstone the deleted id atomically with the list removal: the
+                // profile pull merge is a union, and without this a concurrent sync
+                // whose pull lands after this delete would resurrect the counter
+                // from a stale server copy. The pull prunes tombstones once the
+                // server no longer carries the id.
+                val tombstones = try {
+                    val raw = preferences.deletedEventCounterIds.first()
+                    if (raw.isNotBlank()) Json.decodeFromString<MutableSet<String>>(raw) else mutableSetOf()
+                } catch(e: Exception) { mutableSetOf() }
+                tombstones.add(id)
                 current.removeAt(index)
                 if (current.isNotEmpty()) {
                     // No longer specifically managing 'isFavorite' as we're removing that system
                 }
-                preferences.setEventCounters(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(EventCounterDto.serializer()), current))
+                preferences.setEventCountersAndTombstones(
+                    Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(EventCounterDto.serializer()), current),
+                    Json.encodeToString(kotlinx.serialization.builtins.SetSerializer(serializer<String>()), tombstones)
+                )
                 
                 val historyStr = preferences.counterHistory.first()
                 val history = try { if (historyStr.isNotBlank()) Json.decodeFromString<MutableList<CounterHistoryItem>>(historyStr) else mutableListOf() } catch(e: Exception) { mutableListOf() }
