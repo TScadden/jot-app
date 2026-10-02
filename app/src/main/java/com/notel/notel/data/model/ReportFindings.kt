@@ -83,7 +83,7 @@ fun buildFindings(snapshot: ClinicalReportData): List<ReportFinding> {
     seriesStats(snapshot.heartRateSeries)?.let { (avg, days, _) ->
         findings.add(
             ReportFinding(
-                text = "Average recorded resting heart rate was ${avg.roundToInt()} bpm.",
+                text = "Average recorded heart rate was ${avg.roundToInt()} bpm.",
                 evidence = "$days days with heart-rate data in range ($span). Source: ${sourceLabel(snapshot, "heartRate")}.",
                 sourceKey = "heartRate"
             )
