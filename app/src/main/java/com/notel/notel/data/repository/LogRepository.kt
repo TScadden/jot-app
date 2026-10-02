@@ -138,14 +138,17 @@ class LogRepository @Inject constructor(
 
             onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.BuildingSummary())
             
-            // Maximum 2 attempts for AI summary, with bounded 60s timeout per attempt
+            // Maximum attempts for AI summary, driven by failure class:
+            // transient connection failures get up to 4 attempts with
+            // exponential backoff (2s/4s/8s); HTTP 5xx gets one extra retry;
+            // HTTP 4xx and other fatal errors fail fast. 60s timeout per attempt.
             var aiSummary: String? = null
-            var attempts = 2
             var aiAttemptNumber = 0
+            var maxAttempts = 1
             // Why the AI summary failed, in plain language the founder can see
             // (PDF banner line + export UI). Kept from the last attempt.
             var aiFailureReason: String? = null
-            while (attempts > 0) {
+            while (aiAttemptNumber < maxAttempts) {
                 aiAttemptNumber++
                 val res = kotlinx.coroutines.withTimeoutOrNull(60_000L) {
                     geminiService.getMedicalReportSummaryFromSnapshot(snapshot)
@@ -156,24 +159,31 @@ class LogRepository @Inject constructor(
                 }
                 // Surface the actual failure reason instead of a mystery:
                 // timeout (res == null) or the mapped API/network failure.
-                aiFailureReason = com.notel.notel.util.AiFailureReasons.plainReason(
-                    if (res == null) null else res.exceptionOrNull()
-                )
+                // A null error means the 60s timeout fired, which counts as a
+                // transient connection failure for retry purposes.
+                val failure: Throwable? = if (res == null) null else res.exceptionOrNull()
+                aiFailureReason = com.notel.notel.util.AiFailureReasons.plainReason(failure)
+                val retryClass = com.notel.notel.util.AiFailureReasons.retryClass(failure)
                 // Diagnostic logging: distinguish a coroutine timeout (res == null)
                 // from an API failure (Result.failure) so the next "AI ANALYSIS
                 // UNAVAILABLE" report can be diagnosed from logcat. Metadata only:
                 // never logs the snapshot, entries, or narrative text.
                 if (res == null) {
-                    android.util.Log.e("AiReport", "AI summary attempt $aiAttemptNumber/2 timed out after 60s (withTimeoutOrNull returned null)")
+                    android.util.Log.e("AiReport", "AI summary attempt $aiAttemptNumber timed out after 60s (withTimeoutOrNull returned null)")
                 } else {
                     val ex = res.exceptionOrNull()
-                    android.util.Log.e("AiReport", "AI summary attempt $aiAttemptNumber/2 failed: ${ex?.javaClass?.simpleName}: ${ex?.message}")
+                    android.util.Log.e("AiReport", "AI summary attempt $aiAttemptNumber failed: ${ex?.javaClass?.simpleName}: ${ex?.message}")
                 }
-                attempts--
-                if (attempts > 0) kotlinx.coroutines.delay(1000L)
+                if (retryClass == com.notel.notel.util.AiFailureReasons.RetryClass.FATAL) break
+                maxAttempts = maxOf(maxAttempts, com.notel.notel.util.AiFailureReasons.maxAttempts(retryClass))
+                if (aiAttemptNumber < maxAttempts) {
+                    val delayMs = com.notel.notel.util.AiFailureReasons.backoffDelayMs(retryClass, aiAttemptNumber)
+                    android.util.Log.e("AiReport", "AI summary retry ($retryClass) in ${delayMs}ms: attempt ${aiAttemptNumber + 1} of up to $maxAttempts")
+                    kotlinx.coroutines.delay(delayMs)
+                }
             }
             if (aiSummary == null) {
-                android.util.Log.e("AiReport", "AI summary unavailable after 2 attempts ($aiFailureReason); generating graphs-only PDF (raw fallback)")
+                android.util.Log.e("AiReport", "AI summary unavailable after $aiAttemptNumber attempt(s) ($aiFailureReason); generating graphs-only PDF (raw fallback)")
             }
 
             val isRawFallback = (aiSummary == null)
