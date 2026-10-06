@@ -432,6 +432,7 @@ private fun SnapshotTileRow(
     }
 }
 
+@Composable
 private fun flareForecastSummary(state: FlareForecastUiState): String = when (state) {
     is FlareForecastUiState.Loading -> "Checking today's patterns…"
     is FlareForecastUiState.Error -> "Unavailable right now"
@@ -442,6 +443,7 @@ private fun flareForecastSummary(state: FlareForecastUiState): String = when (st
     }
 }
 
+@Composable
 private fun flareForecastAccent(state: FlareForecastUiState): Color =
     if (state is FlareForecastUiState.Ready && !state.forecast.isSparse) {
         when (state.forecast.level) {
@@ -451,6 +453,7 @@ private fun flareForecastAccent(state: FlareForecastUiState): Color =
         }
     } else NotelTextSecondary
 
+@Composable
 private fun briefingSummary(state: MorningBriefingUiState): String = when (state) {
     is MorningBriefingUiState.Loading -> "Putting together your morning…"
     is MorningBriefingUiState.Error -> "Unavailable right now"
