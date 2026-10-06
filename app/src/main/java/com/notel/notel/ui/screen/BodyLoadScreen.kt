@@ -210,20 +210,8 @@ fun BodyLoadScreen(
                 )
             }
 
-            // ── 0B. Tabs Lab: Flare Forecast + Morning Briefing + quick actions ──
-            item {
-                com.notel.notel.ui.component.FlareForecastCard(
-                    uiState = flareForecastState,
-                    onOpenDetail = onNavigateToFlareForecast
-                )
-            }
-            item {
-                com.notel.notel.ui.component.MorningBriefingCard(
-                    uiState = briefingState,
-                    onOpenDetail = onNavigateToMorningBriefing,
-                    onRefresh = { morningBriefingViewModel.refresh() }
-                )
-            }
+            // ── 0B. Tabs Lab: quick actions (forecast + briefing now live as compact
+            // tiles inside the Weekly Snapshot card) ──
             item {
                 com.notel.notel.ui.component.LabQuickActions(
                     onMigraine = onNavigateToMigraine,
@@ -855,7 +843,11 @@ fun BodyLoadScreen(
                     selectedMetric = selectedMetric.displayName,
                     availableMetrics = availableMetrics,
                     onSelectMetric = { weeklySnapshotViewModel.selectMetric(it) },
-                    onRefresh = { weeklySnapshotViewModel.refresh() }
+                    onRefresh = { weeklySnapshotViewModel.refresh() },
+                    flareForecastState = flareForecastState,
+                    briefingState = briefingState,
+                    onOpenFlareForecast = onNavigateToFlareForecast,
+                    onOpenBriefing = onNavigateToMorningBriefing
                 )
             }
 
