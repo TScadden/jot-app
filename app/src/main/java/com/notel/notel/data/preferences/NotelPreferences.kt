@@ -138,6 +138,11 @@ open class NotelPreferences(
         val FOOD_CHECKER_LAST_QUERY = stringPreferencesKey("food_checker_last_query")
         val USER_NICKNAME = stringPreferencesKey("user_nickname")
         val USER_TAG = stringPreferencesKey("user_tag")
+        // Tabs Lab 4-feature package (Oct 2026): migraine + briefing caches.
+        // Local only, never synced to the server.
+        val ACTIVE_MIGRAINE_ATTACK_ID = longPreferencesKey("active_migraine_attack_id")
+        val MORNING_BRIEFING_CACHE = stringPreferencesKey("morning_briefing_cache")
+        val FLARE_FORECAST_CACHE = stringPreferencesKey("flare_forecast_cache")
         val USER_EMAIL = stringPreferencesKey("user_email")
         val STABLE_USER_ID = stringPreferencesKey("stable_user_id")
         val RECONNECT_REQUIRED = booleanPreferencesKey("reconnect_required")
@@ -472,6 +477,14 @@ open class NotelPreferences(
     val lastKnownLon: Flow<Double> = context.dataStore.data.map { it[LAST_KNOWN_LON] ?: 0.0 }
     val lastKnownCity: Flow<String?> = context.dataStore.data.map { it[LAST_KNOWN_CITY] }
     val weatherLocationPromptSeen: Flow<Boolean> = context.dataStore.data.map { it[WEATHER_LOCATION_PROMPT_SEEN] ?: false }
+
+    // Tabs Lab 4-feature package (Oct 2026)
+    val activeMigraineAttackId: Flow<Long> = context.dataStore.data.map { it[ACTIVE_MIGRAINE_ATTACK_ID] ?: 0L }
+    suspend fun setActiveMigraineAttackId(id: Long) { context.dataStore.edit { it[ACTIVE_MIGRAINE_ATTACK_ID] = id } }
+    val morningBriefingCache: Flow<String> = context.dataStore.data.map { it[MORNING_BRIEFING_CACHE] ?: "" }
+    suspend fun setMorningBriefingCache(json: String) { context.dataStore.edit { it[MORNING_BRIEFING_CACHE] = json } }
+    val flareForecastCache: Flow<String> = context.dataStore.data.map { it[FLARE_FORECAST_CACHE] ?: "" }
+    suspend fun setFlareForecastCache(json: String) { context.dataStore.edit { it[FLARE_FORECAST_CACHE] = json } }
 
     val onboardingComplete: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[ONBOARDING_COMPLETE] ?: false

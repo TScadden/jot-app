@@ -33,10 +33,11 @@ import kotlinx.coroutines.launch
         com.notel.notel.data.local.entity.MedicationSideEffectCache::class,
         com.notel.notel.data.local.entity.AiInsight::class,
         com.notel.notel.data.local.entity.ScheduledDoseOccurrence::class,
-        com.notel.notel.data.local.entity.InsightEntryCrossRef::class,
-        com.notel.notel.data.local.entity.SavedReport::class
+        com.notel.notel.data.local.entity.SavedReport::class,
+        com.notel.notel.data.local.entity.MigraineAttack::class,
+        com.notel.notel.data.local.entity.SyncopeEvent::class
     ],
-    version = 32,
+    version = 33,
     exportSchema = true
 )
 abstract class NotelDatabase : RoomDatabase() {
@@ -51,6 +52,8 @@ abstract class NotelDatabase : RoomDatabase() {
     abstract fun aiInsightDao(): com.notel.notel.data.local.dao.AiInsightDao
     abstract fun scheduledDoseOccurrenceDao(): com.notel.notel.data.local.dao.ScheduledDoseOccurrenceDao
     abstract fun savedReportDao(): com.notel.notel.data.local.dao.SavedReportDao
+    abstract fun migraineAttackDao(): com.notel.notel.data.local.dao.MigraineAttackDao
+    abstract fun syncopeEventDao(): com.notel.notel.data.local.dao.SyncopeEventDao
 
     companion object {
         @Volatile private var INSTANCE: NotelDatabase? = null
@@ -78,6 +81,40 @@ abstract class NotelDatabase : RoomDatabase() {
                     )
                     """.trimIndent()
                 )
+            }
+        }
+
+        val MIGRATION_32_33 = object : Migration(32, 33) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Tabs Lab 4-feature package: migraine attack + syncope event tables.
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS migraine_attacks (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        startTimestamp INTEGER NOT NULL,
+                        endTimestamp INTEGER,
+                        auraPhase TEXT NOT NULL DEFAULT 'NONE',
+                        medsTaken TEXT NOT NULL DEFAULT '',
+                        painPeak INTEGER NOT NULL DEFAULT 0,
+                        reliefRating INTEGER NOT NULL DEFAULT 0,
+                        pressureAtStartHpa REAL NOT NULL DEFAULT 0.0,
+                        notes TEXT NOT NULL DEFAULT '',
+                        updatedAt INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS syncope_events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        timestamp INTEGER NOT NULL,
+                        type TEXT NOT NULL DEFAULT 'NEAR',
+                        prodromeJson TEXT NOT NULL DEFAULT '[]',
+                        postureAtOnset TEXT NOT NULL DEFAULT 'UNKNOWN',
+                        location TEXT NOT NULL DEFAULT 'UNKNOWN',
+                        heartRateAround INTEGER NOT NULL DEFAULT 0,
+                        recoveryMinutes INTEGER NOT NULL DEFAULT 0,
+                        notes TEXT NOT NULL DEFAULT '',
+                        updatedAt INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
             }
         }
 
@@ -392,7 +429,7 @@ abstract class NotelDatabase : RoomDatabase() {
                     "notel_db"
                 )
                     .fallbackToDestructiveMigration()
-                    .addMigrations(MIGRATION_1_2, MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_11_12, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33)
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)

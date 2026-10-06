@@ -3,6 +3,8 @@ package com.notel.notel.data.model
 import com.notel.notel.data.local.entity.Category
 import com.notel.notel.data.local.entity.LogEntry
 import com.notel.notel.data.local.entity.Medication
+import com.notel.notel.data.local.entity.MigraineAttack
+import com.notel.notel.data.local.entity.SyncopeEvent
 import com.notel.notel.data.healthconnect.DailyHeartRateSummary
 import com.notel.notel.data.healthconnect.BloodPressureUiRecord
 import java.time.ZoneId
@@ -207,6 +209,8 @@ data class ClinicalReportData(
     val heartRateSpikes: List<DailyHeartRateSummary> = emptyList(),
     val bloodPressureSeries: List<BloodPressureUiRecord> = emptyList(),
     val bodyLoadHistory: String = "",
+    val syncopeEvents: List<SyncopeEvent> = emptyList(),
+    val migraineAttacks: List<MigraineAttack> = emptyList(),
     val sectionMetadata: Map<String, SectionMetadata> = emptyMap()
 ) {
     val hasAnyData: Boolean
@@ -219,5 +223,7 @@ data class ClinicalReportData(
                 bloodPressureSeries.isNotEmpty() ||
                 conditions.isNotEmpty() ||
                 medications.isNotEmpty() ||
-                knowledgeDocuments.isNotEmpty()
+                knowledgeDocuments.isNotEmpty() ||
+                syncopeEvents.isNotEmpty() ||
+                migraineAttacks.isNotEmpty()
 }

@@ -432,7 +432,32 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToMedications = { navController.navigate("medications") },
                                 onNavigateToLists = { navController.navigate("lists") },
                                 onNavigateToNotes = { navController.navigate("notes") },
-                                onNavigateToProjectFocus = { navController.navigate("project_focus") }
+                                onNavigateToProjectFocus = { navController.navigate("project_focus") },
+                                onNavigateToFlareForecast = { navController.navigate("flare_forecast") },
+                                onNavigateToMorningBriefing = { navController.navigate("morning_briefing") },
+                                onNavigateToMigraine = { navController.navigate("migraine") },
+                                onNavigateToSyncope = { navController.navigate("syncope") }
+                            )
+                        }
+                        // ── Tabs Lab 4-feature package (Oct 2026) ──────────────
+                        composable("flare_forecast") {
+                            com.notel.notel.ui.screen.FlareForecastScreen(
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+                        composable("morning_briefing") {
+                            com.notel.notel.ui.screen.MorningBriefingScreen(
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+                        composable("migraine") {
+                            com.notel.notel.ui.screen.MigraineScreen(
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+                        composable("syncope") {
+                            com.notel.notel.ui.screen.SyncopeScreen(
+                                onBack = { navController.popBackStack() }
                             )
                         }
                         composable("habits") {

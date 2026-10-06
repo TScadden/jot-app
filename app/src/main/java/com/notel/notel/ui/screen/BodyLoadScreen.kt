@@ -72,12 +72,18 @@ fun BodyLoadScreen(
     onNavigateToLists: () -> Unit = {},
     onNavigateToNotes: () -> Unit = {},
     onNavigateToProjectFocus: () -> Unit = {},
+    onNavigateToFlareForecast: () -> Unit = {},
+    onNavigateToMorningBriefing: () -> Unit = {},
+    onNavigateToMigraine: () -> Unit = {},
+    onNavigateToSyncope: () -> Unit = {},
     habitViewModel: HabitViewModel = hiltViewModel(),
     reminderViewModel: ReminderViewModel = hiltViewModel(),
     notesViewModel: NotesViewModel = hiltViewModel(),
     listsViewModel: ListsViewModel = hiltViewModel(),
     todayViewModel: com.notel.notel.ui.viewmodel.TodayViewModel = hiltViewModel(),
-    energyCheckInViewModel: EnergyCheckInViewModel = hiltViewModel()
+    energyCheckInViewModel: EnergyCheckInViewModel = hiltViewModel(),
+    flareForecastViewModel: com.notel.notel.ui.viewmodel.FlareForecastViewModel = hiltViewModel(),
+    morningBriefingViewModel: com.notel.notel.ui.viewmodel.MorningBriefingViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
 
@@ -96,6 +102,8 @@ fun BodyLoadScreen(
     val notes: List<com.notel.notel.data.local.entity.UserListItem> by notesViewModel.notes.collectAsState()
     val lists: List<com.notel.notel.data.local.entity.UserList> by listsViewModel.lists.collectAsState()
     val energyCheckInState by energyCheckInViewModel.uiState.collectAsState()
+    val flareForecastState by flareForecastViewModel.state.collectAsState()
+    val briefingState by morningBriefingViewModel.state.collectAsState()
 
     val coroutineScope = rememberCoroutineScope()
 
@@ -199,6 +207,27 @@ fun BodyLoadScreen(
                 EnergyCheckInCard(
                     visible = energyCheckInState.visible,
                     onSelect = energyCheckInViewModel::selectLevel
+                )
+            }
+
+            // ── 0B. Tabs Lab: Flare Forecast + Morning Briefing + quick actions ──
+            item {
+                com.notel.notel.ui.component.FlareForecastCard(
+                    uiState = flareForecastState,
+                    onOpenDetail = onNavigateToFlareForecast
+                )
+            }
+            item {
+                com.notel.notel.ui.component.MorningBriefingCard(
+                    uiState = briefingState,
+                    onOpenDetail = onNavigateToMorningBriefing,
+                    onRefresh = { morningBriefingViewModel.refresh() }
+                )
+            }
+            item {
+                com.notel.notel.ui.component.LabQuickActions(
+                    onMigraine = onNavigateToMigraine,
+                    onSyncope = onNavigateToSyncope
                 )
             }
 

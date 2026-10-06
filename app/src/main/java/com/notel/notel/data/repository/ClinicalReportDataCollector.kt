@@ -47,7 +47,9 @@ class ClinicalReportDataCollector @Inject constructor(
     private val conditionRepository: ConditionRepository,
     private val bloodPressureRepository: BloodPressureRepository,
     private val healthConnectCoordinator: HealthConnectCoordinator,
-    private val healthConnectManager: HealthConnectManager
+    private val healthConnectManager: HealthConnectManager,
+    private val syncopeEventDao: com.notel.notel.data.local.dao.SyncopeEventDao,
+    private val migraineAttackDao: com.notel.notel.data.local.dao.MigraineAttackDao
 ) {
 
     /**
@@ -340,6 +342,30 @@ class ClinicalReportDataCollector @Inject constructor(
             mapped
         }
 
+        // 8. Syncope + migraine events (Tabs Lab): safety-relevant doctor history,
+        // read straight from the local Lab tables with the same cutoff.
+        val syncopeDeferred = async {
+            try {
+                val events = syncopeEventDao.getEventsSince(cutoff)
+                metadataMap["syncopeEvents"] = SectionMetadata("syncopeEvents", DataSourceStatus.SUCCESS, events.size)
+                events
+            } catch (e: Exception) {
+                metadataMap["syncopeEvents"] = SectionMetadata("syncopeEvents", DataSourceStatus.ERROR, 0, e.javaClass.simpleName)
+                emptyList()
+            }
+        }
+
+        val migraineDeferred = async {
+            try {
+                val attacks = migraineAttackDao.getAttacksSince(cutoff)
+                metadataMap["migraineAttacks"] = SectionMetadata("migraineAttacks", DataSourceStatus.SUCCESS, attacks.size)
+                attacks
+            } catch (e: Exception) {
+                metadataMap["migraineAttacks"] = SectionMetadata("migraineAttacks", DataSourceStatus.ERROR, 0, e.javaClass.simpleName)
+                emptyList()
+            }
+        }
+
         // Await all
         val entries = logsDeferred.await()
         val profile = profileDeferred.await()
@@ -353,6 +379,8 @@ class ClinicalReportDataCollector @Inject constructor(
         val spikesList = spikesDeferred.await()
         val hrvList = hrvDeferred.await()
         val deepSleepList = deepSleepDeferred.await()
+        val syncopeList = syncopeDeferred.await()
+        val migraineList = migraineDeferred.await()
 
         // WS-B: disclose per-metric actual coverage (what dates actually came
         // back — missing data is not zero). Counts and date spans only.
@@ -394,6 +422,8 @@ class ClinicalReportDataCollector @Inject constructor(
             heartRateSpikes = spikesList,
             bloodPressureSeries = bpList,
             bodyLoadHistory = "",
+            syncopeEvents = syncopeList,
+            migraineAttacks = migraineList,
             sectionMetadata = metadataMap.toMap()
         )
     }

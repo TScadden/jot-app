@@ -51,6 +51,25 @@ data class WeatherInfo(
     val pressure: Double = 0.0
 )
 
+@Serializable
+data class OpenMeteoHourlyResponse(
+    val hourly: HourlyPressure
+)
+
+@Serializable
+data class HourlyPressure(
+    val time: List<String> = emptyList(),
+    val surface_pressure: List<Double> = emptyList()
+)
+
+enum class PressureTrend { RISING, FALLING, STEADY, UNKNOWN }
+
+data class PressureOutlook(
+    val currentHpa: Double,
+    val delta24h: Double,
+    val trend: PressureTrend
+)
+
 class WeatherApi {
     private val json = Json {
         // Garbage in must fail loudly (getDetailedWeather returns null -> honest
@@ -258,6 +277,33 @@ class WeatherApi {
                 windSpeed = data.current.wind_speed_10m ?: 0.0,
                 pressure = data.current.surface_pressure
             )
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Pressure outlook for the next 24 hours: current surface pressure plus
+     * the expected delta, used by the migraine auto-attach and the morning
+     * briefing. Same host / TLS path as getDetailedWeather; no new permission.
+     * Returns null when the provider cannot be reached (honest unavailable).
+     */
+    suspend fun getPressureOutlook(lat: Double, lon: Double): PressureOutlook? {
+        return try {
+            val url = "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&hourly=surface_pressure&forecast_days=2&timezone=auto"
+            val body = fetchUrl(url)
+            val data = json.decodeFromString<OpenMeteoHourlyResponse>(body)
+            val pressures = data.hourly.surface_pressure
+            if (pressures.size < 12) return null
+            val current = pressures.first()
+            val ahead24h = pressures.getOrElse(24) { pressures.last() }
+            val delta = ahead24h - current
+            val trend = when {
+                delta >= 2.0 -> PressureTrend.RISING
+                delta <= -2.0 -> PressureTrend.FALLING
+                else -> PressureTrend.STEADY
+            }
+            PressureOutlook(current, delta, trend)
         } catch (e: Exception) {
             null
         }
