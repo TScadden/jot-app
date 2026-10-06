@@ -27,6 +27,10 @@ class MigraineViewModel @Inject constructor(
     private val _state = MutableStateFlow<MigraineUiState>(MigraineUiState.Loading)
     val state: StateFlow<MigraineUiState> = _state.asStateFlow()
 
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error.asStateFlow()
+    fun clearError() { _error.value = null }
+
     init {
         refresh()
     }
@@ -50,8 +54,11 @@ class MigraineViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val attack = repository.startAttack()
+                _error.value = null
                 _state.value = MigraineUiState.Active(attack)
-            } catch (e: Exception) { /* keep current state; UI shows retry */ }
+            } catch (e: Exception) {
+                _error.value = "Could not start the attack log. Please try again."
+            }
         }
     }
 

@@ -44,6 +44,7 @@ fun SyncopeScreen(
 ) {
     val events by viewModel.allEvents.collectAsState()
     val justLogged by viewModel.justLogged.collectAsState()
+    val saveError by viewModel.error.collectAsState()
 
     var type by remember { mutableStateOf("NEAR") }
     var prodromes by remember { mutableStateOf(setOf<String>()) }
@@ -59,6 +60,9 @@ fun SyncopeScreen(
             saving = false
             onBack()
         }
+    }
+    saveError?.let { err ->
+        LaunchedEffect(err) { saving = false }
     }
 
     Scaffold(
@@ -153,6 +157,14 @@ fun SyncopeScreen(
                     Text(if (saving) "Saving…" else "Log episode", fontSize = 19.sp, fontWeight = FontWeight.Bold)
                 }
                 Spacer(Modifier.height(6.dp))
+                saveError?.let { err ->
+                    Text(
+                        text = err,
+                        fontSize = 13.sp,
+                        color = com.notel.notel.ui.theme.NotelError,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
                 Text(
                     "Heart rate around the event attaches automatically when Health Connect is available.",
                     fontSize = 12.sp,

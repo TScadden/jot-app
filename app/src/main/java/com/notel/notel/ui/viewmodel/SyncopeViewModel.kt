@@ -20,6 +20,9 @@ class SyncopeViewModel @Inject constructor(
     private val _justLogged = MutableStateFlow(false)
     val justLogged: StateFlow<Boolean> = _justLogged.asStateFlow()
 
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error.asStateFlow()
+
     fun logEvent(
         type: String,
         prodromes: List<String>,
@@ -31,12 +34,14 @@ class SyncopeViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 repository.logEvent(type, prodromes, postureAtOnset, location, recoveryMinutes, notes)
+                _error.value = null
                 _justLogged.value = true
             } catch (e: Exception) {
-                _justLogged.value = false
+                _error.value = "Could not save the episode. Please try again."
             }
         }
     }
 
     fun consumeJustLogged() { _justLogged.value = false }
+    fun clearError() { _error.value = null }
 }

@@ -43,6 +43,7 @@ fun MigraineScreen(
     onBack: () -> Unit
 ) {
     val state by viewModel.state.collectAsState()
+    val startError by viewModel.error.collectAsState()
 
     Scaffold(
         containerColor = Color(0xFF0B0B12),
@@ -67,7 +68,8 @@ fun MigraineScreen(
                 }
                 is MigraineUiState.Idle -> IdleContent(
                     recentAttacks = s.recentAttacks,
-                    onStart = { viewModel.startAttack() }
+                    error = startError,
+                    onStart = { viewModel.clearError(); viewModel.startAttack() }
                 )
                 is MigraineUiState.Active -> ActiveAttackContent(
                     attack = s.attack,
@@ -80,7 +82,7 @@ fun MigraineScreen(
 }
 
 @Composable
-private fun IdleContent(recentAttacks: List<MigraineAttack>, onStart: () -> Unit) {
+private fun IdleContent(recentAttacks: List<MigraineAttack>, error: String?, onStart: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -100,6 +102,10 @@ private fun IdleContent(recentAttacks: List<MigraineAttack>, onStart: () -> Unit
             Text("Start attack", fontSize = 22.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(8.dp))
+        error?.let { err ->
+            Text(err, color = Color(0xFFE57373), fontSize = 14.sp)
+            Spacer(Modifier.height(8.dp))
+        }
         Text(
             "One tap. Pressure attaches automatically.",
             color = Color(0xFF9A9AA5),
