@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
@@ -39,11 +40,15 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.notel.notel.data.repository.DailySnapshotPoint
 import com.notel.notel.data.repository.WeeklySnapshotMetricData
+import com.notel.notel.data.research.FlareForecast
 import com.notel.notel.ui.theme.*
+import com.notel.notel.ui.viewmodel.FlareForecastUiState
+import com.notel.notel.ui.viewmodel.MorningBriefingUiState
 import com.notel.notel.ui.viewmodel.WeeklySnapshotState
 
 // TODO: Restore metric-specific "View details" navigation after destination UX is finalized.
@@ -56,7 +61,13 @@ fun WeeklySnapshotCard(
     availableMetrics: List<String>,
     onSelectMetric: (String) -> Unit,
     onRefresh: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    // Tabs Lab: compact forecast + briefing tiles live inside the snapshot card.
+    // Null (and no tap handler) = tile hidden. Details open behind a tap.
+    flareForecastState: FlareForecastUiState? = null,
+    briefingState: MorningBriefingUiState? = null,
+    onOpenFlareForecast: (() -> Unit)? = null,
+    onOpenBriefing: (() -> Unit)? = null
 ) {
     Surface(
         modifier = modifier
@@ -348,6 +359,105 @@ fun WeeklySnapshotCard(
                     )
                 }
             }
+
+            // ── Tabs Lab: compact forecast + briefing tiles (details behind a tap) ──
+            if ((flareForecastState != null && onOpenFlareForecast != null) ||
+                (briefingState != null && onOpenBriefing != null)
+            ) {
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider(color = GlassBorder, thickness = 1.dp)
+                if (flareForecastState != null && onOpenFlareForecast != null) {
+                    SnapshotTileRow(
+                        title = "Flare Forecast",
+                        summary = flareForecastSummary(flareForecastState),
+                        accent = flareForecastAccent(flareForecastState),
+                        onClick = onOpenFlareForecast
+                    )
+                }
+                if (briefingState != null && onOpenBriefing != null) {
+                    SnapshotTileRow(
+                        title = "Morning briefing",
+                        summary = briefingSummary(briefingState),
+                        accent = NotelPrimary,
+                        onClick = onOpenBriefing
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** One-line tappable tile: minimal home-screen footprint, detail behind the tap. */
+@Composable
+private fun SnapshotTileRow(
+    title: String,
+    summary: String,
+    accent: Color,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .background(accent, CircleShape)
+        )
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.sp,
+                color = NotelTextPrimary
+            )
+            Text(
+                text = summary,
+                fontSize = 12.sp,
+                color = NotelTextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Icon(
+            imageVector = Icons.Default.ChevronRight,
+            contentDescription = null,
+            tint = NotelTextSecondary,
+            modifier = Modifier.size(18.dp)
+        )
+    }
+}
+
+private fun flareForecastSummary(state: FlareForecastUiState): String = when (state) {
+    is FlareForecastUiState.Loading -> "Checking today's patterns…"
+    is FlareForecastUiState.Error -> "Unavailable right now"
+    is FlareForecastUiState.Ready -> {
+        val f = state.forecast
+        if (f.isSparse) "Still gathering data"
+        else "${f.score} · ${FlareForecast.levelLabel(f.level)} risk"
+    }
+}
+
+private fun flareForecastAccent(state: FlareForecastUiState): Color =
+    if (state is FlareForecastUiState.Ready && !state.forecast.isSparse) {
+        when (state.forecast.level) {
+            FlareForecast.Level.LOW -> NotelSuccess
+            FlareForecast.Level.MODERATE -> NotelWarning
+            FlareForecast.Level.ELEVATED -> NotelError
+        }
+    } else NotelTextSecondary
+
+private fun briefingSummary(state: MorningBriefingUiState): String = when (state) {
+    is MorningBriefingUiState.Loading -> "Putting together your morning…"
+    is MorningBriefingUiState.Error -> "Unavailable right now"
+    is MorningBriefingUiState.Ready -> {
+        val b = state.briefing
+        b.energySuggestion.ifBlank {
+            b.yesterdayLines.take(2).joinToString(" · ").ifBlank { "Tap for details" }
         }
     }
 }

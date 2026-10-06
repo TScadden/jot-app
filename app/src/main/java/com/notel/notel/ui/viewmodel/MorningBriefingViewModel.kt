@@ -41,8 +41,13 @@ data class MorningBriefing(
     val medLines: List<String> = emptyList(),
     val aiInsight: String = "",
     val energySuggestion: String = "",
-    val generatedAt: Long = 0L
+    val generatedAt: Long = 0L,
+    // Bumped when the briefing format changes; stale caches are regenerated.
+    // Default 1 = caches written before versioning existed.
+    val schemaVersion: Int = 1
 )
+
+private const val BRIEFING_SCHEMA_VERSION = 2
 
 sealed class MorningBriefingUiState {
     object Loading : MorningBriefingUiState()
@@ -154,7 +159,8 @@ class MorningBriefingViewModel @Inject constructor(
             medLines = medLines,
             aiInsight = aiInsight,
             energySuggestion = energySuggestion,
-            generatedAt = System.currentTimeMillis()
+            generatedAt = System.currentTimeMillis(),
+            schemaVersion = BRIEFING_SCHEMA_VERSION
         )
     }
 
@@ -171,7 +177,7 @@ class MorningBriefingViewModel @Inject constructor(
                 if (weatherLine.isNotBlank()) appendLine("Today: $weatherLine")
                 if (pressureLine.isNotBlank()) appendLine(pressureLine)
                 appendLine()
-                appendLine("Respond with at most TWO sentences: one informational observation about the last 24 hours of this person's own tracked data. Do not diagnose any condition. Do not give medical advice or treatment recommendations.")
+                appendLine("Respond with a short paragraph of at most two sentences: one informational observation about the last 24 hours of this person's own tracked data. Do not use lists or numbering. Do not diagnose any condition. Do not give medical advice or treatment recommendations.")
             }
             val result = geminiService.getAdvice(
                 recentEntries = recent,
@@ -179,11 +185,29 @@ class MorningBriefingViewModel @Inject constructor(
                 fitbitData = fitbitData,
                 weatherContext = weatherLine.ifBlank { null }
             )
-            result.getOrNull()?.trim()?.take(400) ?: ""
+            // Never cut mid-word: truncate at a sentence boundary so the full
+            // insight always renders completely.
+            truncateAtSentenceBoundary(result.getOrNull()?.trim() ?: "", MAX_INSIGHT_CHARS)
         } catch (e: Exception) { "" }
     }
 
     companion object {
+        /** Max AI insight length; truncation always lands on a sentence boundary. */
+        const val MAX_INSIGHT_CHARS = 800
+
+        /**
+         * Pure logic — used directly by Tess's verification.
+         * Shortens [text] to [maxChars], cutting at the last sentence boundary
+         * within the limit so no sentence is ever left half-rendered.
+         */
+        fun truncateAtSentenceBoundary(text: String, maxChars: Int = MAX_INSIGHT_CHARS): String {
+            if (text.length <= maxChars) return text
+            val cut = text.take(maxChars)
+            val boundary = cut.lastIndexOfAny(charArrayOf('.', '!', '?'))
+            return if (boundary >= maxChars / 2) cut.substring(0, boundary + 1).trim()
+            else cut.trimEnd() + "…"
+        }
+
         /** Pure logic — used directly by Tess's verification. */
         fun energySuggestion(
             sleepMins: Double,
@@ -227,7 +251,9 @@ class MorningBriefingViewModel @Inject constructor(
     private suspend fun readCache(): MorningBriefing? {
         return try {
             val raw = preferences.morningBriefingCache.first()
-            if (raw.isBlank()) null else json.decodeFromString<MorningBriefing>(raw)
+            if (raw.isBlank()) null
+            else json.decodeFromString<MorningBriefing>(raw)
+                .takeIf { it.schemaVersion == BRIEFING_SCHEMA_VERSION }
         } catch (e: Exception) { null }
     }
 
