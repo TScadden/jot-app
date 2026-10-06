@@ -120,7 +120,7 @@ class MorningBriefingViewModel @Inject constructor(
             weatherApi.getPressureOutlook(lat, lon)?.let { p ->
                 pressureLine = when (p.trend) {
                     PressureTrend.RISING -> "Pressure rising over the next 24h"
-                    PressureTrend.FALLING -> "Pressure falling over the next 24h (migraine watch)"
+                    PressureTrend.FALLING -> "Pressure falling over the next 24h"
                     PressureTrend.STEADY -> "Pressure steady over the next 24h"
                     PressureTrend.UNKNOWN -> ""
                 }
