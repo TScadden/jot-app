@@ -33,6 +33,7 @@ import kotlinx.coroutines.launch
         com.notel.notel.data.local.entity.MedicationSideEffectCache::class,
         com.notel.notel.data.local.entity.AiInsight::class,
         com.notel.notel.data.local.entity.ScheduledDoseOccurrence::class,
+        com.notel.notel.data.local.entity.InsightEntryCrossRef::class,
         com.notel.notel.data.local.entity.SavedReport::class,
         com.notel.notel.data.local.entity.MigraineAttack::class,
         com.notel.notel.data.local.entity.SyncopeEvent::class
