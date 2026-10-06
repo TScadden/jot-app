@@ -111,10 +111,11 @@ private fun ScoreRow(forecast: FlareForecast.Forecast) {
         FlareForecast.Level.ELEVATED -> NotelError
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
+        val ringTrack = NotelBorder
         Box(contentAlignment = Alignment.Center, modifier = Modifier.size(72.dp)) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 drawArc(
-                    color = NotelBorder,
+                    color = ringTrack,
                     startAngle = -90f,
                     sweepAngle = 360f,
                     useCenter = false,

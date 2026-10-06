@@ -346,7 +346,7 @@ class ClinicalReportDataCollector @Inject constructor(
         // read straight from the local Lab tables with the same cutoff.
         val syncopeDeferred = async {
             try {
-                val events = syncopeEventDao.getEventsSince(cutoff)
+                val events = syncopeEventDao.getEventsSince(start)
                 metadataMap["syncopeEvents"] = SectionMetadata("syncopeEvents", DataSourceStatus.SUCCESS, events.size)
                 events
             } catch (e: Exception) {
@@ -357,7 +357,7 @@ class ClinicalReportDataCollector @Inject constructor(
 
         val migraineDeferred = async {
             try {
-                val attacks = migraineAttackDao.getAttacksSince(cutoff)
+                val attacks = migraineAttackDao.getAttacksSince(start)
                 metadataMap["migraineAttacks"] = SectionMetadata("migraineAttacks", DataSourceStatus.SUCCESS, attacks.size)
                 attacks
             } catch (e: Exception) {
