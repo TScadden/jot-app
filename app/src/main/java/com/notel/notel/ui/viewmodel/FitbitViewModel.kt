@@ -379,8 +379,11 @@ class FitbitViewModel @Inject constructor(
              launch {
                   try {
                       // Fetch LAST 14 DAYS (fast & deduplicated via coordinator!)
-                      val histHR14 = try { healthConnectCoordinator.getHeartRateHistory(14) } catch(e: Exception) { emptyList() }
                       val histSpikes14 = try { healthConnectCoordinator.getHrSpikesHistory(14) } catch(e: Exception) { emptyList() }
+                      // Daytime average (7am-10pm) — founder's metric, consistent with
+                      // LogRepository's historicalHeartRate cache and the v6 avgHr
+                      // backfill. Zeros are failed reads: never stored.
+                      val histHrAwakeAvg14 = histSpikes14.filter { it.awakeAvg > 0 }.map { it.date to it.awakeAvg }
                       val histSleep14 = try { healthConnectCoordinator.getSleepHistory(14) } catch(e: Exception) { emptyList() }
                       // Calories shown as TOTAL (active + basal) to match Health Connect's
                       // "Energy Burned" screen. This also feeds the Home "Today" strip via
@@ -389,7 +392,7 @@ class FitbitViewModel @Inject constructor(
 
                       _state.update { currentState ->
                           currentState.copy(
-                              historicalHeartRate = (histHR14 + currentState.historicalHeartRate).distinctBy { it.first }.sortedBy { it.first },
+                              historicalHeartRate = (histHrAwakeAvg14 + currentState.historicalHeartRate).distinctBy { it.first }.sortedBy { it.first },
                               historicalSleep = (histSleep14 + currentState.historicalSleep).distinctBy { it.first }.sortedBy { it.first },
                               historicalCalories = (histCal14 + currentState.historicalCalories).distinctBy { it.first }.sortedBy { it.first },
                               historicalSpikes = (histSpikes14 + currentState.historicalSpikes).distinctBy { it.date }.sortedByDescending { it.date },
@@ -400,7 +403,7 @@ class FitbitViewModel @Inject constructor(
 
                       // Background persistence
                       val json = Json { ignoreUnknownKeys = true }
-                      preferences.setHistoricalHeartRate(json.encodeToString(histHR14.map { BiomarkerPoint(it.first, it.second) }))
+                      preferences.setHistoricalHeartRate(json.encodeToString(histHrAwakeAvg14.map { BiomarkerPoint(it.first, it.second) }))
                       preferences.setHistoricalSleep(json.encodeToString(histSleep14.map { BiomarkerPoint(it.first, it.second) }))
                       preferences.setHistoricalCalories(json.encodeToString(histCal14.map { BiomarkerPoint(it.first, it.second) }))
                       preferences.setHistoricalHrSpikes(json.encodeToString(histSpikes14))

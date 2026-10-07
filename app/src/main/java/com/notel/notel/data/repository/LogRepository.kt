@@ -407,10 +407,11 @@ class LogRepository @Inject constructor(
         // UPDATE PREFERENCES TO FIX UI SYNC FOR 7 DAY RECAP
         try {
             val json = Json { ignoreUnknownKeys = true }
-            // Use the true 24h daily average (avg), NOT awakeAvg (7am-10pm daytime
-            // only). awakeAvg runs hotter and more volatile; storing it here made
-            // the historical HR charts jump between two different metrics.
-            val histHrList = historyHr.map { BiomarkerPoint(it.date, it.avg) }
+            // Founder choice: the daytime average (awakeAvg, 7am-10pm) is the
+            // signal that matters for his symptoms; nighttime drags it down.
+            // This MUST match the v6 Biometrics avgHr metric (also awakeAvg) —
+            // mixing two metrics in one series is what caused the chart jump.
+            val histHrList = historyHr.map { BiomarkerPoint(it.date, it.awakeAvg) }
             if (histHrList.isNotEmpty()) preferences.setHistoricalHeartRate(json.encodeToString(histHrList))
             
             val sleepList = sleepHistoryRecords.map { BiomarkerPoint(it.first, it.second) }
