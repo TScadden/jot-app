@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.notel.notel.data.local.entity.SyncopeEvent
+import com.notel.notel.ui.theme.dockClearance
 import com.notel.notel.ui.theme.NotelPrimary
 import com.notel.notel.ui.theme.NotelTextPrimary
 import com.notel.notel.ui.theme.NotelTextSecondary
@@ -81,9 +82,10 @@ fun SyncopeScreen(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
+                .navigationBarsPadding()
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
-            contentPadding = PaddingValues(top = 8.dp, bottom = 32.dp)
+            contentPadding = PaddingValues(top = 8.dp, bottom = 32.dp + dockClearance)
         ) {
             item {
                 SegmentedPair(

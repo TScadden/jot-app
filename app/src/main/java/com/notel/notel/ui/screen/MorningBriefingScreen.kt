@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.notel.notel.ui.component.MedicalDisclaimerBanner
+import com.notel.notel.ui.theme.clearFloatingDock
 import com.notel.notel.ui.theme.NotelPrimary
 import com.notel.notel.ui.theme.NotelTextPrimary
 import com.notel.notel.ui.theme.NotelTextSecondary
@@ -61,7 +62,9 @@ fun MorningBriefingScreen(
             modifier = Modifier
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp)
+                .padding(top = 12.dp)
+                .clearFloatingDock(),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             when (val s = uiState) {

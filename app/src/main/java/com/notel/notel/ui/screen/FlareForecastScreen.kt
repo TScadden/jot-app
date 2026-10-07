@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.notel.notel.data.research.FlareForecast
 import com.notel.notel.ui.component.MedicalDisclaimerBanner
+import com.notel.notel.ui.theme.clearFloatingDock
 import com.notel.notel.ui.theme.NotelPrimary
 import com.notel.notel.ui.theme.NotelSuccess
 import com.notel.notel.ui.theme.NotelWarning
@@ -56,7 +57,9 @@ fun FlareForecastScreen(
             modifier = Modifier
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp)
+                .padding(top = 12.dp)
+                .clearFloatingDock(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             when (val s = uiState) {

@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.notel.notel.data.local.entity.MigraineAttack
+import com.notel.notel.ui.theme.clearFloatingDock
 import com.notel.notel.ui.theme.NotelPrimary
 import com.notel.notel.ui.theme.NotelTextSecondary
 import com.notel.notel.ui.viewmodel.MigraineUiState
@@ -87,7 +88,9 @@ private fun IdleContent(recentAttacks: List<MigraineAttack>, error: String?, onS
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(20.dp),
+            .padding(horizontal = 20.dp)
+            .padding(top = 20.dp)
+            .clearFloatingDock(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Spacer(Modifier.height(24.dp))
