@@ -19,6 +19,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.serializer
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -1080,16 +1084,46 @@ class SyncManager @Inject constructor(
             val existingV6Dates = strippedInsights.filter { it.type == "Biometrics" && it.id.endsWith("_v6") }.map {
                 sdf.format(java.util.Date(it.timestamp))
             }.toSet()
-            
-            // Always include the last 7 days in the targetDays list for re-evaluation
+
+            // Backfill: v6 entries that exist but were baked with missing
+            // sleep or HRV (the Health Connect read missed them, or they were
+            // outside the read window when generated). Without this, days
+            // older than 7 are never re-evaluated and stay gapped forever.
+            val incompleteV6Dates = strippedInsights
+                .filter { it.type == "Biometrics" && it.id.endsWith("_v6") }
+                .mapNotNull { insight ->
+                    val date = sdf.format(java.util.Date(insight.timestamp))
+                    val obj = try {
+                        Json.parseToJsonElement(insight.text).jsonObject
+                    } catch (e: Exception) { null } ?: return@mapNotNull null
+                    val sleepMins = obj["sleepMins"]?.jsonPrimitive?.intOrNull ?: 0
+                    val hrv = obj["hrv"]?.jsonPrimitive?.doubleOrNull ?: 0.0
+                    if (sleepMins <= 0 || hrv <= 0.0) date else null
+                }.toSet()
+
+            // Always include the last 7 days in the targetDays list for re-evaluation,
+            // plus any older dates whose v6 entry is missing sleep/HRV (backfill).
             val targetDays = (0..180).map {
                 java.time.LocalDate.now().minusDays(it.toLong()).toString()
-            }.filter { 
-                it !in existingV6Dates || 
+            }.filter {
+                it !in existingV6Dates ||
+                it in incompleteV6Dates ||
                 java.time.LocalDate.parse(it).isAfter(java.time.LocalDate.now().minusDays(7))
             }
-            
+
             if (targetDays.isEmpty()) return
+
+            // Widen the Health Connect read window to reach the oldest backfill
+            // target — the fixed 14-day window could never fill gaps older than
+            // that. Collapses back to 14 days once everything is complete.
+            val oldestTarget = targetDays.minOrNull()
+            val backfillDays = if (oldestTarget != null) {
+                java.time.temporal.ChronoUnit.DAYS.between(
+                    java.time.LocalDate.parse(oldestTarget),
+                    java.time.LocalDate.now()
+                ).toInt() + 1
+            } else 14
+            val hcReadDays = backfillDays.coerceIn(14, 180)
             
             val spikesStr = preferences.historicalHrSpikes.first()
             val cachedSpikes = try {
@@ -1098,10 +1132,10 @@ class SyncManager @Inject constructor(
                 } else emptyList()
             } catch (e: Exception) { emptyList() }
 
-            val hrvHistory = try { healthConnectCoordinator.getHeartRateVariability(14) } catch(e: Exception) { emptyList() }
-            val sleepHistory = try { healthConnectCoordinator.getSleepHistory(14).map { com.notel.notel.data.healthconnect.DailySleepSummary(it.first, it.second, 0) } } catch(e: Exception) { emptyList() }
-            val calorieHistory = try { healthConnectCoordinator.getCaloriesHistory(14) } catch(e: Exception) { emptyList() }
-            val hrHistory = try { healthConnectCoordinator.getHeartRateHistory(14) } catch(e: Exception) { emptyList() }
+            val hrvHistory = try { healthConnectCoordinator.getHeartRateVariability(hcReadDays) } catch(e: Exception) { emptyList() }
+            val sleepHistory = try { healthConnectCoordinator.getSleepHistory(hcReadDays).map { com.notel.notel.data.healthconnect.DailySleepSummary(it.first, it.second, 0) } } catch(e: Exception) { emptyList() }
+            val calorieHistory = try { healthConnectCoordinator.getCaloriesHistory(hcReadDays) } catch(e: Exception) { emptyList() }
+            val hrHistory = try { healthConnectCoordinator.getHeartRateHistory(hcReadDays) } catch(e: Exception) { emptyList() }
             
             val newInsights = mutableListOf<com.notel.notel.data.local.entity.AiInsight>()
             
