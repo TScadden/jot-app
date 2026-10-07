@@ -16,7 +16,7 @@ import java.util.TimeZone
 import javax.inject.Inject
 
 /**
- * Tabs Lab: fires the Progress Reports appointment nudge at 9:00 AM local
+ * Fires the Progress Reports appointment nudge at 9:00 AM local
  * the day before a saved appointment.
  *
  * Posts the notification only when the saved appointment date is today or

@@ -191,11 +191,23 @@ class ClinicalReportDataCollector @Inject constructor(
                 metadataMap["sleep"] = SectionMetadata("sleep", DataSourceStatus.PERMISSION_DENIED, 0, "Health Connect permissions missing")
                 return@async emptyList()
             }
-            val res = boundedHcRead(liveHcDays, targetToday) { n, end ->
-                healthConnectCoordinator.getSleepHistory(days = n, targetToday = end)
+            // One continuous string: per-day "Biometrics" v6 insights carry
+            // sleepMins, so older days Health Connect has aged out (~14-day
+            // retention) still render. Live HC read overrides recent days with
+            // the freshest data. Zeros are never real — filtered everywhere.
+            val cached = readCachedSleep(minDateStr)
+            val res = withTimeoutOrNull(20_000L) {
+                healthConnectCoordinator.getSleepHistory(days = liveHcDays, targetToday = targetToday)
             }
-            metadataMap["sleep"] = hcMetadata("sleep", res, clampNote)
-            res.rows
+            val merged = mutableMapOf<String, Int>()
+            cached.forEach { (date, mins) -> merged[date] = mins }
+            if (res != null) {
+                res.forEach { (date, mins) -> if (mins > 0) merged[date] = mins }
+                metadataMap["sleep"] = SectionMetadata("sleep", if (merged.isNotEmpty()) DataSourceStatus.SUCCESS else DataSourceStatus.NO_DATA, merged.size, "Cached data + live Health Connect")
+            } else {
+                metadataMap["sleep"] = SectionMetadata("sleep", if (merged.isNotEmpty()) DataSourceStatus.SUCCESS else DataSourceStatus.TIMED_OUT, merged.size, if (merged.isNotEmpty()) "Cached data (live read timed out)" else "Query timed out after 20s")
+            }
+            merged.toList().sortedBy { it.first }
         }
 
         val heartRateDeferred = async {
@@ -268,12 +280,39 @@ class ClinicalReportDataCollector @Inject constructor(
                 )
                 return@async cached
             }
-            // Fallback: raw Health Connect read, chunked per 30 days.
-            val res = boundedHcRead(liveHcDays, targetToday) { n, end ->
+            // Middle layer: per-day "Biometrics" AiInsight entries (v6) carry
+            // the day's spike count in their JSON payload — the same source
+            // the web dashboard's HR-spike graph reads. Much cheaper than the
+            // raw Health Connect chunked read below.
+            val insightSpikes = readBiometricsSpikes(minDateStr)
+            if (insightSpikes.isNotEmpty()) {
+                metadataMap["hrSpikes"] = SectionMetadata("hrSpikes", DataSourceStatus.SUCCESS, insightSpikes.size, "Biometrics insights")
+                return@async insightSpikes
+            }
+            // Fallback: raw Health Connect read, chunked per 30 days with a
+            // 60s window per chunk. Spike detection reads raw paginated HR
+            // samples — the heaviest Health Connect query in this pipeline —
+            // so it gets double the headroom of the other sections. (A cold
+            // cache + 30s chunks timed out every chunk on a background run.)
+            val (raw, timedOut) = chunkedHcRead(liveHcDays, targetToday, perChunkTimeoutMs = 60_000L) { n, end ->
                 healthConnectCoordinator.getHrSpikesHistory(days = n, targetToday = end)
             }
-            metadataMap["hrSpikes"] = hcMetadata("hrSpikes", res, clampNote)
-            res.rows.distinctBy { it.date }.sortedBy { it.date }
+            val merged = raw.distinctBy { it.date }.sortedBy { it.date }
+            when {
+                merged.isNotEmpty() -> {
+                    val msg = if (timedOut) "Partial data: some date ranges timed out" else null
+                    metadataMap["hrSpikes"] = SectionMetadata("hrSpikes", DataSourceStatus.SUCCESS, merged.size, msg)
+                    merged
+                }
+                timedOut -> {
+                    metadataMap["hrSpikes"] = SectionMetadata("hrSpikes", DataSourceStatus.TIMED_OUT, 0, "Query timed out")
+                    emptyList()
+                }
+                else -> {
+                    metadataMap["hrSpikes"] = SectionMetadata("hrSpikes", DataSourceStatus.NO_DATA, 0)
+                    emptyList()
+                }
+            }
         }
 
         val hrvDeferred = async {
@@ -626,6 +665,30 @@ class ClinicalReportDataCollector @Inject constructor(
      * day counts (each chunk gets its own timeout), or as a single bounded
      * call for small ones. Never throws: failures surface as [HcReadResult].
      */
+    private suspend fun <T> chunkedHcRead(
+        days: Int,
+        targetToday: LocalDate,
+        chunkDays: Int = 30,
+        perChunkTimeoutMs: Long = 30_000L,
+        read: suspend (days: Int, end: LocalDate) -> List<T>
+    ): Pair<List<T>, Boolean> {
+        val merged = mutableListOf<T>()
+        var anyTimedOut = false
+        var remaining = days
+        var end = targetToday
+        while (remaining > 0) {
+            val n = minOf(chunkDays, remaining)
+            val chunkEnd = end
+            val res = withTimeoutOrNull(perChunkTimeoutMs) {
+                try { read(n, chunkEnd) } catch (e: Exception) { null }
+            }
+            if (res == null) anyTimedOut = true else merged.addAll(res)
+            remaining -= n
+            end = end.minusDays(n.toLong())
+        }
+        return merged to anyTimedOut
+    }
+
     private suspend fun <T> boundedHcRead(
         days: Int,
         targetToday: LocalDate,
@@ -710,6 +773,9 @@ class ClinicalReportDataCollector @Inject constructor(
      * Cache-first HR avg: preferences.historicalHeartRate (BiomarkerPoint list
      * written by LogRepository / FitbitViewModel), backfilled with avgHr from
      * per-day "Biometrics" AiInsight entries for dates the list is missing.
+     * The metric is the daytime average (awakeAvg, 7am-10pm) in both places —
+     * founder's choice; v6 entries carry hrMetric:"awakeAvg" and older ones
+     * are re-baked on sync so the series never mixes metrics.
      */
     private suspend fun readCachedHeartRate(minDate: String): List<Pair<String, Int>> {
         return try {
@@ -747,6 +813,35 @@ class ClinicalReportDataCollector @Inject constructor(
     }
 
     /**
+     * Middle-layer HR spikes: per-day "Biometrics" AiInsight entries (v6)
+     * carry the day's spike count in the "spikes" key of their JSON payload
+     * ({"sleepMins":N,...,"spikes":N}). A day counts as having spike data iff
+     * the payload contains the "spikes" key — the same rule the web
+     * dashboard's HR-spike graph uses. Note the documented ambiguity: a
+     * "spikes":0 can mean a true zero-spike day OR spikes-unknown (the
+     * insight generator defaults missing cache rows to 0). The dashboard
+     * treats it as data, and we stay consistent with the dashboard.
+     * Downstream only needs date + spikeCount.
+     */
+    private suspend fun readBiometricsSpikes(minDate: String): List<com.notel.notel.data.healthconnect.DailyHeartRateSummary> {
+        return try {
+            readBiometricsEntries(minDate).mapNotNull { (date, payload) ->
+                val spikes = payload["spikes"]?.jsonPrimitive?.intOrNull ?: return@mapNotNull null
+                com.notel.notel.data.healthconnect.DailyHeartRateSummary(
+                    date = date,
+                    avg = 0,
+                    max = 0,
+                    min = 0,
+                    baseline = 0,
+                    spikeCount = spikes,
+                    maxDelta = 0,
+                    totalReadings = 0
+                )
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    /**
      * Cache-first HRV: per-day "Biometrics" AiInsight entries (v6), whose text
      * payload JSON carries the day's HRV ({"sleepMins":N,...,"hrv":N,...}).
      */
@@ -758,6 +853,11 @@ class ClinicalReportDataCollector @Inject constructor(
             }
         } catch (e: Exception) { emptyList() }
     }
+
+    /**
+     * Cache-first sleep: per-day "Biometrics" AiInsight entries (v6) carry the
+     * day's sleepMins. Zeros are never real (failed read) — dropped here.
+     */
 
     /**
      * Reads per-day "Biometrics" AiInsight entries (v6) in the requested date

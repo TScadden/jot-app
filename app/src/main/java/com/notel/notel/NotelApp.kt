@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.*
 import dagger.hilt.android.HiltAndroidApp
-import com.notel.notel.worker.BodyLoadReminderWorker
 import com.notel.notel.worker.BiometricsSyncWorker
 import com.notel.notel.worker.HrSpikeBackfillWorker
 import com.notel.notel.worker.HabitReminderWorker
@@ -44,6 +43,8 @@ class NotelApp : Application(), Configuration.Provider {
         HabitReminderWorker.schedule(this)
         WorkManager.getInstance(this).cancelUniqueWork("habit_reminder")
         WorkManager.getInstance(this).cancelUniqueWork("cup_reminder")
+        // Body Load feature removed: stop the deleted worker's periodic refresh.
+        WorkManager.getInstance(this).cancelUniqueWork("BODY_LOAD_REFRESH")
         scheduleProjectReminder()
         BiometricsSyncWorker.schedule(this)
         // One-time 180-day HR spike history backfill (no-op once complete).
@@ -58,7 +59,7 @@ class NotelApp : Application(), Configuration.Provider {
                 if (preferences.checkInReminderEnabled.first()) {
                     com.notel.notel.notifications.EnergyCheckInReminderScheduler.schedule(this@NotelApp)
                 }
-                // Tabs Lab: re-arm the appointment day-before nudge on every app
+                // Progress Reports: re-arm the appointment day-before nudge on every app
                 // start (idempotent; covers force-stops which cancel alarms).
                 preferences.appointmentDate.first()?.let { dateIso ->
                     com.notel.notel.notifications.AppointmentReminderScheduler.schedule(this@NotelApp, dateIso)
@@ -79,6 +80,10 @@ class NotelApp : Application(), Configuration.Provider {
                 } catch (e: Exception) {
                     android.util.Log.w("NotelApp", "rearmReportPrep failed: ${e.javaClass.simpleName}")
                 }
+                // Progress Reports: if the event linked to the saved appointment was
+                // deleted (Events tab) or dropped by a sync merge, clear the stale
+                // appointment instead of resurrecting the event.
+                com.notel.notel.appointments.AppointmentEventLink.reconcileAppointmentLink(preferences, this@NotelApp)
             } catch (e: Exception) {
                 android.util.Log.e("NotelApp", "Failed to re-arm check-in reminder", e)
             }

@@ -93,6 +93,10 @@ open class NotelPreferences(
 
         val EVENT_COUNTERS = stringPreferencesKey("event_counters")
         val COUNTER_HISTORY = stringPreferencesKey("counter_history")
+        // Tombstones for locally-deleted event counters. The profile pull merge is a
+        // union, so without these a stale server copy would resurrect a deleted
+        // counter when a sync's pull phase lands after the local delete.
+        val DELETED_EVENT_COUNTER_IDS = stringPreferencesKey("deleted_event_counter_ids")
         val SETTINGS_TUTORIAL_SEEN = booleanPreferencesKey("settings_tutorial_seen")
         val BODY_LOAD_REMINDERS_ENABLED = booleanPreferencesKey("body_load_reminders_enabled")
         val DAILY_CUP_UPDATES_ENABLED = booleanPreferencesKey("daily_cup_updates_enabled")
@@ -132,6 +136,7 @@ open class NotelPreferences(
         val HAS_HISTORICAL_BODY_LOAD = booleanPreferencesKey("has_historical_body_load")
         val LAST_SYNC_TIME = longPreferencesKey("last_sync_time")
         val HISTORICAL_DAILY_STATS = stringPreferencesKey("historical_daily_stats")
+        val DAILY_STATS_CACHE_VERSION = intPreferencesKey("daily_stats_cache_version")
         val TIPS_AND_TRICKS_TOPICS = stringPreferencesKey("tips_and_tricks_topics")
         val TIPS_AND_TRICKS_ANSWERS = stringPreferencesKey("tips_and_tricks_answers")
         val FOOD_CHECKER_HISTORY = stringPreferencesKey("food_checker_history")
@@ -181,6 +186,11 @@ open class NotelPreferences(
         // "health" | "training" | "custom".
         val APPOINTMENT_DATE = stringPreferencesKey("progress_report_appointment_date")
         val APPOINTMENT_REPORT_TYPE = stringPreferencesKey("progress_report_appointment_type")
+        // Link between the Progress Reports appointment card and the Events
+        // system (event counters). Stores the linked counter id, plus whether
+        // the card created it (card-owned) or merely linked to a user-created event.
+        val APPOINTMENT_EVENT_ID = stringPreferencesKey("progress_report_appointment_event_id")
+        val APPOINTMENT_EVENT_OWNED = booleanPreferencesKey("progress_report_appointment_event_owned")
         // Tabs Lab: Progress Reports continuity (Otto's feature). Remembers the
         // last-used type and range so the screen opens where the user left off.
         val LAST_REPORT_TYPE = stringPreferencesKey("progress_report_last_type")
@@ -213,6 +223,20 @@ open class NotelPreferences(
         dataStore.edit { it[APPOINTMENT_REPORT_TYPE] = reportType }
     }
 
+    val appointmentEventId: Flow<String?> = dataStore.data.map { it[APPOINTMENT_EVENT_ID] }
+    suspend fun setAppointmentEventId(eventId: String?) {
+        dataStore.edit { prefs ->
+            if (eventId.isNullOrBlank()) prefs.remove(APPOINTMENT_EVENT_ID)
+            else prefs[APPOINTMENT_EVENT_ID] = eventId
+        }
+    }
+
+    // True when the appointment card created the linked event (card-owned).
+    val appointmentEventOwned: Flow<Boolean> = dataStore.data.map { it[APPOINTMENT_EVENT_OWNED] ?: false }
+    suspend fun setAppointmentEventOwned(owned: Boolean) {
+        dataStore.edit { it[APPOINTMENT_EVENT_OWNED] = owned }
+    }
+
     // Otto's feature: remember the last-used report type and range.
     val lastReportType: Flow<String> = dataStore.data.map { it[LAST_REPORT_TYPE] ?: "health" }
     @Deprecated("Replaced by lastReportRangeKey (Phase 1 WS-A)")
@@ -236,6 +260,10 @@ open class NotelPreferences(
             it[LAST_REPORT_RANGE_END] = rangeEndMs
             it[LAST_REPORT_FOCUS_TEXT] = focusText
         }
+    }
+    // Main-branch 2-arg overload: maps the boolean onto the range key.
+    suspend fun saveLastReportPrefs(reportType: String, range30d: Boolean) {
+        saveLastReportPrefs(reportType, if (range30d) "last30days" else "alltime")
     }
 
     // Mason's feature: timestamp of the last successful report export.
@@ -399,6 +427,8 @@ open class NotelPreferences(
 
     val historicalDailyStats: Flow<String> = context.dataStore.data.map { it[HISTORICAL_DAILY_STATS] ?: "{}" }
     suspend fun setHistoricalDailyStats(json: String) { context.dataStore.edit { it[HISTORICAL_DAILY_STATS] = json } }
+    val dailyStatsCacheVersion: Flow<Int> = context.dataStore.data.map { it[DAILY_STATS_CACHE_VERSION] ?: 0 }
+    suspend fun setDailyStatsCacheVersion(v: Int) { context.dataStore.edit { it[DAILY_STATS_CACHE_VERSION] = v } }
 
     val hasHistoricalBodyLoad: Flow<Boolean> = context.dataStore.data.map { it[HAS_HISTORICAL_BODY_LOAD] ?: false }
     suspend fun setHasHistoricalBodyLoad(v: Boolean) { context.dataStore.edit { it[HAS_HISTORICAL_BODY_LOAD] = v } }
@@ -424,6 +454,7 @@ open class NotelPreferences(
     }
 
     val eventCounters: Flow<String> = context.dataStore.data.map { it[EVENT_COUNTERS] ?: "[]" }
+    val deletedEventCounterIds: Flow<String> = context.dataStore.data.map { it[DELETED_EVENT_COUNTER_IDS] ?: "[]" }
     val counterHistory: Flow<String> = context.dataStore.data.map { it[COUNTER_HISTORY] ?: "[]" }
     val settingsTutorialSeen: Flow<Boolean> = context.dataStore.data.map { it[SETTINGS_TUTORIAL_SEEN] ?: false }
     val bodyLoadRemindersEnabled: Flow<Boolean> = context.dataStore.data.map { it[BODY_LOAD_REMINDERS_ENABLED] ?: true }
@@ -1013,6 +1044,22 @@ open class NotelPreferences(
 
     suspend fun setCounterHistory(jsonArray: String) {
         context.dataStore.edit { it[COUNTER_HISTORY] = jsonArray }
+    }
+
+    suspend fun setDeletedEventCounterIds(jsonArray: String) {
+        context.dataStore.edit { it[DELETED_EVENT_COUNTER_IDS] = jsonArray }
+    }
+
+    /**
+     * Atomically writes the counter list and tombstone set in one DataStore
+     * transaction, so a concurrent profile pull can never observe the list
+     * without its matching tombstones (which would resurrect a deleted counter).
+     */
+    suspend fun setEventCountersAndTombstones(countersJson: String, tombstonesJson: String) {
+        context.dataStore.edit {
+            it[EVENT_COUNTERS] = countersJson
+            it[DELETED_EVENT_COUNTER_IDS] = tombstonesJson
+        }
     }
 
     suspend fun setSettingsTutorialSeen(seen: Boolean) {

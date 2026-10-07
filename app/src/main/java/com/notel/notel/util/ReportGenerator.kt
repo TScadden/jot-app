@@ -114,8 +114,9 @@ class ReportGenerator @Inject constructor(
     suspend fun generateReport(
         snapshot: ClinicalReportData,
         aiSummary: String? = null,
-        isRawFallback: Boolean = false
-    ): GeneratedReport? = generateReportDetailed(snapshot, aiSummary, isRawFallback, ReportRenderOptions())
+        isRawFallback: Boolean = false,
+        aiFailureReason: String? = null
+    ): GeneratedReport? = generateReportDetailed(snapshot, aiSummary, isRawFallback, ReportRenderOptions(), aiFailureReason = aiFailureReason)
 
     /**
      * Full professional PDF rebuild (Phase 2, WS-C).
@@ -134,7 +135,8 @@ class ReportGenerator @Inject constructor(
         aiSummary: String? = null,
         isRawFallback: Boolean = false,
         options: ReportRenderOptions = ReportRenderOptions(),
-        userIdentifier: String? = null
+        userIdentifier: String? = null,
+        aiFailureReason: String? = null
     ): GeneratedReport? {
         if (!snapshot.hasAnyData) {
             android.util.Log.w(TAG, "Snapshot contains no data. Refusing to generate empty report PDF.")
@@ -192,6 +194,17 @@ class ReportGenerator @Inject constructor(
                 "RAW DATA REPORT: AI analysis was unavailable at generation time.",
                 w.margin, w.y, paint(Color.rgb(153, 27, 27), 10f, bold = true)
             )
+            // Founder-visible reason: why the AI summary never made it into
+            // this report (timeout, signed out, no connection, ...). Plain
+            // one-liner only, never a stack trace.
+            if (!aiFailureReason.isNullOrBlank()) {
+                w.y += 16f
+                w.ensureSpace(20f)
+                w.canvas.drawText(
+                    "AI unavailable: $aiFailureReason",
+                    w.margin, w.y, paint(Color.rgb(110, 110, 110), 10f)
+                )
+            }
             w.y += 18f
         }
 

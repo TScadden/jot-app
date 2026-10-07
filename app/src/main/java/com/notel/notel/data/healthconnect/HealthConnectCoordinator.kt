@@ -22,6 +22,7 @@ enum class HealthConnectMetricType(val metricKey: String) {
     BLOOD_PRESSURE("blood_pressure"),
     INTRADAY_HR("intraday_hr"),
     ACTIVE_CALORIES("active_calories"),
+    TOTAL_CALORIES("total_calories"),
     SLEEP_SESSION("sleep_session"),
     RESTING_HR("resting_hr"),
     HRV("hrv");
@@ -54,6 +55,7 @@ class HealthConnectHistoryCache {
     private val spikesCache = ConcurrentHashMap<LocalDate, Pair<DailyHeartRateSummary, Long>>()
     private val intradayHrCache = ConcurrentHashMap<LocalDate, Pair<List<Pair<Long, Int>>, Long>>()
     private val activeCalCache = ConcurrentHashMap<LocalDate, Pair<Int, Long>>()
+    private val totalCalCache = ConcurrentHashMap<LocalDate, Pair<Int, Long>>() // total (active + basal) calories
     private val sleepSessionCache = ConcurrentHashMap<LocalDate, Pair<SleepData?, Long>>()
     private val restingHrCache = ConcurrentHashMap<LocalDate, Pair<Int, Long>>()
     private val hrvCache = ConcurrentHashMap<LocalDate, Pair<List<Pair<String, Double>>, Long>>()
@@ -126,6 +128,16 @@ class HealthConnectHistoryCache {
         return entry.first
     }
 
+    fun putTotalCalories(date: LocalDate, cals: Int) {
+        totalCalCache[date] = cals to System.currentTimeMillis()
+    }
+
+    fun getTotalCalories(date: LocalDate, ttlMillis: Long = Long.MAX_VALUE): Int? {
+        val entry = totalCalCache[date] ?: return null
+        if (System.currentTimeMillis() - entry.second > ttlMillis) return null
+        return entry.first
+    }
+
     fun putSleepSession(date: LocalDate, session: SleepData?) {
         sleepSessionCache[date] = session to System.currentTimeMillis()
     }
@@ -153,6 +165,7 @@ class HealthConnectHistoryCache {
                 HealthConnectMetricType.HR_SPIKES -> getSpikes(d) != null
                 HealthConnectMetricType.INTRADAY_HR -> getIntradayHr(d) != null
                 HealthConnectMetricType.ACTIVE_CALORIES -> getActiveCalories(d) != null
+                HealthConnectMetricType.TOTAL_CALORIES -> getTotalCalories(d) != null
                 HealthConnectMetricType.SLEEP_SESSION -> sleepSessionCache.containsKey(d)
                 HealthConnectMetricType.RESTING_HR -> getRestingHr(d) != null
                 HealthConnectMetricType.HRV -> getHrv(d) != null
@@ -312,6 +325,58 @@ class HealthConnectCoordinator @Inject constructor(
                     } catch (e: Exception) {
                         val duration = System.currentTimeMillis() - startTimeMs
                         safeLogE("HealthConnectTiming", "[IPC_FAILURE] Active Calories failed after ${duration}ms: ${e.message}", e)
+                        0
+                    } finally {
+                        mutex.withLock { activeJobs.remove(requestKey) }
+                    }
+                }
+                activeJobs[requestKey] = newJob
+                newJob
+            }
+        }
+
+        deferred.await()
+    }
+
+    /**
+     * Total calories burned for a day (active + basal), matching Health Connect's
+     * "Energy Burned" screen. Same dedup/mutex/cache pattern as getActiveCalories,
+     * but on its OWN cache key — never shares the active-calorie cache.
+     */
+    suspend fun getTotalCalories(
+        dateStr: String,
+        forceRefresh: Boolean = false
+    ): Int = withContext(Dispatchers.IO) {
+        val date = parseLocalDate(dateStr)
+        if (!forceRefresh) {
+            val cached = cache.getTotalCalories(date)
+            if (cached != null) {
+                safeLogD("HealthConnectTiming", "[MEMORY_CACHE_HIT] Total Calories for $date ($cached kcal)")
+                return@withContext cached
+            }
+        }
+
+        val requestKey = HealthConnectRequestKey(HealthConnectMetricType.TOTAL_CALORIES, date, date)
+        val startTimeMs = System.currentTimeMillis()
+
+        val deferred = mutex.withLock {
+            val existing = activeJobs[requestKey]
+            if (existing != null && existing.isActive) {
+                safeLogD("HealthConnectTiming", "[DEDUP_WAIT] Reusing shared in-flight Total Calories request for $date")
+                @Suppress("UNCHECKED_CAST")
+                existing as Deferred<Int>
+            } else {
+                safeLogD("HealthConnectTiming", "[IPC_START] Reading Total Calories from HealthConnect for $date")
+                val newJob = async(Dispatchers.IO) {
+                    try {
+                        val raw = healthConnectManager.readTotalCalories(dateStr)
+                        val duration = System.currentTimeMillis() - startTimeMs
+                        safeLogD("HealthConnectTiming", "[IPC_SUCCESS] Total Calories completed in ${duration}ms: $raw kcal")
+                        cache.putTotalCalories(date, raw)
+                        raw
+                    } catch (e: Exception) {
+                        val duration = System.currentTimeMillis() - startTimeMs
+                        safeLogE("HealthConnectTiming", "[IPC_FAILURE] Total Calories failed after ${duration}ms: ${e.message}", e)
                         0
                     } finally {
                         mutex.withLock { activeJobs.remove(requestKey) }
@@ -643,6 +708,71 @@ class HealthConnectCoordinator @Inject constructor(
                     } catch (e: Exception) {
                         val duration = System.currentTimeMillis() - startTimeMs
                         safeLogE("HealthConnectTiming", "[IPC_FAILURE] Calories read failed after ${duration}ms: ${e.message}", e)
+                        emptyList()
+                    } finally {
+                        mutex.withLock { activeJobs.remove(requestKey) }
+                    }
+                }
+                activeJobs[requestKey] = newJob
+                newJob
+            }
+        }
+
+        deferred.await()
+    }
+
+    /**
+     * Per-day TOTAL calories (active + basal) history, matching Health Connect's
+     * "Energy Burned". Same dedup/mutex/cache pattern as getCaloriesHistory, but on
+     * its OWN cache key — never shares the active-preferred calorie cache.
+     */
+    suspend fun getTotalCaloriesHistory(
+        days: Int,
+        targetToday: LocalDate = LocalDate.now(),
+        forceRefresh: Boolean = false
+    ): List<Pair<String, Int>> = withContext(Dispatchers.IO) {
+        val endDate = targetToday
+        val startDate = endDate.minusDays((days - 1).toLong())
+        val dates = (0 until days).map { startDate.plusDays(it.toLong()) }
+
+        if (!forceRefresh && cache.hasRange(HealthConnectMetricType.TOTAL_CALORIES, dates)) {
+            safeLogD("HealthConnectTiming", "[MEMORY_CACHE_HIT] Total Calories for $days days ($startDate to $endDate)")
+            return@withContext dates.mapNotNull { d ->
+                val cals = cache.getTotalCalories(d)
+                if (cals != null) d.toString() to cals else null
+            }
+        }
+
+        val requestKey = HealthConnectRequestKey(HealthConnectMetricType.TOTAL_CALORIES, startDate, endDate)
+        val startTimeMs = System.currentTimeMillis()
+
+        val deferred = mutex.withLock {
+            val existing = activeJobs.entries.firstOrNull { (k, j) ->
+                k.metricType == HealthConnectMetricType.TOTAL_CALORIES &&
+                        !k.startDate.isAfter(startDate) &&
+                        !k.endDate.isBefore(endDate) &&
+                        j.isActive
+            }
+            if (existing != null) {
+                safeLogD("HealthConnectTiming", "[DEDUP_WAIT] Reusing shared in-flight Total Calories request for range $startDate..$endDate")
+                @Suppress("UNCHECKED_CAST")
+                existing.value as Deferred<List<Pair<String, Int>>>
+            } else {
+                safeLogD("HealthConnectTiming", "[IPC_START] Reading Total Calories from HealthConnect: $days days ($startDate..$endDate)")
+                val newJob = async(Dispatchers.IO) {
+                    try {
+                        val raw = healthConnectManager.readHistoricalTotalCalories(days = days)
+                        val duration = System.currentTimeMillis() - startTimeMs
+                        safeLogD("HealthConnectTiming", "[IPC_SUCCESS] Total Calories read completed in ${duration}ms, returned ${raw.size} days")
+                        raw.forEach { (dStr, cals) ->
+                            try {
+                                cache.putTotalCalories(LocalDate.parse(dStr), cals)
+                            } catch (e: Exception) {}
+                        }
+                        raw
+                    } catch (e: Exception) {
+                        val duration = System.currentTimeMillis() - startTimeMs
+                        safeLogE("HealthConnectTiming", "[IPC_FAILURE] Total Calories read failed after ${duration}ms: ${e.message}", e)
                         emptyList()
                     } finally {
                         mutex.withLock { activeJobs.remove(requestKey) }

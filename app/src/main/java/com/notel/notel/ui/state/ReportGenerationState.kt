@@ -21,7 +21,8 @@ sealed class ReportGenerationState {
         val isPartial: Boolean = false,
         val isRawFallback: Boolean = false,
         /** Durable Downloads URI for saved-report records (WS-G); null when the copy failed. */
-        val downloadsUri: String? = null
+        val downloadsUri: String? = null,
+        val aiFailureReason: String? = null
     ) : ReportGenerationState()
     
     data class Failed(

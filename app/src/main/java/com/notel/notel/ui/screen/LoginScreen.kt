@@ -163,7 +163,6 @@ class LoginViewModel @Inject constructor(
                         userId = newUserId.ifBlank { null }
                     )
                     preferences.setOnboardingComplete(true)
-                    preferences.setCupTheorySeen(true)
                     preferences.setSettingsTutorialSeen(true)
                     
                     body.isUnlimited?.let { preferences.setIsUnlimited(it) }
@@ -221,7 +220,6 @@ class LoginViewModel @Inject constructor(
                     preferences.setGoogleAccountConnected(true)
                     preferences.setGoogleAccountEmail(email)
                     preferences.setOnboardingComplete(true)
-                    preferences.setCupTheorySeen(true)
                     preferences.setSettingsTutorialSeen(true)
 
                     body.isUnlimited?.let { preferences.setIsUnlimited(it) }

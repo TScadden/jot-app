@@ -12,7 +12,6 @@ import com.notel.notel.R
 
 class NotificationHelper(private val context: Context) {
     companion object {
-        const val CHANNEL_ID = "body_load_reminders"
         const val SPIKE_CHANNEL_ID = "hr_spike_alerts"
         const val HABIT_CHANNEL_ID = "habit_reminders"
         const val REPORT_CHANNEL_ID = "report_notifications"
@@ -81,104 +80,6 @@ class NotificationHelper(private val context: Context) {
             .build()
 
         manager.notify(REPORT_NOTIFICATION_ID, notification)
-    }
-
-    fun showBodyLoadReminder() {
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Cup Reminders",
-                NotificationManager.IMPORTANCE_DEFAULT
-            ).apply {
-                description = "Daily reminder to check your Cup level"
-            }
-            manager.createNotificationChannel(channel)
-        }
-
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            context, 
-            0, 
-            intent, 
-            PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_noti_note) 
-            .setContentTitle("Cup Reminder 🧪")
-            .setContentText("Log in and check your score for the day so you can plan better.")
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
-            .build()
-
-        manager.notify(NOTIFICATION_ID, notification)
-    }
-
-    fun showMidDayBodyLoadRefresh() {
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Score Reminders",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Daily nudge to check your updated Score"
-            }
-            manager.createNotificationChannel(channel)
-        }
-
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        }
-        val pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE)
-
-        val content = "Your score has updated. Check it now to plan the rest of your day better."
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_noti_note) 
-            .setContentTitle("Score Refreshed 🧪")
-            .setContentText(content)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(content))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
-            .build()
-
-        manager.notify(NOTIFICATION_ID + 100, notification)
-    }
-
-    fun showBodyLoadUpdate(score: Int) {
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Body Load Updates",
-                NotificationManager.IMPORTANCE_DEFAULT
-            )
-            manager.createNotificationChannel(channel)
-        }
-
-        val intent = Intent(context, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE)
-
-        val content = "Your Score for today was $score/100. Plan for tomorrow with your level in mind."
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_noti_note)
-            .setContentTitle("Daily Score Finalized: $score/100")
-            .setContentText(content)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(content))
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
-            .build()
-
-        manager.notify(NOTIFICATION_ID, notification)
     }
 
     fun showSpikeAlert(bpm: Int, baseline: Int? = null, delta: Int? = null) {
@@ -462,7 +363,7 @@ class NotificationHelper(private val context: Context) {
         }
 
         // Opens the app to the Home screen: MainActivity's splash routes
-        // logged-in users straight to the body_load route.
+        // logged-in users straight to the today route.
         val tapIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
@@ -486,7 +387,7 @@ class NotificationHelper(private val context: Context) {
     }
 
     /**
-     * Tabs Lab: day-before nudge for a saved Progress Reports appointment.
+     * Progress Reports: day-before nudge for a saved appointment.
      * Dash-free, sentence case copy per the notification copy rule.
      */
     fun showAppointmentReminder(reportTypeLabel: String, dateLabel: String) {

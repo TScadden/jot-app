@@ -73,11 +73,23 @@ class LogRepository @Inject constructor(
     private val _reportReadyEvent = MutableSharedFlow<java.io.File>()
     val reportReadyEvent = _reportReadyEvent.asSharedFlow()
 
+    // Report generation pipeline state. Owned here (app-scoped singleton) so
+    // ReportGenerationService can publish progress/completion and the UI can
+    // observe it even when the founder leaves the app mid-generation.
+    private val _reportGenerationState = MutableStateFlow<com.notel.notel.ui.state.ReportGenerationState>(
+        com.notel.notel.ui.state.ReportGenerationState.Idle
+    )
+    val reportGenerationState = _reportGenerationState.asStateFlow()
+
     private val _isGeneratingWeeklyRecap = MutableStateFlow(false)
     val isGeneratingWeeklyRecap = _isGeneratingWeeklyRecap.asStateFlow()
 
     private val _isGeneratingDeepResearch = MutableStateFlow(false)
     val isGeneratingDeepResearch = _isGeneratingDeepResearch.asStateFlow()
+
+    fun updateReportGenerationState(state: com.notel.notel.ui.state.ReportGenerationState) {
+        _reportGenerationState.value = state
+    }
 
     private val _isComparingDocuments = MutableStateFlow(false)
     val isComparingDocuments = _isComparingDocuments.asStateFlow()
@@ -108,9 +120,8 @@ class LogRepository @Inject constructor(
         _generatedReport.value = null
         _processError.value = null
         _isGeneratingReport.value = false
-        _isGeneratingWeeklyRecap.value = false
-        _isGeneratingDeepResearch.value = false
         _isComparingDocuments.value = false
+        _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Idle
     }
 
     fun resetGeneratedReport() {
@@ -146,9 +157,9 @@ class LogRepository @Inject constructor(
                 focus = focus,
                 customCategoryIds = customCategoryIds
             )
-            // The snapshot collector leaves bodyLoadHistory empty; fill it from the AI-insights
-            // store like the legacy report path did so the server actually receives it.
-            val snapshot = collected.copy(bodyLoadHistory = getBodyLoadHistorySummary())
+            // Body Load feature removed on main: snapshot collector leaves
+            // bodyLoadHistory empty.
+            val snapshot = collected.copy(bodyLoadHistory = "")
             
             if (!snapshot.hasAnyData) {
                 onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Failed("No patient logs or health data found in selected range.", allowRawFallback = false))
@@ -157,10 +168,18 @@ class LogRepository @Inject constructor(
 
             onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.BuildingSummary())
             
-            // Maximum 2 attempts for AI summary, with bounded 60s timeout per attempt
+            // Maximum attempts for AI summary, driven by failure class:
+            // transient connection failures get up to 4 attempts with
+            // exponential backoff (2s/4s/8s); HTTP 5xx gets one extra retry;
+            // HTTP 4xx and other fatal errors fail fast. 60s timeout per attempt.
             var aiSummary: String? = null
-            var attempts = 2
-            while (attempts > 0) {
+            var aiAttemptNumber = 0
+            var maxAttempts = 1
+            // Why the AI summary failed, in plain language the founder can see
+            // (PDF banner line + export UI). Kept from the last attempt.
+            var aiFailureReason: String? = null
+            while (aiAttemptNumber < maxAttempts) {
+                aiAttemptNumber++
                 val res = kotlinx.coroutines.withTimeoutOrNull(60_000L) {
                     geminiService.getMedicalReportSummaryFromSnapshot(snapshot)
                 }
@@ -168,8 +187,33 @@ class LogRepository @Inject constructor(
                     aiSummary = res.getOrNull()
                     break
                 }
-                attempts--
-                if (attempts > 0) kotlinx.coroutines.delay(1000L)
+                // Surface the actual failure reason instead of a mystery:
+                // timeout (res == null) or the mapped API/network failure.
+                // A null error means the 60s timeout fired, which counts as a
+                // transient connection failure for retry purposes.
+                val failure: Throwable? = if (res == null) null else res.exceptionOrNull()
+                aiFailureReason = com.notel.notel.util.AiFailureReasons.plainReason(failure)
+                val retryClass = com.notel.notel.util.AiFailureReasons.retryClass(failure)
+                // Diagnostic logging: distinguish a coroutine timeout (res == null)
+                // from an API failure (Result.failure) so the next "AI ANALYSIS
+                // UNAVAILABLE" report can be diagnosed from logcat. Metadata only:
+                // never logs the snapshot, entries, or narrative text.
+                if (res == null) {
+                    android.util.Log.e("AiReport", "AI summary attempt $aiAttemptNumber timed out after 60s (withTimeoutOrNull returned null)")
+                } else {
+                    val ex = res.exceptionOrNull()
+                    android.util.Log.e("AiReport", "AI summary attempt $aiAttemptNumber failed: ${ex?.javaClass?.simpleName}: ${ex?.message}")
+                }
+                if (retryClass == com.notel.notel.util.AiFailureReasons.RetryClass.FATAL) break
+                maxAttempts = maxOf(maxAttempts, com.notel.notel.util.AiFailureReasons.maxAttempts(retryClass))
+                if (aiAttemptNumber < maxAttempts) {
+                    val delayMs = com.notel.notel.util.AiFailureReasons.backoffDelayMs(retryClass, aiAttemptNumber)
+                    android.util.Log.e("AiReport", "AI summary retry ($retryClass) in ${delayMs}ms: attempt ${aiAttemptNumber + 1} of up to $maxAttempts")
+                    kotlinx.coroutines.delay(delayMs)
+                }
+            }
+            if (aiSummary == null) {
+                android.util.Log.e("AiReport", "AI summary unavailable after $aiAttemptNumber attempt(s) ($aiFailureReason); generating graphs-only PDF (raw fallback)")
             }
 
             val isRawFallback = (aiSummary == null)
@@ -178,7 +222,8 @@ class LogRepository @Inject constructor(
             val result = reportGenerator.generateReportDetailed(
                 snapshot, aiSummary,
                 isRawFallback = isRawFallback,
-                options = renderOptions
+                options = renderOptions,
+                aiFailureReason = aiFailureReason
             )
             if (result == null) {
                 onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Failed(
@@ -195,7 +240,7 @@ class LogRepository @Inject constructor(
             _generatedReport.value = file
             _reportReadyEvent.emit(file)
             
-            onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Ready(file, isPartial = snapshot.sectionMetadata.values.any { it.status != com.notel.notel.data.model.DataSourceStatus.SUCCESS }, isRawFallback = isRawFallback, downloadsUri = result.downloadsUri))
+            onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Ready(file, isPartial = snapshot.sectionMetadata.values.any { it.status != com.notel.notel.data.model.DataSourceStatus.SUCCESS }, isRawFallback = isRawFallback, downloadsUri = result.downloadsUri, aiFailureReason = aiFailureReason))
             return file
         } catch (e: kotlinx.coroutines.CancellationException) {
             onStateUpdate(com.notel.notel.ui.state.ReportGenerationState.Cancelled)
@@ -216,40 +261,6 @@ class LogRepository @Inject constructor(
     @Deprecated("Use generateProfessionalReportWithSnapshot with structured viewModelScope concurrency")
     fun generateProfessionalReportAsync(allCategories: List<Category>, reportGenerator: com.notel.notel.util.ReportGenerator, last30DaysOnly: Boolean = false) {
         // Safe backward-compatible fallback
-    }
-
-    @OptIn(DelicateCoroutinesApi::class)
-    fun generateWeeklyRecapAsync(allCategories: List<Category>) {
-        if (_isGeneratingWeeklyRecap.value) return
-        _isGeneratingWeeklyRecap.value = true
-        GlobalScope.launch {
-            try {
-                getWeeklyRecap(allCategories).onFailure { e ->
-                    _processError.value = com.notel.notel.util.FriendlyErrors.forBackendError("LogRepository", e, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN).banner
-                }
-            } catch (e: Exception) {
-                _processError.value = com.notel.notel.util.FriendlyErrors.forBackendError("LogRepository", e, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN).banner
-            } finally {
-                _isGeneratingWeeklyRecap.value = false
-            }
-        }
-    }
-
-    @OptIn(DelicateCoroutinesApi::class)
-    fun generateDeepResearchAsync(allCategories: List<Category>) {
-        if (_isGeneratingDeepResearch.value) return
-        _isGeneratingDeepResearch.value = true
-        GlobalScope.launch {
-            try {
-                getDeepResearch(allCategories).onFailure { e ->
-                    _processError.value = com.notel.notel.util.FriendlyErrors.forBackendError("LogRepository", e, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN).banner
-                }
-            } catch (e: Exception) {
-                _processError.value = com.notel.notel.util.FriendlyErrors.forBackendError("LogRepository", e, com.notel.notel.util.FriendlyErrors.Kind.UNKNOWN).banner
-            } finally {
-                _isGeneratingDeepResearch.value = false
-            }
-        }
     }
 
     @OptIn(DelicateCoroutinesApi::class)
@@ -276,18 +287,12 @@ class LogRepository @Inject constructor(
     fun searchEntries(query: String): Flow<List<LogEntry>> =
         logEntryDao.searchEntries(query)
 
-    private suspend fun clearTodayBodyLoadCache() {
-        val todayStr = java.time.LocalDate.now().toString()
-        clearBodyLoadInsightsForDays(listOf(todayStr))
-    }
-
     suspend fun insertEntry(entry: LogEntry): Long {
         val entryToInsert = entry.copy(
             updatedAt = if (entry.updatedAt == 0L) System.currentTimeMillis() else entry.updatedAt,
             syncState = com.notel.notel.data.local.entity.EntrySyncState.DIRTY
         )
         val id = logEntryDao.insertEntry(entryToInsert)
-        clearTodayBodyLoadCache()
         triggerSync()
         return id
     }
@@ -301,7 +306,6 @@ class LogRepository @Inject constructor(
             syncState = com.notel.notel.data.local.entity.EntrySyncState.DIRTY
         )
         logEntryDao.updateEntry(entryToUpdate)
-        clearTodayBodyLoadCache()
         triggerSync()
     }
 
@@ -319,7 +323,6 @@ class LogRepository @Inject constructor(
             tabsApi.deleteEntry(entry.id)
             
             // 3. Trigger refresh
-            clearTodayBodyLoadCache()
             triggerSync()
         } catch (e: Exception) {
             android.util.Log.e("LogRepository", "deleteEntry failed", e)
@@ -376,6 +379,292 @@ class LogRepository @Inject constructor(
         return logEntryDao.getEntryCountInRange(start, end)
     }
 
+    // Tabs Lab: Body Load calculation (restored from playground).
+    suspend fun getBodyLoad(allCategories: List<Category>, dateStr: String? = null): Result<BodyLoadResponse> {
+        val today = java.time.LocalDate.now().toString()
+        val targetDateStr = dateStr ?: today
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
+        // Enforce AI lock: Only today and yesterday are allowed to call the AI or get fresh recalculation
+        val isTodayOrYesterday = try {
+            val targetDate = java.time.LocalDate.parse(targetDateStr)
+            val todayDate = java.time.LocalDate.now()
+            targetDate.isEqual(todayDate) || targetDate.isEqual(todayDate.minusDays(1))
+        } catch (e: Exception) {
+            true // default to allowing calculation if parsing fails
+        }
+
+        // ── 1. Fetch Biometrics ──
+        val heartJson = preferences.historicalHeartRate.first()
+        val heartHist = try {
+            if (heartJson.isNotBlank()) json.decodeFromString<List<com.notel.notel.data.model.BiomarkerPoint>>(heartJson).map { it.date to it.value }
+            else if (healthConnectManager.hasAllPermissions()) healthConnectManager.readHistoricalHeartRate(180)
+            else emptyList()
+        } catch (e: Exception) { emptyList() }
+
+        val sleepJson = preferences.historicalSleep.first()
+        val sleepHist = try {
+            if (sleepJson.isNotBlank()) json.decodeFromString<List<com.notel.notel.data.model.BiomarkerPoint>>(sleepJson).map { it.date to it.value }
+            else if (healthConnectManager.hasAllPermissions()) healthConnectManager.readHistoricalSleep(180)
+            else emptyList()
+        } catch (e: Exception) { emptyList() }
+
+        val calJson = preferences.historicalCalories.first()
+        val calHist = try {
+            if (calJson.isNotBlank()) json.decodeFromString<List<com.notel.notel.data.model.BiomarkerPoint>>(calJson).map { it.date to it.value }
+            else if (healthConnectManager.hasAllPermissions()) healthConnectManager.readHistoricalCalories(180)
+            else emptyList()
+        } catch (e: Exception) { emptyList() }
+
+        val dataDateStr = try {
+            java.time.LocalDate.parse(targetDateStr).minusDays(1).toString()
+        } catch (e: Exception) {
+            targetDateStr
+        }
+
+        val sleepMins = sleepHist.find { it.first == dataDateStr }?.second ?: 0
+        val calVal = calHist.find { it.first == dataDateStr }?.second ?: 0
+
+        val insightsStr = preferences.aiInsights.first()
+        if (insightsStr.isNotBlank()) {
+            val insights = try {
+                json.decodeFromString<List<com.notel.notel.data.local.entity.AiInsight>>(insightsStr)
+            } catch (e: Exception) { emptyList() }
+            
+            val targetLocalDate = try {
+                java.time.LocalDate.parse(targetDateStr)
+            } catch (e: Exception) {
+                java.time.LocalDate.now()
+            }
+            val startOfDay = targetLocalDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+            val cachedInsight = insights.find { it.type == "BodyLoad" && isSameDay(it.timestamp, startOfDay) }
+            if (cachedInsight != null) {
+                val text = cachedInsight.text
+                val scoreRegex = """Cup %:\s*(\d+)""".toRegex()
+                val factorsRegex = """Factors:\s*([^\n|]*)""".toRegex()
+                val adviceRegex = """Advice:\s*(.*)""".toRegex()
+                
+                val cachedScore = scoreRegex.find(text)?.groupValues?.get(1)?.toIntOrNull()
+                val cachedFactors = factorsRegex.find(text)?.groupValues?.get(1)?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()
+                val cachedAdvice = adviceRegex.find(text)?.groupValues?.get(1)?.trim() ?: ""
+                
+                // Recalculate if it's today/yesterday, we now have real sleep data, but the cache has 0% or no sleep factor.
+                val hasCachedSleep = cachedFactors.any { it.startsWith("Sleep") }
+                val isCachedSleepZero = cachedFactors.any { it.startsWith("Sleep") && it.contains("0%") }
+                val hasNewSleepData = isTodayOrYesterday && sleepMins > 0 && (!hasCachedSleep || isCachedSleepZero)
+
+                if (cachedScore != null && !hasNewSleepData) {
+                    return Result.success(
+                        BodyLoadResponse(
+                            score = cachedScore,
+                            factors = cachedFactors,
+                            advice = cachedAdvice,
+                            subjectiveImpact = 0.0
+                        )
+                    )
+                }
+            }
+        }
+
+        // If daily cup updates are disabled and we don't have a cached score, return an empty/disabled response to avoid AI call
+        if (!preferences.dailyCupUpdatesEnabled.first()) {
+            return Result.success(
+                BodyLoadResponse(
+                    score = -1,
+                    factors = emptyList(),
+                    advice = "Daily Cup Updates are disabled in settings.",
+                    subjectiveImpact = 0.0
+                )
+            )
+        }
+        
+        val todayAwake = preferences.todayAwakeAvgHr.first()
+        val rawHrVal = if (dataDateStr == today && todayAwake > 0) {
+            todayAwake
+        } else {
+            heartHist.find { it.first == dataDateStr }?.second ?: 0
+        }
+        val hrVal = if (rawHrVal <= 0) 70 else rawHrVal
+
+        // ── 2. Calculate Rules-Based Loads ──
+        
+        // A. Sleep Load (40%)
+        val sleepLoad = when {
+            sleepMins >= 480 -> 0.0
+            sleepMins >= 450 -> 10.0 + 20.0 * (480.0 - sleepMins) / 30.0  // 7.5 to 8 hours: 10% to 30% load
+            sleepMins >= 420 -> 30.0 + 30.0 * (450.0 - sleepMins) / 30.0  // 7 to 7.5 hours: 30% to 60% load
+            sleepMins >= 360 -> 60.0 + 25.0 * (420.0 - sleepMins) / 60.0  // 6 to 7 hours: 60% to 85% load
+            else -> (85.0 + 15.0 * (360.0 - sleepMins) / 60.0).coerceAtMost(100.0) // < 6 hours: 85% to 100% load
+        }
+
+        // B. Active Calorie Load (25%)
+        val calorieLoad = when {
+            calVal < 1800 -> 5.0 + 10.0 * (calVal.toDouble() / 1800.0)
+            calVal <= 2800 -> 15.0 + 15.0 * ((calVal - 1800).toDouble() / 1000.0)
+            else -> (30.0 + 70.0 * ((calVal - 2800).toDouble() / 700.0)).coerceAtMost(100.0)
+        }
+
+        // C. Heart Rate Load (30%)
+        val heartRateLoad = when {
+            hrVal <= 0 -> 0.0
+            hrVal in 60..73 -> 10.0 * (hrVal - 60).toDouble() / 13.0
+            hrVal in 74..85 -> 10.0 + 35.0 * (hrVal - 73).toDouble() / 12.0
+            hrVal > 85 -> (45.0 + 55.0 * (hrVal - 85).toDouble() / 15.0).coerceAtMost(100.0)
+            else -> (25.0 * (60 - hrVal).toDouble() / 15.0).coerceAtMost(25.0)
+        }
+
+        // ── 3. Calculate Subjective Load (10%) ──
+        val targetLocalDate = try {
+            java.time.LocalDate.parse(targetDateStr)
+        } catch (e: Exception) {
+            java.time.LocalDate.now()
+        }
+        val startOfDay = targetLocalDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val endOfDay = startOfDay + (24 * 60 * 60 * 1000L) - 1
+        
+        val dataLocalDate = try {
+            java.time.LocalDate.parse(dataDateStr)
+        } catch (e: Exception) {
+            java.time.LocalDate.now().minusDays(1)
+        }
+        val dataStartOfDay = dataLocalDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val dataEndOfDay = dataStartOfDay + (24 * 60 * 60 * 1000L) - 1
+        
+        val dailyEntries = logEntryDao.getRecentEntriesInRange(dataStartOfDay, dataEndOfDay)
+        val jotsContext = logEntryDao.getRecentEntriesBefore(dataEndOfDay, 5)
+        
+        var subjectiveLoad = 0.0
+        var subjectiveReason = ""
+
+        if (jotsContext.isNotEmpty()) {
+            try {
+                val prompt = """
+                    You are a health analysis helper. Read the user's last 5 journal entries (Tabs) leading up to the target day (which ends at timestamp $dataEndOfDay) and evaluate their subjective strain (stress, pain, headaches, insomnia, symptoms, mental fatigue) up to this date.
+                    Consider the timing and recency of the Tabs.
+                    Determine the subjective allostatic load percentage on a scale from 0% (perfect, relaxed, symptom-free) to 100% (extreme panic, severe pain, severe symptom flare-up, or extreme exhaustion).
+                    
+                    Example: "had a headache and had a hard time falling asleep" should be rated around 70-80%.
+                    
+                    You MUST return ONLY a valid JSON object in this exact format:
+                    {"impact": <number between 0 and 100>, "reasoning": "<1-sentence explanation>"}
+                """.trimIndent()
+
+                val catMap = allCategories.associate { it.id to it.name }
+                val response = geminiService.getAdvice(jotsContext, catMap, userContext = prompt)
+                
+                response.onSuccess { text ->
+                    val cleanText = text.trim()
+                    val impactRegex = """\"impact\"\s*:\s*(\d+)""".toRegex()
+                    val reasoningRegex = """\"reasoning\"\s*:\s*\"([^\"]*)\"""".toRegex()
+                    
+                    subjectiveLoad = impactRegex.find(cleanText)?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+                    subjectiveReason = reasoningRegex.find(cleanText)?.groupValues?.get(1) ?: ""
+                }
+            } catch (e: Exception) {
+                // Fallback to deterministic below
+            }
+            
+            // Offline/Fail Fallback OR if AI returned 0 but there is text
+            if (subjectiveLoad == 0.0) {
+                var scoreSum = 0.0
+                val strainKeywords = listOf(
+                    "headache", "pain", "migraine", "nausea", "fatigue", "tired", "stress", 
+                    "anxiety", "flare", "crash", "hurt", "bad", "insomnia", "awake", "sleep", 
+                    "symptom", "dizzy", "pots", "mcas", "ache", "sore", "hard time"
+                )
+                jotsContext.forEach { entry ->
+                    val text = entry.body.lowercase() + " " + entry.manualText.lowercase()
+                    if (entry.categoryId == 1) {
+                        scoreSum += 25.0 // Direct Symptoms category
+                    } else if (strainKeywords.any { text.contains(it) }) {
+                        scoreSum += 25.0 // Keyword matched strain
+                    }
+                }
+                subjectiveLoad = scoreSum.coerceAtMost(100.0)
+                subjectiveReason = "Determined via logged symptom keywords."
+            }
+        }
+
+        // ── 4. Calculate Final Weighted Score (Rescaling gracefully for missing data) ──
+        var totalWeight = 0.0
+        var weightedLoadSum = 0.0
+        
+        val hasTabs = jotsContext.isNotEmpty()
+        
+        // Define weights dynamically: if jots exist, AI subjective load is highly weighted at 40%
+        val sleepWeight = if (hasTabs) 0.30 else 0.40
+        val calWeight = if (hasTabs) 0.10 else 0.20
+        val hrWeight = if (hasTabs) 0.20 else 0.40
+        val subjectiveWeight = if (hasTabs) 0.40 else 0.0
+        
+        if (sleepMins > 0) {
+            weightedLoadSum += sleepLoad * sleepWeight
+            totalWeight += sleepWeight
+        }
+        if (calVal > 0) {
+            weightedLoadSum += calorieLoad * calWeight
+            totalWeight += calWeight
+        }
+        if (hrVal > 0) {
+            weightedLoadSum += heartRateLoad * hrWeight
+            totalWeight += hrWeight
+        }
+        if (hasTabs) {
+            weightedLoadSum += subjectiveLoad * subjectiveWeight
+            totalWeight += subjectiveWeight
+        }
+        
+        val finalScore = if (totalWeight > 0.0) {
+            val rawWeightedLoad = weightedLoadSum / totalWeight
+            // Apply a baseline floor of 15% for a perfect body, scaling up to 100%
+            Math.round(15.0 + (rawWeightedLoad * 0.85)).toInt()
+        } else {
+            15 // Default to baseline healthy load if no biometric data exists
+        }
+
+        // ── 5. Generate Factors Breakdown & Custom Advice ──
+        val factors = mutableListOf<String>()
+        if (sleepMins > 0) factors.add("Sleep (${sleepLoad.toInt()}%)")
+        if (calVal > 0) factors.add("Active Calories (${calorieLoad.toInt()}%)")
+        if (hrVal > 0) factors.add("Heart Rate (${heartRateLoad.toInt()}%)")
+        if (hasTabs) factors.add("Subjective (${subjectiveLoad.toInt()}%)")
+
+        val adviceList = mutableListOf<String>()
+        if (sleepMins in 1..449) {
+            adviceList.add("Sleep was under 7.5 hours (${formatSleep(sleepMins)}). Prioritize deep recovery and rest today.")
+        }
+        if (calVal > 2800) {
+            adviceList.add("High physical exertion detected ($calVal kcal). Minimize strenuous workloads to prevent flare-ups.")
+        }
+        if (hrVal > 80) {
+            adviceList.add("Average heart rate was elevated ($hrVal bpm). Keep hydration high and reduce physical triggers.")
+        }
+        if (subjectiveLoad > 50.0) {
+            adviceList.add("Subjective strain is elevated. Take some time for self-care and mental decompression.")
+        }
+        
+        val finalAdvice = if (adviceList.isNotEmpty()) {
+            adviceList.joinToString(" ")
+        } else {
+            "Your biometric markers are looking great. Maintain your baseline and stay balanced!"
+        }
+
+        // Save BodyLoad as an insight so the week summary gets it!
+        val bodyLoadText = "Cup %: $finalScore | Factors: ${factors.joinToString(", ")}"
+        saveAiInsight(bodyLoadText, "BodyLoad", startOfDay)
+
+        return Result.success(
+            BodyLoadResponse(
+                score = finalScore,
+                factors = factors,
+                advice = finalAdvice,
+                subjectiveImpact = subjectiveLoad
+            )
+        )
+    }
+
+
     suspend fun getDailyStatsSummary(dateStr: String? = null, forceRefresh: Boolean = false): Map<String, Any> {
         val targetDay = dateStr ?: java.time.LocalDate.now().toString()
         val now = System.currentTimeMillis()
@@ -420,11 +709,17 @@ class LogRepository @Inject constructor(
         }
 
         val sleepHistoryRecords = if (isAvailable) try { healthConnectCoordinator.getSleepHistory(14) } catch(e: Exception) { emptyList() } else emptyList()
-        val calorieHistory = if (isAvailable) try { healthConnectCoordinator.getCaloriesHistory(14) } catch(e: Exception) { emptyList() } else emptyList()
+        // Total (active + basal) calories so the Home "Today" strip matches
+        // Health Connect's "Energy Burned" screen. This preference feeds TodayMetricsViewModel.
+        val calorieHistory = if (isAvailable) try { healthConnectCoordinator.getTotalCaloriesHistory(14) } catch(e: Exception) { emptyList() } else emptyList()
 
         // UPDATE PREFERENCES TO FIX UI SYNC FOR 7 DAY RECAP
         try {
             val json = Json { ignoreUnknownKeys = true }
+            // Founder choice: the daytime average (awakeAvg, 7am-10pm) is the
+            // signal that matters for his symptoms; nighttime drags it down.
+            // This MUST match the v6 Biometrics avgHr metric (also awakeAvg) —
+            // mixing two metrics in one series is what caused the chart jump.
             val histHrList = historyHr.map { BiomarkerPoint(it.date, it.awakeAvg) }
             if (histHrList.isNotEmpty()) preferences.setHistoricalHeartRate(json.encodeToString(histHrList))
             
@@ -436,7 +731,7 @@ class LogRepository @Inject constructor(
             
             if (historyHr.isNotEmpty()) preferences.setHistoricalHrSpikes(json.encodeToString(historyHr))
 
-            // Also write today's awake-avg HR directly so BodyLoadViewModel's todayAwakeAvgHr
+            // Also write today's awake-avg HR directly so TodayMetricsViewModel's todayAwakeAvgHr
             // flow fires correctly for Health Connect users (previously only Fitbit set this).
             val todayStr = java.time.LocalDate.now().toString()
             val todayHrEntry = historyHr.find { it.date == todayStr }
@@ -846,8 +1141,6 @@ class LogRepository @Inject constructor(
         val isUnlimited = preferences.isUnlimited.first()
         if (!isUnlimited) return Result.failure(IllegalStateException("Unlimited membership required for AI features. Please check Membership in Settings."))
 
-        val bodyLoadHistory = getBodyLoadHistorySummary()
-
         var attempts = 3
         var finalResult: Result<String> = Result.failure(Exception("Initial"))
         
@@ -860,7 +1153,6 @@ class LogRepository @Inject constructor(
                 pastInsights = pastInsights, 
                 fitbitData = fitbitData, 
                 habitData = habitData,
-                bodyLoadHistory = bodyLoadHistory,
                 weatherContext = getWeatherContext(),
                 documents = getEnrichedDocuments()
             )
@@ -877,47 +1169,6 @@ class LogRepository @Inject constructor(
         return finalResult
     }
 
-    suspend fun getWeeklyRecap(allCategories: List<Category>): Result<String> {
-        // Fetch last 7 days of entries (this is a simplified proxy by grabbing recent entries)
-        val recent = logEntryDao.getRecentEntriesAll(limit = 35) // Approx 5 entries a day for a week
-        val catMap = allCategories.associate { it.id to it.name }
-        val context = getEnrichedUserContext()
-        val kb = getEnrichedKnowledgeBase()
-        val hasHealthConnect = healthConnectManager.hasAllPermissions()
-        
-        val fitbitData = getFitbitDataSummary()
-        val habitData = getHabitDataSummary()
-
-        val weather = getWeatherContext()
-
-        val result = geminiService.getWeeklyRecap(recent, catMap, userContext = context, knowledgeBase = kb, fitbitData = fitbitData, habitData = habitData, weatherContext = weather, documents = getEnrichedDocuments())
-        result.onSuccess { text ->
-            saveAiInsight(text, "Weekly Recap")
-        }
-        return result
-    }
-
-    suspend fun getDeepResearch(allCategories: List<Category>): Result<String> {
-        // Fetch up to 90 days of entries (get as much context as possible)
-        val recent = logEntryDao.getRecentEntriesAll(limit = 150)
-        val catMap = allCategories.associate { it.id to it.name }
-        val context = getEnrichedUserContext()
-        val kb = getEnrichedKnowledgeBase()
-        val pastInsights = getPastInsightsText()
-        val hasHealthConnect = healthConnectManager.hasAllPermissions()
-
-        val fitbitData = getFitbitDataSummary()
-        val habitData = getHabitDataSummary()
-
-        val weather = getWeatherContext()
-
-        val result = geminiService.getDeepResearch(recent, catMap, userContext = context, knowledgeBase = kb, pastInsights = pastInsights, fitbitData = fitbitData, habitData = habitData, weatherContext = weather, documents = getEnrichedDocuments())
-        result.onSuccess { text ->
-            saveAiInsight(text, "Deep Advice")
-        }
-        return result
-    }
-    
     suspend fun getDocumentComparison(allCategories: List<Category>): Result<String> {
         // Fetch up to 30 days of entries (compare past month)
         val recent = logEntryDao.getRecentEntriesAll(limit = 100)
@@ -953,45 +1204,6 @@ class LogRepository @Inject constructor(
             .take(5)
             .joinToString("\n") { "[${it.type}] ${it.text}" }
     }
-    
-    private suspend fun getBodyLoadHistorySummary(): String {
-        val insightsStr = preferences.aiInsights.first()
-        val insights: List<AiInsight> = try {
-            if (insightsStr.isNotBlank()) Json.decodeFromString<List<AiInsight>>(insightsStr) else emptyList()
-        } catch(e: Exception) { return "" }
-        
-        val bodyLoads = insights.filter { it.type == "BodyLoad" }
-            .filter { (System.currentTimeMillis() - it.timestamp) < (7L * 24 * 60 * 60 * 1000) }
-        
-        val scores = bodyLoads.mapNotNull { insight ->
-            if (insight.text.contains("Cup %: ")) {
-                insight.text.substringAfter("Cup %: ").substringBefore(" |").trim().toIntOrNull()
-            } else {
-                insight.text.substringAfter("Body Load: ").substringBefore(" |").trim().toIntOrNull()
-            }
-        }
-
-        val factors = bodyLoads.flatMap { insight ->
-            insight.text.substringAfter("Factors: ").split(", ").filter { it.isNotBlank() }
-        }
-        
-        val topFactors = factors.groupingBy { it }.eachCount().toList()
-            .sortedByDescending { it.second }.take(3).joinToString(", ") { it.first }
-
-        if (scores.isEmpty()) return "Trend data pending (requires daily analysis)."
-        
-        val min = scores.minOrNull() ?: 0
-        val max = scores.maxOrNull() ?: 0
-        val avg = scores.average().toInt()
-        
-        val commonStr = if (topFactors.isNotEmpty()) " Recurring Hindrances: $topFactors." else ""
-        
-        return if (scores.size == 1) {
-            "Recent Body Load Trend: Baseline set at $min/100.$commonStr"
-        } else {
-            "Recent Body Load Trend: Range $min/100 to $max/100 (Average: $avg/100).$commonStr"
-        }
-    }
     suspend fun sendCoachMessage(
         messages: List<com.notel.notel.data.remote.CoachMessageDto>,
         userContext: String? = null,
@@ -1001,14 +1213,11 @@ class LogRepository @Inject constructor(
         return try {
             if (!preferences.loggedIn.first()) return Result.failure(Exception("Not logged in"))
             
-            val bodyLoadHistory = getBodyLoadHistorySummary()
-            
             val request = com.notel.notel.data.remote.CoachRequest(
                 messages = messages,
                 userContext = userContext,
                 knowledgeBase = knowledgeBase,
-                recentEntries = recentEntries.map { com.notel.notel.data.remote.LogEntryDtoModel(it.id, it.categoryId, it.body, it.chips, it.manualText, it.timestamp) },
-                bodyLoadHistory = bodyLoadHistory
+                recentEntries = recentEntries.map { com.notel.notel.data.remote.LogEntryDtoModel(it.id, it.categoryId, it.body, it.chips, it.manualText, it.timestamp) }
             )
             
             val response = tabsApi.getCoachReply(request)
@@ -1051,13 +1260,8 @@ class LogRepository @Inject constructor(
         
         val ts = timestamp ?: System.currentTimeMillis()
         
-        // Remove existing BodyLoad insight for the same day to prevent duplicates
-        val insightId = if (type == "BodyLoad") {
-            val date = java.time.Instant.ofEpochMilli(ts).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
-            "bodyload_$date"
-        } else {
-            requestId ?: java.util.UUID.randomUUID().toString()
-        }
+        // Dedupe by request id when provided, otherwise a fresh uuid.
+        val insightId = requestId ?: java.util.UUID.randomUUID().toString()
         val newInsight = AiInsight(id = insightId, text = text, timestamp = ts, type = type, entryId = entryId, requestId = requestId)
         insights.add(0, newInsight)
         preferences.setAiInsights(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(AiInsight.serializer()), insights.take(1000))) // Keep last 1000
@@ -1088,27 +1292,6 @@ class LogRepository @Inject constructor(
         triggerSync()
     }
 
-    suspend fun clearBodyLoadInsightsForDays(days: List<String>) = insightsMutex.withLock {
-        val insightsStr = preferences.aiInsights.first()
-        val insights: MutableList<AiInsight> = try {
-            if (insightsStr.isNotBlank()) Json.decodeFromString<MutableList<AiInsight>>(insightsStr) else mutableListOf()
-        } catch(e: Exception) { mutableListOf() }
-        
-        var modified = false
-        days.forEach { dateStr ->
-            val targetLocalDate = try { java.time.LocalDate.parse(dateStr) } catch(e: Exception) { java.time.LocalDate.now() }
-            val startOfDay = targetLocalDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
-            val removed = insights.removeAll { it.type == "BodyLoad" && isSameDay(it.timestamp, startOfDay) }
-            if (removed) {
-                modified = true
-            }
-        }
-        
-        if (modified) {
-            preferences.setAiInsights(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(AiInsight.serializer()), insights))
-            triggerSync()
-        }
-    }
 
     suspend fun ingestDocumentFile(fileName: String, mimeType: String, base64Data: String): Result<Unit> {
         return try {
@@ -1340,7 +1523,7 @@ class LogRepository @Inject constructor(
             summary.append("DAILY SNAPSHOT FOR $targetDate:\n")
             heartHist.find { it.first == targetDate }?.let { summary.append("• Avg HR: ${it.second} bpm\n") }
             sleepHist.find { it.first == targetDate }?.let { summary.append("• Sleep: ${formatSleep(it.second)} \n") }
-            calHist.find { it.first == targetDate }?.let { summary.append("• Active Energy: ${it.second} kcal\n") }
+            calHist.find { it.first == targetDate }?.let { summary.append("• Total Energy: ${it.second} kcal\n") }
             hrvHist.find { it.first == targetDate }?.let { summary.append("• HRV (RMSSD): ${it.second.toInt()} ms\n") }
             spikeHistory.find { it.date == targetDate }?.let {
                 summary.append("• HR Spikes: ${it.spikeCount} events | Max Delta: +${it.maxDelta} bpm | Range: ${it.baseline}-${it.max} bpm\n")
@@ -1482,294 +1665,6 @@ class LogRepository @Inject constructor(
         }
     }
 
-    /**
-     * Calculates the scientific "Body Load Index" based on the Cup Load Blueprint.
-     * Weights: 35% HRV, 30% Sleep, 20% Activity, 10% RHR, 5% Subjective (Tabs).
-     */
-    suspend fun getBodyLoad(allCategories: List<Category>, dateStr: String? = null): Result<BodyLoadResponse> {
-        val today = java.time.LocalDate.now().toString()
-        val targetDateStr = dateStr ?: today
-        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-
-        // Enforce AI lock: Only today and yesterday are allowed to call the AI or get fresh recalculation
-        val isTodayOrYesterday = try {
-            val targetDate = java.time.LocalDate.parse(targetDateStr)
-            val todayDate = java.time.LocalDate.now()
-            targetDate.isEqual(todayDate) || targetDate.isEqual(todayDate.minusDays(1))
-        } catch (e: Exception) {
-            true // default to allowing calculation if parsing fails
-        }
-
-        // ── 1. Fetch Biometrics ──
-        val heartJson = preferences.historicalHeartRate.first()
-        val heartHist = try {
-            if (heartJson.isNotBlank()) json.decodeFromString<List<com.notel.notel.data.model.BiomarkerPoint>>(heartJson).map { it.date to it.value }
-            else if (healthConnectManager.hasAllPermissions()) healthConnectManager.readHistoricalHeartRate(180)
-            else emptyList()
-        } catch (e: Exception) { emptyList() }
-
-        val sleepJson = preferences.historicalSleep.first()
-        val sleepHist = try {
-            if (sleepJson.isNotBlank()) json.decodeFromString<List<com.notel.notel.data.model.BiomarkerPoint>>(sleepJson).map { it.date to it.value }
-            else if (healthConnectManager.hasAllPermissions()) healthConnectManager.readHistoricalSleep(180)
-            else emptyList()
-        } catch (e: Exception) { emptyList() }
-
-        val calJson = preferences.historicalCalories.first()
-        val calHist = try {
-            if (calJson.isNotBlank()) json.decodeFromString<List<com.notel.notel.data.model.BiomarkerPoint>>(calJson).map { it.date to it.value }
-            else if (healthConnectManager.hasAllPermissions()) healthConnectManager.readHistoricalCalories(180)
-            else emptyList()
-        } catch (e: Exception) { emptyList() }
-
-        val dataDateStr = try {
-            java.time.LocalDate.parse(targetDateStr).minusDays(1).toString()
-        } catch (e: Exception) {
-            targetDateStr
-        }
-
-        val sleepMins = sleepHist.find { it.first == dataDateStr }?.second ?: 0
-        val calVal = calHist.find { it.first == dataDateStr }?.second ?: 0
-
-        val insightsStr = preferences.aiInsights.first()
-        if (insightsStr.isNotBlank()) {
-            val insights = try {
-                json.decodeFromString<List<com.notel.notel.data.local.entity.AiInsight>>(insightsStr)
-            } catch (e: Exception) { emptyList() }
-            
-            val targetLocalDate = try {
-                java.time.LocalDate.parse(targetDateStr)
-            } catch (e: Exception) {
-                java.time.LocalDate.now()
-            }
-            val startOfDay = targetLocalDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
-
-            val cachedInsight = insights.find { it.type == "BodyLoad" && isSameDay(it.timestamp, startOfDay) }
-            if (cachedInsight != null) {
-                val text = cachedInsight.text
-                val scoreRegex = """Cup %:\s*(\d+)""".toRegex()
-                val factorsRegex = """Factors:\s*([^\n|]*)""".toRegex()
-                val adviceRegex = """Advice:\s*(.*)""".toRegex()
-                
-                val cachedScore = scoreRegex.find(text)?.groupValues?.get(1)?.toIntOrNull()
-                val cachedFactors = factorsRegex.find(text)?.groupValues?.get(1)?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()
-                val cachedAdvice = adviceRegex.find(text)?.groupValues?.get(1)?.trim() ?: ""
-                
-                // Recalculate if it's today/yesterday, we now have real sleep data, but the cache has 0% or no sleep factor.
-                val hasCachedSleep = cachedFactors.any { it.startsWith("Sleep") }
-                val isCachedSleepZero = cachedFactors.any { it.startsWith("Sleep") && it.contains("0%") }
-                val hasNewSleepData = isTodayOrYesterday && sleepMins > 0 && (!hasCachedSleep || isCachedSleepZero)
-
-                if (cachedScore != null && !hasNewSleepData) {
-                    return Result.success(
-                        BodyLoadResponse(
-                            score = cachedScore,
-                            factors = cachedFactors,
-                            advice = cachedAdvice,
-                            subjectiveImpact = 0.0
-                        )
-                    )
-                }
-            }
-        }
-
-        // If daily cup updates are disabled and we don't have a cached score, return an empty/disabled response to avoid AI call
-        if (!preferences.dailyCupUpdatesEnabled.first()) {
-            return Result.success(
-                BodyLoadResponse(
-                    score = -1,
-                    factors = emptyList(),
-                    advice = "Daily Cup Updates are disabled in settings.",
-                    subjectiveImpact = 0.0
-                )
-            )
-        }
-        
-        val todayAwake = preferences.todayAwakeAvgHr.first()
-        val rawHrVal = if (dataDateStr == today && todayAwake > 0) {
-            todayAwake
-        } else {
-            heartHist.find { it.first == dataDateStr }?.second ?: 0
-        }
-        val hrVal = if (rawHrVal <= 0) 70 else rawHrVal
-
-        // ── 2. Calculate Rules-Based Loads ──
-        
-        // A. Sleep Load (40%)
-        val sleepLoad = when {
-            sleepMins >= 480 -> 0.0
-            sleepMins >= 450 -> 10.0 + 20.0 * (480.0 - sleepMins) / 30.0  // 7.5 to 8 hours: 10% to 30% load
-            sleepMins >= 420 -> 30.0 + 30.0 * (450.0 - sleepMins) / 30.0  // 7 to 7.5 hours: 30% to 60% load
-            sleepMins >= 360 -> 60.0 + 25.0 * (420.0 - sleepMins) / 60.0  // 6 to 7 hours: 60% to 85% load
-            else -> (85.0 + 15.0 * (360.0 - sleepMins) / 60.0).coerceAtMost(100.0) // < 6 hours: 85% to 100% load
-        }
-
-        // B. Active Calorie Load (25%)
-        val calorieLoad = when {
-            calVal < 1800 -> 5.0 + 10.0 * (calVal.toDouble() / 1800.0)
-            calVal <= 2800 -> 15.0 + 15.0 * ((calVal - 1800).toDouble() / 1000.0)
-            else -> (30.0 + 70.0 * ((calVal - 2800).toDouble() / 700.0)).coerceAtMost(100.0)
-        }
-
-        // C. Heart Rate Load (30%)
-        val heartRateLoad = when {
-            hrVal <= 0 -> 0.0
-            hrVal in 60..73 -> 10.0 * (hrVal - 60).toDouble() / 13.0
-            hrVal in 74..85 -> 10.0 + 35.0 * (hrVal - 73).toDouble() / 12.0
-            hrVal > 85 -> (45.0 + 55.0 * (hrVal - 85).toDouble() / 15.0).coerceAtMost(100.0)
-            else -> (25.0 * (60 - hrVal).toDouble() / 15.0).coerceAtMost(25.0)
-        }
-
-        // ── 3. Calculate Subjective Load (10%) ──
-        val targetLocalDate = try {
-            java.time.LocalDate.parse(targetDateStr)
-        } catch (e: Exception) {
-            java.time.LocalDate.now()
-        }
-        val startOfDay = targetLocalDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
-        val endOfDay = startOfDay + (24 * 60 * 60 * 1000L) - 1
-        
-        val dataLocalDate = try {
-            java.time.LocalDate.parse(dataDateStr)
-        } catch (e: Exception) {
-            java.time.LocalDate.now().minusDays(1)
-        }
-        val dataStartOfDay = dataLocalDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
-        val dataEndOfDay = dataStartOfDay + (24 * 60 * 60 * 1000L) - 1
-        
-        val dailyEntries = logEntryDao.getRecentEntriesInRange(dataStartOfDay, dataEndOfDay)
-        val jotsContext = logEntryDao.getRecentEntriesBefore(dataEndOfDay, 5)
-        
-        var subjectiveLoad = 0.0
-        var subjectiveReason = ""
-
-        if (jotsContext.isNotEmpty()) {
-            try {
-                val prompt = """
-                    You are a health analysis helper. Read the user's last 5 journal entries (Tabs) leading up to the target day (which ends at timestamp $dataEndOfDay) and evaluate their subjective strain (stress, pain, headaches, insomnia, symptoms, mental fatigue) up to this date.
-                    Consider the timing and recency of the Tabs.
-                    Determine the subjective allostatic load percentage on a scale from 0% (perfect, relaxed, symptom-free) to 100% (extreme panic, severe pain, severe symptom flare-up, or extreme exhaustion).
-                    
-                    Example: "had a headache and had a hard time falling asleep" should be rated around 70-80%.
-                    
-                    You MUST return ONLY a valid JSON object in this exact format:
-                    {"impact": <number between 0 and 100>, "reasoning": "<1-sentence explanation>"}
-                """.trimIndent()
-
-                val catMap = allCategories.associate { it.id to it.name }
-                val response = geminiService.getAdvice(jotsContext, catMap, userContext = prompt)
-                
-                response.onSuccess { text ->
-                    val cleanText = text.trim()
-                    val impactRegex = """\"impact\"\s*:\s*(\d+)""".toRegex()
-                    val reasoningRegex = """\"reasoning\"\s*:\s*\"([^\"]*)\"""".toRegex()
-                    
-                    subjectiveLoad = impactRegex.find(cleanText)?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
-                    subjectiveReason = reasoningRegex.find(cleanText)?.groupValues?.get(1) ?: ""
-                }
-            } catch (e: Exception) {
-                // Fallback to deterministic below
-            }
-            
-            // Offline/Fail Fallback OR if AI returned 0 but there is text
-            if (subjectiveLoad == 0.0) {
-                var scoreSum = 0.0
-                val strainKeywords = listOf(
-                    "headache", "pain", "migraine", "nausea", "fatigue", "tired", "stress", 
-                    "anxiety", "flare", "crash", "hurt", "bad", "insomnia", "awake", "sleep", 
-                    "symptom", "dizzy", "pots", "mcas", "ache", "sore", "hard time"
-                )
-                jotsContext.forEach { entry ->
-                    val text = entry.body.lowercase() + " " + entry.manualText.lowercase()
-                    if (entry.categoryId == 1) {
-                        scoreSum += 25.0 // Direct Symptoms category
-                    } else if (strainKeywords.any { text.contains(it) }) {
-                        scoreSum += 25.0 // Keyword matched strain
-                    }
-                }
-                subjectiveLoad = scoreSum.coerceAtMost(100.0)
-                subjectiveReason = "Determined via logged symptom keywords."
-            }
-        }
-
-        // ── 4. Calculate Final Weighted Score (Rescaling gracefully for missing data) ──
-        var totalWeight = 0.0
-        var weightedLoadSum = 0.0
-        
-        val hasTabs = jotsContext.isNotEmpty()
-        
-        // Define weights dynamically: if jots exist, AI subjective load is highly weighted at 40%
-        val sleepWeight = if (hasTabs) 0.30 else 0.40
-        val calWeight = if (hasTabs) 0.10 else 0.20
-        val hrWeight = if (hasTabs) 0.20 else 0.40
-        val subjectiveWeight = if (hasTabs) 0.40 else 0.0
-        
-        if (sleepMins > 0) {
-            weightedLoadSum += sleepLoad * sleepWeight
-            totalWeight += sleepWeight
-        }
-        if (calVal > 0) {
-            weightedLoadSum += calorieLoad * calWeight
-            totalWeight += calWeight
-        }
-        if (hrVal > 0) {
-            weightedLoadSum += heartRateLoad * hrWeight
-            totalWeight += hrWeight
-        }
-        if (hasTabs) {
-            weightedLoadSum += subjectiveLoad * subjectiveWeight
-            totalWeight += subjectiveWeight
-        }
-        
-        val finalScore = if (totalWeight > 0.0) {
-            val rawWeightedLoad = weightedLoadSum / totalWeight
-            // Apply a baseline floor of 15% for a perfect body, scaling up to 100%
-            Math.round(15.0 + (rawWeightedLoad * 0.85)).toInt()
-        } else {
-            15 // Default to baseline healthy load if no biometric data exists
-        }
-
-        // ── 5. Generate Factors Breakdown & Custom Advice ──
-        val factors = mutableListOf<String>()
-        if (sleepMins > 0) factors.add("Sleep (${sleepLoad.toInt()}%)")
-        if (calVal > 0) factors.add("Active Calories (${calorieLoad.toInt()}%)")
-        if (hrVal > 0) factors.add("Heart Rate (${heartRateLoad.toInt()}%)")
-        if (hasTabs) factors.add("Subjective (${subjectiveLoad.toInt()}%)")
-
-        val adviceList = mutableListOf<String>()
-        if (sleepMins in 1..449) {
-            adviceList.add("Sleep was under 7.5 hours (${formatSleep(sleepMins)}). Prioritize deep recovery and rest today.")
-        }
-        if (calVal > 2800) {
-            adviceList.add("High physical exertion detected ($calVal kcal). Minimize strenuous workloads to prevent flare-ups.")
-        }
-        if (hrVal > 80) {
-            adviceList.add("Average heart rate was elevated ($hrVal bpm). Keep hydration high and reduce physical triggers.")
-        }
-        if (subjectiveLoad > 50.0) {
-            adviceList.add("Subjective strain is elevated. Take some time for self-care and mental decompression.")
-        }
-        
-        val finalAdvice = if (adviceList.isNotEmpty()) {
-            adviceList.joinToString(" ")
-        } else {
-            "Your biometric markers are looking great. Maintain your baseline and stay balanced!"
-        }
-
-        // Save BodyLoad as an insight so the week summary gets it!
-        val bodyLoadText = "Cup %: $finalScore | Factors: ${factors.joinToString(", ")}"
-        saveAiInsight(bodyLoadText, "BodyLoad", startOfDay)
-
-        return Result.success(
-            BodyLoadResponse(
-                score = finalScore,
-                factors = factors,
-                advice = finalAdvice,
-                subjectiveImpact = subjectiveLoad
-            )
-        )
-    }
-    
     private fun formatSleep(mins: Int): String {
         val h = mins / 60
         val m = mins % 60
@@ -1778,10 +1673,6 @@ class LogRepository @Inject constructor(
             h > 0 -> "${h}h"
             else -> "${m}m"
         }
-    }
-
-    private fun sigmoidScore(z: Double, k: Double = 1.2): Double {
-        return 0.0
     }
 
     /**

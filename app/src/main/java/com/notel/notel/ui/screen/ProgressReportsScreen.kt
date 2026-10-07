@@ -191,6 +191,9 @@ fun ProgressReportsScreen(
     var pendingShareFile by remember { mutableStateOf<java.io.File?>(null) }
     // Phase 2 (WS-G): same confirmation for saved-report content URIs.
     var pendingShareUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    // Why the AI summary is missing when the share dialog shows a raw-fallback
+    // report (null = AI summary present, or user explicitly asked for raw).
+    var pendingShareAiReason by remember { mutableStateOf<String?>(null) }
     // Juno's feature: expandable data-source disclosure.
     var showSources by remember { mutableStateOf(false) }
     // Mira's feature: staggered card entrance.
@@ -286,6 +289,7 @@ fun ProgressReportsScreen(
             // Vera's feature: hold the file for an explicit share confirmation
             // instead of opening the share sheet unprompted.
             pendingShareFile = currentState.file
+            pendingShareAiReason = currentState.aiFailureReason
             viewModel.resetReportGenerationState()
             activeRange = null
         } else if (!currentState.isProcessing) {
@@ -1028,7 +1032,7 @@ fun ProgressReportsScreen(
     if (pendingShareFile != null) {
         val file = pendingShareFile!!
         AlertDialog(
-            onDismissRequest = { pendingShareFile = null },
+            onDismissRequest = { pendingShareFile = null; pendingShareAiReason = null },
             title = {
                 Text("Share health report", color = NotelTextPrimary, fontWeight = FontWeight.SemiBold)
             },
@@ -1047,52 +1051,25 @@ fun ProgressReportsScreen(
                         color = NotelTextSecondary.copy(alpha = 0.7f),
                         fontSize = 11.sp
                     )
+                    // Honest failure reason: the AI summary never made it into
+                    // this report, so the founder sees why at a glance.
+                    if (pendingShareAiReason != null) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "AI summary unavailable: ${pendingShareAiReason}",
+                            color = NotelTextSecondary,
+                            fontSize = 11.sp
+                        )
+                    }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { sharePdf(file); pendingShareFile = null }) {
+                TextButton(onClick = { sharePdf(file); pendingShareFile = null; pendingShareAiReason = null }) {
                     Text("Share", color = NotelPrimary, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { pendingShareFile = null }) {
-                    Text("Not now", color = NotelTextSecondary)
-                }
-            }
-        )
-    }
-
-    // Vera's feature for saved reports: same explicit confirmation before
-    // the share sheet — the PDF holds health data.
-    if (pendingShareUri != null) {
-        val uri = pendingShareUri!!
-        AlertDialog(
-            onDismissRequest = { pendingShareUri = null },
-            title = {
-                Text("Share health report", color = NotelTextPrimary, fontWeight = FontWeight.SemiBold)
-            },
-            text = {
-                Column {
-                    Text(
-                        "This PDF contains your health data. Only share it with people you trust.",
-                        color = NotelTextSecondary,
-                        fontSize = 13.sp
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "For informational purposes only. Not medical advice.",
-                        color = NotelTextSecondary.copy(alpha = 0.7f),
-                        fontSize = 11.sp
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { sharePdfUri(uri); pendingShareUri = null }) {
-                    Text("Share", color = NotelPrimary, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingShareUri = null }) {
+                TextButton(onClick = { pendingShareFile = null; pendingShareAiReason = null }) {
                     Text("Not now", color = NotelTextSecondary)
                 }
             }
@@ -1132,7 +1109,8 @@ private fun ReportCard(
 
 /** Juno's feature: one row of the "What's in this report" disclosure. */
 @Composable
-private fun ReportSourceRow(title: String, detail: String) {    Row(verticalAlignment = Alignment.Top) {
+private fun ReportSourceRow(title: String, detail: String) {
+    Row(verticalAlignment = Alignment.Top) {
         Icon(
             Icons.Default.CheckCircle,
             null,

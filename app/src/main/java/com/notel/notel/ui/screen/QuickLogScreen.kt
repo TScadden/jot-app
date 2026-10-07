@@ -47,12 +47,9 @@ fun QuickLogScreen(
     onNavigateToMembership: () -> Unit = {},
     onNavigateToTrends: () -> Unit,
     onNavigateToFitbit: () -> Unit,
-    onNavigateToSleep: () -> Unit,
-    onNavigateToBodyLoad: () -> Unit = {}
+    onNavigateToSleep: () -> Unit
 ) {
     val state by viewModel.uiState.collectAsState()
-    val isGeneratingWeeklyRecap by viewModel.isGeneratingWeeklyRecap.collectAsState()
-    val isGeneratingDeepResearch by viewModel.isGeneratingDeepResearch.collectAsState()
 
     val palette57 = LocalNotelPalette.current
     val activeCatColor = remember(state.selectedCategory, palette57) {

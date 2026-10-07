@@ -11,7 +11,7 @@ import java.util.Locale
 import java.util.TimeZone
 
 /**
- * Tabs Lab: day-before nudge for a saved Progress Reports appointment.
+ * Day-before nudge for a saved Progress Reports appointment.
  *
  * When the user saves an appointment date on the Progress Reports screen,
  * this schedules a one-shot exact alarm for 9:00 AM local on the day before

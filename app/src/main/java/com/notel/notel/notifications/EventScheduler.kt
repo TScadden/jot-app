@@ -44,4 +44,23 @@ object EventScheduler {
             am.setExact(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
         }
     }
+
+    /**
+     * Cancel a previously scheduled day-of event notification. Matches the
+     * PendingIntent built in [scheduleEventNotification]: extras are ignored
+     * for intent matching, so the name extra is not needed here.
+     */
+    fun cancelEventNotification(context: Context, eventId: String) {
+        val intent = Intent(context, EventReceiver::class.java)
+        val requestCode = (eventId.hashCode() and 0x7FFFFFFF)
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        am.cancel(pendingIntent)
+        pendingIntent.cancel()
+    }
 }

@@ -112,8 +112,6 @@ class QuickLogViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(QuickLogUiState())
     val uiState: StateFlow<QuickLogUiState> = _uiState.asStateFlow()
 
-    val isGeneratingWeeklyRecap = logRepository.isGeneratingWeeklyRecap
-    val isGeneratingDeepResearch = logRepository.isGeneratingDeepResearch
     val isComparingDocuments = logRepository.isComparingDocuments
 
     /** Debounce job — cancels any in-flight category switch before starting a new one */
@@ -614,50 +612,6 @@ class QuickLogViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoadingAdvice = true, adviceError = null, showAdviceDialog = true) }
             logRepository.getAdvice(cats).fold(
-                onSuccess = { text ->
-                    _uiState.update { it.copy(isLoadingAdvice = false, advice = text) }
-                },
-                onFailure = { err ->
-                    _uiState.update {
-                        it.copy(
-                            isLoadingAdvice = false,
-                            adviceError = FriendlyErrors.forBackendError(
-                                "QuickLogViewModel", err, FriendlyErrors.Kind.UNKNOWN
-                            ).banner
-                        )
-                    }
-                }
-            )
-        }
-    }
-
-    fun generateWeeklyRecap() {
-        val cats = _uiState.value.categories
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoadingAdvice = true, adviceError = null, showAdviceDialog = true) }
-            logRepository.getWeeklyRecap(cats).fold(
-                onSuccess = { text ->
-                    _uiState.update { it.copy(isLoadingAdvice = false, advice = text) }
-                },
-                onFailure = { err ->
-                    _uiState.update {
-                        it.copy(
-                            isLoadingAdvice = false,
-                            adviceError = FriendlyErrors.forBackendError(
-                                "QuickLogViewModel", err, FriendlyErrors.Kind.UNKNOWN
-                            ).banner
-                        )
-                    }
-                }
-            )
-        }
-    }
-
-    fun generateDeepResearch() {
-        val cats = _uiState.value.categories
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoadingAdvice = true, adviceError = null, showAdviceDialog = true) }
-            logRepository.getDeepResearch(cats).fold(
                 onSuccess = { text ->
                     _uiState.update { it.copy(isLoadingAdvice = false, advice = text) }
                 },

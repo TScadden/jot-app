@@ -12,6 +12,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.serializer
 import kotlinx.serialization.json.*
 import com.notel.notel.data.local.entity.AiInsight
 import com.notel.notel.data.healthconnect.HealthConnectManager
@@ -82,7 +83,7 @@ class SettingsViewModel @Inject constructor(
     val lastSyncTime = preferences.lastSyncTime
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
 
-    // Playground: Progress Reports appointment card (persisted in DataStore).
+    // Progress Reports appointment card (persisted in DataStore).
     val appointmentDate = preferences.appointmentDate
     val appointmentReportType = preferences.appointmentReportType
 
@@ -94,8 +95,17 @@ class SettingsViewModel @Inject constructor(
             // No-ops when exact alarms are revoked or the fire time passed.
             if (dateIso != null) {
                 com.notel.notel.notifications.AppointmentReminderScheduler.schedule(context, dateIso)
+                // Mirror the appointment into the Events system: links to a
+                // same-day similar event when one exists, otherwise creates a
+                // single card-owned "Doctor appointment" event.
+                com.notel.notel.appointments.AppointmentEventLink.onAppointmentSaved(
+                    preferences, context, { syncManager.pushProfileData() }, dateIso
+                )
             } else {
                 com.notel.notel.notifications.AppointmentReminderScheduler.cancel(context)
+                com.notel.notel.appointments.AppointmentEventLink.onAppointmentCleared(
+                    preferences, context, { syncManager.pushProfileData() }
+                )
             }
         }
     }
@@ -105,6 +115,11 @@ class SettingsViewModel @Inject constructor(
             preferences.setAppointmentDate(null)
             preferences.setAppointmentReportType("health")
             com.notel.notel.notifications.AppointmentReminderScheduler.cancel(context)
+            com.notel.notel.notifications.AppointmentReminderScheduler.cancel(context)
+            // Remove the card-owned event (never a user-created one).
+            com.notel.notel.appointments.AppointmentEventLink.onAppointmentCleared(
+                preferences, context, { syncManager.pushProfileData() }
+            )
         }
     }
 
@@ -131,6 +146,15 @@ class SettingsViewModel @Inject constructor(
                 rangeEndMs = resolved.endEpochMs,
                 focusText = focusText
             )
+        }
+    }
+
+    // Report type/range continuity for Progress Reports.
+    val lastReportRange30d = preferences.lastReportRange30d
+
+    fun saveLastReportPrefs(reportType: String, range30d: Boolean) {
+        viewModelScope.launch {
+            preferences.saveLastReportPrefs(reportType, range30d)
         }
     }
 
@@ -1154,8 +1178,10 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    private val _reportGenerationState = MutableStateFlow<com.notel.notel.ui.state.ReportGenerationState>(com.notel.notel.ui.state.ReportGenerationState.Idle)
-    val reportGenerationState = _reportGenerationState.asStateFlow()
+    // Report pipeline state is owned by LogRepository (app-scoped) so
+    // ReportGenerationService can publish progress while the app is
+    // backgrounded; the UI observes it here exactly as before.
+    val reportGenerationState = logRepository.reportGenerationState
 
     private var reportJob: kotlinx.coroutines.Job? = null
 
@@ -1185,18 +1211,18 @@ class SettingsViewModel @Inject constructor(
                 val titleBase = "${focus.label} report · ${range.label}"
                 val focusText = (focus as? com.notel.notel.data.model.ReportFocus.Custom)?.focusText.orEmpty()
                 if (forceRawFallback) {
-                    _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.CollectingData("Collecting patient data for Raw Data report...")
+                    logRepository.updateReportGenerationState(com.notel.notel.ui.state.ReportGenerationState.CollectingData("Collecting patient data for Raw Data report..."))
                     val snapshot = logRepository.clinicalReportDataCollector.collectReportData(
                         allCategories = cats,
                         range = range,
                         focus = focus,
                         customCategoryIds = customCategoryIds
                     )
-                    _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.RenderingPdf("Rendering Raw Data PDF...")
+                    logRepository.updateReportGenerationState(com.notel.notel.ui.state.ReportGenerationState.RenderingPdf("Rendering Raw Data PDF..."))
                     val result = reportGenerator.generateReport(snapshot, aiSummary = null, isRawFallback = true)
                     val file = result?.file
                     if (file != null) {
-                        _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Ready(file, isRawFallback = true, downloadsUri = result.downloadsUri)
+                        logRepository.updateReportGenerationState(com.notel.notel.ui.state.ReportGenerationState.Ready(file, isRawFallback = true, downloadsUri = result.downloadsUri))
                         com.notel.notel.util.NotificationHelper(context).showReportReady(file)
                         recordSavedReport(
                             title = titleBase, focusKey = focus.key, focusText = focusText,
@@ -1206,7 +1232,7 @@ class SettingsViewModel @Inject constructor(
                             downloadsUri = result.downloadsUri, isRawFallback = true, eventId = eventId
                         )
                     } else {
-                        _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Failed("Failed generating Raw Data report file.")
+                        logRepository.updateReportGenerationState(com.notel.notel.ui.state.ReportGenerationState.Failed("Failed generating Raw Data report file."))
                     }
                 } else {
                     logRepository.generateProfessionalReportWithSnapshot(
@@ -1217,7 +1243,7 @@ class SettingsViewModel @Inject constructor(
                         customCategoryIds = customCategoryIds,
                         renderOptions = opts,
                         onStateUpdate = { state ->
-                            _reportGenerationState.value = state
+                            logRepository.updateReportGenerationState(state)
                             if (state is com.notel.notel.ui.state.ReportGenerationState.Ready) {
                                 com.notel.notel.util.NotificationHelper(context).showReportReady(state.file)
                                 viewModelScope.launch {
@@ -1235,9 +1261,9 @@ class SettingsViewModel @Inject constructor(
                     )
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
-                _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Cancelled
+                logRepository.updateReportGenerationState(com.notel.notel.ui.state.ReportGenerationState.Cancelled)
             } catch (e: Exception) {
-                _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Failed(com.notel.notel.util.FriendlyErrors.forBackendError(TAG, e, com.notel.notel.util.FriendlyErrors.Kind.EXPORT).banner, allowRawFallback = true)
+                logRepository.updateReportGenerationState(com.notel.notel.ui.state.ReportGenerationState.Failed(com.notel.notel.util.FriendlyErrors.forBackendError(TAG, e, com.notel.notel.util.FriendlyErrors.Kind.EXPORT).banner, allowRawFallback = true))
             }
         }
     }
@@ -1262,22 +1288,13 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun cancelReportGeneration() {
-        reportJob?.cancel()
-        reportJob = null
-        _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Cancelled
+        com.notel.notel.service.ReportGenerationService.cancel(context)
+        logRepository.updateReportGenerationState(com.notel.notel.ui.state.ReportGenerationState.Cancelled)
         logRepository.resetGeneratedReport()
     }
 
     fun resetReportGenerationState() {
-        _reportGenerationState.value = com.notel.notel.ui.state.ReportGenerationState.Idle
-    }
-
-    fun generateWeeklyRecap() {
-        logRepository.generateWeeklyRecapAsync(categories.value)
-    }
-
-    fun generateDeepResearch() {
-        logRepository.generateDeepResearchAsync(categories.value)
+        logRepository.updateReportGenerationState(com.notel.notel.ui.state.ReportGenerationState.Idle)
     }
 
     fun setAutoAiSuggestions(enabled: Boolean) {
@@ -1716,11 +1733,24 @@ class SettingsViewModel @Inject constructor(
             val index = current.indexOfFirst { it.id == id }
             if (index >= 0) {
                 val counter = current[index]
+                // Tombstone the deleted id atomically with the list removal: the
+                // profile pull merge is a union, and without this a concurrent sync
+                // whose pull lands after this delete would resurrect the counter
+                // from a stale server copy. The pull prunes tombstones once the
+                // server no longer carries the id.
+                val tombstones = try {
+                    val raw = preferences.deletedEventCounterIds.first()
+                    if (raw.isNotBlank()) Json.decodeFromString<MutableSet<String>>(raw) else mutableSetOf()
+                } catch(e: Exception) { mutableSetOf() }
+                tombstones.add(id)
                 current.removeAt(index)
                 if (current.isNotEmpty()) {
                     // No longer specifically managing 'isFavorite' as we're removing that system
                 }
-                preferences.setEventCounters(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(EventCounterDto.serializer()), current))
+                preferences.setEventCountersAndTombstones(
+                    Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(EventCounterDto.serializer()), current),
+                    Json.encodeToString(kotlinx.serialization.builtins.SetSerializer(serializer<String>()), tombstones)
+                )
                 
                 val historyStr = preferences.counterHistory.first()
                 val history = try { if (historyStr.isNotBlank()) Json.decodeFromString<MutableList<CounterHistoryItem>>(historyStr) else mutableListOf() } catch(e: Exception) { mutableListOf() }
@@ -1728,17 +1758,13 @@ class SettingsViewModel @Inject constructor(
                 history.add(0, CounterHistoryItem(counter.name, counter.targetDate, System.currentTimeMillis()))
                 preferences.setCounterHistory(Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(CounterHistoryItem.serializer()), history.take(20)))
                 syncManager.pushProfileData()
+                // Progress Reports: the appointment card may link to this event.
+                // If the user just deleted the linked one, clear the stale
+                // appointment (and cancel its nudge) rather than resurrecting it.
+                com.notel.notel.appointments.AppointmentEventLink.reconcileAppointmentLink(preferences, context)
             }
         }
     }
-
-    fun testDailyReminder(context: android.content.Context) {
-        viewModelScope.launch {
-            com.notel.notel.util.NotificationHelper(context).showBodyLoadReminder()
-        }
-    }
-
-    
 
     fun testHabitNotification(context: android.content.Context) {
         viewModelScope.launch {
@@ -1783,22 +1809,9 @@ class SettingsViewModel @Inject constructor(
 
     fun testAppointmentReminderNotification(context: android.content.Context) {
         viewModelScope.launch {
-            // Tabs Lab: the exact notification the day-before appointment receiver posts.
+            // The exact notification the day-before appointment receiver posts.
             com.notel.notel.util.NotificationHelper(context)
                 .showAppointmentReminder("Health", "Oct 15")
-        }
-    }
-
-    fun testMiddayBodyLoadNotification(context: android.content.Context) {
-        viewModelScope.launch {
-            com.notel.notel.util.NotificationHelper(context).showMidDayBodyLoadRefresh()
-        }
-    }
-
-    fun testBodyLoadUpdateNotification(context: android.content.Context) {
-        viewModelScope.launch {
-            // Representative score for the preview; the real one passes the computed score.
-            com.notel.notel.util.NotificationHelper(context).showBodyLoadUpdate(72)
         }
     }
 
@@ -1919,38 +1932,6 @@ class SettingsViewModel @Inject constructor(
             } finally {
                 _isManualSyncing.value = false
             }
-        }
-    }
-
-    fun refreshThisWeeksScores() {
-        viewModelScope.launch {
-            var cats = categories.value
-            if (cats.isEmpty()) {
-                addSystemLog("Refresh: categories.value is empty, querying repository flow...")
-                cats = categoryRepository.getAllCategories().first()
-            }
-            if (cats.isEmpty()) {
-                addSystemLog("Refresh: Category list is empty, aborting.")
-                return@launch
-            }
-            addSystemLog("Refresh: Starting force refresh of this week's scores...")
-            val today = java.time.LocalDate.now()
-            
-            val targetDays = (0..6).map { today.minusDays(it.toLong()).toString() }
-            addSystemLog("Refresh: Clearing scores for target week...")
-            logRepository.clearBodyLoadInsightsForDays(targetDays)
-            addSystemLog("Refresh: Saving cleared scores database state...")
-
-            for (i in 0..6) {
-                val dateStr = today.minusDays(i.toLong()).toString()
-                addSystemLog("Refresh: Recalculating score for $dateStr...")
-                logRepository.getBodyLoad(cats, dateStr)
-                addSystemLog("Refresh: Done calculating score for $dateStr.")
-            }
-            
-            addSystemLog("Refresh: Weekly recalculation completed! Performing final sync...")
-            syncManager.syncAllData()
-            addSystemLog("Refresh: Final sync done.")
         }
     }
 

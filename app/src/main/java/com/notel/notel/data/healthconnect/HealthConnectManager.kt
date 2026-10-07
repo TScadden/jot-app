@@ -304,6 +304,30 @@ class HealthConnectManager(private val context: Context) : com.notel.notel.data.
         }
     }
 
+    /**
+     * Total calories burned for a day (active + basal), matching what Google Health
+     * Connect's "Energy Burned" screen shows. Reads ENERGY_TOTAL only.
+     * Falls back to 0 on failure — a missing total must NEVER silently show the
+     * active-calorie value.
+     */
+    suspend fun readTotalCalories(dateStr: String): Int {
+        try {
+            val start = startOfDate(dateStr)
+            val end = endOfDate(dateStr)
+
+            val response = healthConnectClient.aggregate(
+                AggregateRequest(
+                    metrics = setOf(TotalCaloriesBurnedRecord.ENERGY_TOTAL),
+                    timeRangeFilter = TimeRangeFilter.between(start, end)
+                )
+            )
+
+            return response[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories?.toInt() ?: 0
+        } catch(e: Exception) {
+            return 0
+        }
+    }
+
     suspend fun readHistoricalCalories(days: Int = 30): List<Pair<String, Int>> {
         try {
             val zoneId = java.time.ZoneId.systemDefault()
@@ -326,6 +350,37 @@ class HealthConnectManager(private val context: Context) : com.notel.notel.data.
                 val active = bucket.result[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories?.toInt()
                 val total = bucket.result[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories?.toInt()
                 date to (active ?: total ?: 0)
+            }
+        } catch(e: Exception) {
+            return emptyList()
+        }
+    }
+
+    /**
+     * Per-day TOTAL calories (active + basal) for the last [days] days, matching
+     * Health Connect's "Energy Burned". Total only, no fallback to active.
+     */
+    suspend fun readHistoricalTotalCalories(days: Int = 30): List<Pair<String, Int>> {
+        try {
+            val zoneId = java.time.ZoneId.systemDefault()
+            val end = java.time.ZonedDateTime.now(zoneId).plusDays(1).truncatedTo(java.time.temporal.ChronoUnit.DAYS).toInstant()
+            val start = end.minus(days.toLong(), java.time.temporal.ChronoUnit.DAYS)
+
+            val response = healthConnectClient.aggregateGroupByDuration(
+                AggregateGroupByDurationRequest(
+                    metrics = setOf(TotalCaloriesBurnedRecord.ENERGY_TOTAL),
+                    timeRangeFilter = TimeRangeFilter.between(start, end),
+                    timeRangeSlicer = Duration.ofDays(1)
+                )
+            )
+
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
+                timeZone = java.util.TimeZone.getTimeZone(zoneId)
+            }
+            return response.map { bucket ->
+                val date = sdf.format(java.util.Date.from(bucket.startTime))
+                val total = bucket.result[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories?.toInt()
+                date to (total ?: 0)
             }
         } catch(e: Exception) {
             return emptyList()

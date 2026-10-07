@@ -103,9 +103,6 @@ fun SettingsScreen(
     val showProfessionalCheckIn by viewModel.showProfessionalCheckIn.collectAsState()
     val knowledgeDocuments by viewModel.knowledgeDocuments.collectAsState()
     
-    val isGeneratingWeeklyRecap by viewModel.isGeneratingWeeklyRecap.collectAsState()
-    val isGeneratingDeepResearch by viewModel.isGeneratingDeepResearch.collectAsState()
-    
     val healthConnectConnected by viewModel.healthConnectConnected.collectAsState()
     val googleCalendarConnected by viewModel.googleCalendarConnected.collectAsState()
     val googleCalendarEmail by viewModel.googleCalendarEmail.collectAsState()
@@ -320,7 +317,7 @@ fun SettingsScreen(
     
     BackHandler(enabled = currentMenu != SettingsMenu.MAIN) {
         viewModel.flushProfilePush()
-        // Tabs Lab: Progress Reports is a sub-screen of AI & Clinical Advocate.
+        // Progress Reports is a sub-screen of AI & Clinical Advocate.
         currentMenu = if (currentMenu == SettingsMenu.PROGRESS_REPORTS) {
             SettingsMenu.AI_AND_KNOWLEDGE
         } else {
@@ -490,7 +487,7 @@ fun SettingsScreen(
                 navigationIcon = {
                     if (currentMenu != SettingsMenu.MAIN) {
                         IconButton(onClick = {
-                            // Tabs Lab: Progress Reports is a sub-screen of AI & Clinical Advocate.
+                            // Progress Reports is a sub-screen of AI & Clinical Advocate.
                             currentMenu = if (currentMenu == SettingsMenu.PROGRESS_REPORTS) {
                                 SettingsMenu.AI_AND_KNOWLEDGE
                             } else {
@@ -2180,8 +2177,7 @@ fun SettingsScreen(
                 Text("CLINICAL ADVOCACY", fontSize = 12.sp, color = NotelTextSecondary, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(8.dp))
 
-                // Tabs Lab (playground): the old inline Audit (PDF) toggle moved to
-                // the dedicated Progress Reports screen.
+                // The old inline Audit (PDF) UI moved to the dedicated Progress Reports screen.
                 GlassyCard(
                     shape = RoundedCornerShape(16.dp),
                     color = NotelSurface,
@@ -2247,7 +2243,7 @@ fun SettingsScreen(
                 }
                 Spacer(Modifier.height(24.dp))
             }
-            // Tabs Lab (playground): dedicated Progress Reports screen.
+            // Dedicated Progress Reports screen.
             if (currentMenu == SettingsMenu.PROGRESS_REPORTS) {
                 ProgressReportsScreen(viewModel = viewModel)
             }
@@ -4267,12 +4263,6 @@ fun DebugScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             item {
-                GlassyButton(onClick = { viewModel.testDailyReminder(context) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Daily", color = NotelTextPrimary, fontSize = 10.sp)
-                }
-            }
-            
-            item {
                 GlassyButton(onClick = { viewModel.testHabitNotification(context) }, modifier = Modifier.fillMaxWidth()) {
                     Text("Habit", color = NotelTextPrimary, fontSize = 10.sp)
                 }
@@ -4299,20 +4289,10 @@ fun DebugScreen(
                     Text("Check in", color = NotelTextPrimary, fontSize = 10.sp)
                 }
             }
-            // Tabs Lab: the appointment day-before nudge
+            // The appointment day-before nudge test
             item {
                 GlassyButton(onClick = { viewModel.testAppointmentReminderNotification(context) }, modifier = Modifier.fillMaxWidth()) {
                     Text("Visit nudge", color = NotelTextPrimary, fontSize = 10.sp)
-                }
-            }
-            item {
-                GlassyButton(onClick = { viewModel.testMiddayBodyLoadNotification(context) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Midday", color = NotelTextPrimary, fontSize = 10.sp)
-                }
-            }
-            item {
-                GlassyButton(onClick = { viewModel.testBodyLoadUpdateNotification(context) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Body load", color = NotelTextPrimary, fontSize = 10.sp)
                 }
             }
             item {
@@ -4338,11 +4318,6 @@ fun DebugScreen(
             item {
                 GlassyButton(onClick = { viewModel.recoverAccountData() }, modifier = Modifier.fillMaxWidth(), containerColor = NotelSurfaceHigh) {
                     Text("Force Sync", color = NotelTextPrimary, fontSize = 10.sp)
-                }
-            }
-            item {
-                GlassyButton(onClick = { viewModel.refreshThisWeeksScores() }, modifier = Modifier.fillMaxWidth(), containerColor = NotelSurfaceHigh) {
-                    Text("Refresh Week", color = NotelTextPrimary, fontSize = 10.sp)
                 }
             }
         }
