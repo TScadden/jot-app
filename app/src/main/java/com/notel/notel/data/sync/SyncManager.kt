@@ -1136,19 +1136,55 @@ class SyncManager @Inject constructor(
             val sleepHistory = try { healthConnectCoordinator.getSleepHistory(hcReadDays).map { com.notel.notel.data.healthconnect.DailySleepSummary(it.first, it.second, 0) } } catch(e: Exception) { emptyList() }
             val calorieHistory = try { healthConnectCoordinator.getCaloriesHistory(hcReadDays) } catch(e: Exception) { emptyList() }
             val hrHistory = try { healthConnectCoordinator.getHeartRateHistory(hcReadDays) } catch(e: Exception) { emptyList() }
-            
+
+            // Founder rule: a 0 in biometric data is never real — always a
+            // failed read. Before accepting a zero for a target day,
+            // re-verify that day directly against Health Connect (bypassing
+            // the memory cache). Real value wins; otherwise the day stays a
+            // gap and is never charted, averaged, or baked in as 0.
+            val sleepByDate = sleepHistory.associate { it.date to it }.toMutableMap()
+            val hrvByDate = hrvHistory.associate { it.first to it.second }.toMutableMap()
+            for (dayStr in targetDays) {
+                if ((sleepByDate[dayStr]?.minutesAsleep ?: 0) <= 0) {
+                    try {
+                        val recheck = healthConnectCoordinator.getSleepHistory(
+                            days = 1,
+                            targetToday = java.time.LocalDate.parse(dayStr),
+                            forceRefresh = true
+                        ).firstOrNull()
+                        if (recheck != null && recheck.second > 0) {
+                            sleepByDate[dayStr] = com.notel.notel.data.healthconnect.DailySleepSummary(
+                                recheck.first, recheck.second, 0
+                            )
+                        }
+                    } catch (e: Exception) { /* stays a gap */ }
+                }
+                if ((hrvByDate[dayStr] ?: 0.0) <= 0.0) {
+                    try {
+                        val recheck = healthConnectCoordinator.getHeartRateVariability(
+                            days = 1,
+                            targetDateStr = dayStr,
+                            forceRefresh = true
+                        ).firstOrNull()
+                        if (recheck != null && recheck.second > 0.0) {
+                            hrvByDate[dayStr] = recheck.second
+                        }
+                    } catch (e: Exception) { /* stays a gap */ }
+                }
+            }
+
             val newInsights = mutableListOf<com.notel.notel.data.local.entity.AiInsight>()
-            
+
             targetDays.forEach { dayStr ->
-                val sleepObj = sleepHistory.find { it.date == dayStr }
-                val hrvObj = hrvHistory.find { it.first == dayStr }
+                val sleepObj = sleepByDate[dayStr]
+                val hrvVal = hrvByDate[dayStr]
                 val calObj = calorieHistory.find { it.first == dayStr }
                 val hrObj = hrHistory.find { it.first == dayStr }
                 val spikesObj = cachedSpikes.find { it.date == dayStr }
-                
+
                 val sleepMins = sleepObj?.minutesAsleep ?: 0
                 val deepSleepMins = sleepObj?.deepMinutes ?: 0
-                val hrv = hrvObj?.second ?: 0.0
+                val hrv = hrvVal ?: 0.0
                 val calories = calObj?.second ?: 0
                 val avgHr = hrObj?.second ?: 0
                 val spikesCount = spikesObj?.spikeCount ?: 0
