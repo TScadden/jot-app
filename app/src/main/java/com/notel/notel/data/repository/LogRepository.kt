@@ -407,7 +407,10 @@ class LogRepository @Inject constructor(
         // UPDATE PREFERENCES TO FIX UI SYNC FOR 7 DAY RECAP
         try {
             val json = Json { ignoreUnknownKeys = true }
-            val histHrList = historyHr.map { BiomarkerPoint(it.date, it.awakeAvg) }
+            // Use the true 24h daily average (avg), NOT awakeAvg (7am-10pm daytime
+            // only). awakeAvg runs hotter and more volatile; storing it here made
+            // the historical HR charts jump between two different metrics.
+            val histHrList = historyHr.map { BiomarkerPoint(it.date, it.avg) }
             if (histHrList.isNotEmpty()) preferences.setHistoricalHeartRate(json.encodeToString(histHrList))
             
             val sleepList = sleepHistoryRecords.map { BiomarkerPoint(it.first, it.second) }

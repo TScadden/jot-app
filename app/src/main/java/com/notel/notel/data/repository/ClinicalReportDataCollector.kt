@@ -165,16 +165,23 @@ class ClinicalReportDataCollector @Inject constructor(
                 metadataMap["sleep"] = SectionMetadata("sleep", DataSourceStatus.PERMISSION_DENIED, 0, "Health Connect permissions missing")
                 return@async emptyList()
             }
+            // One continuous string: per-day "Biometrics" v6 insights carry
+            // sleepMins, so older days Health Connect has aged out (~14-day
+            // retention) still render. Live HC read overrides recent days with
+            // the freshest data. Zeros are never real — filtered everywhere.
+            val cached = readCachedSleep(minDateStr)
             val res = withTimeoutOrNull(20_000L) {
                 healthConnectCoordinator.getSleepHistory(days = daysToFetch, targetToday = targetToday)
             }
+            val merged = mutableMapOf<String, Int>()
+            cached.forEach { (date, mins) -> merged[date] = mins }
             if (res != null) {
-                metadataMap["sleep"] = SectionMetadata("sleep", if (res.isNotEmpty()) DataSourceStatus.SUCCESS else DataSourceStatus.NO_DATA, res.size)
-                res
+                res.forEach { (date, mins) -> if (mins > 0) merged[date] = mins }
+                metadataMap["sleep"] = SectionMetadata("sleep", if (merged.isNotEmpty()) DataSourceStatus.SUCCESS else DataSourceStatus.NO_DATA, merged.size, "Cached data + live Health Connect")
             } else {
-                metadataMap["sleep"] = SectionMetadata("sleep", DataSourceStatus.TIMED_OUT, 0, "Query timed out after 20s")
-                emptyList()
+                metadataMap["sleep"] = SectionMetadata("sleep", if (merged.isNotEmpty()) DataSourceStatus.SUCCESS else DataSourceStatus.TIMED_OUT, merged.size, if (merged.isNotEmpty()) "Cached data (live read timed out)" else "Query timed out after 20s")
             }
+            merged.toList().sortedBy { it.first }
         }
 
         val heartRateDeferred = async {
@@ -464,6 +471,19 @@ class ClinicalReportDataCollector @Inject constructor(
             readBiometricsEntries(minDate).mapNotNull { (date, payload) ->
                 val hrv = payload["hrv"]?.jsonPrimitive?.doubleOrNull ?: 0.0
                 if (hrv > 0.0) date to hrv else null
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    /**
+     * Cache-first sleep: per-day "Biometrics" AiInsight entries (v6) carry the
+     * day's sleepMins. Zeros are never real (failed read) — dropped here.
+     */
+    private suspend fun readCachedSleep(minDate: String): List<Pair<String, Int>> {
+        return try {
+            readBiometricsEntries(minDate).mapNotNull { (date, payload) ->
+                val mins = payload["sleepMins"]?.jsonPrimitive?.intOrNull ?: 0
+                if (mins > 0) date to mins else null
             }
         } catch (e: Exception) { emptyList() }
     }
