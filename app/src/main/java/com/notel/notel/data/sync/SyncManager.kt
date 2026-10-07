@@ -19,6 +19,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
@@ -1089,6 +1090,9 @@ class SyncManager @Inject constructor(
             // sleep or HRV (the Health Connect read missed them, or they were
             // outside the read window when generated). Without this, days
             // older than 7 are never re-evaluated and stay gapped forever.
+            // Also re-bakes entries whose avgHr was stored with the wrong
+            // metric (anything not marked hrMetric=awakeAvg) so the whole
+            // series uses one consistent daytime-average metric.
             val incompleteV6Dates = strippedInsights
                 .filter { it.type == "Biometrics" && it.id.endsWith("_v6") }
                 .mapNotNull { insight ->
@@ -1098,7 +1102,8 @@ class SyncManager @Inject constructor(
                     } catch (e: Exception) { null } ?: return@mapNotNull null
                     val sleepMins = obj["sleepMins"]?.jsonPrimitive?.intOrNull ?: 0
                     val hrv = obj["hrv"]?.jsonPrimitive?.doubleOrNull ?: 0.0
-                    if (sleepMins <= 0 || hrv <= 0.0) date else null
+                    val hrMetric = obj["hrMetric"]?.jsonPrimitive?.contentOrNull
+                    if (sleepMins <= 0 || hrv <= 0.0 || hrMetric != "awakeAvg") date else null
                 }.toSet()
 
             // Always include the last 7 days in the targetDays list for re-evaluation,
@@ -1135,7 +1140,9 @@ class SyncManager @Inject constructor(
             val hrvHistory = try { healthConnectCoordinator.getHeartRateVariability(hcReadDays) } catch(e: Exception) { emptyList() }
             val sleepHistory = try { healthConnectCoordinator.getSleepHistory(hcReadDays).map { com.notel.notel.data.healthconnect.DailySleepSummary(it.first, it.second, 0) } } catch(e: Exception) { emptyList() }
             val calorieHistory = try { healthConnectCoordinator.getCaloriesHistory(hcReadDays) } catch(e: Exception) { emptyList() }
-            val hrHistory = try { healthConnectCoordinator.getHeartRateHistory(hcReadDays) } catch(e: Exception) { emptyList() }
+            // HR average comes from cachedSpikes' awakeAvg (daytime 7am-10pm),
+            // NOT getHeartRateHistory (resting-HR / 24h aggregate) — one metric
+            // everywhere, matching LogRepository's historicalHeartRate cache.
 
             // Founder rule: a 0 in biometric data is never real — always a
             // failed read. Before accepting a zero for a target day,
@@ -1179,20 +1186,21 @@ class SyncManager @Inject constructor(
                 val sleepObj = sleepByDate[dayStr]
                 val hrvVal = hrvByDate[dayStr]
                 val calObj = calorieHistory.find { it.first == dayStr }
-                val hrObj = hrHistory.find { it.first == dayStr }
                 val spikesObj = cachedSpikes.find { it.date == dayStr }
 
                 val sleepMins = sleepObj?.minutesAsleep ?: 0
                 val deepSleepMins = sleepObj?.deepMinutes ?: 0
                 val hrv = hrvVal ?: 0.0
                 val calories = calObj?.second ?: 0
-                val avgHr = hrObj?.second ?: 0
+                // Daytime average (7am-10pm) — founder's chosen metric. Zeros
+                // are failed reads per the zero-value rule: never baked in.
+                val avgHr = spikesObj?.awakeAvg?.takeIf { it > 0 } ?: 0
                 val spikesCount = spikesObj?.spikeCount ?: 0
                 
                 if (sleepMins > 0 || deepSleepMins > 0 || hrv > 0.0 || calories > 0 || avgHr > 0 || spikesCount > 0) {
                     val localDate = java.time.LocalDate.parse(dayStr)
                     val timestamp = localDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
-                    val textJson = """{"sleepMins":$sleepMins,"deepSleepMins":$deepSleepMins,"avgHr":$avgHr,"hrv":$hrv,"calories":$calories,"spikes":$spikesCount}"""
+                    val textJson = """{"sleepMins":$sleepMins,"deepSleepMins":$deepSleepMins,"avgHr":$avgHr,"hrMetric":"awakeAvg","hrv":$hrv,"calories":$calories,"spikes":$spikesCount}"""
                     newInsights.add(
                         com.notel.notel.data.local.entity.AiInsight(
                             id = "biometrics_${dayStr}_v6",

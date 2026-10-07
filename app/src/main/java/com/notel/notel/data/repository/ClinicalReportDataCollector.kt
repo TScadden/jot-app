@@ -397,6 +397,9 @@ class ClinicalReportDataCollector @Inject constructor(
      * Cache-first HR avg: preferences.historicalHeartRate (BiomarkerPoint list
      * written by LogRepository / FitbitViewModel), backfilled with avgHr from
      * per-day "Biometrics" AiInsight entries for dates the list is missing.
+     * The metric is the daytime average (awakeAvg, 7am-10pm) in both places —
+     * founder's choice; v6 entries carry hrMetric:"awakeAvg" and older ones
+     * are re-baked on sync so the series never mixes metrics.
      */
     private suspend fun readCachedHeartRate(minDate: String): List<Pair<String, Int>> {
         return try {
