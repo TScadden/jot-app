@@ -35,9 +35,12 @@ data class ThirdPartyLicenseEntry(
 )
 
 // NB: the Manawa Pace title/body wording below is Libby's paste-ready attribution
-// text (Oct 8, 2026), kept verbatim for Apache 2.0 Section 4 compliance.
+// text (Oct 8, 2026). Per Otto's Oct 8 ruling, the descriptive title uses a colon
+// ("Manawa Pace: HRV algorithm") per Tabs' no-dashes UI convention; the em dash
+// was Libby's, not the legal NOTICE text. The legal lines ("Manawa Pace" /
+// "Copyright 2026 Chris Hilder") are kept verbatim for Apache 2.0 Section 4.
 private val MANAWA_PACE_ENTRY = ThirdPartyLicenseEntry(
-    title = "Manawa Pace — HRV algorithm",
+    title = "Manawa Pace: HRV algorithm",
     body = "Tabs adapts heart-rate-variability calculation algorithms from Manawa Pace.\n\n" +
         "Copyright 2026 Chris Hilder\n" +
         "Source: https://github.com/cj-hilder/ble-hr-tool\n\n" +

@@ -66,10 +66,13 @@ data class FitbitState(
     val historicalSpikes: List<DailyHeartRateSummary> = emptyList(),
     val currentHrv: Double = 0.0,
     val hrvData: List<Pair<String, Double>> = emptyList(),
-    // Tabs Lab: daytime-window RMSSD (quarantined from the trend) and the
-    // balance-factor HRV index (informational composite, see util.HrvMetrics).
+    // Tabs Lab: daytime-window RMSSD (quarantined from the trend), the
+    // balance-factor HRV index (informational composite, see util.HrvMetrics),
+    // and the HR response-lag metric (feature 3, see util.HrvMetrics).
     val daytimeHrv: Double = 0.0,
     val hrvBalanceIndex: Double? = null,
+    val hrResponseLagSec: Double? = null,
+    val hrResponseLagThresholdBpm: Int? = null,
     val sleepDebtMins: Int = 0,
     val respiratoryRate: Double = 0.0,
     val bloodOxygen: Double = 0.0,
@@ -465,6 +468,8 @@ class FitbitViewModel @Inject constructor(
             var currentHrv = 0.0
             var daytimeHrv = 0.0
             var hrvBalanceIndex: Double? = null
+            var hrResponseLagSec: Double? = null
+            var hrResponseLagThresholdBpm: Int? = null
 
             if (hasHC) {
                 val intradayHRDeferred = async(Dispatchers.IO) { healthConnectCoordinator.getIntradayHeartRate(targetDateStr, forceRefresh = false) }
@@ -495,6 +500,40 @@ class FitbitViewModel @Inject constructor(
                 avgHR = if (awake.isNotEmpty()) awake.map{it.second}.average().toInt() else 0
                 asleepHR = if (asleep.isNotEmpty()) asleep.map{it.second}.average().toInt() else 0
                 currentHrv = hrvList.find { it.first == targetDateStr }?.second ?: 0.0
+
+                // Tabs Lab feature 3: HR response-lag metric. The exertion
+                // threshold comes from a 7-day daytime window (selected date +
+                // 6 prior, median-of-medians for outlier handling); lag events
+                // are detected in the selected day's intraday series. Past-day
+                // intraday reads are permanently cached, so this is cheap.
+                try {
+                    val windowDays = com.notel.notel.util.HrvMetrics.exertionThresholdWindowDays()
+                    val baseDate = java.time.LocalDate.parse(targetDateStr)
+                    val historyDeferred = (1 until windowDays).map { offset ->
+                        async(Dispatchers.IO) {
+                            val d = baseDate.minusDays(offset.toLong()).toString()
+                            try { healthConnectCoordinator.getIntradayHeartRate(d, forceRefresh = false) }
+                            catch (e: Exception) { emptyList<Pair<Long, Int>>() }
+                        }
+                    }
+                    val daytimeByDay = mutableListOf<List<Int>>()
+                    daytimeByDay.add(awake.map { it.second })
+                    historyDeferred.forEach { deferred ->
+                        val daySamples = try { deferred.await() } catch (e: Exception) { emptyList<Pair<Long, Int>>() }
+                        daytimeByDay.add(daySamples.filter {
+                            val h = java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(it.first), zoneId).hour
+                            h in 7..22
+                        }.map { it.second })
+                    }
+                    hrResponseLagThresholdBpm = com.notel.notel.util.HrvMetrics.exertionThresholdBpm(daytimeByDay)
+                    hrResponseLagSec = hrResponseLagThresholdBpm?.let { thr ->
+                        val events = com.notel.notel.util.HrvMetrics.responseLagEvents(intradayHR, thr)
+                        com.notel.notel.util.HrvMetrics.dailyMedianResponseLag(events)
+                    }
+                } catch (e: Exception) {
+                    hrResponseLagThresholdBpm = null
+                    hrResponseLagSec = null
+                }
             }
             
             var latest = intradayHR.lastOrNull()?.second ?: 0
@@ -521,6 +560,8 @@ class FitbitViewModel @Inject constructor(
                         currentHrv = currentHrv,
                         daytimeHrv = daytimeHrv,
                         hrvBalanceIndex = hrvBalanceIndex,
+                        hrResponseLagSec = hrResponseLagSec,
+                        hrResponseLagThresholdBpm = hrResponseLagThresholdBpm,
                         errorMessage = if (intradayHR.isEmpty() && totalCal == 0 && !hasCachedData) "No data found for this date." else null
                     )
                 } else {

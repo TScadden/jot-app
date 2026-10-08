@@ -450,6 +450,18 @@ fun KeyMetricsScreen(
                         customNote = "A single number that blends your morning RMSSD and SDNN into one view of autonomic balance. A lower value can reflect a pattern where the body's stress response is more active than its recovery response. Shown for information only. It is not a diagnosis and does not suggest any treatment."
                     )
                 }
+                item {
+                    MetricTile(
+                        title = "HR Response Lag",
+                        value = if (state.isLoading) "--" else state.hrResponseLagSec?.let { String.format("%.0f", it) } ?: "No Data Recorded",
+                        unit = "sec",
+                        icon = Icons.Default.Timer,
+                        color = NotelPrimary,
+                        isLoading = state.isLoading,
+                        subtitle = state.hrResponseLagThresholdBpm?.let { "Exertion threshold ${it} bpm" } ?: "Exertion threshold",
+                        customNote = "The typical time from your heart rate crossing your personal exertion threshold to it starting to fall again, measured from today's readings. A descriptive pattern only. Shown for information only. It is not a diagnosis and does not suggest any treatment."
+                    )
+                }
             }
         }
     }
