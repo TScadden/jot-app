@@ -575,7 +575,13 @@ class MainActivity : ComponentActivity() {
                                     val encMime = java.net.URLEncoder.encode(mime, "UTF-8")
                                     val encDocId = java.net.URLEncoder.encode(docId, "UTF-8")
                                     navController.navigate("file_viewer?name=$encName&path=$encPath&mime=$encMime&docId=$encDocId")
-                                }
+                                },
+                                onNavigateToAbout = { navController.navigate("about") }
+                            )
+                        }
+                        composable("about") {
+                            com.notel.notel.ui.screen.AboutScreen(
+                                onBack = { navController.popBackStack() }
                             )
                         }
                         composable("fitbit") {

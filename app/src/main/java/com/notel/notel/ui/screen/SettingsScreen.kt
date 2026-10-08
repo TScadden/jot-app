@@ -88,7 +88,8 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onRestartOnboarding: () -> Unit,
     onLogout: () -> Unit,
-    onNavigateToFile: (name: String, path: String, mime: String, docId: String) -> Unit
+    onNavigateToFile: (name: String, path: String, mime: String, docId: String) -> Unit,
+    onNavigateToAbout: () -> Unit = {}
 ) {
     val userContext by viewModel.userContext.collectAsState()
     val lastSyncTime by viewModel.lastSyncTime.collectAsState()
@@ -1090,6 +1091,21 @@ fun SettingsScreen(
                                 Icon(Icons.Default.Sync, contentDescription = null, tint = NotelTextSecondary, modifier = Modifier.size(22.dp))
                                 Spacer(Modifier.width(16.dp))
                                 Text("Sync Settings", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = NotelTextSecondary.copy(alpha = 0.6f))
+                            }
+                            HorizontalDivider(color = NotelSurfaceHigh.copy(alpha = 0.6f), thickness = 1.dp)
+
+                            // Row: About (third party licenses)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onNavigateToAbout() }
+                                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Info, contentDescription = null, tint = NotelTextSecondary, modifier = Modifier.size(22.dp))
+                                Spacer(Modifier.width(16.dp))
+                                Text("About", color = NotelTextPrimary, fontWeight = FontWeight.Medium, fontSize = 15.sp, modifier = Modifier.weight(1f))
                                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = NotelTextSecondary.copy(alpha = 0.6f))
                             }
 
