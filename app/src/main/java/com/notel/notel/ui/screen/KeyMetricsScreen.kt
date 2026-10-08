@@ -422,7 +422,6 @@ fun KeyMetricsScreen(
                         customNote = when {
                             state.isLoading -> null
                             hrvIsToday && state.currentHrv == 0.0 -> "HRV is calculated at night. Check back tomorrow."
-                            state.currentHrv > 0.0 -> "Morning readings feed the trend and baseline. Daytime readings are kept separate and shown on the HRV Daytime tile."
                             else -> null
                         }
                     )
@@ -447,7 +446,7 @@ fun KeyMetricsScreen(
                         color = NotelPrimary,
                         isLoading = state.isLoading,
                         subtitle = "Informational composite",
-                        customNote = "A single number that blends your morning RMSSD and SDNN into one view of autonomic balance. A lower value can reflect a pattern where the body's stress response is more active than its recovery response. Shown for information only. It is not a diagnosis and does not suggest any treatment."
+                        details = "A single number that blends your morning RMSSD and SDNN into one view of autonomic balance. A lower value can reflect a pattern where the body's stress response is more active than its recovery response. Shown for information only. It is not a diagnosis and does not suggest any treatment."
                     )
                 }
                 item {
@@ -459,7 +458,7 @@ fun KeyMetricsScreen(
                         color = NotelPrimary,
                         isLoading = state.isLoading,
                         subtitle = state.hrResponseLagThresholdBpm?.let { "Exertion threshold ${it} bpm" } ?: "Exertion threshold",
-                        customNote = "The typical time from your heart rate crossing your personal exertion threshold to it starting to fall again, measured from today's readings. A descriptive pattern only. Shown for information only. It is not a diagnosis and does not suggest any treatment."
+                        details = "The typical time from your heart rate crossing your personal exertion threshold to it starting to fall again, measured from today's readings. A descriptive pattern only. Shown for information only. It is not a diagnosis and does not suggest any treatment."
                     )
                 }
             }
@@ -476,8 +475,10 @@ fun MetricTile(
     color: Color,
     isLoading: Boolean = false,
     subtitle: String? = null,
-    customNote: String? = null
+    customNote: String? = null,
+    details: String? = null
 ) {
+    var showDetails by remember { mutableStateOf(false) }
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -513,6 +514,19 @@ fun MetricTile(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
+                    }
+                    if (details != null) {
+                        IconButton(
+                            onClick = { showDetails = true },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Info,
+                                contentDescription = "About $title",
+                                tint = NotelTextSecondary.copy(alpha = 0.7f),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
 
@@ -568,5 +582,31 @@ fun MetricTile(
                 }
             }
         }
+    }
+    if (showDetails && details != null) {
+        AlertDialog(
+            onDismissRequest = { showDetails = false },
+            title = {
+                Text(
+                    text = title,
+                    color = NotelTextPrimary,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp
+                )
+            },
+            text = {
+                Text(
+                    text = details,
+                    color = NotelTextSecondary,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showDetails = false }) {
+                    Text("Got it", color = NotelPrimary)
+                }
+            }
+        )
     }
 }

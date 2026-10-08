@@ -41,11 +41,11 @@ data class ThirdPartyLicenseEntry(
 // "Copyright 2026 Chris Hilder") are kept verbatim for Apache 2.0 Section 4.
 private val MANAWA_PACE_ENTRY = ThirdPartyLicenseEntry(
     title = "Manawa Pace: HRV algorithm",
-    body = "Tabs adapts heart-rate-variability calculation algorithms from Manawa Pace.\n\n" +
+    body = "Tabs adapts heart rate variability calculation algorithms from Manawa Pace.\n\n" +
         "Copyright 2026 Chris Hilder\n" +
         "Source: https://github.com/cj-hilder/ble-hr-tool\n\n" +
         "The HRV algorithms used in Tabs are adapted from the original Manawa Pace source code and have been modified for use in this app.\n\n" +
-        "Licensed under the Apache License, Version 2.0. A full copy of the license must be viewable from the licenses screen (scrollable expansion or a linked asset).",
+        "Licensed under the Apache License, Version 2.0. You can read the full license below.",
     licenseAssetPath = "licenses/apache_2_0_manawa_pace.txt"
 )
 
