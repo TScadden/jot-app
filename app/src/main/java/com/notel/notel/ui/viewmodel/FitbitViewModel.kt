@@ -66,6 +66,10 @@ data class FitbitState(
     val historicalSpikes: List<DailyHeartRateSummary> = emptyList(),
     val currentHrv: Double = 0.0,
     val hrvData: List<Pair<String, Double>> = emptyList(),
+    // Tabs Lab: daytime-window RMSSD (quarantined from the trend) and the
+    // balance-factor HRV index (informational composite, see util.HrvMetrics).
+    val daytimeHrv: Double = 0.0,
+    val hrvBalanceIndex: Double? = null,
     val sleepDebtMins: Int = 0,
     val respiratoryRate: Double = 0.0,
     val bloodOxygen: Double = 0.0,
@@ -459,15 +463,25 @@ class FitbitViewModel @Inject constructor(
             var asleepHR = 0
             var totalCal = 0
             var currentHrv = 0.0
+            var daytimeHrv = 0.0
+            var hrvBalanceIndex: Double? = null
 
             if (hasHC) {
                 val intradayHRDeferred = async(Dispatchers.IO) { healthConnectCoordinator.getIntradayHeartRate(targetDateStr, forceRefresh = false) }
                 val totalCalDeferred = async(Dispatchers.IO) { healthConnectCoordinator.getTotalCalories(targetDateStr, forceRefresh = false) }
                 val hrvListDeferred = async(Dispatchers.IO) { healthConnectCoordinator.getHeartRateVariability(1, targetDateStr = targetDateStr, forceRefresh = false) }
+                // Tabs Lab: morning/daytime split + SDNN for the balance-factor index.
+                val hrvSplitDeferred = async(Dispatchers.IO) { healthConnectCoordinator.getHrvWindowSplit(1, targetDateStr) }
 
                 intradayHR = try { intradayHRDeferred.await() } catch(e: Exception) { emptyList() }
                 totalCal = try { totalCalDeferred.await() } catch(e: Exception) { 0 }
                 val hrvList = try { hrvListDeferred.await() } catch(e: Exception) { emptyList() }
+                val hrvSplit = try { hrvSplitDeferred.await() } catch(e: Exception) { emptyList() }
+                hrvSplit.find { it.date == targetDateStr }?.let { split ->
+                    daytimeHrv = split.daytimeRmssd ?: 0.0
+                    // Index uses morning-window RMSSD/SDNN, same as the trend/baseline.
+                    hrvBalanceIndex = com.notel.notel.util.HrvMetrics.balanceFactorHrvIndex(split.morningRmssd, split.morningSdnn)
+                }
 
                 val zoneId = java.time.ZoneId.systemDefault()
                 val awake = intradayHR.filter { 
@@ -505,6 +519,8 @@ class FitbitViewModel @Inject constructor(
                         latestHeartRateTime = formattedTime,
                         caloriesBurned = totalCal,
                         currentHrv = currentHrv,
+                        daytimeHrv = daytimeHrv,
+                        hrvBalanceIndex = hrvBalanceIndex,
                         errorMessage = if (intradayHR.isEmpty() && totalCal == 0 && !hasCachedData) "No data found for this date." else null
                     )
                 } else {

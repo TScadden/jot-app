@@ -418,7 +418,36 @@ fun KeyMetricsScreen(
                         icon = Icons.Default.Timeline,
                         color = Color(0xFF4DB6AC),
                         isLoading = state.isLoading,
-                        customNote = if (hrvIsToday && state.currentHrv == 0.0 && !state.isLoading) "HRV is calculated at night. Check back tomorrow." else null
+                        subtitle = "Morning RMSSD reading",
+                        customNote = when {
+                            state.isLoading -> null
+                            hrvIsToday && state.currentHrv == 0.0 -> "HRV is calculated at night. Check back tomorrow."
+                            state.currentHrv > 0.0 -> "Morning readings feed the trend and baseline. Daytime readings are kept separate and shown on the HRV Daytime tile."
+                            else -> null
+                        }
+                    )
+                }
+                item {
+                    MetricTile(
+                        title = "HRV Daytime",
+                        value = if (state.isLoading) "--" else if (state.daytimeHrv > 0.0) String.format("%.0f", state.daytimeHrv) else "No Data Recorded",
+                        unit = "ms",
+                        icon = Icons.Default.WbSunny,
+                        color = Color(0xFF80CBC4),
+                        isLoading = state.isLoading,
+                        subtitle = "Daytime RMSSD, separate from trend"
+                    )
+                }
+                item {
+                    MetricTile(
+                        title = "HRV Balance Index",
+                        value = if (state.isLoading) "--" else state.hrvBalanceIndex?.let { String.format("%.1f", it) } ?: "Not available",
+                        unit = "",
+                        icon = Icons.Default.Insights,
+                        color = NotelPrimary,
+                        isLoading = state.isLoading,
+                        subtitle = "Informational composite",
+                        customNote = "A single number that blends your morning RMSSD and SDNN into one view of autonomic balance. A lower value can reflect a pattern where the body's stress response is more active than its recovery response. Shown for information only. It is not a diagnosis and does not suggest any treatment."
                     )
                 }
             }
