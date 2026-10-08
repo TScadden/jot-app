@@ -73,8 +73,9 @@ object HrvMetrics {
      * falling, or null when the event is censored.
      *
      * A crossing counts only when the first sample at or above the threshold
-     * follows at least 5 minutes of below-threshold readings (debounce against
-     * sampling noise). "Starts falling" is the first point after the
+     * is preceded by a 5-minute window that holds at least one sample and in
+     * which every sample is below the threshold (debounce against sampling
+     * noise). "Starts falling" is the first point after the
      * post-crossing peak where HR sits at least [LAG_FALL_DROP_BPM] bpm below
      * that peak across [LAG_FALL_SUSTAIN_SAMPLES] consecutive samples
      * (hysteresis against jitter). The event is censored to null when HR does

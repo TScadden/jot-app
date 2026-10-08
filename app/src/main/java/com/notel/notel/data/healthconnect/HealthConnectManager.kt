@@ -825,7 +825,7 @@ class HealthConnectManager(private val context: Context) : com.notel.notel.data.
      * Tabs HRV protocol (Tabs Lab): the MORNING window is records stamped before
      * [MORNING_HRV_WINDOW_END_HOUR] local time. Only morning-window readings feed the
      * HRV trend and baseline. Daytime readings are stored but quarantined from the
-     * trend (see [readHeartRateVariabilityDaytime] / [readHrvWindowSplit]).
+     * trend (see [readHrvWindowSplit]).
      */
     companion object {
         const val MORNING_HRV_WINDOW_END_HOUR = 10
@@ -926,7 +926,7 @@ class HealthConnectManager(private val context: Context) : com.notel.notel.data.
      * Daily RMSSD for the HRV trend/baseline. Tabs Lab HRV protocol: only
      * MORNING-window records (before [MORNING_HRV_WINDOW_END_HOUR] local) are
      * averaged into the daily value; daytime records are quarantined (see
-     * [readHeartRateVariabilityDaytime]). Zero values are excluded from the
+     * [readHrvWindowSplit]). Zero values are excluded from the
      * average per the biometric zero-value rule; a day with no usable morning
      * records is omitted (callers treat it as no data).
      */
@@ -944,36 +944,6 @@ class HealthConnectManager(private val context: Context) : com.notel.notel.data.
             filteredRecords
                 .map { record -> hrvRecordDayAndWindow(record.time) to record.heartRateVariabilityMillis }
                 .filter { (dayAndWindow, value) -> dayAndWindow.second && value > 0.0 }
-                .groupBy { (dayAndWindow, _) -> dayAndWindow.first }
-                .mapNotNull { (date, pairs) ->
-                    nonZeroMean(pairs.map { it.second })?.let { date to it }
-                }
-                .sortedBy { it.first }
-        } catch(e: Exception) {
-            emptyList()
-        }
-    }
-
-    /**
-     * Daily RMSSD from DAYTIME-window records (at/after [MORNING_HRV_WINDOW_END_HOUR]
-     * local). Same shape as [readHeartRateVariability]; stored and displayed
-     * separately, never mixed into the trend/baseline. Zero values are excluded
-     * per the biometric zero-value rule.
-     */
-    suspend fun readHeartRateVariabilityDaytime(days: Int = 1, targetDateStr: String? = null): List<Pair<String, Double>> = withContext(Dispatchers.IO) {
-        try {
-            val (start, end) = hrvRange(days, targetDateStr)
-            val formatter = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
-                timeZone = java.util.TimeZone.getTimeZone(ZoneId.systemDefault())
-            }
-
-            val filteredRecords = filterRecordsByPackagePriority(readRmssdRecords(start, end)) { record ->
-                formatter.format(java.util.Date(record.time.toEpochMilli()))
-            }
-
-            filteredRecords
-                .map { record -> hrvRecordDayAndWindow(record.time) to record.heartRateVariabilityMillis }
-                .filter { (dayAndWindow, value) -> !dayAndWindow.second && value > 0.0 }
                 .groupBy { (dayAndWindow, _) -> dayAndWindow.first }
                 .mapNotNull { (date, pairs) ->
                     nonZeroMean(pairs.map { it.second })?.let { date to it }

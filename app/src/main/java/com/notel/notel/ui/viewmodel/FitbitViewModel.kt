@@ -98,7 +98,10 @@ class FitbitViewModel @Inject constructor(
         private const val TAG = "FitbitViewModel"
         // Daily-stats cache schema: v2 stores TOTAL calories (active + basal) to match
         // Health Connect's "Energy Burned". v1 entries hold active-calorie values.
-        private const val DAILY_STATS_CACHE_VERSION = 2
+        // v3 invalidates todayHRV: v1/v2 entries hold ALL-DAY HRV, but the Tabs Lab
+        // HRV protocol now reads MORNING-window records only, so old entries would
+        // be served as morning values. Repopulates on the next sync.
+        private const val DAILY_STATS_CACHE_VERSION = 3
     }
 
     private val _state = MutableStateFlow(FitbitState(connectedDevices = listOf("Health Connect")))
