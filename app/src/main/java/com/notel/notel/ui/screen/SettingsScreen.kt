@@ -305,6 +305,16 @@ fun SettingsScreen(
             restore = { SettingsMenu.valueOf(it) }
         )
     ) { mutableStateOf(initialMenu) }
+
+    // Phase 2 (WS-H): a tapped "report draft ready" notification lands here.
+    // Switch to Progress Reports and consume the request.
+    val deepLinkRequest by viewModel.reportDeepLinkRequest.collectAsState()
+    LaunchedEffect(deepLinkRequest) {
+        if (deepLinkRequest != null) {
+            currentMenu = SettingsMenu.PROGRESS_REPORTS
+            viewModel.consumeReportDeepLink()
+        }
+    }
     
     BackHandler(enabled = currentMenu != SettingsMenu.MAIN) {
         viewModel.flushProfilePush()
@@ -843,11 +853,11 @@ fun SettingsScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 containerColor = NotelPrimary
                             ) {
-                                Icon(Icons.Default.Star, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Default.Star, null, tint = NotelOnAccent, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
                                 Text(
                                     if (selectedPlan == "monthly") "Start ${trialLabel(monthlyTrialIso)}" else "Start ${trialLabel(yearlyTrialIso)}",
-                                    color = Color.White,
+                                    color = NotelOnAccent,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -1616,7 +1626,7 @@ fun SettingsScreen(
                             modifier = Modifier.fillMaxWidth(),
                             containerColor = NotelPrimary.copy(alpha = 0.8f)
                         ) {
-                            Text("Add $professionalType Update", color = Color.White, fontWeight = FontWeight.Bold)
+                            Text("Add $professionalType Update", color = NotelOnAccent, fontWeight = FontWeight.Bold)
                         }
 
                         if (showProfessionalDialog) {
@@ -3811,11 +3821,11 @@ fun SettingsScreen(
                         if (isManualSyncing) {
                             GlassySpinner(size = 20.dp)
                             Spacer(Modifier.width(8.dp))
-                            Text("Syncing...", color = Color.White, fontWeight = FontWeight.Bold)
+                            Text("Syncing...", color = NotelOnAccent, fontWeight = FontWeight.Bold)
                         } else {
-                            Icon(Icons.Default.CloudUpload, "Sync", tint = Color.White)
+                            Icon(Icons.Default.CloudUpload, "Sync", tint = NotelOnAccent)
                             Spacer(Modifier.width(8.dp))
-                            Text("Sync Now", color = Color.White, fontWeight = FontWeight.Bold)
+                            Text("Sync Now", color = NotelOnAccent, fontWeight = FontWeight.Bold)
                         }
                     }
                     if (lastSyncTimeSync > 0L) {

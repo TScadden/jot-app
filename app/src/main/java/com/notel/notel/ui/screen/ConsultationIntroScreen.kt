@@ -155,7 +155,7 @@ fun ConsultationIntroScreen(
                 ) {
                     Text(
                         text = "Continue",
-                        color = Color.White,
+                        color = NotelOnAccent,
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp
                     )

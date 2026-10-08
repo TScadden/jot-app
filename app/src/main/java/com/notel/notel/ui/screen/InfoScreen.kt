@@ -163,9 +163,9 @@ fun InfoScreen(
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp), tint = NotelOnAccent)
                                 Spacer(Modifier.width(6.dp))
-                                Text("Done", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 13.sp)
+                                Text("Done", fontWeight = FontWeight.Bold, color = NotelOnAccent, fontSize = 13.sp)
                             }
                         }
                     } else {

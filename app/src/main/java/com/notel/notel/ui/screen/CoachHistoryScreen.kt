@@ -24,6 +24,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.notel.notel.data.local.entity.CoachSession
 import com.notel.notel.ui.theme.NotelBackground
 import com.notel.notel.ui.theme.NotelError
+import com.notel.notel.ui.theme.NotelOnAccent
 import com.notel.notel.ui.theme.NotelPrimary
 import com.notel.notel.ui.theme.NotelSurfaceHigh
 import com.notel.notel.ui.theme.NotelTextPrimary
@@ -67,7 +68,7 @@ fun CoachHistoryScreen(
             FloatingActionButton(
                 onClick = onNewChatClick,
                 containerColor = NotelPrimary,
-                contentColor = Color.White,
+                contentColor = NotelOnAccent,
                 modifier = Modifier.padding(bottom = 72.dp)
             ) {
                 Icon(Icons.Default.Add, contentDescription = "New Chat")

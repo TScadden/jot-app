@@ -174,7 +174,8 @@ class ReportGenerationService : Service() {
             onStateUpdate(ReportGenerationState.CollectingData("Collecting patient data for Raw Data report..."))
             val snapshot = logRepository.clinicalReportDataCollector.collectReportData(cats, last30DaysOnly)
             onStateUpdate(ReportGenerationState.RenderingPdf("Rendering Raw Data PDF..."))
-            val file = reportGenerator.generateReport(snapshot, aiSummary = null, isRawFallback = true)
+            val result = reportGenerator.generateReport(snapshot, aiSummary = null, isRawFallback = true)
+            val file = result?.file
             if (file != null) {
                 onStateUpdate(ReportGenerationState.Ready(file, isRawFallback = true))
             } else {
@@ -184,7 +185,7 @@ class ReportGenerationService : Service() {
             logRepository.generateProfessionalReportWithSnapshot(
                 categories = cats,
                 reportGenerator = reportGenerator,
-                last30DaysOnly = last30DaysOnly,
+                range = if (last30DaysOnly) com.notel.notel.data.model.ReportRange.Last30Days else com.notel.notel.data.model.ReportRange.AllTime,
                 onStateUpdate = onStateUpdate
             )
         }

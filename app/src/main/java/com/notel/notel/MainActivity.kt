@@ -48,7 +48,8 @@ import androidx.compose.ui.platform.LocalContext
 import com.notel.notel.ui.screen.*
 import com.notel.notel.ui.screen.CoachScreen
 import com.notel.notel.ui.theme.*
-import com.notel.notel.ui.viewmodel.TodayMetricsViewModel
+import com.notel.notel.ui.viewmodel.BodyLoadViewModel
+import com.notel.notel.ui.screen.BodyLoadScreen
 import com.notel.notel.ui.viewmodel.FitbitViewModel
 import dagger.hilt.android.AndroidEntryPoint
 import androidx.glance.appwidget.updateAll
@@ -61,11 +62,24 @@ class MainActivity : ComponentActivity() {
     @javax.inject.Inject
     lateinit var syncManager: com.notel.notel.data.sync.SyncManager
 
+    @javax.inject.Inject
+    lateinit var reportDeepLink: com.notel.notel.util.ReportDeepLink
+
     val selectWidgetAppWidgetIdState = mutableStateOf(-1)
+
+    /** Forwards report-draft notification taps to the in-app deep link. */
+    private fun forwardReportDeepLink(intent: android.content.Intent?) {
+        if (intent?.getBooleanExtra("notel.open_progress_reports", false) == true) {
+            reportDeepLink.request(intent.getStringExtra("notel.report_event_id"))
+            intent.removeExtra("notel.open_progress_reports")
+            intent.removeExtra("notel.report_event_id")
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        forwardReportDeepLink(intent)
         
         android.util.Log.d("MainActivityWidget", "onCreate: intent=$intent, extras=${intent?.extras?.keySet()?.associateWith { intent.extras?.get(it) }}")
         val isSelectAction = intent?.action?.startsWith("com.notel.notel.ACTION_SELECT_HABIT_") == true
@@ -85,7 +99,7 @@ class MainActivity : ComponentActivity() {
             // Provide a global instance of FitbitViewModel at the activity level
             // so the shared health-data state is available across navigation destinations.
             val fitbitViewModel: FitbitViewModel = hiltViewModel()
-            val todayMetricsViewModel: TodayMetricsViewModel = hiltViewModel()
+            val bodyLoadViewModel: BodyLoadViewModel = hiltViewModel()
             val quickLogViewModel: com.notel.notel.ui.viewmodel.QuickLogViewModel = hiltViewModel()
             val settingsViewModel: com.notel.notel.ui.viewmodel.SettingsViewModel = hiltViewModel()
             val notelPreferences = remember { com.notel.notel.data.preferences.NotelPreferences(context) }
@@ -406,8 +420,11 @@ class MainActivity : ComponentActivity() {
                             })
                         }
                         composable("today") {
-                            TodayScreen(
-                                viewModel = todayMetricsViewModel,
+                            // Tabs Lab: the home screen is BodyLoadScreen (Weekly Snapshot
+                            // + Flare Forecast / Morning Briefing tiles). Kept on the
+                            // "today" route after main's BodyLoadScreen->TodayScreen rename.
+                            BodyLoadScreen(
+                                viewModel = bodyLoadViewModel,
                                 quickLogViewModel = quickLogViewModel,
                                 onBack = { /* Root */ },
                                 onNavigateToConnections = { navController.navigate("data_connections") },
@@ -418,7 +435,32 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToMedications = { navController.navigate("medications") },
                                 onNavigateToLists = { navController.navigate("lists") },
                                 onNavigateToNotes = { navController.navigate("notes") },
-                                onNavigateToProjectFocus = { navController.navigate("project_focus") }
+                                onNavigateToProjectFocus = { navController.navigate("project_focus") },
+                                onNavigateToFlareForecast = { navController.navigate("flare_forecast") },
+                                onNavigateToMorningBriefing = { navController.navigate("morning_briefing") },
+                                onNavigateToMigraine = { navController.navigate("migraine") },
+                                onNavigateToSyncope = { navController.navigate("syncope") }
+                            )
+                        }
+                        // ── Tabs Lab 4-feature package (Oct 2026) ──────────────
+                        composable("flare_forecast") {
+                            com.notel.notel.ui.screen.FlareForecastScreen(
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+                        composable("morning_briefing") {
+                            com.notel.notel.ui.screen.MorningBriefingScreen(
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+                        composable("migraine") {
+                            com.notel.notel.ui.screen.MigraineScreen(
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+                        composable("syncope") {
+                            com.notel.notel.ui.screen.SyncopeScreen(
+                                onBack = { navController.popBackStack() }
                             )
                         }
                         composable("habits") {
@@ -748,7 +790,7 @@ class MainActivity : ComponentActivity() {
                                                 Icon(
                                                     imageVector = Icons.Default.Edit,
                                                     contentDescription = "New Note",
-                                                    tint = Color.White,
+                                                    tint = NotelOnAccent,
                                                     modifier = Modifier.size(22.dp)
                                                 )
                                             }
@@ -956,6 +998,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        forwardReportDeepLink(intent)
         android.util.Log.d("MainActivityWidget", "onNewIntent: intent=$intent, extras=${intent.extras?.keySet()?.associateWith { intent.extras?.get(it) }}")
         val isSelectAction = intent.action?.startsWith("com.notel.notel.ACTION_SELECT_HABIT_") == true
         val widgetId = if (isSelectAction) {

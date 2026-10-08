@@ -220,6 +220,22 @@
             android:enabled="true"
             android:exported="false" />
 
+        <!-- Tabs Lab (Phase 2, WS-H): report prep alarm target -->
+        <receiver
+            android:name=".notifications.ReportPrepReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- Tabs Lab (Phase 2, WS-H): re-arm exact alarms on timezone change -->
+        <receiver
+            android:name=".notifications.TimezoneChangeReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
     </application>
 
 </manifest>

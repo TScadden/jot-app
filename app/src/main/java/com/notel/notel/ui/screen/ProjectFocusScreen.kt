@@ -619,12 +619,12 @@ fun ProjectFocusScreen(
                                                 enabled = struggleText.isNotBlank() && !uiState.isSuggestionsLoading
                                             ) {
                                                 if (uiState.isSuggestionsLoading) {
-                                                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                                    CircularProgressIndicator(color = NotelOnAccent, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                                                 } else {
                                                     Icon(
                                                         imageVector = Icons.Default.Send,
                                                         contentDescription = "Send",
-                                                        tint = Color.White,
+                                                        tint = NotelOnAccent,
                                                         modifier = Modifier.size(16.dp)
                                                     )
                                                 }

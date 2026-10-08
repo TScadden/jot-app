@@ -34,6 +34,16 @@ val hasTabsUploadSigning = !tabsUploadStoreFile.isNullOrBlank()
 // increasing. Local builds without the property keep versionCode 15.
 val versionCodeOverride: Int? = (findProperty("versionCodeOverride") as String?)?.toIntOrNull()
 
+// ---- Playground ("Tabs Lab") experimental build ----
+// Active ONLY when invoked with -PtabsPlayground=true. The playground CI
+// job passes it; main-branch builds never do. It makes the Lab build
+// install as a fully separate app from production Tabs — applicationId
+// com.notel.notel.playground with its own data, the "Tabs Lab" label, and
+// a tinted launcher icon — so experiments can never touch production
+// data. The release signing config above is untouched, and the playground
+// CI job only ever builds a debug APK.
+val isPlaygroundBuild = (findProperty("tabsPlayground") as String?)?.toBoolean() == true
+
 android {
     namespace = "com.notel.notel"
     compileSdk = 36
@@ -49,7 +59,20 @@ android {
         versionCode = versionCodeOverride ?: 15
         versionName = "2.3"
 
+        if (isPlaygroundBuild) {
+            // Separate app from production Tabs: own package, own data.
+            applicationIdSuffix = ".playground"
+            // resValue wins over the XML resource of the same name.
+            resValue("string", "app_name", "Tabs Lab")
+            // Deep-teal adaptive-icon background matching the tinted Lab icon.
+            resValue("color", "tabs_icon_background", "#0B3B2E")
+        }
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Phase 2 (WS-D..H): Lab-only debug actions (e.g. synthetic sample PDF
+        // generation) gate on this. False for every production build.
+        buildConfigField("boolean", "TABS_LAB", isPlaygroundBuild.toString())
         
         ksp {
             arg("room.schemaLocation", "$projectDir/schemas")
@@ -98,11 +121,22 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     sourceSets {
         getByName("androidTest") {
             assets.srcDir("$projectDir/schemas")
+        }
+        if (isPlaygroundBuild) {
+            // The debug source set overlays main (documented resource-merger
+            // behavior), so the tinted ic_tabs_launcher.png here replaces
+            // the production icon for Lab builds only. Same-name files in
+            // two srcDirs of ONE source set are a duplicate-resource build
+            // error, which is why this lives on the debug source set.
+            getByName("debug") {
+                res.srcDir("playground-res")
+            }
         }
     }
 }

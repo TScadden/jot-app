@@ -1051,7 +1051,7 @@ private fun ChatBubble(
                                     shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = NotelPrimary,
-                                        contentColor = Color.White
+                                        contentColor = NotelOnAccent
                                     )
                                 ) {
                                     Text("Approve & Add", fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -1280,9 +1280,9 @@ private fun ChatBubble(
                                     shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = NotelPrimary,
-                                        contentColor = Color.White,
+                                        contentColor = NotelOnAccent,
                                         disabledContainerColor = NotelPrimary.copy(alpha = 0.5f),
-                                        disabledContentColor = Color.White.copy(alpha = 0.5f)
+                                        disabledContentColor = NotelOnAccent.copy(alpha = 0.5f)
                                     )
                                 ) {
                                     Text("Approve & Add", fontSize = 12.sp, fontWeight = FontWeight.Bold)

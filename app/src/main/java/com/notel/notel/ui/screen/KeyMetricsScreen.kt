@@ -168,9 +168,9 @@ fun KeyMetricsScreen(
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     if (isExporting) {
-                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
+                        CircularProgressIndicator(color = NotelOnAccent, modifier = Modifier.size(20.dp))
                     } else {
-                        Text("Export", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("Export", color = NotelOnAccent, fontWeight = FontWeight.Bold)
                     }
                 }
             },

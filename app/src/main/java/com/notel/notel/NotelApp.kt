@@ -64,6 +64,22 @@ class NotelApp : Application(), Configuration.Provider {
                 preferences.appointmentDate.first()?.let { dateIso ->
                     com.notel.notel.notifications.AppointmentReminderScheduler.schedule(this@NotelApp, dateIso)
                 }
+                // Phase 2 (WS-H): re-arm scheduled report-prep alarms on
+                // every app start (idempotent; covers force-stops).
+                try {
+                    val raw = preferences.reportEvents.first()
+                    if (raw.isNotBlank()) {
+                        val events = kotlinx.serialization.json.Json.decodeFromString(
+                            kotlinx.serialization.builtins.ListSerializer(
+                                com.notel.notel.data.model.ScheduledReportEvent.serializer()
+                            ),
+                            raw
+                        )
+                        com.notel.notel.notifications.ReportPrepScheduler.scheduleAll(this@NotelApp, events)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w("NotelApp", "rearmReportPrep failed: ${e.javaClass.simpleName}")
+                }
                 // Progress Reports: if the event linked to the saved appointment was
                 // deleted (Events tab) or dropped by a sync merge, clear the stale
                 // appointment instead of resurrecting the event.

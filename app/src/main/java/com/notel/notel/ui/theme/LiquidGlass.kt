@@ -64,7 +64,7 @@ fun GlassyButton(
 
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.96f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        animationSpec = InstrumentSpring(),
         label = "scale"
     )
 

@@ -140,7 +140,7 @@ fun MembershipOnboardingScreen(
                 Icon(
                     Icons.Default.WorkspacePremium,
                     contentDescription = "Premium",
-                    tint = Color.White,
+                    tint = NotelOnAccent,
                     modifier = Modifier.size(48.dp)
                 )
             }
@@ -335,11 +335,11 @@ fun MembershipOnboardingScreen(
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Icon(Icons.Default.WorkspacePremium, contentDescription = null, tint = Color.White)
+                Icon(Icons.Default.WorkspacePremium, contentDescription = null, tint = NotelOnAccent)
                 Spacer(Modifier.width(8.dp))
                 Text(
                     if (selectedPlan == "monthly") "Start ${trialLabel(monthlyTrialIso)}" else "Start ${trialLabel(yearlyTrialIso)}",
-                    color = Color.White,
+                    color = NotelOnAccent,
                     fontWeight = FontWeight.Bold,
                     fontSize = 17.sp
                 )

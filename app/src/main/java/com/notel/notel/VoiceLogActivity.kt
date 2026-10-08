@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.notel.notel.data.repository.LogRepository
 import com.notel.notel.ui.theme.NotelBackground
+import com.notel.notel.ui.theme.NotelOnAccent
 import com.notel.notel.ui.theme.NotelPrimary
 import com.notel.notel.ui.theme.NotelSurface
 import com.notel.notel.ui.theme.NotelTextPrimary
@@ -395,9 +396,9 @@ fun VoiceLogScreen(
                         shape = RoundedCornerShape(16.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Icon(Icons.Default.Save, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.Save, null, tint = NotelOnAccent, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Save", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("Save", color = NotelOnAccent, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
                 }
 

@@ -85,6 +85,9 @@ interface LogEntryDao {
     @Query("SELECT COUNT(*) FROM log_entries WHERE timestamp >= :start AND timestamp <= :end")
     suspend fun getEntryCountInRange(start: Long, end: Long): Int
 
+    @Query("SELECT COUNT(*) FROM log_entries WHERE categoryId = :categoryId AND timestamp >= :start AND timestamp <= :end")
+    suspend fun getCategoryEntryCountInRange(categoryId: Int, start: Long, end: Long): Int
+
     @Query("SELECT * FROM log_entries WHERE timestamp >= :start AND timestamp <= :end ORDER BY timestamp DESC")
     suspend fun getRecentEntriesInRange(start: Long, end: Long): List<LogEntry>
 

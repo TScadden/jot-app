@@ -147,7 +147,7 @@ fun NotesScreen(
                         shape = CircleShape,
                         colors = IconButtonDefaults.filledIconButtonColors(
                             containerColor = if (noteBody.isNotBlank() || noteTitle.isNotBlank()) NotelPrimary else NotelSurfaceHigh.copy(alpha = 0.3f),
-                            contentColor = Color.White
+                            contentColor = NotelOnAccent
                         ),
                         modifier = Modifier.size(44.dp)
                     ) {

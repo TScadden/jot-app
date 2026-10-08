@@ -28,7 +28,14 @@ data class AiRequest(
     val habitData: String? = null,
     val dataAvailability: String? = null,
     val weatherContext: String? = null,
-    val documents: List<ProcessDocumentRequest> = emptyList()
+    val documents: List<ProcessDocumentRequest> = emptyList(),
+    // Phase 1 WS-F: report focus ("health" | "training" | "custom").
+    val focus: String? = null,
+    // Phase 1 WS-F: plain-language custom focus text (Custom focus only).
+    val focusText: String? = null,
+    // Phase 1 WS-B: deterministic per-window aggregates for long histories;
+    // `entries` then carries only the recent raw window.
+    val historyAggregates: String? = null
 )
 
 @Serializable
@@ -78,6 +85,14 @@ data class CategoryValidationResponse(
 data class AiResponse<T>(
     val result: T,
     val error: String? = null
+)
+
+@Serializable
+data class BodyLoadResponse(
+    var score: Int,
+    var factors: List<String> = emptyList(),
+    val advice: String? = null,
+    val subjectiveImpact: Double = 0.0
 )
 
 @Serializable

@@ -31,7 +31,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.notel.notel.ui.component.SkeletonLine
 import com.notel.notel.ui.theme.*
-import com.notel.notel.ui.viewmodel.TodayMetricsViewModel
+import com.notel.notel.ui.viewmodel.BodyLoadViewModel
 import com.notel.notel.ui.viewmodel.EnergyCheckInViewModel
 import com.notel.notel.ui.viewmodel.QuickLogViewModel
 import com.notel.notel.ui.viewmodel.HabitViewModel
@@ -58,8 +58,8 @@ import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun TodayScreen(
-    viewModel: TodayMetricsViewModel = hiltViewModel(),
+fun BodyLoadScreen(
+    viewModel: BodyLoadViewModel = hiltViewModel(),
     quickLogViewModel: QuickLogViewModel = hiltViewModel(),
     weeklySnapshotViewModel: com.notel.notel.ui.viewmodel.WeeklySnapshotViewModel = hiltViewModel(),
     onBack: () -> Unit,
@@ -72,12 +72,18 @@ fun TodayScreen(
     onNavigateToLists: () -> Unit = {},
     onNavigateToNotes: () -> Unit = {},
     onNavigateToProjectFocus: () -> Unit = {},
+    onNavigateToFlareForecast: () -> Unit = {},
+    onNavigateToMorningBriefing: () -> Unit = {},
+    onNavigateToMigraine: () -> Unit = {},
+    onNavigateToSyncope: () -> Unit = {},
     habitViewModel: HabitViewModel = hiltViewModel(),
     reminderViewModel: ReminderViewModel = hiltViewModel(),
     notesViewModel: NotesViewModel = hiltViewModel(),
     listsViewModel: ListsViewModel = hiltViewModel(),
     todayViewModel: com.notel.notel.ui.viewmodel.TodayViewModel = hiltViewModel(),
-    energyCheckInViewModel: EnergyCheckInViewModel = hiltViewModel()
+    energyCheckInViewModel: EnergyCheckInViewModel = hiltViewModel(),
+    flareForecastViewModel: com.notel.notel.ui.viewmodel.FlareForecastViewModel = hiltViewModel(),
+    morningBriefingViewModel: com.notel.notel.ui.viewmodel.MorningBriefingViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
 
@@ -96,6 +102,8 @@ fun TodayScreen(
     val notes: List<com.notel.notel.data.local.entity.UserListItem> by notesViewModel.notes.collectAsState()
     val lists: List<com.notel.notel.data.local.entity.UserList> by listsViewModel.lists.collectAsState()
     val energyCheckInState by energyCheckInViewModel.uiState.collectAsState()
+    val flareForecastState by flareForecastViewModel.state.collectAsState()
+    val briefingState by morningBriefingViewModel.state.collectAsState()
 
     val coroutineScope = rememberCoroutineScope()
 
@@ -199,6 +207,15 @@ fun TodayScreen(
                 EnergyCheckInCard(
                     visible = energyCheckInState.visible,
                     onSelect = energyCheckInViewModel::selectLevel
+                )
+            }
+
+            // ── 0B. Tabs Lab: quick actions (forecast + briefing now live as compact
+            // tiles inside the Weekly Snapshot card) ──
+            item {
+                com.notel.notel.ui.component.LabQuickActions(
+                    onMigraine = onNavigateToMigraine,
+                    onSyncope = onNavigateToSyncope
                 )
             }
 
@@ -826,7 +843,11 @@ fun TodayScreen(
                     selectedMetric = selectedMetric.displayName,
                     availableMetrics = availableMetrics,
                     onSelectMetric = { weeklySnapshotViewModel.selectMetric(it) },
-                    onRefresh = { weeklySnapshotViewModel.refresh() }
+                    onRefresh = { weeklySnapshotViewModel.refresh() },
+                    flareForecastState = flareForecastState,
+                    briefingState = briefingState,
+                    onOpenFlareForecast = onNavigateToFlareForecast,
+                    onOpenBriefing = onNavigateToMorningBriefing
                 )
             }
 
@@ -985,7 +1006,7 @@ fun TodayScreen(
                             onClick = { viewModel.retryWeather() },
                             colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary)
                         ) {
-                            Text("Try again", color = Color.White, fontWeight = FontWeight.Medium)
+                            Text("Try again", color = NotelOnAccent, fontWeight = FontWeight.Medium)
                         }
                     }
                 } else {
@@ -1265,55 +1286,55 @@ fun TodayScreen(
                 Surface(
                     color = NotelSurface,
                     shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+                    border = BorderStroke(1.dp, NotelBorder)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text("UV Index Ranges", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text("UV Index Ranges", color = NotelTextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                         Spacer(Modifier.height(16.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(12.dp).background(NotelSuccess, CircleShape))
                             Spacer(Modifier.width(12.dp))
-                            Text("Low", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
-                            Text("0-2", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
+                            Text("Low", color = NotelTextPrimary, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text("0-2", color = NotelTextSecondary, fontSize = 14.sp)
                         }
-                        HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Color.White.copy(alpha = 0.05f))
+                        HorizontalDivider(Modifier.padding(vertical = 12.dp), color = NotelBorder)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(12.dp).background(NotelWarning, CircleShape))
                             Spacer(Modifier.width(12.dp))
-                            Text("Moderate", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
-                            Text("3-5", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
+                            Text("Moderate", color = NotelTextPrimary, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text("3-5", color = NotelTextSecondary, fontSize = 14.sp)
                         }
-                        HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Color.White.copy(alpha = 0.05f))
+                        HorizontalDivider(Modifier.padding(vertical = 12.dp), color = NotelBorder)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(12.dp).background(NotelWarning, CircleShape))
                             Spacer(Modifier.width(12.dp))
-                            Text("High", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
-                            Text("6-7", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
+                            Text("High", color = NotelTextPrimary, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text("6-7", color = NotelTextSecondary, fontSize = 14.sp)
                         }
-                        HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Color.White.copy(alpha = 0.05f))
+                        HorizontalDivider(Modifier.padding(vertical = 12.dp), color = NotelBorder)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(12.dp).background(NotelError, CircleShape))
                             Spacer(Modifier.width(12.dp))
-                            Text("Very High", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
-                            Text("8-10", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
+                            Text("Very High", color = NotelTextPrimary, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text("8-10", color = NotelTextSecondary, fontSize = 14.sp)
                         }
-                        HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Color.White.copy(alpha = 0.05f))
+                        HorizontalDivider(Modifier.padding(vertical = 12.dp), color = NotelBorder)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(12.dp).background(Color(0xFFCE93D8), CircleShape))
                             Spacer(Modifier.width(12.dp))
-                            Text("Extreme", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.weight(1f))
-                            Text("11+", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
+                            Text("Extreme", color = NotelTextPrimary, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text("11+", color = NotelTextSecondary, fontSize = 14.sp)
                         }
                     }
                 }
                 
                 Spacer(Modifier.height(32.dp))
                 
-                Text("Why UV Index Matters", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text("Why UV Index Matters", color = NotelTextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Spacer(Modifier.height(12.dp))
                 Text(
                     text = "The UV Index measures the intensity of ultraviolet radiation from the sun. Excessive UV exposure causes sunburn, premature skin aging, eye damage, and significantly increases the risk of skin cancer including melanoma.\n\nUV radiation is highest between 10am and 4pm, at higher altitudes, near the equator, and during summer months. Reflection from water, sand, and snow can increase exposure.",
-                    color = Color.White.copy(alpha = 0.6f),
+                    color = NotelTextSecondary,
                     fontSize = 14.sp,
                     lineHeight = 20.sp
                 )
@@ -1322,7 +1343,7 @@ fun TodayScreen(
                 
                 // Optimal Threshold Card
                 Surface(
-                    color = Color(0xFF1A1C1E),
+                    color = NotelSurface,
                     shape = RoundedCornerShape(12.dp),
                     border = BorderStroke(1.dp, NotelSuccess.copy(alpha = 0.2f))
                 ) {
@@ -1330,12 +1351,12 @@ fun TodayScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("🎯", fontSize = 18.sp)
                             Spacer(Modifier.width(8.dp))
-                            Text("Optimal Threshold: UV Index below 3", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("Optimal Threshold: UV Index below 3", color = NotelTextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         }
                         Spacer(Modifier.height(8.dp))
                         Text(
                             "For skin longevity, aim to be outside only when UV is below 3, or before 10am / after 4pm. This is the safest range for unprotected skin exposure.",
-                            color = Color.White.copy(alpha = 0.5f),
+                            color = NotelTextSecondary,
                             fontSize = 12.sp,
                             lineHeight = 18.sp
                         )
@@ -1488,7 +1509,7 @@ fun TodayScreen(
                         Text("Ambient Temp & Sleep Recovery", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                         Spacer(Modifier.height(12.dp))
                         Text(
-                            text = "Ambient temperature strongly influences overnight recovery. Sleep studies show that cooler rooms support deeper, higher-quality sleep.",
+                            text = "Ambient temperature strongly influences body load recovery. Sleep studies show that cooler rooms support deeper, higher-quality sleep.",
                             color = Color.White.copy(alpha = 0.7f),
                             fontSize = 14.sp,
                             lineHeight = 20.sp

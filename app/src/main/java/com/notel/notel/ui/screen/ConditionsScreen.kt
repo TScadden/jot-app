@@ -352,7 +352,7 @@ fun ConditionsScreen(
                     ) {
                         Text(
                             text = "Next",
-                            color = Color.White,
+                            color = NotelOnAccent,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
                         )

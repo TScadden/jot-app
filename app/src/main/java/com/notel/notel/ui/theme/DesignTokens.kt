@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -41,6 +42,18 @@ object Spacing {
     val s32: Dp = 32.dp
     val s48: Dp = 48.dp
 }
+
+// ── Floating nav dock clearance ───────────────────────────────────────────────
+// The bottom nav is a floating dock overlaid on top of screen content:
+// 66.dp tall (nav labels on, the default) with a 12.dp bottom margin.
+// Scrollable screens must clear it so the last item (e.g. the medical
+// disclaimer banner) isn't hidden behind the dock. Pair with
+// .navigationBarsPadding() to also clear the system gesture bar —
+// [clearFloatingDock] does both.
+val dockClearance: Dp = 78.dp
+
+fun Modifier.clearFloatingDock(): Modifier =
+    padding(bottom = dockClearance).navigationBarsPadding()
 
 // ── Corner radii ──────────────────────────────────────────────────────────────
 // Three shapes, no more: chips 12, cards 16, dialogs/sheets 20.

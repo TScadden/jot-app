@@ -98,6 +98,8 @@ open class NotelPreferences(
         // counter when a sync's pull phase lands after the local delete.
         val DELETED_EVENT_COUNTER_IDS = stringPreferencesKey("deleted_event_counter_ids")
         val SETTINGS_TUTORIAL_SEEN = booleanPreferencesKey("settings_tutorial_seen")
+        val BODY_LOAD_REMINDERS_ENABLED = booleanPreferencesKey("body_load_reminders_enabled")
+        val DAILY_CUP_UPDATES_ENABLED = booleanPreferencesKey("daily_cup_updates_enabled")
         val HR_SPIKE_ALERTS_ENABLED = booleanPreferencesKey("hr_spike_alerts_enabled")
         val SPIKE_THRESHOLD = intPreferencesKey("spike_threshold")
         val HR_DELTA_ENABLED = booleanPreferencesKey("hr_delta_enabled")
@@ -113,10 +115,15 @@ open class NotelPreferences(
         val HR_LAST_SAMPLE_TIME = longPreferencesKey("hr_last_sample_time")
         val HABIT_REMINDER_USER_DISABLED = booleanPreferencesKey("habit_reminder_user_disabled")
         val USER_CONTEXT_LAST_UPDATE = longPreferencesKey("user_context_last_update")
+        val LAST_BODY_LOAD_REFRESH = longPreferencesKey("last_body_load_refresh")
+        val LAST_BODY_LOAD_SCORE = intPreferencesKey("last_body_load_score")
+        val LAST_BODY_LOAD_FACTORS = stringPreferencesKey("last_body_load_factors")
+        val LAST_BODY_LOAD_ADVICE = stringPreferencesKey("last_body_load_advice")
         
         val CURRENT_STREAK = intPreferencesKey("current_streak")
         val BEST_STREAK = intPreferencesKey("best_streak")
         val LAST_OPEN_DATE = stringPreferencesKey("last_open_date")
+        val CUP_THEORY_SEEN = booleanPreferencesKey("cup_theory_seen")
         val LAST_DYNAMIC_NOTIFICATION_DATE = stringPreferencesKey("last_dynamic_notification_date")
         val TODAY_SUMMARY_EXPANDED = booleanPreferencesKey("today_summary_expanded")
         val LAST_KNOWN_STATS = stringPreferencesKey("last_known_stats")
@@ -124,7 +131,9 @@ open class NotelPreferences(
         val LAST_KNOWN_LON = doublePreferencesKey("last_known_lon")
         val LAST_KNOWN_CITY = stringPreferencesKey("last_known_city")
         val WEATHER_LOCATION_PROMPT_SEEN = booleanPreferencesKey("weather_location_prompt_seen")
+        val HIGHEST_CUP_DAILY = intPreferencesKey("highest_cup_daily")
         val USER_CONTEXT_HIDDEN = booleanPreferencesKey("user_context_hidden")
+        val HAS_HISTORICAL_BODY_LOAD = booleanPreferencesKey("has_historical_body_load")
         val LAST_SYNC_TIME = longPreferencesKey("last_sync_time")
         val HISTORICAL_DAILY_STATS = stringPreferencesKey("historical_daily_stats")
         val DAILY_STATS_CACHE_VERSION = intPreferencesKey("daily_stats_cache_version")
@@ -134,6 +143,11 @@ open class NotelPreferences(
         val FOOD_CHECKER_LAST_QUERY = stringPreferencesKey("food_checker_last_query")
         val USER_NICKNAME = stringPreferencesKey("user_nickname")
         val USER_TAG = stringPreferencesKey("user_tag")
+        // Tabs Lab 4-feature package (Oct 2026): migraine + briefing caches.
+        // Local only, never synced to the server.
+        val ACTIVE_MIGRAINE_ATTACK_ID = longPreferencesKey("active_migraine_attack_id")
+        val MORNING_BRIEFING_CACHE = stringPreferencesKey("morning_briefing_cache")
+        val FLARE_FORECAST_CACHE = stringPreferencesKey("flare_forecast_cache")
         val USER_EMAIL = stringPreferencesKey("user_email")
         val STABLE_USER_ID = stringPreferencesKey("stable_user_id")
         val RECONNECT_REQUIRED = booleanPreferencesKey("reconnect_required")
@@ -167,24 +181,33 @@ open class NotelPreferences(
         val TODAY_PLAN_EXPANDED = booleanPreferencesKey("today_plan_expanded")
         val WHAT_CHANGED_EXPANDED = booleanPreferencesKey("what_changed_expanded")
         val MANUAL_BLOOD_PRESSURE_LOGS = stringPreferencesKey("manual_blood_pressure_logs")
-        // Progress Reports "prepare for an appointment" card. Additive only;
-        // both default empty. Date stored ISO yyyy-MM-dd; type is
+        // Tabs Lab: Progress Reports "prepare for an appointment" card (playground).
+        // Additive only; both default empty. Date stored ISO yyyy-MM-dd; type is
         // "health" | "training" | "custom".
         val APPOINTMENT_DATE = stringPreferencesKey("progress_report_appointment_date")
         val APPOINTMENT_REPORT_TYPE = stringPreferencesKey("progress_report_appointment_type")
         // Link between the Progress Reports appointment card and the Events
         // system (event counters). Stores the linked counter id, plus whether
-        // the card created it (card-owned: the card may move or delete it) or
-        // merely linked to a user-created event (linked only: the card never
-        // touches the event itself). Nonsensitive: a UUID + a boolean.
+        // the card created it (card-owned) or merely linked to a user-created event.
         val APPOINTMENT_EVENT_ID = stringPreferencesKey("progress_report_appointment_event_id")
         val APPOINTMENT_EVENT_OWNED = booleanPreferencesKey("progress_report_appointment_event_owned")
-        // Progress Reports continuity: remembers the last-used type and range
-        // so the screen opens where the user left off.
+        // Tabs Lab: Progress Reports continuity (Otto's feature). Remembers the
+        // last-used type and range so the screen opens where the user left off.
         val LAST_REPORT_TYPE = stringPreferencesKey("progress_report_last_type")
         val LAST_REPORT_RANGE_30D = booleanPreferencesKey("progress_report_last_range_30d")
-        // Last successful Progress Reports export timestamp.
+        // Phase 1 (WS-A): the boolean range is replaced by a range key
+        // ("last30days" | "alltime" | "sincelastmeeting" | "custom") plus the
+        // concrete start/end the user picked, and the custom focus text.
+        val LAST_REPORT_RANGE_KEY = stringPreferencesKey("progress_report_last_range_key")
+        val LAST_REPORT_RANGE_START = longPreferencesKey("progress_report_last_range_start")
+        val LAST_REPORT_RANGE_END = longPreferencesKey("progress_report_last_range_end")
+        val LAST_REPORT_FOCUS_TEXT = stringPreferencesKey("progress_report_last_focus_text")
+        // Tabs Lab: last successful export timestamp (Mason's feature).
         val LAST_REPORT_EXPORT_TIME = longPreferencesKey("progress_report_last_export_time")
+        // Phase 2 (WS-H): scheduled report-preparation events (JSON list of
+        // ScheduledReportEvent). The legacy appointment date/type keys above
+        // stay untouched — reminder-only nudges keep working.
+        val REPORT_EVENTS = stringPreferencesKey("progress_report_events")
     }
 
     val appointmentDate: Flow<String?> = dataStore.data.map { it[APPOINTMENT_DATE] }
@@ -200,7 +223,6 @@ open class NotelPreferences(
         dataStore.edit { it[APPOINTMENT_REPORT_TYPE] = reportType }
     }
 
-    // Event counter linked to the saved appointment (null = no link).
     val appointmentEventId: Flow<String?> = dataStore.data.map { it[APPOINTMENT_EVENT_ID] }
     suspend fun setAppointmentEventId(eventId: String?) {
         dataStore.edit { prefs ->
@@ -215,20 +237,47 @@ open class NotelPreferences(
         dataStore.edit { it[APPOINTMENT_EVENT_OWNED] = owned }
     }
 
-    // Remember the last-used report type and range.
+    // Otto's feature: remember the last-used report type and range.
     val lastReportType: Flow<String> = dataStore.data.map { it[LAST_REPORT_TYPE] ?: "health" }
+    @Deprecated("Replaced by lastReportRangeKey (Phase 1 WS-A)")
     val lastReportRange30d: Flow<Boolean> = dataStore.data.map { it[LAST_REPORT_RANGE_30D] ?: true }
-    suspend fun saveLastReportPrefs(reportType: String, range30d: Boolean) {
+    // Phase 1 (WS-A): string range key + concrete bounds + custom focus text.
+    val lastReportRangeKey: Flow<String> = dataStore.data.map { it[LAST_REPORT_RANGE_KEY] ?: "last30days" }
+    val lastReportRangeStart: Flow<Long> = dataStore.data.map { it[LAST_REPORT_RANGE_START] ?: 0L }
+    val lastReportRangeEnd: Flow<Long> = dataStore.data.map { it[LAST_REPORT_RANGE_END] ?: 0L }
+    val lastReportFocusText: Flow<String> = dataStore.data.map { it[LAST_REPORT_FOCUS_TEXT] ?: "" }
+    suspend fun saveLastReportPrefs(
+        reportType: String,
+        rangeKey: String,
+        rangeStartMs: Long = 0L,
+        rangeEndMs: Long = 0L,
+        focusText: String = ""
+    ) {
         dataStore.edit {
             it[LAST_REPORT_TYPE] = reportType
-            it[LAST_REPORT_RANGE_30D] = range30d
+            it[LAST_REPORT_RANGE_KEY] = rangeKey
+            it[LAST_REPORT_RANGE_START] = rangeStartMs
+            it[LAST_REPORT_RANGE_END] = rangeEndMs
+            it[LAST_REPORT_FOCUS_TEXT] = focusText
         }
     }
+    // Main-branch 2-arg overload: maps the boolean onto the range key.
+    suspend fun saveLastReportPrefs(reportType: String, range30d: Boolean) {
+        saveLastReportPrefs(reportType, if (range30d) "last30days" else "alltime")
+    }
 
-    // Timestamp of the last successful report export.
+    // Mason's feature: timestamp of the last successful report export.
     val lastReportExportTime: Flow<Long> = dataStore.data.map { it[LAST_REPORT_EXPORT_TIME] ?: 0L }
     suspend fun setLastReportExportTime(epochMs: Long) {
         dataStore.edit { it[LAST_REPORT_EXPORT_TIME] = epochMs }
+    }
+
+    // Phase 2 (WS-H): scheduled report-preparation events, JSON-encoded.
+    // Counts are tiny (a handful of events); a list column is enough — no
+    // new Room entity justified (WS-E/WS-H minimal-storage rule).
+    val reportEvents: Flow<String> = dataStore.data.map { it[REPORT_EVENTS] ?: "[]" }
+    suspend fun setReportEvents(json: String) {
+        dataStore.edit { it[REPORT_EVENTS] = json }
     }
 
     open val manualBloodPressureLogs: Flow<String> = dataStore.data.map { it[MANUAL_BLOOD_PRESSURE_LOGS] ?: "[]" }
@@ -378,12 +427,11 @@ open class NotelPreferences(
 
     val historicalDailyStats: Flow<String> = context.dataStore.data.map { it[HISTORICAL_DAILY_STATS] ?: "{}" }
     suspend fun setHistoricalDailyStats(json: String) { context.dataStore.edit { it[HISTORICAL_DAILY_STATS] = json } }
-
-    // Schema version for the daily-stats cache. v2 stores TOTAL calories (active + basal)
-    // so the Home strip matches Health Connect's "Energy Burned"; v1 entries hold
-    // active-calorie values and are dropped on upgrade.
     val dailyStatsCacheVersion: Flow<Int> = context.dataStore.data.map { it[DAILY_STATS_CACHE_VERSION] ?: 0 }
     suspend fun setDailyStatsCacheVersion(v: Int) { context.dataStore.edit { it[DAILY_STATS_CACHE_VERSION] = v } }
+
+    val hasHistoricalBodyLoad: Flow<Boolean> = context.dataStore.data.map { it[HAS_HISTORICAL_BODY_LOAD] ?: false }
+    suspend fun setHasHistoricalBodyLoad(v: Boolean) { context.dataStore.edit { it[HAS_HISTORICAL_BODY_LOAD] = v } }
 
     val tipsAndTricksTopics: Flow<String> = context.dataStore.data.map { it[TIPS_AND_TRICKS_TOPICS] ?: "" }
     val tipsAndTricksAnswers: Flow<String> = context.dataStore.data.map { it[TIPS_AND_TRICKS_ANSWERS] ?: "" }
@@ -406,9 +454,11 @@ open class NotelPreferences(
     }
 
     val eventCounters: Flow<String> = context.dataStore.data.map { it[EVENT_COUNTERS] ?: "[]" }
-    val counterHistory: Flow<String> = context.dataStore.data.map { it[COUNTER_HISTORY] ?: "[]" }
     val deletedEventCounterIds: Flow<String> = context.dataStore.data.map { it[DELETED_EVENT_COUNTER_IDS] ?: "[]" }
+    val counterHistory: Flow<String> = context.dataStore.data.map { it[COUNTER_HISTORY] ?: "[]" }
     val settingsTutorialSeen: Flow<Boolean> = context.dataStore.data.map { it[SETTINGS_TUTORIAL_SEEN] ?: false }
+    val bodyLoadRemindersEnabled: Flow<Boolean> = context.dataStore.data.map { it[BODY_LOAD_REMINDERS_ENABLED] ?: true }
+    val dailyCupUpdatesEnabled: Flow<Boolean> = context.dataStore.data.map { it[DAILY_CUP_UPDATES_ENABLED] ?: false }
     val hrSpikeAlertsEnabled: Flow<Boolean> = context.dataStore.data.map { it[HR_SPIKE_ALERTS_ENABLED] ?: false }
     val spikeThreshold: Flow<Int> = context.dataStore.data.map { it[SPIKE_THRESHOLD] ?: 120 }
     val hrDeltaEnabled: Flow<Boolean> = context.dataStore.data.map { it[HR_DELTA_ENABLED] ?: false }
@@ -426,7 +476,11 @@ open class NotelPreferences(
     val hrLastSampleTime: Flow<Long> = context.dataStore.data.map { it[HR_LAST_SAMPLE_TIME] ?: 0L }
     val habitReminderUserDisabled: Flow<Boolean> = context.dataStore.data.map { it[HABIT_REMINDER_USER_DISABLED] ?: false }
     val userContextLastUpdate: Flow<Long> = context.dataStore.data.map { it[USER_CONTEXT_LAST_UPDATE] ?: 0L }
+    val lastBodyLoadRefresh: Flow<Long> = context.dataStore.data.map { it[LAST_BODY_LOAD_REFRESH] ?: 0L }
     val lastSyncTime: Flow<Long> = context.dataStore.data.map { it[LAST_SYNC_TIME] ?: 0L }
+    val lastBodyLoadScore: Flow<Int> = context.dataStore.data.map { it[LAST_BODY_LOAD_SCORE] ?: 0 }
+    val lastBodyLoadFactors: Flow<String> = context.dataStore.data.map { it[LAST_BODY_LOAD_FACTORS] ?: "" }
+    val lastBodyLoadAdvice: Flow<String?> = context.dataStore.data.map { it[LAST_BODY_LOAD_ADVICE] }
     
     val currentStreak: Flow<Int> = context.dataStore.data.map { it[CURRENT_STREAK] ?: 0 }
     val bestStreak: Flow<Int> = context.dataStore.data.map { it[BEST_STREAK] ?: 0 }
@@ -447,12 +501,21 @@ open class NotelPreferences(
         context.dataStore.edit { it[WEEKLY_SCORE] = score }
     }
     
+    val cupTheorySeen: Flow<Boolean> = context.dataStore.data.map { it[CUP_THEORY_SEEN] ?: false }
     val lastDynamicNotificationDate: Flow<String> = context.dataStore.data.map { it[LAST_DYNAMIC_NOTIFICATION_DATE] ?: "" }
     val lastKnownStats: Flow<String> = context.dataStore.data.map { it[LAST_KNOWN_STATS] ?: "{}" }
     val lastKnownLat: Flow<Double> = context.dataStore.data.map { it[LAST_KNOWN_LAT] ?: 0.0 }
     val lastKnownLon: Flow<Double> = context.dataStore.data.map { it[LAST_KNOWN_LON] ?: 0.0 }
     val lastKnownCity: Flow<String?> = context.dataStore.data.map { it[LAST_KNOWN_CITY] }
     val weatherLocationPromptSeen: Flow<Boolean> = context.dataStore.data.map { it[WEATHER_LOCATION_PROMPT_SEEN] ?: false }
+
+    // Tabs Lab 4-feature package (Oct 2026)
+    val activeMigraineAttackId: Flow<Long> = context.dataStore.data.map { it[ACTIVE_MIGRAINE_ATTACK_ID] ?: 0L }
+    suspend fun setActiveMigraineAttackId(id: Long) { context.dataStore.edit { it[ACTIVE_MIGRAINE_ATTACK_ID] = id } }
+    val morningBriefingCache: Flow<String> = context.dataStore.data.map { it[MORNING_BRIEFING_CACHE] ?: "" }
+    suspend fun setMorningBriefingCache(json: String) { context.dataStore.edit { it[MORNING_BRIEFING_CACHE] = json } }
+    val flareForecastCache: Flow<String> = context.dataStore.data.map { it[FLARE_FORECAST_CACHE] ?: "" }
+    suspend fun setFlareForecastCache(json: String) { context.dataStore.edit { it[FLARE_FORECAST_CACHE] = json } }
 
     val onboardingComplete: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[ONBOARDING_COMPLETE] ?: false
@@ -731,6 +794,17 @@ open class NotelPreferences(
     suspend fun setLastSyncTime(timestamp: Long) {
         context.dataStore.edit { prefs -> prefs[LAST_SYNC_TIME] = timestamp }
     }
+    suspend fun setLastBodyLoadRefresh(timestamp: Long) {
+        context.dataStore.edit { prefs -> prefs[LAST_BODY_LOAD_REFRESH] = timestamp }
+    }
+    suspend fun setLastBodyLoadData(score: Int, factors: String, advice: String?) {
+        context.dataStore.edit { prefs ->
+            prefs[LAST_BODY_LOAD_SCORE] = score
+            prefs[LAST_BODY_LOAD_FACTORS] = factors
+            if (advice != null) prefs[LAST_BODY_LOAD_ADVICE] = advice else prefs.remove(LAST_BODY_LOAD_ADVICE)
+        }
+    }
+
     suspend fun updateStreak(clockDate: java.time.LocalDate = java.time.LocalDate.now()) {
         val today = clockDate
         context.dataStore.edit { prefs ->
@@ -992,6 +1066,14 @@ open class NotelPreferences(
         context.dataStore.edit { it[SETTINGS_TUTORIAL_SEEN] = seen }
     }
 
+    suspend fun setBodyLoadRemindersEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[BODY_LOAD_REMINDERS_ENABLED] = enabled }
+    }
+
+    suspend fun setDailyCupUpdatesEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[DAILY_CUP_UPDATES_ENABLED] = enabled }
+    }
+
     suspend fun setHrSpikeAlertsEnabled(enabled: Boolean) {
         context.dataStore.edit { it[HR_SPIKE_ALERTS_ENABLED] = enabled }
     }
@@ -1093,6 +1175,10 @@ open class NotelPreferences(
 
     suspend fun setUserEmail(email: String) {
         context.dataStore.edit { it[USER_EMAIL] = email }
+    }
+
+    suspend fun setCupTheorySeen(seen: Boolean) {
+        context.dataStore.edit { it[CUP_THEORY_SEEN] = seen }
     }
 
     suspend fun setLastDynamicNotificationDate(date: String) {

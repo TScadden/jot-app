@@ -232,7 +232,7 @@ fun ConsentScreen(
                     ) {
                         Text(
                             text = "I consent",
-                            color = Color.White,
+                            color = NotelOnAccent,
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp
                         )

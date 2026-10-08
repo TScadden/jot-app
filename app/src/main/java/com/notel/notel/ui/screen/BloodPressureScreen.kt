@@ -97,7 +97,7 @@ fun BloodPressureScreen(
                     showAddDialog = true
                 },
                 containerColor = NotelPrimary,
-                contentColor = Color.White,
+                contentColor = NotelOnAccent,
                 modifier = Modifier.padding(bottom = 80.dp, end = 8.dp)
             ) {
                 Icon(Icons.Default.Add, contentDescription = "Log Blood Pressure")
@@ -661,7 +661,7 @@ fun BloodPressureScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = NotelPrimary)
                         ) {
                             if (uiState.isSaving) {
-                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                CircularProgressIndicator(color = NotelOnAccent, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                             } else {
                                 Text("Save")
                             }

@@ -294,7 +294,39 @@ class GeminiService @Inject constructor(
         snapshot: com.notel.notel.data.model.ClinicalReportData
     ): Result<String> {
         return try {
-            val dateSpanText = "REPORT RANGE: ${snapshot.range.type.name} (${snapshot.range.durationDays} days)"
+            // WS-B: staged AI context for long histories — deterministic
+            // per-window aggregates over the full range + a recent raw window,
+            // instead of dumping thousands of DTOs into the prompt.
+            val staged = com.notel.notel.data.model.stageEntriesForPrompt(
+                snapshot.logEntries, snapshot.categoriesMap, snapshot.range
+            )
+
+            // WS-A: the snapshot carries exact covered dates + timezone; that
+            // ONE snapshot feeds preview, stats, AI narrative, and PDF.
+            val zone = try {
+                java.time.ZoneId.of(snapshot.range.timezoneId)
+            } catch (_: Exception) { java.time.ZoneId.systemDefault() }
+            val dateFmt = java.time.format.DateTimeFormatter
+                .ofPattern("MMM d, yyyy", java.util.Locale.US).withZone(zone)
+            val startLabel = dateFmt.format(java.time.Instant.ofEpochMilli(snapshot.range.startEpochMs.coerceAtLeast(0L)))
+            val endLabel = dateFmt.format(java.time.Instant.ofEpochMilli(snapshot.range.endEpochMs))
+            val dateSpanText = "REPORT RANGE: ${snapshot.range.type.name} " +
+                "($startLabel to $endLabel, ${snapshot.range.timezoneId}; ${snapshot.range.durationDays} days)"
+
+            // WS-F: focus reaches the real summarization pipeline.
+            val focusLine = buildString {
+                append("REPORT FOCUS: ${snapshot.focusKey}")
+                if (snapshot.focusText.isNotBlank()) append(" — ${snapshot.focusText}")
+            }
+
+            val stagingNote = if (staged.staged)
+                "STAGED CONTEXT: ${staged.totalEntries} total log entries in range. " +
+                "The entries below are the ${staged.recentEntries.size} most recent raw logs " +
+                "(last ~${staged.recentWindowDays} days) for detail; " +
+                "the <history_aggregates> block holds deterministic per-window counts " +
+                "covering the FULL range and is authoritative for totals. " +
+                "Do not treat the raw entries as the full history."
+            else ""
             // userHeight is stored in inches (see SyncManager's * 2.54f heightCm conversion); convert so the cm label is truthful.
             val heightCm = String.format(java.util.Locale.US, "%.1f", snapshot.userHeight * 2.54f)
             val profileText = buildString {
@@ -346,7 +378,14 @@ class GeminiService @Inject constructor(
                 }
             }
 
-            val enrichedContext = "${snapshot.userContext}\n\n$dateSpanText\n$profileText"
+            val enrichedContext = listOf(
+                snapshot.userContext,
+                "",
+                dateSpanText,
+                focusLine,
+                stagingNote,
+                profileText
+            ).filter { it.isNotBlank() }.joinToString("\n")
 
             // Authoritative per-metric availability so the report model never
             // invents statistics for metrics whose data could not be retrieved.
@@ -369,19 +408,24 @@ class GeminiService @Inject constructor(
             // Privacy-safe telemetry logging
             android.util.Log.d(
                 "GeminiService",
-                "[AI_REPORT_REQUEST] Sending snapshot request: ${snapshot.logEntries.size} logs, " +
+                "[AI_REPORT_REQUEST] Sending snapshot request: ${staged.totalEntries} logs " +
+                    "(staged=${staged.staged}, raw window=${staged.recentEntries.size}), " +
+                        "focus=${snapshot.focusKey}, " +
                         "${snapshot.conditions.size} conditions, ${snapshot.medications.size} meds, " +
                         "${snapshot.heartRateSeries.size} HR days, ${snapshot.bloodPressureSeries.size} BP logs."
             )
 
             val response = tabsApi.getReport(
                 AiRequest(
-                    entries = snapshot.logEntries.toDto(),
+                    entries = staged.recentEntries.toDto(),
                     categories = snapshot.categoriesMap,
                     userContext = enrichedContext,
                     knowledgeBase = snapshot.knowledgeDocuments.joinToString("\n\n").ifBlank { null },
                     fitbitData = healthSummary,
-                    dataAvailability = availabilityText.ifBlank { null }
+                    dataAvailability = availabilityText.ifBlank { null },
+                    focus = snapshot.focusKey,
+                    focusText = snapshot.focusText.ifBlank { null },
+                    historyAggregates = staged.aggregateText.ifBlank { null }
                 )
             )
             val result = response.body()?.result

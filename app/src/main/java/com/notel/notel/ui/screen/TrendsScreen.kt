@@ -235,9 +235,9 @@ fun TrendsScreen(
                                             .padding(horizontal = 12.dp, vertical = 6.dp)
                                     ) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(chip, color = if (isSel) Color.White else NotelTextPrimary, fontSize = 13.sp)
+                                            Text(chip, color = if (isSel) NotelOnAccent else NotelTextPrimary, fontSize = 13.sp)
                                             Spacer(Modifier.width(6.dp))
-                                            Text(count.toString(), color = if (isSel) Color.White else NotelPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            Text(count.toString(), color = if (isSel) NotelOnAccent else NotelPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }
@@ -307,7 +307,8 @@ fun HourlyDensityChart(
                             style = TextStyle(
                                 color = if (isSelected) NotelPrimary else NotelTextSecondary,
                                 fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                fontFeatureSettings = "tnum"
                             ),
                             modifier = Modifier.padding(bottom = 4.dp)
                         )

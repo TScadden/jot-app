@@ -273,7 +273,7 @@ fun FitbitScreen(
                     ) {
                         Text(
                             "Link Health Connect",
-                            color = Color.White,
+                            color = NotelOnAccent,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(vertical = 4.dp)
                         )
