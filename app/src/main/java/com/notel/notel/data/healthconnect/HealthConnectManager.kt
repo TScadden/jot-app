@@ -157,6 +157,7 @@ class HealthConnectManager(private val context: Context) : com.notel.notel.data.
             HealthPermission.getReadPermission(WeightRecord::class),
             HealthPermission.getReadPermission(HeightRecord::class),
             HealthPermission.getReadPermission(HeartRateVariabilityRmssdRecord::class),
+            HealthPermission.getReadPermission(HeartRateVariabilitySdnnRecord::class),
             HealthPermission.getReadPermission(RespiratoryRateRecord::class),
             HealthPermission.getReadPermission(OxygenSaturationRecord::class),
             HealthPermission.getReadPermission(RestingHeartRateRecord::class),
@@ -820,53 +821,210 @@ class HealthConnectManager(private val context: Context) : com.notel.notel.data.
         } catch(e: Exception) { return null }
     }
 
+    /**
+     * Tabs HRV protocol (Tabs Lab): the MORNING window is records stamped before
+     * [MORNING_HRV_WINDOW_END_HOUR] local time. Only morning-window readings feed the
+     * HRV trend and baseline. Daytime readings are stored but quarantined from the
+     * trend (see [readHeartRateVariabilityDaytime] / [readHrvWindowSplit]).
+     */
+    companion object {
+        const val MORNING_HRV_WINDOW_END_HOUR = 10
+    }
+
+    /**
+     * Per-day morning/daytime HRV split from Health Connect.
+     *
+     * RMSSD and SDNN values are nullable per window: a window with no usable records
+     * (or only zero values, which are never real readings per the biometric
+     * zero-value rule and are excluded from every average) reports null.
+     */
+    data class HrvWindowSplit(
+        val date: String,
+        val morningRmssd: Double?,
+        val daytimeRmssd: Double?,
+        val morningSdnn: Double?,
+        val daytimeSdnn: Double?
+    )
+
+    private fun hrvRecordDayAndWindow(time: java.time.Instant): Pair<String, Boolean> {
+        val zdt = time.atZone(ZoneId.systemDefault())
+        val date = zdt.toLocalDate().toString()
+        val isMorning = zdt.hour < MORNING_HRV_WINDOW_END_HOUR
+        return date to isMorning
+    }
+
+    private suspend fun readRmssdRecords(
+        start: java.time.Instant,
+        end: java.time.Instant
+    ): List<HeartRateVariabilityRmssdRecord> {
+        val records = mutableListOf<HeartRateVariabilityRmssdRecord>()
+        // HRV is a dense record type; one 180-day read can stall past the
+        // caller's timeout. Fetch in ~31-day windows and merge.
+        var windowEnd = end
+        while (windowEnd.isAfter(start)) {
+            val windowStart = windowEnd.minus(31, ChronoUnit.DAYS).let { if (it.isBefore(start)) start else it }
+            var pageToken: String? = null
+            do {
+                val pageResponse = healthConnectClient.readRecords(
+                    ReadRecordsRequest(
+                        recordType = HeartRateVariabilityRmssdRecord::class,
+                        timeRangeFilter = TimeRangeFilter.between(windowStart, windowEnd),
+                        pageToken = pageToken
+                    )
+                )
+                records.addAll(pageResponse.records)
+                pageToken = pageResponse.pageToken
+            } while (pageToken != null)
+            windowEnd = windowStart
+        }
+        return records
+    }
+
+    private suspend fun readSdnnRecords(
+        start: java.time.Instant,
+        end: java.time.Instant
+    ): List<HeartRateVariabilitySdnnRecord> {
+        val records = mutableListOf<HeartRateVariabilitySdnnRecord>()
+        var windowEnd = end
+        while (windowEnd.isAfter(start)) {
+            val windowStart = windowEnd.minus(31, ChronoUnit.DAYS).let { if (it.isBefore(start)) start else it }
+            var pageToken: String? = null
+            do {
+                val pageResponse = healthConnectClient.readRecords(
+                    ReadRecordsRequest(
+                        recordType = HeartRateVariabilitySdnnRecord::class,
+                        timeRangeFilter = TimeRangeFilter.between(windowStart, windowEnd),
+                        pageToken = pageToken
+                    )
+                )
+                records.addAll(pageResponse.records)
+                pageToken = pageResponse.pageToken
+            } while (pageToken != null)
+            windowEnd = windowStart
+        }
+        return records
+    }
+
+    private fun hrvRange(
+        days: Int,
+        targetDateStr: String?
+    ): Pair<java.time.Instant, java.time.Instant> {
+        val end = if (targetDateStr != null) endOfDate(targetDateStr) else ZonedDateTime.now(ZoneId.systemDefault()).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
+        // NB: when anchored to a target date, go back (days - 1) full days so the
+        // range covers `days` days ending on the target date.
+        val start = if (targetDateStr != null) startOfDate(targetDateStr).minus((days - 1).toLong(), ChronoUnit.DAYS) else end.minus(days.toLong(), ChronoUnit.DAYS)
+        return start to end
+    }
+
+    /** Mean of non-zero values; a 0 RMSSD/SDNN is never a real reading. Returns null if none. */
+    private fun nonZeroMean(values: List<Double>): Double? {
+        val usable = values.filter { it > 0.0 }
+        return if (usable.isNotEmpty()) usable.average() else null
+    }
+
+    /**
+     * Daily RMSSD for the HRV trend/baseline. Tabs Lab HRV protocol: only
+     * MORNING-window records (before [MORNING_HRV_WINDOW_END_HOUR] local) are
+     * averaged into the daily value; daytime records are quarantined (see
+     * [readHeartRateVariabilityDaytime]). Zero values are excluded from the
+     * average per the biometric zero-value rule; a day with no usable morning
+     * records is omitted (callers treat it as no data).
+     */
     suspend fun readHeartRateVariability(days: Int = 1, targetDateStr: String? = null): List<Pair<String, Double>> = withContext(Dispatchers.IO) {
         try {
-            val end = if (targetDateStr != null) endOfDate(targetDateStr) else ZonedDateTime.now(ZoneId.systemDefault()).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
-            // NB: when anchored to a target date, go back (days - 1) full days so the
-            // range covers `days` days ending on the target date (previously `days`
-            // was ignored in this branch and only the target day was read).
-            val start = if (targetDateStr != null) startOfDate(targetDateStr).minus((days - 1).toLong(), ChronoUnit.DAYS) else end.minus(days.toLong(), ChronoUnit.DAYS)
-            
-            val records = mutableListOf<HeartRateVariabilityRmssdRecord>()
-            // HRV is a dense record type; one 180-day read can stall past the
-            // caller's timeout. Fetch in ~31-day windows and merge.
-            var windowEnd = end
-            while (windowEnd.isAfter(start)) {
-                val windowStart = windowEnd.minus(31, ChronoUnit.DAYS).let { if (it.isBefore(start)) start else it }
-                var pageToken: String? = null
-                do {
-                    val pageResponse = healthConnectClient.readRecords(
-                        ReadRecordsRequest(
-                            recordType = HeartRateVariabilityRmssdRecord::class,
-                            timeRangeFilter = TimeRangeFilter.between(windowStart, windowEnd),
-                            pageToken = pageToken
-                        )
-                    )
-                    records.addAll(pageResponse.records)
-                    pageToken = pageResponse.pageToken
-                } while (pageToken != null)
-                windowEnd = windowStart
-            }
-            
+            val (start, end) = hrvRange(days, targetDateStr)
             val formatter = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
-                timeZone = java.util.TimeZone.getTimeZone(java.time.ZoneId.systemDefault())
+                timeZone = java.util.TimeZone.getTimeZone(ZoneId.systemDefault())
             }
-            
-            val filteredRecords = filterRecordsByPackagePriority(records) { record ->
+
+            val filteredRecords = filterRecordsByPackagePriority(readRmssdRecords(start, end)) { record ->
                 formatter.format(java.util.Date(record.time.toEpochMilli()))
             }
 
-            val dailyValues = filteredRecords.groupBy { 
-                formatter.format(java.util.Date(it.time.toEpochMilli()))
-            }.mapValues { entry ->
-                entry.value.map { it.heartRateVariabilityMillis }.average()
-            }
-            
-            dailyValues.toList().sortedBy { it.first }
+            filteredRecords
+                .map { record -> hrvRecordDayAndWindow(record.time) to record.heartRateVariabilityMillis }
+                .filter { (dayAndWindow, value) -> dayAndWindow.second && value > 0.0 }
+                .groupBy { (dayAndWindow, _) -> dayAndWindow.first }
+                .mapNotNull { (date, pairs) ->
+                    nonZeroMean(pairs.map { it.second })?.let { date to it }
+                }
+                .sortedBy { it.first }
         } catch(e: Exception) {
             emptyList()
         }
+    }
+
+    /**
+     * Daily RMSSD from DAYTIME-window records (at/after [MORNING_HRV_WINDOW_END_HOUR]
+     * local). Same shape as [readHeartRateVariability]; stored and displayed
+     * separately, never mixed into the trend/baseline. Zero values are excluded
+     * per the biometric zero-value rule.
+     */
+    suspend fun readHeartRateVariabilityDaytime(days: Int = 1, targetDateStr: String? = null): List<Pair<String, Double>> = withContext(Dispatchers.IO) {
+        try {
+            val (start, end) = hrvRange(days, targetDateStr)
+            val formatter = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
+                timeZone = java.util.TimeZone.getTimeZone(ZoneId.systemDefault())
+            }
+
+            val filteredRecords = filterRecordsByPackagePriority(readRmssdRecords(start, end)) { record ->
+                formatter.format(java.util.Date(record.time.toEpochMilli()))
+            }
+
+            filteredRecords
+                .map { record -> hrvRecordDayAndWindow(record.time) to record.heartRateVariabilityMillis }
+                .filter { (dayAndWindow, value) -> !dayAndWindow.second && value > 0.0 }
+                .groupBy { (dayAndWindow, _) -> dayAndWindow.first }
+                .mapNotNull { (date, pairs) ->
+                    nonZeroMean(pairs.map { it.second })?.let { date to it }
+                }
+                .sortedBy { it.first }
+        } catch(e: Exception) {
+            emptyList()
+        }
+    }
+
+    /**
+     * Single-pass morning/daytime split of RMSSD and SDNN per day, for HRV views
+     * that show both windows (and the balance-factor HRV index). Zero values are
+     * excluded per the biometric zero-value rule; windows with no usable records
+     * report null.
+     */
+    suspend fun readHrvWindowSplit(days: Int = 1, targetDateStr: String? = null): List<HrvWindowSplit> = withContext(Dispatchers.IO) {
+        try {
+            val (start, end) = hrvRange(days, targetDateStr)
+
+            val rmssdRecords = filterRecordsByPackagePriority(readRmssdRecords(start, end)) { record ->
+                record.time.atZone(ZoneId.systemDefault()).toLocalDate().toString()
+            }
+            val sdnnRecords = filterRecordsByPackagePriority(readSdnnRecords(start, end)) { record ->
+                record.time.atZone(ZoneId.systemDefault()).toLocalDate().toString()
+            }
+
+            val rmssdByDay = rmssdRecords
+                .map { record -> hrvRecordDayAndWindow(record.time) to record.heartRateVariabilityMillis }
+                .groupBy { (dayAndWindow, _) -> dayAndWindow.first }
+            val sdnnByDay = sdnnRecords
+                .map { record -> hrvRecordDayAndWindow(record.time) to record.heartRateVariabilityMillis }
+                .groupBy { (dayAndWindow, _) -> dayAndWindow.first }
+
+            (rmssdByDay.keys + sdnnByDay.keys).sorted().map { date ->
+                val (morningRmssd, daytimeRmssd) = splitWindows(rmssdByDay[date])
+                val (morningSdnn, daytimeSdnn) = splitWindows(sdnnByDay[date])
+                HrvWindowSplit(date, morningRmssd, daytimeRmssd, morningSdnn, daytimeSdnn)
+            }
+        } catch(e: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun splitWindows(
+        pairs: List<Pair<Pair<String, Boolean>, Double>>?
+    ): Pair<Double?, Double?> {
+        if (pairs.isNullOrEmpty()) return null to null
+        val morning = nonZeroMean(pairs.filter { it.first.second }.map { it.second })
+        val daytime = nonZeroMean(pairs.filter { !it.first.second }.map { it.second })
+        return morning to daytime
     }
 
     suspend fun readRespiratoryRate(dateStr: String): Double? {

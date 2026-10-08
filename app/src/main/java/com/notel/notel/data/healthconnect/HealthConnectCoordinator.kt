@@ -25,7 +25,9 @@ enum class HealthConnectMetricType(val metricKey: String) {
     TOTAL_CALORIES("total_calories"),
     SLEEP_SESSION("sleep_session"),
     RESTING_HR("resting_hr"),
-    HRV("hrv");
+    HRV("hrv"),
+    // Daytime-window HRV (at/after the morning window), quarantined from the trend.
+    HRV_DAYTIME("hrv_daytime");
 
     companion object {
         fun fromWeeklyMetric(metric: WeeklySnapshotMetric): HealthConnectMetricType? {
@@ -59,6 +61,7 @@ class HealthConnectHistoryCache {
     private val sleepSessionCache = ConcurrentHashMap<LocalDate, Pair<SleepData?, Long>>()
     private val restingHrCache = ConcurrentHashMap<LocalDate, Pair<Int, Long>>()
     private val hrvCache = ConcurrentHashMap<LocalDate, Pair<List<Pair<String, Double>>, Long>>()
+    private val hrvDaytimeCache = ConcurrentHashMap<LocalDate, Pair<List<Pair<String, Double>>, Long>>()
 
     fun putSleep(date: LocalDate, mins: Int) {
         sleepCache[date] = mins to System.currentTimeMillis()
@@ -156,6 +159,12 @@ class HealthConnectHistoryCache {
 
     fun getHrv(date: LocalDate): List<Pair<String, Double>>? = hrvCache[date]?.first
 
+    fun putHrvDaytime(date: LocalDate, hrvList: List<Pair<String, Double>>) {
+        hrvDaytimeCache[date] = hrvList to System.currentTimeMillis()
+    }
+
+    fun getHrvDaytime(date: LocalDate): List<Pair<String, Double>>? = hrvDaytimeCache[date]?.first
+
     fun hasRange(metricType: HealthConnectMetricType, dates: List<LocalDate>): Boolean {
         return dates.all { d ->
             when (metricType) {
@@ -169,6 +178,7 @@ class HealthConnectHistoryCache {
                 HealthConnectMetricType.SLEEP_SESSION -> sleepSessionCache.containsKey(d)
                 HealthConnectMetricType.RESTING_HR -> getRestingHr(d) != null
                 HealthConnectMetricType.HRV -> getHrv(d) != null
+                HealthConnectMetricType.HRV_DAYTIME -> getHrvDaytime(d) != null
                 HealthConnectMetricType.BLOOD_PRESSURE -> false
             }
         }
@@ -539,6 +549,84 @@ class HealthConnectCoordinator @Inject constructor(
         }
 
         deferred.await()
+    }
+
+    /**
+     * Daytime-window HRV (records at/after the morning window), quarantined from
+     * the trend/baseline. Same cache/dedup shape as [getHeartRateVariability].
+     */
+    suspend fun getHeartRateVariabilityDaytime(
+        days: Int = 1,
+        targetDateStr: String? = null,
+        forceRefresh: Boolean = false
+    ): List<Pair<String, Double>> = withContext(Dispatchers.IO) {
+        val targetDate = if (targetDateStr != null) parseLocalDate(targetDateStr) else LocalDate.now()
+        val startDate = targetDate.minusDays((days - 1).toLong())
+        val dates = (0 until days).map { startDate.plusDays(it.toLong()) }
+
+        if (!forceRefresh && cache.hasRange(HealthConnectMetricType.HRV_DAYTIME, dates)) {
+            safeLogD("HealthConnectTiming", "[MEMORY_CACHE_HIT] Daytime HRV for $days days ($startDate..$targetDate)")
+            return@withContext dates.flatMap { d -> cache.getHrvDaytime(d) ?: emptyList() }.distinctBy { it.first }
+        }
+
+        val requestKey = HealthConnectRequestKey(HealthConnectMetricType.HRV_DAYTIME, startDate, targetDate, "days_$days")
+        val startTimeMs = System.currentTimeMillis()
+
+        val deferred = mutex.withLock {
+            val existing = activeJobs.entries.firstOrNull { (k, j) ->
+                k.metricType == HealthConnectMetricType.HRV_DAYTIME &&
+                        !k.startDate.isAfter(startDate) &&
+                        !k.endDate.isBefore(targetDate) &&
+                        j.isActive
+            }
+            if (existing != null) {
+                safeLogD("HealthConnectTiming", "[DEDUP_WAIT] Reusing shared in-flight daytime HRV request for range $startDate..$targetDate")
+                @Suppress("UNCHECKED_CAST")
+                existing.value as Deferred<List<Pair<String, Double>>>
+            } else {
+                safeLogD("HealthConnectTiming", "[IPC_START] Reading daytime HRV from HealthConnect: $days days ($startDate..$targetDate)")
+                val newJob = async(Dispatchers.IO) {
+                    try {
+                        val raw = healthConnectManager.readHeartRateVariabilityDaytime(days = days, targetDateStr = targetDateStr)
+                        val duration = System.currentTimeMillis() - startTimeMs
+                        safeLogD("HealthConnectTiming", "[IPC_SUCCESS] Daytime HRV completed in ${duration}ms, returned ${raw.size} entries")
+                        raw.forEach { (dStr, valDouble) ->
+                            try {
+                                cache.putHrvDaytime(LocalDate.parse(dStr), listOf(dStr to valDouble))
+                            } catch (e: Exception) {}
+                        }
+                        raw
+                    } catch (e: Exception) {
+                        val duration = System.currentTimeMillis() - startTimeMs
+                        safeLogE("HealthConnectTiming", "[IPC_FAILURE] Daytime HRV failed after ${duration}ms: ${e.message}", e)
+                        emptyList()
+                    } finally {
+                        mutex.withLock { activeJobs.remove(requestKey) }
+                    }
+                }
+                activeJobs[requestKey] = newJob
+                newJob
+            }
+        }
+
+        deferred.await()
+    }
+
+    /**
+     * Per-day morning/daytime split of RMSSD and SDNN for HRV views (Tabs Lab).
+     * Simple read-through; the caller (viewmodel) holds the result in state.
+     * Zero values are excluded per the biometric zero-value rule.
+     */
+    suspend fun getHrvWindowSplit(
+        days: Int = 1,
+        targetDateStr: String? = null
+    ): List<HealthConnectManager.HrvWindowSplit> = withContext(Dispatchers.IO) {
+        try {
+            healthConnectManager.readHrvWindowSplit(days = days, targetDateStr = targetDateStr)
+        } catch (e: Exception) {
+            safeLogE("HealthConnectTiming", "[IPC_FAILURE] HRV window split failed: ${e.message}", e)
+            emptyList()
+        }
     }
 
     suspend fun getSleepHistory(
