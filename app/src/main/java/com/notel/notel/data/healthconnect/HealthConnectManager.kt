@@ -157,7 +157,6 @@ class HealthConnectManager(private val context: Context) : com.notel.notel.data.
             HealthPermission.getReadPermission(WeightRecord::class),
             HealthPermission.getReadPermission(HeightRecord::class),
             HealthPermission.getReadPermission(HeartRateVariabilityRmssdRecord::class),
-            HealthPermission.getReadPermission(HeartRateVariabilitySdnnRecord::class),
             HealthPermission.getReadPermission(RespiratoryRateRecord::class),
             HealthPermission.getReadPermission(OxygenSaturationRecord::class),
             HealthPermission.getReadPermission(RestingHeartRateRecord::class),
@@ -834,16 +833,16 @@ class HealthConnectManager(private val context: Context) : com.notel.notel.data.
     /**
      * Per-day morning/daytime HRV split from Health Connect.
      *
-     * RMSSD and SDNN values are nullable per window: a window with no usable records
-     * (or only zero values, which are never real readings per the biometric
-     * zero-value rule and are excluded from every average) reports null.
+     * Health Connect only exposes an RMSSD HRV record type (there is no SDNN
+     * record in the SDK), so the split is RMSSD-only. Values are nullable per
+     * window: a window with no usable records (or only zero values, which are
+     * never real readings per the biometric zero-value rule and are excluded
+     * from every average) reports null.
      */
     data class HrvWindowSplit(
         val date: String,
         val morningRmssd: Double?,
-        val daytimeRmssd: Double?,
-        val morningSdnn: Double?,
-        val daytimeSdnn: Double?
+        val daytimeRmssd: Double?
     )
 
     private fun hrvRecordDayAndWindow(time: java.time.Instant): Pair<String, Boolean> {
@@ -880,31 +879,6 @@ class HealthConnectManager(private val context: Context) : com.notel.notel.data.
         return records
     }
 
-    private suspend fun readSdnnRecords(
-        start: java.time.Instant,
-        end: java.time.Instant
-    ): List<HeartRateVariabilitySdnnRecord> {
-        val records = mutableListOf<HeartRateVariabilitySdnnRecord>()
-        var windowEnd = end
-        while (windowEnd.isAfter(start)) {
-            val windowStart = windowEnd.minus(31, ChronoUnit.DAYS).let { if (it.isBefore(start)) start else it }
-            var pageToken: String? = null
-            do {
-                val pageResponse = healthConnectClient.readRecords(
-                    ReadRecordsRequest(
-                        recordType = HeartRateVariabilitySdnnRecord::class,
-                        timeRangeFilter = TimeRangeFilter.between(windowStart, windowEnd),
-                        pageToken = pageToken
-                    )
-                )
-                records.addAll(pageResponse.records)
-                pageToken = pageResponse.pageToken
-            } while (pageToken != null)
-            windowEnd = windowStart
-        }
-        return records
-    }
-
     private fun hrvRange(
         days: Int,
         targetDateStr: String?
@@ -916,7 +890,7 @@ class HealthConnectManager(private val context: Context) : com.notel.notel.data.
         return start to end
     }
 
-    /** Mean of non-zero values; a 0 RMSSD/SDNN is never a real reading. Returns null if none. */
+    /** Mean of non-zero values; a 0 RMSSD is never a real reading. Returns null if none. */
     private fun nonZeroMean(values: List<Double>): Double? {
         val usable = values.filter { it > 0.0 }
         return if (usable.isNotEmpty()) usable.average() else null
@@ -955,10 +929,9 @@ class HealthConnectManager(private val context: Context) : com.notel.notel.data.
     }
 
     /**
-     * Single-pass morning/daytime split of RMSSD and SDNN per day, for HRV views
-     * that show both windows (and the balance-factor HRV index). Zero values are
-     * excluded per the biometric zero-value rule; windows with no usable records
-     * report null.
+     * Single-pass morning/daytime split of RMSSD per day, for HRV views that
+     * show both windows. Zero values are excluded per the biometric zero-value
+     * rule; windows with no usable records report null.
      */
     suspend fun readHrvWindowSplit(days: Int = 1, targetDateStr: String? = null): List<HrvWindowSplit> = withContext(Dispatchers.IO) {
         try {
@@ -967,21 +940,14 @@ class HealthConnectManager(private val context: Context) : com.notel.notel.data.
             val rmssdRecords = filterRecordsByPackagePriority(readRmssdRecords(start, end)) { record ->
                 record.time.atZone(ZoneId.systemDefault()).toLocalDate().toString()
             }
-            val sdnnRecords = filterRecordsByPackagePriority(readSdnnRecords(start, end)) { record ->
-                record.time.atZone(ZoneId.systemDefault()).toLocalDate().toString()
-            }
 
             val rmssdByDay = rmssdRecords
                 .map { record -> hrvRecordDayAndWindow(record.time) to record.heartRateVariabilityMillis }
                 .groupBy { (dayAndWindow, _) -> dayAndWindow.first }
-            val sdnnByDay = sdnnRecords
-                .map { record -> hrvRecordDayAndWindow(record.time) to record.heartRateVariabilityMillis }
-                .groupBy { (dayAndWindow, _) -> dayAndWindow.first }
 
-            (rmssdByDay.keys + sdnnByDay.keys).sorted().map { date ->
+            rmssdByDay.keys.sorted().map { date ->
                 val (morningRmssd, daytimeRmssd) = splitWindows(rmssdByDay[date])
-                val (morningSdnn, daytimeSdnn) = splitWindows(sdnnByDay[date])
-                HrvWindowSplit(date, morningRmssd, daytimeRmssd, morningSdnn, daytimeSdnn)
+                HrvWindowSplit(date, morningRmssd, daytimeRmssd)
             }
         } catch(e: Exception) {
             emptyList()

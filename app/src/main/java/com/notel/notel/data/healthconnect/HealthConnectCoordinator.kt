@@ -542,7 +542,7 @@ class HealthConnectCoordinator @Inject constructor(
     }
 
     /**
-     * Per-day morning/daytime split of RMSSD and SDNN for HRV views (Tabs Lab).
+     * Per-day morning/daytime split of RMSSD for HRV views (Tabs Lab).
      * Simple read-through; the caller (viewmodel) holds the result in state.
      * Zero values are excluded per the biometric zero-value rule.
      */

@@ -446,7 +446,7 @@ fun KeyMetricsScreen(
                         color = NotelPrimary,
                         isLoading = state.isLoading,
                         subtitle = "Informational composite",
-                        details = "A single number that blends your morning RMSSD and SDNN into one view of autonomic balance. A lower value can reflect a pattern where the body's stress response is more active than its recovery response. Shown for information only. It is not a diagnosis and does not suggest any treatment."
+                        details = "The balance index blends morning RMSSD and SDNN into one view of autonomic balance, but SDNN is not available from the connected data sources, so the index cannot be calculated right now. Shown for information only. It is not a diagnosis and does not suggest any treatment."
                     )
                 }
                 item {

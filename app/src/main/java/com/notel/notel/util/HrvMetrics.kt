@@ -13,6 +13,12 @@ package com.notel.notel.util
  * SDNN, a pattern that can appear in sympathetic-dominant states common in
  * dysautonomia. This is an informational composite only. It is not a medical
  * measurement, not a diagnosis, and does not suggest any treatment.
+ *
+ * NOTE: Health Connect does not expose an SDNN record type in any released SDK
+ * version, so the index cannot currently be computed from available data. The
+ * function stays pure and available for when an SDNN source exists; callers
+ * pass null for SDNN and the index correctly yields null (never a fabricated
+ * value) until then.
  */
 object HrvMetrics {
 

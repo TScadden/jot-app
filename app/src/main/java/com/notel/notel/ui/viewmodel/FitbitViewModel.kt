@@ -478,7 +478,7 @@ class FitbitViewModel @Inject constructor(
                 val intradayHRDeferred = async(Dispatchers.IO) { healthConnectCoordinator.getIntradayHeartRate(targetDateStr, forceRefresh = false) }
                 val totalCalDeferred = async(Dispatchers.IO) { healthConnectCoordinator.getTotalCalories(targetDateStr, forceRefresh = false) }
                 val hrvListDeferred = async(Dispatchers.IO) { healthConnectCoordinator.getHeartRateVariability(1, targetDateStr = targetDateStr, forceRefresh = false) }
-                // Tabs Lab: morning/daytime split + SDNN for the balance-factor index.
+                // Tabs Lab: morning/daytime split for the RMSSD windows.
                 val hrvSplitDeferred = async(Dispatchers.IO) { healthConnectCoordinator.getHrvWindowSplit(1, targetDateStr) }
 
                 intradayHR = try { intradayHRDeferred.await() } catch(e: Exception) { emptyList() }
@@ -487,8 +487,11 @@ class FitbitViewModel @Inject constructor(
                 val hrvSplit = try { hrvSplitDeferred.await() } catch(e: Exception) { emptyList() }
                 hrvSplit.find { it.date == targetDateStr }?.let { split ->
                     daytimeHrv = split.daytimeRmssd ?: 0.0
-                    // Index uses morning-window RMSSD/SDNN, same as the trend/baseline.
-                    hrvBalanceIndex = com.notel.notel.util.HrvMetrics.balanceFactorHrvIndex(split.morningRmssd, split.morningSdnn)
+                    // Balance index needs SDNN, which Health Connect does not
+                    // expose (no SDNN record type in the SDK), so the index
+                    // correctly yields null and the tile shows "Not available";
+                    // never a fabricated value.
+                    hrvBalanceIndex = com.notel.notel.util.HrvMetrics.balanceFactorHrvIndex(split.morningRmssd, null)
                 }
 
                 val zoneId = java.time.ZoneId.systemDefault()
