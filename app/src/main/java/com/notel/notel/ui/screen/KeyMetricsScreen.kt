@@ -457,8 +457,8 @@ fun KeyMetricsScreen(
                         icon = Icons.Default.Timer,
                         color = NotelPrimary,
                         isLoading = state.isLoading,
-                        subtitle = state.hrResponseLagThresholdBpm?.let { "Exertion threshold ${it} bpm" } ?: "Exertion threshold",
-                        details = "The typical time from your heart rate crossing your personal exertion threshold to it starting to fall again, measured from today's readings. A descriptive pattern only. Shown for information only. It is not a diagnosis and does not suggest any treatment."
+                        subtitle = state.hrResponseLagThresholdBpm?.let { "Exertion threshold ${it} bpm, auto set from your daytime HR" } ?: "Exertion threshold",
+                        details = "The typical time from your heart rate crossing your personal exertion threshold to it starting to fall again, measured from that day's readings. Your threshold is set automatically from your own recent heart rate data (your typical daytime heart rate plus 30 bpm); it is not set by a clinician or medical guideline, and it is not an exertion limit or exercise recommendation. A descriptive pattern only. Shown for information only. It is not a diagnosis and does not suggest any treatment."
                     )
                 }
             }

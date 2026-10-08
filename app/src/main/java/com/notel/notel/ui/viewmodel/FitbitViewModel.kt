@@ -492,9 +492,11 @@ class FitbitViewModel @Inject constructor(
                 }
 
                 val zoneId = java.time.ZoneId.systemDefault()
+                // Daytime window 7am-10pm (Tabs' standing convention; matches the
+                // KDoc on HrvMetrics.exertionThresholdBpm). Excludes 22:00-22:59.
                 val awake = intradayHR.filter { 
                     val h = java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(it.first), zoneId).hour
-                    h in 7..22
+                    h in 7..21
                 }
                 val asleep = intradayHR.filter { 
                     val h = java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(it.first), zoneId).hour
@@ -525,7 +527,7 @@ class FitbitViewModel @Inject constructor(
                         val daySamples = try { deferred.await() } catch (e: Exception) { emptyList<Pair<Long, Int>>() }
                         daytimeByDay.add(daySamples.filter {
                             val h = java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(it.first), zoneId).hour
-                            h in 7..22
+                            h in 7..21  // 7am-10pm, per standing convention
                         }.map { it.second })
                     }
                     hrResponseLagThresholdBpm = com.notel.notel.util.HrvMetrics.exertionThresholdBpm(daytimeByDay)
