@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
+import 'package:tabs_lab/src/features/connections/connections_screen.dart';
 import 'package:tabs_lab/src/features/home/today_summary_card.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/features/home/weather_sheet.dart';
@@ -34,6 +36,8 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// (system permission dialog) and upgrades the IP-based temp to a
 /// GPS-based one. Denial or disabled services fall back silently to
 /// the IP fetch — never an error, never a fake zero.
+/// Round 12 — the watch icon opens the data-connections screen
+/// (Health Connect permission flow + retired-Fitbit notice).
 class HomeScreen extends StatefulWidget {
   final String? email;
   final WeatherApiClient? weatherApi;
@@ -41,8 +45,17 @@ class HomeScreen extends StatefulWidget {
   /// Injectable for tests; defaults to the real geolocator wrapper.
   final LocationService? locationService;
 
+  /// Injectable for tests; defaults to a real HealthConnectService.
+  /// Shared with the connections screen (and future onboarding) — state
+  /// is persisted, so any instance sees the same connection.
+  final HealthConnectService? healthConnectService;
+
   const HomeScreen(
-      {super.key, this.email, this.weatherApi, this.locationService});
+      {super.key,
+      this.email,
+      this.weatherApi,
+      this.locationService,
+      this.healthConnectService});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -214,10 +227,18 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-          // Watch: native navigates to the data-connections screen —
-          // that screen doesn't exist yet, so this is a no-op for now.
+          // Watch: opens the data-connections screen (native
+          // onNavigateToConnections).
           IconButton(
-            onPressed: () {},
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => ConnectionsScreen(
+                    healthConnectService: widget.healthConnectService,
+                  ),
+                ),
+              );
+            },
             icon: const Icon(
               Icons.watch,
               size: 24,

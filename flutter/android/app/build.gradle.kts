@@ -47,6 +47,9 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+    // Round 12: Health Connect client for the connections screen permission flow.
+    // Version matches the native app (1.1.0-alpha09).
+    implementation("androidx.health.connect:connect-client:1.1.0-alpha09")
 }
 
 kotlin {

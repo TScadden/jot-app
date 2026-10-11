@@ -17,6 +17,7 @@ abstract final class NotelColors {
   /// Legacy dark-theme glass tokens (native `LegacyDark*` in Color.kt).
   static const legacyDarkScrim = Color(0x4D000000); // Black @ 30% — dark card fill
   static const legacyDarkHairline = Color(0x1AFFFFFF); // White @ 10% — hairline border
+  static const legacyDarkHairlineFaint = Color(0x0DFFFFFF); // White @ 5% — faint circle fill (dark)
   static const legacyDarkDivider = Color(0x26FFFFFF); // White @ 15% — dividers
   static const legacyDarkOnDark = Color(0xFFFFFFFF); // White — text on dark scrim
 

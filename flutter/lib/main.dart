@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/auth_api.dart';
+import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
@@ -47,12 +48,17 @@ class AppFlow extends StatefulWidget {
   /// Injectable for tests; defaults to the real geolocator wrapper.
   final LocationService? locationService;
 
+  /// Injectable for tests; defaults to a real HealthConnectService.
+  /// Shared with the connections screen (and future onboarding).
+  final HealthConnectService? healthConnectService;
+
   const AppFlow(
       {super.key,
       this.authApi,
       this.sessionStore,
       this.weatherApi,
-      this.locationService});
+      this.locationService,
+      this.healthConnectService});
 
   @override
   State<AppFlow> createState() => _AppFlowState();
@@ -143,7 +149,8 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
         else
           MainShell(email: _loggedInEmail,
               weatherApi: widget.weatherApi,
-              locationService: widget.locationService),
+              locationService: widget.locationService,
+              healthConnectService: widget.healthConnectService),
         if (_splashVisible)
           AnimatedBuilder(
             animation: _exit,
