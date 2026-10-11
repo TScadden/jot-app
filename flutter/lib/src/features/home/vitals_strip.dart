@@ -1,26 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// Round 7 — the vitals strip ("Restored Black Health Metrics Box" in the
 /// native `TodayScreen.kt`).
 ///
 /// Four cells — heart rate, active calories, log count, sleep — separated by
-/// vertical dividers. Values come from Health Connect in the native app;
-/// Health Connect is NOT wired yet in this fresh app, so:
+/// vertical dividers.
 ///
-/// - heart rate → "--" (native: shown only when avgHeartRate > 0)
-/// - active calories → "--" (native: shown only when activeCalories > 0)
-/// - logs → "0" — REAL: this fresh app has no logs, and the native app
-///   shows the raw count even when 0 (`"${state.jotCountDaily}"`)
-/// - sleep → "--" (native: shown only when sleepMinutes > 0)
+/// Round 13 — [vitals] carries the real data:
+/// - heart rate → daytime-only Health Connect average, "--" when missing
+/// - active calories → Health Connect, "--" when missing/0
+/// - logs → the REAL today count (native shows the raw count even when 0;
+///   "0" is honest here, not a placeholder)
+/// - sleep → Health Connect minutes, "--" when missing/0
 ///
-/// Never invent numbers: the native "never show placeholder zeros" rule
-/// applies here too. Each cell's data source gets wired in a later round.
+/// Null [vitals] keeps the round-7 honest placeholders. Never invents
+/// numbers: the native "never show placeholder zeros" rule applies to the
+/// biometrics.
 class VitalsStrip extends StatelessWidget {
-  const VitalsStrip({super.key});
+  final TodayVitals? vitals;
+
+  const VitalsStrip({super.key, this.vitals});
 
   @override
   Widget build(BuildContext context) {
+    final v = vitals;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
       decoration: BoxDecoration(
@@ -37,28 +42,28 @@ class VitalsStrip extends StatelessWidget {
             icon: Icons.favorite,
             iconColor: NotelColors.primary,
             label: 'Heart Rate',
-            value: '--', // TODO: wire Health Connect avgHeartRate
+            value: v?.heartRate?.toString() ?? '--',
           ),
           _divider(),
           _cell(
             icon: Icons.whatshot,
             iconColor: NotelColors.error,
             label: 'Calories',
-            value: '--', // TODO: wire Health Connect activeCalories
+            value: v?.activeCalories?.toString() ?? '--',
           ),
           _divider(),
           _cell(
             icon: Icons.edit,
             iconColor: NotelColors.success,
             label: 'Logs',
-            value: '0', // Real: no logs exist in this fresh app yet.
+            value: '${v?.logCountToday ?? 0}',
           ),
           _divider(),
           _cell(
             icon: Icons.nightlight_round,
             iconColor: NotelColors.info,
             label: 'Sleep',
-            value: '--', // TODO: wire Health Connect sleepMinutes
+            value: v?.sleepMinutes?.toString() ?? '--',
           ),
         ],
       ),
@@ -107,12 +112,14 @@ class VitalsStrip extends StatelessWidget {
 /// Left: current-streak pill (🔥) and best-streak pill (🏆). Right: the
 /// rotating event-counter slot ("Until X … N Days").
 ///
-/// Streaks are computed from log history in the native app and event
-/// counters are user-created in Quick Log — neither source is wired yet,
-/// so every value renders "--". Layout matches the native app exactly so
-/// the founder can verify it now; data lands in later rounds.
+/// Round 13 — [currentStreak]/[bestStreak] carry the real streaks from the
+/// backend sync pull; null renders "--". The event counter stays "--"
+/// (out of scope — user-created counters aren't wired yet).
 class HomeStreakRow extends StatelessWidget {
-  const HomeStreakRow({super.key});
+  final int? currentStreak;
+  final int? bestStreak;
+
+  const HomeStreakRow({super.key, this.currentStreak, this.bestStreak});
 
   @override
   Widget build(BuildContext context) {
@@ -128,13 +135,13 @@ class HomeStreakRow extends StatelessWidget {
             children: [
               _streakPill(
                 glyph: '🔥',
-                value: '--', // TODO: wire currentStreak from log history
+                value: currentStreak?.toString() ?? '--',
                 valueColor: NotelColors.warning,
               ),
               const SizedBox(width: 8),
               _streakPill(
                 glyph: '🏆',
-                value: '--', // TODO: wire bestStreak from log history
+                value: bestStreak?.toString() ?? '--',
                 valueColor: NotelColors.streakGold,
               ),
             ],

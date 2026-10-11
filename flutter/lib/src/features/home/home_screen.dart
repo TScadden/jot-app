@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
+import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/connections/connections_screen.dart';
@@ -74,10 +75,41 @@ class _HomeScreenState extends State<HomeScreen> {
   /// request must never wedge future taps).
   bool _locationRefreshInFlight = false;
 
+  // ── Round 13: real health data ──────────────────────────────────────────
+  late final HealthRepository _healthRepo;
+  TodayVitals? _vitals;
+  int? _currentStreak;
+  int? _bestStreak;
+
   @override
   void initState() {
     super.initState();
+    _healthRepo = HealthRepository(
+      hc: widget.healthConnectService ?? HealthConnectService(),
+    );
     _loadWeather();
+    _loadHealthData();
+  }
+
+  /// Loads today's vitals + streaks once at startup. Everything is
+  /// honest-empty on failure: the repository never throws, and any
+  /// individual piece simply stays null/"--".
+  Future<void> _loadHealthData() async {
+    final hc = _healthRepo.hc;
+    bool connected = false;
+    try {
+      connected = await hc.isConnected();
+    } catch (_) {
+      connected = false;
+    }
+    final vitals = await _healthRepo.loadTodayVitals(connected: connected);
+    final streak = await _healthRepo.loadStreak();
+    if (!mounted) return;
+    setState(() {
+      _vitals = vitals;
+      _currentStreak = streak.current;
+      _bestStreak = streak.best;
+    });
   }
 
   Future<void> _loadWeather() async {
@@ -255,10 +287,15 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const VitalsStrip(),
-            const HomeStreakRow(),
+            VitalsStrip(vitals: _vitals),
+            HomeStreakRow(
+              currentStreak: _currentStreak,
+              bestStreak: _bestStreak,
+            ),
             const TodaySummaryCard(),
-            const WeeklySnapshotCard(),
+            WeeklySnapshotCard(
+              loadData: (metric) => _healthRepo.loadSnapshot(metric),
+            ),
             if (widget.email != null)
               Padding(
                 padding: const EdgeInsets.all(24.0),

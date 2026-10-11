@@ -15,17 +15,28 @@ import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord
 import androidx.health.connect.client.records.HeightRecord
 import androidx.health.connect.client.records.OxygenSaturationRecord
 import androidx.health.connect.client.records.PowerRecord
+import androidx.health.connect.client.records.Record
 import androidx.health.connect.client.records.RespiratoryRateRecord
 import androidx.health.connect.client.records.RestingHeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
 import androidx.health.connect.client.records.WeightRecord
+import androidx.health.connect.client.request.AggregateGroupByDurationRequest
+import androidx.health.connect.client.request.AggregateRequest
+import androidx.health.connect.client.request.ReadRecordsRequest
+import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.lifecycle.lifecycleScope
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.launch
+import java.time.Duration
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.temporal.ChronoUnit
 
 /// Round 12: Health Connect bridge for the connections screen (and future
 /// onboarding connections step).
@@ -107,6 +118,15 @@ class MainActivity : FlutterFragmentActivity() {
                     "cancelRequest" -> cancelPendingRequest(result)
                     "getGrantedPermissions" -> getGrantedPermissions(result)
                     "openHealthConnectSettings" -> openSettings(result)
+                    // Round 13: typed Health Connect reads.
+                    "readHeartRateSamples" -> readHeartRateSamples(call.argument<String>("dateStr"), result)
+                    "readActiveCalories" -> readActiveCalories(call.argument<String>("dateStr"), result)
+                    "readSleepMinutes" -> readSleepMinutes(call.argument<String>("dateStr"), result)
+                    "readRestingHeartRate" -> readRestingHeartRate(call.argument<String>("dateStr"), result)
+                    "readRestingHrHistory" -> readRestingHrHistory(call.argument<Int>("days"), result)
+                    "readCaloriesHistory" -> readCaloriesHistory(call.argument<Int>("days"), result)
+                    "readBloodPressure" -> readBloodPressure(call.argument<Int>("days"), result)
+                    "readSteps" -> readSteps(call.argument<String>("dateStr"), result)
                     else -> result.notImplemented()
                 }
             }
@@ -214,6 +234,389 @@ class MainActivity : FlutterFragmentActivity() {
             result.success(true)
         } catch (e: Exception) {
             result.error("NO_SETTINGS", e.message, null)
+        }
+    }
+
+    // ── Round 13: typed Health Connect reads ──────────────────────────────────
+    // Ports of the native app's `data/healthconnect/HealthConnectManager.kt`
+    // query patterns, exposed to Dart on the same channel.
+    //
+    // Rules (same as round 12 + the founder's data rules):
+    // - Every suspend call runs in lifecycleScope.launch.
+    // - Every failure returns result.error with a distinct visible code.
+    // - "No data" is a successful null/empty result — never a fabricated
+    //   number. Health VALUES are never logged.
+    // - Mock/self records (package priority ≤ -100) are dropped everywhere,
+    //   verbatim from the native app.
+
+    private fun hcClientOrError(result: MethodChannel.Result): HealthConnectClient? {
+        return try {
+            HealthConnectClient.getOrCreate(this)
+        } catch (e: Exception) {
+            result.error("CLIENT_UNAVAILABLE", e.message, null)
+            null
+        }
+    }
+
+    private fun packagePriority(packageName: String): Int = when (packageName) {
+        "com.fitbit.FitbitMobile" -> 100
+        "com.ouraring.oura" -> 90
+        "com.google.android.apps.fitness" -> 80
+        "com.sec.android.app.shealth" -> 80
+        "com.urbandroid.sleep" -> 70
+        "com.sleepcycle.android" -> 70
+        "com.notel.notel" -> -100
+        else -> 0
+    }
+
+    private fun <T : Record> nonMock(records: List<T>): List<T> =
+        records.filter { packagePriority(it.metadata.dataOrigin.packageName) > -100 }
+
+    private fun localDateOf(dateStr: String?): LocalDate = try {
+        if (dateStr == "today" || dateStr.isNullOrBlank()) LocalDate.now()
+        else LocalDate.parse(dateStr)
+    } catch (_: Exception) {
+        LocalDate.now()
+    }
+
+    private fun dayRange(dateStr: String?): Pair<Instant, Instant> {
+        val start = localDateOf(dateStr).atStartOfDay(ZoneId.systemDefault()).toInstant()
+        return start to start.plus(1, ChronoUnit.DAYS)
+    }
+
+    private fun mergeIntervals(intervals: List<Pair<Instant, Instant>>): List<Pair<Instant, Instant>> {
+        if (intervals.isEmpty()) return emptyList()
+        val sorted = intervals.sortedBy { it.first }
+        val result = mutableListOf<Pair<Instant, Instant>>()
+        var current = sorted[0]
+        for (i in 1 until sorted.size) {
+            val next = sorted[i]
+            if (next.first.isBefore(current.second) || next.first == current.second) {
+                if (next.second.isAfter(current.second)) {
+                    current = current.first to next.second
+                }
+            } else {
+                result.add(current)
+                current = next
+            }
+        }
+        result.add(current)
+        return result
+    }
+
+    /// Paginated intraday HR read; samples flattened, distinct by time,
+    /// sorted ascending. Dart shape: [{t: epochMs, bpm}].
+    private fun readHeartRateSamples(dateStr: String?, result: MethodChannel.Result) {
+        val client = hcClientOrError(result) ?: return
+        lifecycleScope.launch {
+            try {
+                val (start, end) = dayRange(dateStr)
+                val records = mutableListOf<HeartRateRecord>()
+                var pageToken: String? = null
+                do {
+                    val response = client.readRecords(
+                        ReadRecordsRequest(
+                            recordType = HeartRateRecord::class,
+                            timeRangeFilter = TimeRangeFilter.between(start, end),
+                            pageToken = pageToken
+                        )
+                    )
+                    records.addAll(response.records)
+                    pageToken = response.pageToken
+                } while (pageToken != null)
+                val samples = nonMock(records)
+                    .flatMap { record ->
+                        record.samples.map { sample ->
+                            sample.time.toEpochMilli() to sample.beatsPerMinute.toInt()
+                        }
+                    }
+                    .distinctBy { it.first }
+                    .sortedBy { it.first }
+                result.success(samples.map { mapOf("t" to it.first, "bpm" to it.second) })
+            } catch (_: Exception) {
+                result.error("HR_SAMPLES_READ_FAILED", "Could not read heart rate samples.", null)
+            }
+        }
+    }
+
+    /// `active ?: total` kcal (native rule); null when both are null.
+    private fun readActiveCalories(dateStr: String?, result: MethodChannel.Result) {
+        val client = hcClientOrError(result) ?: return
+        lifecycleScope.launch {
+            try {
+                val (start, end) = dayRange(dateStr)
+                val response = client.aggregate(
+                    AggregateRequest(
+                        metrics = setOf(
+                            ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL,
+                            TotalCaloriesBurnedRecord.ENERGY_TOTAL
+                        ),
+                        timeRangeFilter = TimeRangeFilter.between(start, end)
+                    )
+                )
+                val active = response[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories?.toInt()
+                val total = response[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories?.toInt()
+                result.success(active ?: total)
+            } catch (_: Exception) {
+                result.error("CALORIES_READ_FAILED", "Could not read active calories.", null)
+            }
+        }
+    }
+
+    /// Sessions in [start-1day, end]; pick the session with endTime in
+    /// [startOfDay, endOfDay+12h], highest package priority then longest
+    /// duration; minutesAsleep = durationMinutes − merged awake-stage
+    /// minutes (AWAKE, AWAKE_IN_BED, OUT_OF_BED). Null when no session.
+    private fun readSleepMinutes(dateStr: String?, result: MethodChannel.Result) {
+        val client = hcClientOrError(result) ?: return
+        lifecycleScope.launch {
+            try {
+                val (startOfDay, endOfDay) = dayRange(dateStr)
+                val response = client.readRecords(
+                    ReadRecordsRequest(
+                        recordType = SleepSessionRecord::class,
+                        timeRangeFilter = TimeRangeFilter.between(
+                            startOfDay.minus(1, ChronoUnit.DAYS), endOfDay
+                        )
+                    )
+                )
+                var target: SleepSessionRecord? = null
+                var maxPriority = -999
+                var maxDuration = -1L
+                for (session in nonMock(response.records)) {
+                    if (session.endTime.isAfter(startOfDay) &&
+                        session.endTime.isBefore(endOfDay.plus(12, ChronoUnit.HOURS))
+                    ) {
+                        val priority = packagePriority(session.metadata.dataOrigin.packageName)
+                        val duration = ChronoUnit.MINUTES.between(session.startTime, session.endTime)
+                        if (priority > maxPriority || (priority == maxPriority && duration > maxDuration)) {
+                            maxPriority = priority
+                            maxDuration = duration
+                            target = session
+                        }
+                    }
+                }
+                val session = target
+                if (session == null) {
+                    result.success(null)
+                    return@launch
+                }
+                val awakeIntervals = session.stages
+                    .filter {
+                        it.stage == SleepSessionRecord.STAGE_TYPE_AWAKE ||
+                            it.stage == SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED ||
+                            it.stage == SleepSessionRecord.STAGE_TYPE_OUT_OF_BED
+                    }
+                    .map { it.startTime to it.endTime }
+                val awake = mergeIntervals(awakeIntervals)
+                    .sumOf { Duration.between(it.first, it.second).toMinutes().toInt() }
+                val minutesAsleep =
+                    ChronoUnit.MINUTES.between(session.startTime, session.endTime).toInt() - awake
+                result.success(minutesAsleep)
+            } catch (_: Exception) {
+                result.error("SLEEP_READ_FAILED", "Could not read sleep session.", null)
+            }
+        }
+    }
+
+    /// Non-mock records of the day, highest package priority, latest by
+    /// time. Null when none.
+    private fun readRestingHeartRate(dateStr: String?, result: MethodChannel.Result) {
+        val client = hcClientOrError(result) ?: return
+        lifecycleScope.launch {
+            try {
+                val (start, end) = dayRange(dateStr)
+                val response = client.readRecords(
+                    ReadRecordsRequest(
+                        recordType = RestingHeartRateRecord::class,
+                        timeRangeFilter = TimeRangeFilter.between(start, end)
+                    )
+                )
+                val candidates = nonMock(response.records)
+                if (candidates.isEmpty()) {
+                    result.success(null)
+                    return@launch
+                }
+                val maxPriority = candidates.maxOf { packagePriority(it.metadata.dataOrigin.packageName) }
+                val best = candidates
+                    .filter { packagePriority(it.metadata.dataOrigin.packageName) == maxPriority }
+                    .maxByOrNull { it.time }
+                result.success(best?.beatsPerMinute?.toInt())
+            } catch (_: Exception) {
+                result.error("RHR_READ_FAILED", "Could not read resting heart rate.", null)
+            }
+        }
+    }
+
+    /// Per-day resting HR over [now-days, tomorrow start): per-day
+    /// priority-filtered, distinct by date. Days with no record fall back
+    /// to the aggregate BPM_AVG slice when avg > 0 (native rule).
+    /// Dart shape: [{date: "YYYY-MM-DD", bpm}].
+    private fun readRestingHrHistory(days: Int?, result: MethodChannel.Result) {
+        val client = hcClientOrError(result) ?: return
+        val n = (days ?: 7).coerceIn(1, 180)
+        lifecycleScope.launch {
+            try {
+                val zone = ZoneId.systemDefault()
+                val end = ZonedDateTime.now(zone).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
+                val start = end.minus(n.toLong(), ChronoUnit.DAYS)
+                val records = mutableListOf<RestingHeartRateRecord>()
+                var pageToken: String? = null
+                do {
+                    val response = client.readRecords(
+                        ReadRecordsRequest(
+                            recordType = RestingHeartRateRecord::class,
+                            timeRangeFilter = TimeRangeFilter.between(start, end),
+                            pageToken = pageToken
+                        )
+                    )
+                    records.addAll(response.records)
+                    pageToken = response.pageToken
+                } while (pageToken != null)
+
+                fun dateOf(instant: Instant): String =
+                    ZonedDateTime.ofInstant(instant, zone).toLocalDate().toString()
+
+                val bpmByDate = mutableMapOf<String, Int>()
+                nonMock(records)
+                    .groupBy { dateOf(it.time) }
+                    .forEach { (date, dateRecords) ->
+                        val maxPriority = dateRecords.maxOf {
+                            packagePriority(it.metadata.dataOrigin.packageName)
+                        }
+                        val best = dateRecords
+                            .filter { packagePriority(it.metadata.dataOrigin.packageName) == maxPriority }
+                            .minByOrNull { it.time }
+                        if (best != null) bpmByDate[date] = best.beatsPerMinute.toInt()
+                    }
+
+                // Per-day BPM_AVG fallback for days with no record.
+                if (bpmByDate.size < n) {
+                    val agg = client.aggregateGroupByDuration(
+                        AggregateGroupByDurationRequest(
+                            metrics = setOf(HeartRateRecord.BPM_AVG),
+                            timeRangeFilter = TimeRangeFilter.between(start, end),
+                            timeRangeSlicer = Duration.ofDays(1)
+                        )
+                    )
+                    val avgByDate = mutableMapOf<String, Double>()
+                    agg.forEach { bucket ->
+                        val avg = bucket.result[HeartRateRecord.BPM_AVG]
+                        if (avg != null && avg > 0) {
+                            avgByDate[dateOf(bucket.startTime)] = avg
+                        }
+                    }
+                    val windowDates = (0 until n).map { i ->
+                        LocalDate.now().minusDays((n - 1 - i).toLong()).toString()
+                    }
+                    windowDates.forEach { date ->
+                        if (!bpmByDate.containsKey(date)) {
+                            avgByDate[date]?.let { bpmByDate[date] = it.toInt() }
+                        }
+                    }
+                }
+
+                result.success(
+                    bpmByDate.entries
+                        .sortedBy { it.key }
+                        .map { mapOf("date" to it.key, "bpm" to it.value) }
+                )
+            } catch (_: Exception) {
+                result.error("RHR_HISTORY_READ_FAILED", "Could not read resting heart rate history.", null)
+            }
+        }
+    }
+
+    /// Per-day calories over [now-days, tomorrow start): `active ?: total`
+    /// per day (native rule, 0 when both null — Dart treats 0 as missing).
+    /// Dart shape: [{date: "YYYY-MM-DD", kcal}].
+    private fun readCaloriesHistory(days: Int?, result: MethodChannel.Result) {
+        val client = hcClientOrError(result) ?: return
+        val n = (days ?: 7).coerceIn(1, 180)
+        lifecycleScope.launch {
+            try {
+                val zone = ZoneId.systemDefault()
+                val end = ZonedDateTime.now(zone).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
+                val start = end.minus(n.toLong(), ChronoUnit.DAYS)
+                val agg = client.aggregateGroupByDuration(
+                    AggregateGroupByDurationRequest(
+                        metrics = setOf(
+                            ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL,
+                            TotalCaloriesBurnedRecord.ENERGY_TOTAL
+                        ),
+                        timeRangeFilter = TimeRangeFilter.between(start, end),
+                        timeRangeSlicer = Duration.ofDays(1)
+                    )
+                )
+                result.success(
+                    agg.map { bucket ->
+                        val date = ZonedDateTime.ofInstant(bucket.startTime, zone).toLocalDate().toString()
+                        val active = bucket.result[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories?.toInt()
+                        val total = bucket.result[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories?.toInt()
+                        mapOf("date" to date, "kcal" to (active ?: total ?: 0))
+                    }
+                )
+            } catch (_: Exception) {
+                result.error("CALORIES_HISTORY_READ_FAILED", "Could not read calorie history.", null)
+            }
+        }
+    }
+
+    /// BP records over [now-days, now), mock-filtered, sorted desc.
+    /// Dart shape: [{t: epochMs, sys, dia}].
+    private fun readBloodPressure(days: Int?, result: MethodChannel.Result) {
+        val client = hcClientOrError(result) ?: return
+        val n = (days ?: 7).coerceIn(1, 180)
+        lifecycleScope.launch {
+            try {
+                val end = Instant.now()
+                val start = end.minus(n.toLong(), ChronoUnit.DAYS)
+                val records = mutableListOf<BloodPressureRecord>()
+                var pageToken: String? = null
+                do {
+                    val response = client.readRecords(
+                        ReadRecordsRequest(
+                            recordType = BloodPressureRecord::class,
+                            timeRangeFilter = TimeRangeFilter.between(start, end),
+                            pageToken = pageToken
+                        )
+                    )
+                    records.addAll(response.records)
+                    pageToken = response.pageToken
+                } while (pageToken != null)
+                result.success(
+                    nonMock(records)
+                        .map {
+                            mapOf(
+                                "t" to it.time.toEpochMilli(),
+                                "sys" to it.systolic.inMillimetersOfMercury.toInt(),
+                                "dia" to it.diastolic.inMillimetersOfMercury.toInt()
+                            )
+                        }
+                        .sortedByDescending { (it["t"] as Long) }
+                )
+            } catch (_: Exception) {
+                result.error("BP_READ_FAILED", "Could not read blood pressure records.", null)
+            }
+        }
+    }
+
+    /// Step count for the day. Null when unavailable.
+    private fun readSteps(dateStr: String?, result: MethodChannel.Result) {
+        val client = hcClientOrError(result) ?: return
+        lifecycleScope.launch {
+            try {
+                val (start, end) = dayRange(dateStr)
+                val response = client.aggregate(
+                    AggregateRequest(
+                        metrics = setOf(StepsRecord.COUNT_TOTAL),
+                        timeRangeFilter = TimeRangeFilter.between(start, end)
+                    )
+                )
+                result.success(response[StepsRecord.COUNT_TOTAL]?.toInt())
+            } catch (_: Exception) {
+                result.error("STEPS_READ_FAILED", "Could not read steps.", null)
+            }
         }
     }
 }

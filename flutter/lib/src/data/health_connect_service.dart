@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:tabs_lab/src/data/health_data.dart';
 
 /// Round 12 — Health Connect service.
 ///
@@ -156,6 +157,157 @@ class HealthConnectService {
     } on MissingPluginException {
       throw const HealthConnectException(
           'NO_CHANNEL', 'Health Connect bridge is not available.');
+    }
+  }
+
+  // ── Round 13: thin typed reads over the same channel ────────────────────
+  //
+  // Kotlin side (MainActivity.kt) ports the native
+  // `HealthConnectManager.kt` query patterns: mock records (priority
+  // ≤ -100) are dropped natively, pagination is handled natively, and no
+  // health values are logged there.
+  //
+  // Each method returns null (or an empty list) on PlatformException /
+  // MissingPluginException — the UI's "--"/empty states are the visible,
+  // honest outcome. The failing exception's code is kept in
+  // [lastReadErrorCode] (a debug string); health VALUES are never logged
+  // or retained beyond the returned objects.
+  String? lastReadErrorCode;
+
+  /// Raw intraday HR samples `[{t: epochMs, bpm}]`, distinct by time,
+  /// sorted ascending. Empty when unreadable.
+  Future<List<HrSample>> readHeartRateSamples(String dateStr) async {
+    try {
+      final raw = await _channel
+          .invokeMethod<List>('readHeartRateSamples', {'dateStr': dateStr});
+      final out = <HrSample>[];
+      for (final item in raw ?? const []) {
+        if (item is Map) {
+          final t = item['t'];
+          final bpm = item['bpm'];
+          if (t is num && bpm is num) {
+            out.add(HrSample(timeMs: t.toInt(), bpm: bpm.toInt()));
+          }
+        }
+      }
+      return out;
+    } on PlatformException catch (e) {
+      lastReadErrorCode = e.code;
+      return const [];
+    } on MissingPluginException {
+      lastReadErrorCode = 'NO_CHANNEL';
+      return const [];
+    }
+  }
+
+  /// Active calories (kcal) for the day — `active ?: total`, native rule.
+  /// Null when unavailable.
+  Future<int?> readActiveCalories(String dateStr) =>
+      _readInt('readActiveCalories', {'dateStr': dateStr});
+
+  /// Sleep minutes for the day (duration − merged awake stages).
+  /// Null when no session.
+  Future<int?> readSleepMinutes(String dateStr) =>
+      _readInt('readSleepMinutes', {'dateStr': dateStr});
+
+  /// Resting heart rate (bpm): non-mock records, highest package priority,
+  /// latest by time. Null when none.
+  Future<int?> readRestingHeartRate(String dateStr) =>
+      _readInt('readRestingHeartRate', {'dateStr': dateStr});
+
+  /// Steps for the day. Null when unavailable.
+  Future<int?> readSteps(String dateStr) =>
+      _readInt('readSteps', {'dateStr': dateStr});
+
+  /// Per-day resting HR history `[{date: "YYYY-MM-DD", bpm}]` over
+  /// `[now - days, tomorrow start)`; per-day aggregate BPM_AVG fallback
+  /// when a day has no RestingHeartRateRecord (native rule).
+  Future<List<({String date, int bpm})>> readRestingHrHistory(int days) async {
+    try {
+      final raw = await _channel
+          .invokeMethod<List>('readRestingHrHistory', {'days': days});
+      final out = <({String date, int bpm})>[];
+      for (final item in raw ?? const []) {
+        if (item is Map) {
+          final d = item['date'];
+          final v = item['bpm'];
+          if (d is String && v is num) out.add((date: d, bpm: v.toInt()));
+        }
+      }
+      return out;
+    } on PlatformException catch (e) {
+      lastReadErrorCode = e.code;
+      return const [];
+    } on MissingPluginException {
+      lastReadErrorCode = 'NO_CHANNEL';
+      return const [];
+    }
+  }
+
+  /// Per-day active calories `[{date: "YYYY-MM-DD", kcal}]`, `active ?:
+  /// total` per day (native rule). Empty when unreadable.
+  Future<List<({String date, int kcal})>> readCaloriesHistory(int days) async {
+    try {
+      final raw = await _channel
+          .invokeMethod<List>('readCaloriesHistory', {'days': days});
+      final out = <({String date, int kcal})>[];
+      for (final item in raw ?? const []) {
+        if (item is Map) {
+          final d = item['date'];
+          final v = item['kcal'];
+          if (d is String && v is num) out.add((date: d, kcal: v.toInt()));
+        }
+      }
+      return out;
+    } on PlatformException catch (e) {
+      lastReadErrorCode = e.code;
+      return const [];
+    } on MissingPluginException {
+      lastReadErrorCode = 'NO_CHANNEL';
+      return const [];
+    }
+  }
+
+  /// Blood pressure records `[{t, sys, dia}]` over `[now - days, now)`,
+  /// sorted desc. Empty when unreadable.
+  Future<List<BpRecord>> readBloodPressure(int days) async {
+    try {
+      final raw = await _channel
+          .invokeMethod<List>('readBloodPressure', {'days': days});
+      final out = <BpRecord>[];
+      for (final item in raw ?? const []) {
+        if (item is Map) {
+          final t = item['t'];
+          final sys = item['sys'];
+          final dia = item['dia'];
+          if (t is num && sys is num && dia is num) {
+            out.add(BpRecord(
+              systolic: sys.toInt(),
+              diastolic: dia.toInt(),
+              timeEpochMs: t.toInt(),
+            ));
+          }
+        }
+      }
+      return out;
+    } on PlatformException catch (e) {
+      lastReadErrorCode = e.code;
+      return const [];
+    } on MissingPluginException {
+      lastReadErrorCode = 'NO_CHANNEL';
+      return const [];
+    }
+  }
+
+  Future<int?> _readInt(String method, Map<String, Object> args) async {
+    try {
+      return await _channel.invokeMethod<int>(method, args);
+    } on PlatformException catch (e) {
+      lastReadErrorCode = e.code;
+      return null;
+    } on MissingPluginException {
+      lastReadErrorCode = 'NO_CHANNEL';
+      return null;
     }
   }
 

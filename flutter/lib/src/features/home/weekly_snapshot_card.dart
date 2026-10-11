@@ -16,8 +16,14 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///
 /// The metric switcher is fully live: all 7 metrics, dropdown styled
 /// like the native `DropdownMenu`, selection resets the tapped point.
+///
+/// Round 13 — real data via [loadData]: loaded on init, on metric switch
+/// (resetting the tapped point), and on refresh-button tap. When [loadData]
+/// is null the card keeps the round-8 empty states (used by tests).
 class WeeklySnapshotCard extends StatefulWidget {
-  const WeeklySnapshotCard({super.key});
+  final Future<WeeklySnapshotMetricData> Function(SnapshotMetric)? loadData;
+
+  const WeeklySnapshotCard({super.key, this.loadData});
 
   @override
   State<WeeklySnapshotCard> createState() => _WeeklySnapshotCardState();
@@ -28,16 +34,50 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
   SnapshotMetric _selected = SnapshotMetric.sleepHours;
   int? _selectedPoint;
 
+  /// Latest loaded data per metric; null until the first load completes.
+  WeeklySnapshotMetricData? _loaded;
+
+  /// Guards against stale loads when the user switches metrics quickly.
+  int _loadGeneration = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _reload();
+  }
+
+  Future<void> _reload() async {
+    final loader = widget.loadData;
+    if (loader == null) return;
+    final generation = ++_loadGeneration;
+    WeeklySnapshotMetricData data;
+    try {
+      data = await loader(_selected);
+    } catch (_) {
+      // A throwing loader is a bug — fall back to the native empty state
+      // rather than leaving stale data on screen.
+      data = emptyMetricData(_selected);
+    }
+    if (!mounted || generation != _loadGeneration) return;
+    setState(() {
+      _loaded = data;
+    });
+  }
+
   void _selectMetric(SnapshotMetric m) {
     setState(() {
       _selected = m;
       _selectedPoint = null; // native resets the tapped point on switch
+      _loaded = null; // drop stale data for the old metric
     });
+    _reload();
   }
 
   @override
   Widget build(BuildContext context) {
-    final data = emptyMetricData(_selected);
+    // Fast first paint + honest fallback: the native empty state until the
+    // loader delivers (or when no loader is wired).
+    final data = _loaded ?? emptyMetricData(_selected);
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
       decoration: BoxDecoration(
@@ -93,12 +133,13 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
             ),
           ],
         ),
-        // Refresh: no-op until snapshot data sources are wired.
+        // Refresh: reloads the current metric's data via [loadData].
+        // No loader → no-op (round-8 behavior).
         SizedBox(
           width: 28,
           height: 28,
           child: IconButton(
-            onPressed: () {},
+            onPressed: () => _reload(),
             padding: EdgeInsets.zero,
             tooltip: 'Refresh weekly snapshot',
             icon: const Icon(
