@@ -142,6 +142,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   textAlign: TextAlign.center,
                 ),
               ),
+            // Clearance so the last content never hides behind the
+            // floating nav dock (dock ≈ 56dp + 12dp + nav inset).
+            const SizedBox(height: 110),
           ],
         ),
       ),

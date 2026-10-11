@@ -3,7 +3,7 @@ import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/auth/login_screen.dart';
-import 'package:tabs_lab/src/features/home/home_screen.dart';
+import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/onboarding/welcome_screen.dart';
 import 'package:tabs_lab/src/features/splash/splash_screen.dart';
 
@@ -133,7 +133,7 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
             sessionStore: widget.sessionStore,
           )
         else
-          HomeScreen(email: _loggedInEmail, weatherApi: widget.weatherApi),
+          MainShell(email: _loggedInEmail, weatherApi: widget.weatherApi),
         if (_splashVisible)
           AnimatedBuilder(
             animation: _exit,
