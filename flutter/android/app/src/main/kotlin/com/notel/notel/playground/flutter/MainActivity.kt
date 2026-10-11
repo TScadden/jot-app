@@ -22,13 +22,17 @@ import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
 import androidx.health.connect.client.records.WeightRecord
 import androidx.lifecycle.lifecycleScope
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.launch
 
 /// Round 12: Health Connect bridge for the connections screen (and future
 /// onboarding connections step).
+///
+/// NOTE: extends FlutterFragmentActivity (not FlutterActivity) because the
+/// permission launcher needs ComponentActivity's ActivityResultRegistry —
+/// plain FlutterActivity extends android.app.Activity, which has none.
 ///
 /// Team-lessons applied (see ~/workspace/team/memory/LESSONS.md):
 /// - Permission launcher registered in onCreate() via activityResultRegistry
@@ -39,7 +43,7 @@ import kotlinx.coroutines.launch
 /// - No silent failures: every error path returns a visible error code.
 /// - Stuck-request guard: an in-flight request older than the timeout is
 ///   superseded, never stacked; Dart can also explicitly cancel.
-class MainActivity : FlutterActivity() {
+class MainActivity : FlutterFragmentActivity() {
 
     companion object {
         const val HC_CHANNEL = "com.notel.notel.playground.flutter/health_connect"
@@ -77,13 +81,14 @@ class MainActivity : FlutterActivity() {
         super.onCreate(savedInstanceState)
         // Registered here in onCreate — never in configureFlutterEngine()
         // (the fragment-transaction timing there can throw or silently never
-        // fire). Equivalent to activityResultRegistry.register(...).
-        permissionLauncher = registerForActivityResult(
+        // fire). Same semantics as Compose's rememberLauncherForActivityResult.
+        permissionLauncher = activityResultRegistry.register(
+            "hc_permission_launcher",
             PermissionController.createRequestPermissionResultContract()
         ) { granted: Set<String> ->
             val r = pendingResult
             pendingResult = null
-            if (r == null) return@registerForActivityResult // stale (timed out / cancelled / superseded)
+            if (r == null) return@register // stale (timed out / cancelled / superseded)
             try {
                 r.success(granted.toList())
             } catch (_: Exception) {
