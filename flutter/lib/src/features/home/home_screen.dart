@@ -9,6 +9,7 @@ import 'package:tabs_lab/src/features/home/today_summary_card.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/features/home/weather_sheet.dart';
 import 'package:tabs_lab/src/features/home/weekly_snapshot_card.dart';
+import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
 
@@ -52,12 +53,17 @@ class HomeScreen extends StatefulWidget {
   /// is persisted, so any instance sees the same connection.
   final HealthConnectService? healthConnectService;
 
+  /// Storage for the streak-milestone celebration watermark (round 14).
+  /// Injectable for tests; defaults to the secure store.
+  final SecureStore? streakStore;
+
   const HomeScreen(
       {super.key,
       this.email,
       this.weatherApi,
       this.locationService,
-      this.healthConnectService});
+      this.healthConnectService,
+      this.streakStore});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -66,6 +72,10 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int? _temp;
   bool _weatherLoaded = false;
+
+  /// Round 14 — condition fields for the living header icon.
+  int? _weatherCode;
+  bool _isDay = true;
 
   /// Country code from the IP fetch — reused for units when the user
   /// upgrades to GPS weather via the weather-icon tap.
@@ -106,15 +116,46 @@ class _HomeScreenState extends State<HomeScreen> {
       _currentStreak = streak.current;
       _bestStreak = streak.best;
     });
+    // Round 14 — confetti only when a NEW milestone is crossed upward.
+    // Best-effort: never breaks the home screen.
+    _maybeCelebrateStreak();
+  }
+
+  /// Fires the confetti burst at most once per streak milestone (7, 30).
+  /// The highest celebrated milestone persists in secure storage, so a
+  /// rebuild, a dip below the milestone, or a reinstall-less relaunch
+  /// can never re-trigger it.
+  Future<void> _maybeCelebrateStreak() async {
+    final current = _currentStreak;
+    if (current == null) return;
+    try {
+      final store = widget.streakStore ?? const FlutterSecureStore();
+      final raw = await store.read(streakMilestoneStorageKey);
+      final lastCelebrated = int.tryParse(raw ?? '') ?? 0;
+      final milestone = nextMilestoneToCelebrate(
+        currentStreak: current,
+        lastCelebrated: lastCelebrated,
+      );
+      if (milestone == null || !mounted) return;
+      // Persist BEFORE showing: a rebuild mid-burst must not re-fire.
+      await store.write(streakMilestoneStorageKey, '$milestone');
+      if (!mounted) return;
+      await ConfettiOverlay.show(context);
+    } catch (_) {
+      // Celebration is decorative — swallow everything.
+    }
   }
 
   Future<void> _loadWeather() async {
     final reading =
-        await (widget.weatherApi ?? WeatherApiClient()).getCurrentWeather();
+        await (widget.weatherApi ?? WeatherApiClient())
+            .getCurrentWeatherCondition();
     if (!mounted) return;
     setState(() {
       _temp = reading.temp;
       _countryCode = reading.countryCode;
+      _weatherCode = reading.weatherCode;
+      _isDay = reading.isDay;
       // Loaded only when we have a real reading — a null temp means
       // "unavailable", and the header shows the icon alone.
       _weatherLoaded = reading.temp != null;
@@ -149,7 +190,7 @@ class _HomeScreenState extends State<HomeScreen> {
         // Upgrade the header temp in the background; any failure keeps
         // the IP-based reading silently.
         gpsFuture.then((position) {
-          if (position != null && mounted) _upgradeHeaderTemp(position);
+          if (position != null && mounted) _upgradeHeaderCondition(position);
         });
       }
     } catch (_) {
@@ -162,25 +203,28 @@ class _HomeScreenState extends State<HomeScreen> {
       locationService: location,
       gpsPositionFuture: gpsFuture,
       onLocationGranted: (position) {
-        if (mounted) _upgradeHeaderTemp(position);
+        if (mounted) _upgradeHeaderCondition(position);
       },
     );
   }
 
-  /// Fetches the current temp at [position] and upgrades the header.
-  /// Silent on any failure — the IP-based reading stays.
-  Future<void> _upgradeHeaderTemp(Position position) async {
+  /// Fetches the current conditions at [position] and upgrades the
+  /// header (temp + living icon). Silent on any failure — the IP-based
+  /// reading stays.
+  Future<void> _upgradeHeaderCondition(Position position) async {
     try {
-      final temp = await (widget.weatherApi ?? WeatherApiClient())
-          .getCurrentTempAt(
+      final condition = await (widget.weatherApi ?? WeatherApiClient())
+          .getConditionAt(
         latitude: position.latitude,
         longitude: position.longitude,
         countryCode: _countryCode,
       );
       if (!mounted) return;
       setState(() {
-        _temp = temp;
-        _weatherLoaded = temp != null;
+        _temp = condition.temp;
+        _weatherCode = condition.weatherCode;
+        _isDay = condition.isDay;
+        _weatherLoaded = condition.temp != null;
       });
     } catch (_) {
       // Keep the IP-based reading.
@@ -228,10 +272,14 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     if (_weatherLoaded) const SizedBox(width: 4),
-                    Icon(
-                      Icons.cloud,
+                    // Round 14 — the condition icon is alive: rotating sun
+                    // rays, falling rain, drifting clouds, twinkling stars.
+                    // Before any condition loads it renders a static cloud
+                    // (the old icon's "no data yet" role).
+                    AnimatedWeatherIcon(
+                      weatherCode: _weatherCode,
+                      isDay: _isDay,
                       size: 20,
-                      color: NotelColors.primary.withValues(alpha: 0.7),
                     ),
                   ],
                 ),
@@ -241,7 +289,9 @@ class _HomeScreenState extends State<HomeScreen> {
           // Watch: opens the data-connections screen (native
           // onNavigateToConnections). Round 12b: explicit slide-in-from-right —
           // Material 3's default Android transition is a zoom/fade that reads
-          // as "just spawning in".
+          // as "just spawning in". Round 14: the icon is a shared element —
+          // it flies to the connections screen's back arrow during the push
+          // (skipped under reduced motion, where heroes are omitted).
           IconButton(
             onPressed: () {
               Navigator.of(context).push(
@@ -252,11 +302,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               );
             },
-            icon: const Icon(
-              Icons.watch,
-              size: 24,
-              color: NotelColors.primary,
-            ),
+            icon: animationsDisabled(context)
+                ? const Icon(
+                    Icons.watch,
+                    size: 24,
+                    color: NotelColors.primary,
+                  )
+                : const Hero(
+                    tag: watchConnectionsHeroTag,
+                    child: Icon(
+                      Icons.watch,
+                      size: 24,
+                      color: NotelColors.primary,
+                    ),
+                  ),
             tooltip: 'Connections',
           ),
         ],
@@ -265,14 +324,29 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            VitalsStrip(vitals: _vitals),
-            HomeStreakRow(
-              currentStreak: _currentStreak,
-              bestStreak: _bestStreak,
+            // Round 14 — staggered entrance: the cards cascade in with a
+            // fade + slight rise, ~80ms apart. Purely visual; data loads
+            // independently underneath.
+            StaggeredEntrance(
+              index: 0,
+              child: VitalsStrip(vitals: _vitals),
             ),
-            const TodaySummaryCard(),
-            WeeklySnapshotCard(
-              loadData: (metric) => _healthRepo.loadSnapshot(metric),
+            StaggeredEntrance(
+              index: 1,
+              child: HomeStreakRow(
+                currentStreak: _currentStreak,
+                bestStreak: _bestStreak,
+              ),
+            ),
+            const StaggeredEntrance(
+              index: 2,
+              child: TodaySummaryCard(),
+            ),
+            StaggeredEntrance(
+              index: 3,
+              child: WeeklySnapshotCard(
+                loadData: (metric) => _healthRepo.loadSnapshot(metric),
+              ),
             ),
             if (widget.email != null)
               Padding(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
+import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// Round 7 — the vitals strip ("Restored Black Health Metrics Box" in the
@@ -42,39 +43,61 @@ class VitalsStrip extends StatelessWidget {
             icon: Icons.favorite,
             iconColor: NotelColors.primary,
             label: 'Heart Rate',
-            value: v?.heartRate?.toString() ?? '--',
+            // Round 14 — counts up to the real value on load; "--" until
+            // the real value exists (CountUp never invents numbers).
+            value: CountUp(
+              value: v?.heartRate,
+              style: _valueStyle,
+            ),
           ),
           _divider(),
           _cell(
             icon: Icons.whatshot,
             iconColor: NotelColors.error,
             label: 'Calories',
-            value: v?.activeCalories?.toString() ?? '--',
+            value: CountUp(
+              value: v?.activeCalories,
+              style: _valueStyle,
+            ),
           ),
           _divider(),
           _cell(
             icon: Icons.edit,
             iconColor: NotelColors.success,
             label: 'Logs',
-            value: '${v?.logCountToday ?? 0}',
+            // The log count is real even at 0 — CountUp handles 0→0 as
+            // a static render.
+            value: CountUp(
+              value: v?.logCountToday ?? 0,
+              style: _valueStyle,
+            ),
           ),
           _divider(),
           _cell(
             icon: Icons.nightlight_round,
             iconColor: NotelColors.info,
             label: 'Sleep',
-            value: v?.sleepMinutes?.toString() ?? '--',
+            value: CountUp(
+              value: v?.sleepMinutes,
+              style: _valueStyle,
+            ),
           ),
         ],
       ),
     );
   }
 
+  static const _valueStyle = TextStyle(
+    fontSize: 14,
+    fontWeight: FontWeight.bold,
+    color: NotelColors.legacyDarkOnDark,
+  );
+
   Widget _cell({
     required IconData icon,
     required Color iconColor,
     required String label,
-    required String value,
+    required Widget value,
   }) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -82,14 +105,7 @@ class VitalsStrip extends StatelessWidget {
       children: [
         Icon(icon, size: 16, color: iconColor, semanticLabel: label),
         const SizedBox(width: 4),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            color: NotelColors.legacyDarkOnDark,
-          ),
-        ),
+        value,
       ],
     );
   }
@@ -135,14 +151,27 @@ class HomeStreakRow extends StatelessWidget {
             children: [
               _streakPill(
                 glyph: '🔥',
-                value: currentStreak?.toString() ?? '--',
-                valueColor: NotelColors.warning,
+                // Round 14 — counts up to the real streak on load.
+                value: CountUp(
+                  value: currentStreak,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: NotelColors.warning,
+                  ),
+                ),
               ),
               const SizedBox(width: 8),
               _streakPill(
                 glyph: '🏆',
-                value: bestStreak?.toString() ?? '--',
-                valueColor: NotelColors.streakGold,
+                value: CountUp(
+                  value: bestStreak,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: NotelColors.streakGold,
+                  ),
+                ),
               ),
             ],
           ),
@@ -200,8 +229,7 @@ class HomeStreakRow extends StatelessWidget {
 
   Widget _streakPill({
     required String glyph,
-    required String value,
-    required Color valueColor,
+    required Widget value,
   }) {
     return Container(
       height: 34,
@@ -220,14 +248,7 @@ class HomeStreakRow extends StatelessWidget {
         children: [
           Text(glyph, style: const TextStyle(fontSize: 12)),
           const SizedBox(width: 4),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: valueColor,
-            ),
-          ),
+          value,
         ],
       ),
     );

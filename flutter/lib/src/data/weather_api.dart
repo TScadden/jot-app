@@ -20,9 +20,9 @@ import 'package:http/http.dart' as http;
 /// code from the earlier IP fetch is passed through so units stay
 /// consistent; it defaults to 'US'.
 ///
-/// The header only needs the current temperature (the native header
-/// always shows a cloud glyph; the condition emoji mapping is only used
-/// by the weather sheet, which doesn't exist yet).
+/// The header needs the current temperature AND condition (round 14
+/// animates the header icon by weather code); the full field set is only
+/// used by the weather sheet.
 ///
 /// Round 11 — detailed weather for the weather bottom sheet.
 ///
@@ -97,40 +97,74 @@ class WeatherApiClient {
 
   WeatherApiClient({http.Client? client}) : _client = client ?? http.Client();
 
+  /// Round 14 — the header weather icon is condition-aware now, so the
+  /// IP path returns the full current-conditions record. [getCurrentWeather]
+  /// keeps its slim shape for existing callers.
+  Future<({int? temp, String countryCode, int? weatherCode, bool isDay})>
+      getCurrentWeatherCondition() async {
+    try {
+      final loc = await _locateByIp();
+      if (loc == null) return (temp: null, countryCode: 'US', weatherCode: null, isDay: true);
+      final current = await _fetchCurrent(
+          latitude: loc.lat, longitude: loc.lon, countryCode: loc.countryCode);
+      return (
+        temp: current.temp,
+        countryCode: loc.countryCode,
+        weatherCode: current.weatherCode,
+        isDay: current.isDay,
+      );
+    } on TimeoutException {
+      return (temp: null, countryCode: 'US', weatherCode: null, isDay: true);
+    } catch (_) {
+      return (temp: null, countryCode: 'US', weatherCode: null, isDay: true);
+    }
+  }
+
+  /// IP geolocation, or null when unusable. Round 11 fix: NO wrong-city
+  /// fallback — a missing/unparseable `loc` means "no location".
+  Future<({double lat, double lon, String countryCode})?> _locateByIp() async {
+    final locResponse = await _client
+        .get(
+          Uri.parse(_ipInfoUrl),
+          headers: const {'User-Agent': 'Tabs-App/1.0'},
+        )
+        .timeout(const Duration(seconds: 10));
+    if (locResponse.statusCode < 200 || locResponse.statusCode > 299) {
+      return null;
+    }
+    final locJson = jsonDecode(locResponse.body) as Map<String, dynamic>;
+    final locRaw = locJson['loc'] as String?;
+    final locParts = locRaw?.split(',');
+    final lat = locParts != null && locParts.isNotEmpty
+        ? double.tryParse(locParts[0].trim())
+        : null;
+    final lon = locParts != null && locParts.length > 1
+        ? double.tryParse(locParts[1].trim())
+        : null;
+    if (lat == null || lon == null) return null;
+    return (
+      lat: lat,
+      lon: lon,
+      countryCode: locJson['country'] as String? ?? 'US',
+    );
+  }
+
   /// Whole-degree temp (null when unavailable) plus the country code
   /// the units were chosen with.
   Future<({int? temp, String countryCode})> getCurrentWeather() async {
     try {
       // 1. IP geolocation.
-      final locResponse = await _client
-          .get(
-            Uri.parse(_ipInfoUrl),
-            headers: const {'User-Agent': 'Tabs-App/1.0'},
-          )
-          .timeout(const Duration(seconds: 10));
-      if (locResponse.statusCode < 200 || locResponse.statusCode > 299) {
+      final loc = await _locateByIp();
+      if (loc == null) {
+        // Round 11 fix: NO wrong-city fallback. If the IP lookup has no
+        // usable `loc`, we return null (icon-only header) instead of
+        // showing another city's temperature as if it were the user's.
         return (temp: null, countryCode: 'US');
       }
-      final locJson = jsonDecode(locResponse.body) as Map<String, dynamic>;
-      // Round 11 fix: NO wrong-city fallback. If the IP lookup has no
-      // usable `loc`, we return null (icon-only header) instead of
-      // showing another city's temperature as if it were the user's.
-      final locRaw = locJson['loc'] as String?;
-      final locParts = locRaw?.split(',');
-      final lat = locParts != null && locParts.isNotEmpty
-          ? double.tryParse(locParts[0].trim())
-          : null;
-      final lon = locParts != null && locParts.length > 1
-          ? double.tryParse(locParts[1].trim())
-          : null;
-      if (lat == null || lon == null) {
-        return (temp: null, countryCode: 'US');
-      }
-      final countryCode = locJson['country'] as String? ?? 'US';
 
-      final temp = await _fetchTemp(
-          latitude: lat, longitude: lon, countryCode: countryCode);
-      return (temp: temp, countryCode: countryCode);
+      final current = await _fetchCurrent(
+          latitude: loc.lat, longitude: loc.lon, countryCode: loc.countryCode);
+      return (temp: current.temp, countryCode: loc.countryCode);
     } on TimeoutException {
       return (temp: null, countryCode: 'US');
     } catch (_) {
@@ -146,6 +180,24 @@ class WeatherApiClient {
   Future<int?> getCurrentTemp() async =>
       (await getCurrentWeather()).temp;
 
+  /// Round 14 — same as [getCurrentTempAt] but with the full
+  /// current-conditions record (temp + weather code + day/night) so the
+  /// header icon can reflect the actual condition.
+  Future<({int? temp, int? weatherCode, bool isDay})> getConditionAt({
+    required double latitude,
+    required double longitude,
+    String countryCode = 'US',
+  }) async {
+    try {
+      return await _fetchCurrent(
+          latitude: latitude,
+          longitude: longitude,
+          countryCode: countryCode);
+    } catch (_) {
+      return (temp: null, weatherCode: null, isDay: true);
+    }
+  }
+
   /// Round 10 — same as [getCurrentTemp] but for explicit GPS
   /// coordinates (user tapped the weather icon and granted location).
   /// Skips the IP lookup. Units follow [countryCode] (the value from
@@ -159,18 +211,20 @@ class WeatherApiClient {
     String countryCode = 'US',
   }) async {
     try {
-      return await _fetchTemp(
-          latitude: latitude,
-          longitude: longitude,
-          countryCode: countryCode);
+      return (await _fetchCurrent(
+              latitude: latitude,
+              longitude: longitude,
+              countryCode: countryCode))
+          .temp;
     } catch (_) {
       return null;
     }
   }
 
   /// Shared Open-Meteo fetch. Units: fahrenheit for US, celsius
-  /// otherwise (native rule).
-  Future<int?> _fetchTemp({
+  /// otherwise (native rule). Returns the whole-degree temp plus the
+  /// condition fields the header icon needs.
+  Future<({int? temp, int? weatherCode, bool isDay})> _fetchCurrent({
     required double latitude,
     required double longitude,
     required String countryCode,
@@ -190,13 +244,17 @@ class WeatherApiClient {
         )
         .timeout(const Duration(seconds: 15));
     if (weatherResponse.statusCode < 200 || weatherResponse.statusCode > 299) {
-      return null;
+      return (temp: null, weatherCode: null, isDay: true);
     }
     final weatherJson = jsonDecode(weatherResponse.body) as Map<String, dynamic>;
     final current = weatherJson['current'] as Map<String, dynamic>?;
     final temp = (current?['temperature_2m'] as num?)?.toDouble();
-    if (temp == null) return null;
-    return temp.toInt();
+    if (temp == null) return (temp: null, weatherCode: null, isDay: true);
+    return (
+      temp: temp.toInt(),
+      weatherCode: (current?['weather_code'] as num?)?.toInt(),
+      isDay: (current?['is_day'] as num?)?.toInt() != 0,
+    );
   }
 
   /// Round 11 — detailed weather for the weather bottom sheet.

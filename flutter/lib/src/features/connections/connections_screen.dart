@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/features/connections/health_connect_disclosure.dart';
+import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// Round 12 — data connections screen.
@@ -161,7 +162,15 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
         elevation: 0,
         leading: IconButton(
           onPressed: widget.onBack ?? () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.arrow_back, color: NotelColors.primary),
+          // Round 14 — shared-element counterpart to the home header's
+          // watch icon: it flies here during the push. Omitted under
+          // reduced motion.
+          icon: animationsDisabled(context)
+              ? const Icon(Icons.arrow_back, color: NotelColors.primary)
+              : const Hero(
+                  tag: watchConnectionsHeroTag,
+                  child: Icon(Icons.arrow_back, color: NotelColors.primary),
+                ),
           tooltip: 'Back',
         ),
         title: const Text(

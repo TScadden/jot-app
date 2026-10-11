@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:tabs_lab/main.dart';
 import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
+import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 import 'package:tabs_lab/src/data/weather_api.dart';
@@ -82,10 +83,15 @@ void main() {
     expect(NotelColors.background.toARGB32(), 0xFF080E1A);
     // Today header (native topBar): title, weather icon, watch icon.
     expect(find.text('Today'), findsOneWidget);
-    expect(find.byIcon(Icons.cloud), findsOneWidget);
+    // Round 14: the header icon is the living AnimatedWeatherIcon (a
+    // static cloud when no condition has loaded yet).
+    expect(find.byType(AnimatedWeatherIcon), findsOneWidget);
     expect(find.byIcon(Icons.watch), findsOneWidget);
     // Weather unavailable (mock 500s): icon only — never a zero.
     expect(find.text('0°'), findsNothing);
+    // Let the staggered-entrance delay timers fire (no pending timers
+    // at teardown).
+    await tester.pump(const Duration(milliseconds: 300));
   });
 
   testWidgets('header shows the live temp once loaded', (tester) async {
@@ -96,7 +102,8 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('61°'), findsOneWidget);
-    expect(find.byIcon(Icons.cloud), findsOneWidget);
+    expect(find.byType(AnimatedWeatherIcon), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 300));
   });
 
   testWidgets('successful login navigates home showing the email',
@@ -129,6 +136,9 @@ void main() {
     // Session persisted to the (fake) secure store; password never stored.
     expect(store.token, 'tok123');
     expect(store.email, 'founder@tabs.app');
+    // Let the staggered-entrance delay timers fire (no pending timers
+    // at teardown).
+    await tester.pump(const Duration(milliseconds: 300));
   });
 
   testWidgets('wrong password shows the error and stays on login',

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/weekly_snapshot.dart';
+import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// Round 8 — Weekly Snapshot card.
@@ -103,7 +104,11 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
               _avgRow(data),
               const SizedBox(height: 8),
               _tooltip(data),
+              // Round 14 — keyed by metric + load generation so the
+              // draw-in animation restarts on every metric switch and
+              // refresh, not just first paint.
               _SnapshotChart(
+                key: ValueKey('${_selected.name}_$_loadGeneration'),
                 data: data,
                 selectedIndex: _selectedPoint,
                 onSelectIndex: (i) => setState(() => _selectedPoint = i),
@@ -436,19 +441,51 @@ class _MetricSelectorState extends State<_MetricSelector> {
 /// (Sleep / Resting HR), bars (HR Spikes / Calories / Logs / Habit
 /// Completion), dual Sys/Dia lines (Blood Pressure), day labels, and
 /// tap-to-select.
-class _SnapshotChart extends StatelessWidget {
+///
+/// Round 14 — the series draws itself in on appearance (a left-to-right
+/// reveal driven by [progress]); day labels are never clipped. Under
+/// reduced motion the chart renders complete instantly.
+class _SnapshotChart extends StatefulWidget {
   final WeeklySnapshotMetricData data;
   final int? selectedIndex;
   final ValueChanged<int?> onSelectIndex;
 
   const _SnapshotChart({
+    super.key,
     required this.data,
     required this.selectedIndex,
     required this.onSelectIndex,
   });
 
   @override
+  State<_SnapshotChart> createState() => _SnapshotChartState();
+}
+
+class _SnapshotChartState extends State<_SnapshotChart>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 650),
+    )..forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // Reduced motion: no controller animation — the painter draws the
+    // full chart (progress 1) with no repaint subscription.
+    final progress =
+        animationsDisabled(context) ? null : _controller;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapUp: (details) {
@@ -457,16 +494,18 @@ class _SnapshotChart extends StatelessWidget {
         final local = box.globalToLocal(details.globalPosition);
         // The painter reserves 20dp for labels; taps map over the chart area.
         final chartWidth = box.size.width;
-        final stepX = chartWidth / data.points.length;
-        final idx = (local.dx / stepX).floor().clamp(0, data.points.length - 1);
-        onSelectIndex(idx == selectedIndex ? null : idx);
+        final stepX = chartWidth / widget.data.points.length;
+        final idx =
+            (local.dx / stepX).floor().clamp(0, widget.data.points.length - 1);
+        widget.onSelectIndex(idx == widget.selectedIndex ? null : idx);
       },
       child: SizedBox(
         height: 160,
         child: CustomPaint(
           painter: _SnapshotChartPainter(
-            data: data,
-            selectedIndex: selectedIndex,
+            data: widget.data,
+            selectedIndex: widget.selectedIndex,
+            progress: progress,
           ),
           child: const SizedBox.expand(),
         ),
@@ -479,7 +518,15 @@ class _SnapshotChartPainter extends CustomPainter {
   final WeeklySnapshotMetricData data;
   final int? selectedIndex;
 
-  _SnapshotChartPainter({required this.data, required this.selectedIndex});
+  /// Draw-in progress, 0..1. Null = draw everything (reduced motion /
+  /// tests). Subscribed as the repaint notifier when non-null.
+  final Animation<double>? progress;
+
+  _SnapshotChartPainter({
+    required this.data,
+    required this.selectedIndex,
+    this.progress,
+  }) : super(repaint: progress);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -488,6 +535,16 @@ class _SnapshotChartPainter extends CustomPainter {
     final points = data.points;
     final stepX = size.width / points.length;
     final lineColor = data.metric.chartColor;
+
+    double cx(int i) => (i + 0.5) * stepX;
+
+    // Draw-in reveal: the series (and gridlines) sweep in left to right.
+    // Day labels stay unclipped below.
+    final p = progress == null
+        ? 1.0
+        : Curves.easeOutCubic.transform(progress!.value);
+    canvas.save();
+    canvas.clipRect(Rect.fromLTRB(0, 0, size.width * p, size.height));
 
     // Horizontal grid lines (3).
     final gridPaint = Paint()
@@ -498,8 +555,6 @@ class _SnapshotChartPainter extends CustomPainter {
       canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
     }
 
-    double cx(int i) => (i + 0.5) * stepX;
-
     if (data.metric.isBarChart) {
       _paintBars(canvas, chartH, stepX, lineColor);
     } else if (data.metric.isBloodPressure) {
@@ -507,6 +562,7 @@ class _SnapshotChartPainter extends CustomPainter {
     } else {
       _paintLine(canvas, chartH, stepX, lineColor);
     }
+    canvas.restore();
 
     // X-axis weekday labels.
     for (var i = 0; i < points.length; i++) {
@@ -696,5 +752,7 @@ class _SnapshotChartPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _SnapshotChartPainter old) =>
-      old.data != data || old.selectedIndex != selectedIndex;
+      old.data != data ||
+      old.selectedIndex != selectedIndex ||
+      old.progress != progress;
 }

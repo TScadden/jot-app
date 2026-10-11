@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
+import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 
 /// Fake platform side for the weather-icon location flow.
@@ -87,11 +88,25 @@ Future<void> _pumpHome(
       home: HomeScreen(weatherApi: weather, locationService: location),
     ),
   );
-  await tester.pumpAndSettle();
+  // Round 14: no pumpAndSettle — the header's AnimatedWeatherIcon ticks
+  // on a repeating controller. Flush async loads, then advance past the
+  // staggered-entrance delays (max 240ms).
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 800));
 }
 
-Finder _weatherButton() =>
-    find.widgetWithIcon(IconButton, Icons.cloud);
+/// Settles the weather sheet after a tap: flush the tap's rebuild, then
+/// run the modal entrance + async loads. (pumpAndSettle would hang on
+/// the home header's repeating weather icon behind the sheet.)
+Future<void> _settleSheet(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 800));
+}
+
+Finder _weatherButton() => find.ancestor(
+        of: find.byType(AnimatedWeatherIcon),
+        matching: find.byType(IconButton),
+      );
 
 void main() {
   group('getCurrentTempAt (GPS path)', () {
@@ -146,7 +161,7 @@ void main() {
       expect(find.text('61°'), findsOneWidget);
 
       await tester.tap(_weatherButton());
-      await tester.pumpAndSettle();
+      await _settleSheet(tester);
 
       // Tap never fires the system dialog; GPS position fetched silently.
       expect(location.requestPermissionCalls, 0);
@@ -173,7 +188,7 @@ void main() {
       final hitsAfterLoad = ipInfoHits;
 
       await tester.tap(_weatherButton());
-      await tester.pumpAndSettle();
+      await _settleSheet(tester);
 
       // MF-1: the tap NEVER fires the system dialog — no request call.
       // The sheet opens with the in-app rationale card instead.
@@ -195,7 +210,7 @@ void main() {
 
       await _pumpHome(tester, weather: weather, location: location);
       await tester.tap(_weatherButton());
-      await tester.pumpAndSettle();
+      await _settleSheet(tester);
 
       expect(location.requestPermissionCalls, 0);
       expect(location.getPositionCalls, 0);
@@ -210,7 +225,7 @@ void main() {
 
       await _pumpHome(tester, weather: weather, location: location);
       await tester.tap(_weatherButton());
-      await tester.pumpAndSettle();
+      await _settleSheet(tester);
 
       expect(location.requestPermissionCalls, 0);
       expect(location.getPositionCalls, 0);
@@ -228,7 +243,7 @@ void main() {
 
       await _pumpHome(tester, weather: weather, location: location);
       await tester.tap(_weatherButton());
-      await tester.pumpAndSettle();
+      await _settleSheet(tester);
 
       expect(location.getPositionCalls, 1);
       expect(find.text('61°'), findsOneWidget);
@@ -246,7 +261,7 @@ void main() {
 
       await _pumpHome(tester, weather: weather, location: location);
       await tester.tap(_weatherButton());
-      await tester.pumpAndSettle();
+      await _settleSheet(tester);
 
       // Tap opened the sheet with the rationale card — no system dialog.
       expect(location.requestPermissionCalls, 0);
@@ -254,7 +269,7 @@ void main() {
 
       // "Share location" fires the one and only permission request.
       await tester.tap(find.text('Share location'));
-      await tester.pumpAndSettle();
+      await _settleSheet(tester);
 
       expect(location.requestPermissionCalls, 1);
       expect(meteoUrl, contains('latitude=41.0'));
@@ -269,11 +284,11 @@ void main() {
 
       await _pumpHome(tester, weather: weather, location: location);
       await tester.tap(_weatherButton());
-      await tester.pumpAndSettle();
+      await _settleSheet(tester);
 
       expect(find.text('Use your location for weather?'), findsOneWidget);
       await tester.tap(find.text('Not now'));
-      await tester.pumpAndSettle();
+      await _settleSheet(tester);
 
       expect(location.requestPermissionCalls, 0);
       expect(find.text('Use your location for weather?'), findsNothing);
