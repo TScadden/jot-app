@@ -39,4 +39,10 @@ abstract final class NotelColors {
 
   /// "or" divider line (native: NotelTextSecondary.copy(alpha = 0.2f)).
   static const divider = Color(0x337A8FAF);
+
+  /// Weekly Snapshot chart tokens (native `WeeklySnapshotCard.kt`, dark theme).
+  static const chartGrid = Color(0x0FFFFFFF); // White @ 6% — chart gridlines
+  static const noDataRing = Color(0x33FFFFFF); // White @ 20% — empty-day ring
+  static const noDataTick = Color(0x40FFFFFF); // White @ 25% — empty-day tick
+  static const heartRateRed = Color(0xFFFF5E62); // Resting-HR line color
 }
