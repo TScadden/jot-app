@@ -9,7 +9,28 @@ import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
+import 'package:tabs_lab/src/data/weather_api.dart';
+
 import 'test_helpers.dart';
+
+/// Mock weather backend: serves ipinfo + Open-Meteo canned payloads with
+/// the given temperature, or an unavailable state when [temp] is null.
+MockClient _mockWeatherClient([int? temp]) {
+  return MockClient((request) async {
+    final host = request.url.host;
+    if (host == 'ipinfo.io') {
+      return http.Response(
+          '{"city":"Orem","loc":"40.2969,-111.6946","country":"US"}', 200);
+    }
+    if (host == 'api.open-meteo.com') {
+      if (temp == null) return http.Response('boom', 500);
+      return http.Response(
+          '{"current":{"temperature_2m":$temp.0,"weather_code":2,"is_day":1}}',
+          200);
+    }
+    return http.Response('not found', 404);
+  });
+}
 
 /// Pumps [AppFlow] with a mock backend and fast-forwards past the splash
 /// (entry 650ms + hold 1200ms + exit 650ms).
@@ -17,11 +38,13 @@ Future<void> _pumpAppFlow(
   WidgetTester tester, {
   required http.Client mockHttp,
   required FakeSessionStore store,
+  int? weatherTemp,
 }) async {
   await tester.pumpWidget(MaterialApp(
     home: AppFlow(
       authApi: AuthApiClient(client: mockHttp),
       sessionStore: store,
+      weatherApi: WeatherApiClient(client: _mockWeatherClient(weatherTemp)),
     ),
   ));
   await tester.pump(const Duration(milliseconds: 1850));
@@ -46,15 +69,34 @@ Future<void> _attemptLogin(
 }
 
 void main() {
-  testWidgets('home screen renders the native background color',
+  testWidgets('home screen renders the native background color and header',
       (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
+    await tester.pumpWidget(MaterialApp(
+      home: HomeScreen(
+          weatherApi: WeatherApiClient(client: _mockWeatherClient())),
+    ));
+    await tester.pump();
     final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
     // Native today route: Scaffold containerColor = NotelBackground.
     expect(scaffold.backgroundColor, NotelColors.background);
     expect(NotelColors.background.toARGB32(), 0xFF080E1A);
-    // Background only: no content whatsoever.
-    expect(find.byType(Text), findsNothing);
+    // Today header (native topBar): title, weather icon, watch icon.
+    expect(find.text('Today'), findsOneWidget);
+    expect(find.byIcon(Icons.cloud), findsOneWidget);
+    expect(find.byIcon(Icons.watch), findsOneWidget);
+    // Weather unavailable (mock 500s): icon only — never a zero.
+    expect(find.text('0°'), findsNothing);
+  });
+
+  testWidgets('header shows the live temp once loaded', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: HomeScreen(
+          weatherApi: WeatherApiClient(client: _mockWeatherClient(61))),
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('61°'), findsOneWidget);
+    expect(find.byIcon(Icons.cloud), findsOneWidget);
   });
 
   testWidgets('successful login navigates home showing the email',
