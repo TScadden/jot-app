@@ -9,6 +9,7 @@ import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/features/home/weather_sheet.dart';
 import 'package:tabs_lab/src/features/home/weekly_snapshot_card.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/slide_page_route.dart';
 
 /// Round 4 — home screen, background only (native `today` route).
 ///
@@ -228,11 +229,13 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           // Watch: opens the data-connections screen (native
-          // onNavigateToConnections).
+          // onNavigateToConnections). Round 12b: explicit slide-in-from-right —
+          // Material 3's default Android transition is a zoom/fade that reads
+          // as "just spawning in".
           IconButton(
             onPressed: () {
               Navigator.of(context).push(
-                MaterialPageRoute(
+                SlidePageRoute(
                   builder: (_) => ConnectionsScreen(
                     healthConnectService: widget.healthConnectService,
                   ),

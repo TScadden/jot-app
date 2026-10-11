@@ -144,6 +144,17 @@ class MainActivity : FlutterFragmentActivity() {
             result.error("NO_LAUNCHER", "Permission launcher is not registered.", null)
             return
         }
+        // Round 12b: never launch with an empty set — Health Connect closes
+        // immediately with an empty result, which is indistinguishable from a
+        // user deny. Fail visibly instead.
+        if (hcPermissions.isEmpty()) {
+            result.error(
+                "EMPTY_PERMISSION_SET",
+                "No Health Connect permissions configured to request.",
+                null
+            )
+            return
+        }
         try {
             val status = HealthConnectClient.getSdkStatus(this, HC_PROVIDER_PACKAGE)
             if (status != HealthConnectClient.SDK_AVAILABLE) {
