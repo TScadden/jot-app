@@ -75,14 +75,15 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Registered here — never in configureFlutterEngine().
-        permissionLauncher = activityResultRegistry.register(
-            "hc_permission_launcher",
+        // Registered here in onCreate — never in configureFlutterEngine()
+        // (the fragment-transaction timing there can throw or silently never
+        // fire). Equivalent to activityResultRegistry.register(...).
+        permissionLauncher = registerForActivityResult(
             PermissionController.createRequestPermissionResultContract()
         ) { granted: Set<String> ->
             val r = pendingResult
             pendingResult = null
-            if (r == null) return@register // stale (timed out / cancelled / superseded)
+            if (r == null) return@registerForActivityResult // stale (timed out / cancelled / superseded)
             try {
                 r.success(granted.toList())
             } catch (_: Exception) {
