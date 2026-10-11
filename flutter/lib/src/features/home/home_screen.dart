@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
@@ -82,14 +83,35 @@ class _HomeScreenState extends State<HomeScreen> {
   int? _currentStreak;
   int? _bestStreak;
 
+  /// Round 15c — once-per-day count-up gate. False until the gate
+  /// resolves; true only on the first home view of the day. On later
+  /// views the numbers render instantly (watching them count up again
+  /// reads as "no data yet").
+  bool _countUpsAnimate = false;
+
   @override
   void initState() {
     super.initState();
     _healthRepo = HealthRepository(
       hc: widget.healthConnectService ?? HealthConnectService(),
     );
+    _resolveCountUpGate();
     _loadWeather();
     _loadHealthData();
+  }
+
+  /// Round 15c — resolves the once-per-day count-up gate from secure
+  /// storage. The gate persists today's date BEFORE reporting true, so
+  /// a rebuild mid-animation can never re-trigger it. Local read, so
+  /// it resolves long before the health data arrives.
+  Future<void> _resolveCountUpGate() async {
+    const storage = FlutterSecureStorage();
+    final animate = await CountUpGate.shouldAnimate(
+      read: (key) => storage.read(key: key),
+      write: (key, value) => storage.write(key: key, value: value),
+    );
+    if (!mounted) return;
+    setState(() => _countUpsAnimate = animate);
   }
 
   /// Loads today's vitals + streaks once at startup. Everything is
@@ -296,13 +318,17 @@ class _HomeScreenState extends State<HomeScreen> {
             // independently underneath.
             StaggeredEntrance(
               index: 0,
-              child: VitalsStrip(vitals: _vitals),
+              child: VitalsStrip(
+                vitals: _vitals,
+                animateCountUps: _countUpsAnimate,
+              ),
             ),
             StaggeredEntrance(
               index: 1,
               child: HomeStreakRow(
                 currentStreak: _currentStreak,
                 bestStreak: _bestStreak,
+                animateCountUps: _countUpsAnimate,
               ),
             ),
             const StaggeredEntrance(

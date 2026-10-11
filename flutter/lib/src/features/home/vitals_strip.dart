@@ -22,7 +22,11 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 class VitalsStrip extends StatelessWidget {
   final TodayVitals? vitals;
 
-  const VitalsStrip({super.key, this.vitals});
+  /// Round 15c — false on later home views the same day (the once-per-day
+  /// count-up gate already fired): numbers render instantly.
+  final bool animateCountUps;
+
+  const VitalsStrip({super.key, this.vitals, this.animateCountUps = true});
 
   @override
   Widget build(BuildContext context) {
@@ -48,6 +52,7 @@ class VitalsStrip extends StatelessWidget {
             value: CountUp(
               value: v?.heartRate,
               style: _valueStyle,
+              animate: animateCountUps,
             ),
           ),
           _divider(),
@@ -58,6 +63,7 @@ class VitalsStrip extends StatelessWidget {
             value: CountUp(
               value: v?.activeCalories,
               style: _valueStyle,
+              animate: animateCountUps,
             ),
           ),
           _divider(),
@@ -70,6 +76,7 @@ class VitalsStrip extends StatelessWidget {
             value: CountUp(
               value: v?.logCountToday ?? 0,
               style: _valueStyle,
+              animate: animateCountUps,
             ),
           ),
           _divider(),
@@ -80,6 +87,7 @@ class VitalsStrip extends StatelessWidget {
             value: CountUp(
               value: v?.sleepMinutes,
               style: _valueStyle,
+              animate: animateCountUps,
             ),
           ),
         ],
@@ -135,7 +143,12 @@ class HomeStreakRow extends StatelessWidget {
   final int? currentStreak;
   final int? bestStreak;
 
-  const HomeStreakRow({super.key, this.currentStreak, this.bestStreak});
+  /// Round 15c — false on later home views the same day (the once-per-day
+  /// count-up gate already fired): numbers render instantly.
+  final bool animateCountUps;
+
+  const HomeStreakRow(
+      {super.key, this.currentStreak, this.bestStreak, this.animateCountUps = true});
 
   @override
   Widget build(BuildContext context) {
@@ -159,6 +172,7 @@ class HomeStreakRow extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                     color: NotelColors.warning,
                   ),
+                  animate: animateCountUps,
                 ),
               ),
               const SizedBox(width: 8),
@@ -171,6 +185,7 @@ class HomeStreakRow extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                     color: NotelColors.streakGold,
                   ),
+                  animate: animateCountUps,
                 ),
               ),
             ],

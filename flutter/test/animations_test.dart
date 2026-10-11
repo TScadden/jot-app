@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
+import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 
@@ -243,6 +245,126 @@ void main() {
               '{"current":{"temperature_2m":58.0,"weather_code":61,"is_day":0}}'));
       expect(await api.getCurrentTempAt(latitude: 40.3, longitude: -111.7),
           58);
+    });
+  });
+
+  group('CountUpGate (once-per-day)', () {
+    Future<String?> memRead(Map<String, String> m, String k) async => m[k];
+    Future<void> memWrite(Map<String, String> m, String k, String v) async {
+      m[k] = v;
+    }
+
+    test('first view of the day animates and persists the date', () async {
+      final store = <String, String>{};
+      final animate = await CountUpGate.shouldAnimate(
+        read: (k) => memRead(store, k),
+        write: (k, v) => memWrite(store, k, v),
+        now: DateTime(2026, 10, 11, 15, 49),
+      );
+      expect(animate, isTrue);
+      expect(store[CountUpGate.storageKey], '2026-10-11');
+    });
+
+    test('second view the same day does not animate (no double-fire)',
+        () async {
+      final store = <String, String>{};
+      Future<bool> check() => CountUpGate.shouldAnimate(
+            read: (k) => memRead(store, k),
+            write: (k, v) => memWrite(store, k, v),
+            now: DateTime(2026, 10, 11, 15, 49),
+          );
+      expect(await check(), isTrue);
+      // A rebuild mid-animation re-checks: the date was already
+      // persisted by the first call, so this must not re-fire.
+      expect(await check(), isFalse);
+      expect(await check(), isFalse);
+    });
+
+    test('a new day animates again', () async {
+      final store = <String, String>{CountUpGate.storageKey: '2026-10-10'};
+      final animate = await CountUpGate.shouldAnimate(
+        read: (k) => memRead(store, k),
+        write: (k, v) => memWrite(store, k, v),
+        now: DateTime(2026, 10, 11, 0, 1),
+      );
+      expect(animate, isTrue);
+      expect(store[CountUpGate.storageKey], '2026-10-11');
+    });
+
+    test('uses the device-local calendar date, not UTC', () async {
+      final store = <String, String>{};
+      // 1:30 AM local on Oct 12 (UTC would still be Oct 11).
+      await CountUpGate.shouldAnimate(
+        read: (k) => memRead(store, k),
+        write: (k, v) => memWrite(store, k, v),
+        now: DateTime(2026, 10, 12, 1, 30),
+      );
+      expect(store[CountUpGate.storageKey], '2026-10-12');
+    });
+
+    test('storage failure fails closed: no animation, no crash', () async {
+      Future<String?> failRead(String _) async =>
+          throw Exception('storage unavailable');
+      Future<void> failWrite(String key, String value) async =>
+          throw Exception('storage unavailable');
+      expect(
+        await CountUpGate.shouldAnimate(read: failRead, write: failWrite),
+        isFalse,
+      );
+    });
+  });
+
+  group('CountUp once-per-day gating', () {
+    testWidgets('animate:false renders the final value instantly',
+        (tester) async {
+      await tester.pumpWidget(const MaterialApp(
+        home: Scaffold(body: CountUp(value: 72, animate: false)),
+      ));
+      await tester.pump();
+      expect(find.text('72'), findsOneWidget);
+      // No count-up pass through 0 on the way there.
+      expect(find.text('0'), findsNothing);
+    });
+
+    testWidgets('animate:false shows a late-arriving value instantly',
+        (tester) async {
+      await tester.pumpWidget(const MaterialApp(
+        home: Scaffold(body: CountUp(value: null, animate: false)),
+      ));
+      await tester.pump();
+      expect(find.text('--'), findsOneWidget);
+      await tester.pumpWidget(const MaterialApp(
+        home: Scaffold(body: CountUp(value: 480, animate: false)),
+      ));
+      await tester.pump();
+      expect(find.text('480'), findsOneWidget);
+      expect(find.text('0'), findsNothing);
+    });
+
+    testWidgets('animate:true still counts up (default behavior kept)',
+        (tester) async {
+      await tester.pumpWidget(const MaterialApp(
+        home: Scaffold(body: CountUp(value: 72, animate: true)),
+      ));
+      expect(find.text('0'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 1000));
+      expect(find.text('72'), findsOneWidget);
+    });
+
+    testWidgets('VitalsStrip passes the gate through to its numbers',
+        (tester) async {
+      const vitals =
+          TodayVitals(heartRate: 72, activeCalories: 480, logCountToday: 3);
+      await tester.pumpWidget(const MaterialApp(
+        home: Scaffold(
+          body: VitalsStrip(vitals: vitals, animateCountUps: false),
+        ),
+      ));
+      await tester.pump();
+      expect(find.text('72'), findsOneWidget);
+      expect(find.text('480'), findsOneWidget);
+      expect(find.text('3'), findsOneWidget);
+      expect(find.text('0'), findsNothing);
     });
   });
 }

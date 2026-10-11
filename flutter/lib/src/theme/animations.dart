@@ -28,16 +28,65 @@ const String watchConnectionsHeroTag = 'watch_connections_hero';
 
 // ── Count-up numbers ─────────────────────────────────────────────────────
 
+/// Round 15c — once-per-day gate for [CountUp] animations.
+///
+/// The founder asked that the count-up play only on the first home view
+/// of the day: on later views (switching tabs and coming back) the
+/// numbers render instantly, since watching them count up again reads
+/// as "no data yet".
+///
+/// One storage key for the whole home screen — no per-metric keys.
+/// The date is device-local calendar `yyyy-MM-dd`.
+class CountUpGate {
+  /// Secure-storage key holding the last `yyyy-MM-dd` on which the
+  /// count-up animation played. Value is a date string only.
+  static const String storageKey = 'countup_last_animated_date';
+
+  /// Returns true on the first view of the day (the animation may
+  /// play), false on later views the same day (render instantly).
+  ///
+  /// The date is persisted BEFORE returning true, so a rebuild
+  /// mid-animation can never re-trigger it. Storage failures fail
+  /// closed (false): the animation is skipped, data still loads.
+  static Future<bool> shouldAnimate({
+    required Future<String?> Function(String key) read,
+    required Future<void> Function(String key, String value) write,
+    DateTime? now,
+  }) async {
+    final today = _dayString(now ?? DateTime.now());
+    try {
+      final last = await read(storageKey);
+      if (last == today) return false;
+      await write(storageKey, today);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static String _dayString(DateTime dt) {
+    final y = dt.year.toString().padLeft(4, '0');
+    final m = dt.month.toString().padLeft(2, '0');
+    final d = dt.day.toString().padLeft(2, '0');
+    return '$y-$m-$d';
+  }
+}
+
 /// Round 14 — animated count-up for numeric readouts (vitals, streak
 /// pills). Tweens from the previously shown value (0 on first load) to
 /// [value] with an ease-out curve. A null [value] renders the honest
 /// "--" statically — the count-up never invents a number, and the
 /// animation starts only once the real value exists.
+///
+/// Round 15c — when [animate] is false (the once-per-day gate already
+/// fired), the final value renders instantly with no count-up. Data
+/// loading is untouched: only the animation is skipped.
 class CountUp extends StatefulWidget {
   final int? value;
   final TextStyle? style;
   final Duration duration;
   final String Function(int value)? format;
+  final bool animate;
 
   const CountUp({
     super.key,
@@ -45,6 +94,7 @@ class CountUp extends StatefulWidget {
     this.style,
     this.duration = const Duration(milliseconds: 900),
     this.format,
+    this.animate = true,
   });
 
   @override
@@ -80,8 +130,15 @@ class _CountUpState extends State<CountUp>
     if (widget.value != null && target != _to) {
       _from = _shownNow();
       _to = target;
-      _controller.reset();
-      _controller.forward();
+      if (_shouldAnimate()) {
+        _controller.reset();
+        _controller.forward();
+      } else {
+        // Round 15c — the once-per-day gate already fired (or reduced
+        // motion is on): snap to the final value instantly instead of
+        // counting up again.
+        _controller.value = 1.0;
+      }
     } else if (widget.value == null) {
       _from = 0;
       _to = 0;
@@ -101,12 +158,18 @@ class _CountUpState extends State<CountUp>
   Widget build(BuildContext context) {
     final v = widget.value;
     if (v == null) return Text('--', style: widget.style);
-    if (animationsDisabled(context)) return Text(_text(v), style: widget.style);
+    if (!_shouldAnimate()) return Text(_text(v), style: widget.style);
     return AnimatedBuilder(
       animation: _controller,
       builder: (_, _) => Text(_text(_shownNow().round()), style: widget.style),
     );
   }
+
+  /// Round 15c — the animation plays only when the once-per-day gate
+  /// allows it (first home view of the day) and the OS hasn't asked
+  /// for reduced motion.
+  bool _shouldAnimate() =>
+      widget.animate && !animationsDisabled(context);
 }
 
 // ── Staggered entrance ───────────────────────────────────────────────────
