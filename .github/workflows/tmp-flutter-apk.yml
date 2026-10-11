@@ -1,4 +1,4 @@
-name: tmp-flutter-apk-r4
+name: tmp-flutter-apk
 on:
   workflow_dispatch:
 jobs:
