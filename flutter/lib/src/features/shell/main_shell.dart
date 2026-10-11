@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
@@ -20,7 +21,11 @@ class MainShell extends StatefulWidget {
   final String? email;
   final WeatherApiClient? weatherApi;
 
-  const MainShell({super.key, this.email, this.weatherApi});
+  /// Injectable for tests; defaults to the real geolocator wrapper.
+  final LocationService? locationService;
+
+  const MainShell(
+      {super.key, this.email, this.weatherApi, this.locationService});
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -38,6 +43,7 @@ class _MainShellState extends State<MainShell> {
           DockTab.home => HomeScreen(
               email: widget.email,
               weatherApi: widget.weatherApi,
+              locationService: widget.locationService,
             ),
           DockTab.tools => const _BlankTab(key: ValueKey('blank_tools')),
           DockTab.quickLog =>

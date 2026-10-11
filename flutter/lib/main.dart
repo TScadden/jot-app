@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/auth_api.dart';
+import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/auth/login_screen.dart';
@@ -43,8 +44,15 @@ class AppFlow extends StatefulWidget {
   /// Injectable for tests; defaults to the real Open-Meteo client.
   final WeatherApiClient? weatherApi;
 
+  /// Injectable for tests; defaults to the real geolocator wrapper.
+  final LocationService? locationService;
+
   const AppFlow(
-      {super.key, this.authApi, this.sessionStore, this.weatherApi});
+      {super.key,
+      this.authApi,
+      this.sessionStore,
+      this.weatherApi,
+      this.locationService});
 
   @override
   State<AppFlow> createState() => _AppFlowState();
@@ -133,7 +141,9 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
             sessionStore: widget.sessionStore,
           )
         else
-          MainShell(email: _loggedInEmail, weatherApi: widget.weatherApi),
+          MainShell(email: _loggedInEmail,
+              weatherApi: widget.weatherApi,
+              locationService: widget.locationService),
         if (_splashVisible)
           AnimatedBuilder(
             animation: _exit,
