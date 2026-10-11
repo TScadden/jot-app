@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/data/auth_api.dart';
+import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// Round 2 — login / register screen.
@@ -17,28 +19,45 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///   15sp SemiBold NotelTextPrimary label
 /// - Terms line: 8.5sp, centered below the card
 ///
-/// UI only this round: the Sign Up / Google / reset buttons are
-/// no-ops (auth logic lands later). The "Log In" button (login mode)
-/// fires [onPlaceholderLogin] — PLACEHOLDER navigation, no
-/// authentication happens; real auth lands in a later round.
+/// Round 5 — REAL authentication (login mode only):
+/// tapping "Log In" calls `POST https://api.jottracker.com/api/auth/login`
+/// (see [AuthApiClient]) with the typed email + password. While the
+/// request is in flight the button shows a spinner and is disabled.
+/// On success the session (token + refresh token + email) is written to
+/// secure storage and [onLoginSuccess] fires with the account email.
+/// On failure an error line appears under the fields:
+/// - nonexistent account (HTTP 404): "That account doesn't exist."
+/// - wrong password (HTTP 401): "Wrong password or email."
+/// - network/server problems: a generic message.
+/// The password is never logged or stored — it lives in memory only for
+/// the request duration.
+///
+/// "Sign Up", "Send Reset Link" and Google stay no-ops this round.
 /// The login/register/forgot mode switch is live UI state, as is the
 /// password-visibility toggle.
 ///
 /// [initialRegisterMode] mirrors the native `mode` query arg: `true`
 /// starts on "Create Your Account", `false` on "Welcome Back".
 /// [onBack] pops to the welcome screen (native back button).
-/// [onPlaceholderLogin] navigates to the home screen without
-/// authenticating (placeholder until real auth exists).
+/// [onLoginSuccess] fires with the account email after a real login.
 class LoginScreen extends StatefulWidget {
   final bool initialRegisterMode;
   final VoidCallback? onBack;
-  final VoidCallback? onPlaceholderLogin;
+  final ValueChanged<String>? onLoginSuccess;
+
+  /// Injectable for tests; defaults to the real backend client.
+  final AuthApiClient? authApi;
+
+  /// Injectable for tests; defaults to flutter_secure_storage.
+  final SessionStore? sessionStore;
 
   const LoginScreen({
     super.key,
     this.initialRegisterMode = true,
     this.onBack,
-    this.onPlaceholderLogin,
+    this.onLoginSuccess,
+    this.authApi,
+    this.sessionStore,
   });
 
   @override
@@ -51,6 +70,65 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isForgotPasswordMode = false;
   bool _passwordVisible = false;
   bool _ageConfirmed = false;
+
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _isLoading = false;
+  String? _errorMessage;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  /// Round 5: real login. Mirrors the native `LoginViewModel.login()`
+  /// flow: blank-field guard, loading state, API call, then either
+  /// session persistence + [LoginScreen.onLoginSuccess] or an inline
+  /// error message.
+  Future<void> _onLoginPressed() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    if (email.isEmpty || password.isEmpty) {
+      setState(() => _errorMessage = 'Please fill in all fields');
+      return;
+    }
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+    try {
+      final api = widget.authApi ?? AuthApiClient();
+      final result = await api.login(email: email, password: password);
+      if (!mounted) return;
+      switch (result) {
+        case LoginSuccess(:final token, :final refreshToken):
+          final store = widget.sessionStore ?? SessionStore();
+          await store.saveSession(
+            token: token,
+            refreshToken: refreshToken,
+            email: result.email,
+          );
+          if (!mounted) return;
+          setState(() => _isLoading = false);
+          widget.onLoginSuccess?.call(result.email);
+        case LoginFailure(:final message):
+          setState(() {
+            _isLoading = false;
+            _errorMessage = message;
+          });
+      }
+    } catch (_) {
+      // The API client already maps transport failures; this is a
+      // last-resort guard so the button can never wedge loading.
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Something went wrong. Please try again.';
+      });
+    }
+  }
 
   /// Total vertical footprint of the pinned logo header: the outer
   /// vertical padding (16) + the extra top padding (8) + the header
@@ -91,6 +169,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _onToggleMode() {
     setState(() {
+      _errorMessage = null;
       if (_isForgotPasswordMode) {
         _isForgotPasswordMode = false;
       } else {
@@ -253,20 +332,20 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
             const SizedBox(height: 4),
           ],
-          // Main action button: "Log In" (login mode) fires the
-          // placeholder navigation; "Sign Up" and "Send Reset Link"
-          // stay no-ops (their real destinations don't exist yet).
+          // Main action button. "Log In" (login mode) performs the real
+          // login (Round 5); "Sign Up" and "Send Reset Link" stay
+          // no-ops (their real destinations don't exist yet).
           SizedBox(
             width: double.infinity,
             height: 50,
             child: ElevatedButton(
-              onPressed: () {
-                // PLACEHOLDER: navigates without authenticating; real
-                // auth lands in a later round.
-                if (!_isRegisterMode && !_isForgotPasswordMode) {
-                  widget.onPlaceholderLogin?.call();
-                }
-              },
+              onPressed: _isLoading
+                  ? null
+                  : () {
+                      if (!_isRegisterMode && !_isForgotPasswordMode) {
+                        _onLoginPressed();
+                      }
+                    },
               style: ElevatedButton.styleFrom(
                 backgroundColor: NotelColors.primary,
                 foregroundColor: NotelColors.background,
@@ -275,15 +354,39 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 elevation: 0,
               ),
-              child: Text(
-                _mainButtonLabel,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              child: _isLoading
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: NotelColors.background,
+                      ),
+                    )
+                  : Text(
+                      _mainButtonLabel,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
             ),
           ),
+          // Inline auth error (Round 5): wrong password / nonexistent
+          // account / network. Cleared on mode switch and on each
+          // new attempt.
+          if (_errorMessage != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              _errorMessage!,
+              key: const ValueKey('login_error'),
+              style: const TextStyle(
+                fontSize: 13,
+                color: NotelColors.error,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
           const SizedBox(height: 12),
           TextButton(
             onPressed: _onToggleMode,
@@ -359,7 +462,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Widget _buildEmailField() {
     return TextField(
+      controller: _emailController,
       keyboardType: TextInputType.emailAddress,
+      autocorrect: false,
       style: const TextStyle(color: NotelColors.textPrimary, fontSize: 16),
       cursorColor: NotelColors.primary,
       decoration: InputDecoration(
@@ -387,8 +492,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Widget _buildPasswordField() {
     return TextField(
+      controller: _passwordController,
       obscureText: !_passwordVisible,
       keyboardType: TextInputType.visiblePassword,
+      autocorrect: false,
       style: const TextStyle(color: NotelColors.textPrimary, fontSize: 16),
       cursorColor: NotelColors.primary,
       decoration: InputDecoration(

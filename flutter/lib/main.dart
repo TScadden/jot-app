@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/data/auth_api.dart';
+import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/features/auth/login_screen.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/welcome_screen.dart';
@@ -21,14 +23,23 @@ class TabsLabApp extends StatelessWidget {
   }
 }
 
-/// Round 4 app flow: splash entry (650ms) -> hold (1200ms) -> native-spec
+/// Round 5 app flow: splash entry (650ms) -> hold (1200ms) -> native-spec
 /// exit (650ms slide-up, FastOutSlowIn, alpha holding through the first 60%
 /// of travel then fading) revealing the welcome screen underneath.
 /// Welcome Register -> login screen in register mode;
 /// welcome Log In -> login screen in login mode; login back -> welcome.
-/// Login "Log In" -> home screen (PLACEHOLDER navigation, no auth yet).
+/// Login "Log In" performs REAL authentication against
+/// https://api.jottracker.com (see AuthApiClient); on success the session
+/// is stored securely and the user lands on the home screen, which shows
+/// a "Logged in as {email}" indicator.
 class AppFlow extends StatefulWidget {
-  const AppFlow({super.key});
+  /// Injectable for tests; defaults to the real backend client.
+  final AuthApiClient? authApi;
+
+  /// Injectable for tests; defaults to flutter_secure_storage.
+  final SessionStore? sessionStore;
+
+  const AppFlow({super.key, this.authApi, this.sessionStore});
 
   @override
   State<AppFlow> createState() => _AppFlowState();
@@ -46,6 +57,7 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
   bool _splashVisible = true;
   _FlowStage _stage = _FlowStage.welcome;
   bool _loginIsRegister = true;
+  String? _loggedInEmail;
 
   void _goLogin(bool isRegister) {
     setState(() {
@@ -58,10 +70,14 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
     setState(() => _stage = _FlowStage.welcome);
   }
 
-  // PLACEHOLDER: navigates without authenticating; real auth lands in a
-  // later round.
-  void _goHome() {
-    setState(() => _stage = _FlowStage.home);
+  // Round 5: real login succeeded — the session is already in secure
+  // storage (LoginScreen handles that); record the email for the home
+  // indicator and navigate.
+  void _onLoginSuccess(String email) {
+    setState(() {
+      _loggedInEmail = email;
+      _stage = _FlowStage.home;
+    });
   }
 
   @override
@@ -107,10 +123,12 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
           LoginScreen(
             initialRegisterMode: _loginIsRegister,
             onBack: _goWelcome,
-            onPlaceholderLogin: _goHome,
+            onLoginSuccess: _onLoginSuccess,
+            authApi: widget.authApi,
+            sessionStore: widget.sessionStore,
           )
         else
-          const HomeScreen(),
+          HomeScreen(email: _loggedInEmail),
         if (_splashVisible)
           AnimatedBuilder(
             animation: _exit,
