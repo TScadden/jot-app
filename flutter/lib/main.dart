@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/features/auth/login_screen.dart';
+import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/features/onboarding/welcome_screen.dart';
 import 'package:tabs_lab/src/features/splash/splash_screen.dart';
 
@@ -20,11 +21,12 @@ class TabsLabApp extends StatelessWidget {
   }
 }
 
-/// Round 3 app flow: splash entry (650ms) -> hold (1200ms) -> native-spec
+/// Round 4 app flow: splash entry (650ms) -> hold (1200ms) -> native-spec
 /// exit (650ms slide-up, FastOutSlowIn, alpha holding through the first 60%
 /// of travel then fading) revealing the welcome screen underneath.
 /// Welcome Register -> login screen in register mode;
 /// welcome Log In -> login screen in login mode; login back -> welcome.
+/// Login "Log In" -> home screen (PLACEHOLDER navigation, no auth yet).
 class AppFlow extends StatefulWidget {
   const AppFlow({super.key});
 
@@ -32,7 +34,7 @@ class AppFlow extends StatefulWidget {
   State<AppFlow> createState() => _AppFlowState();
 }
 
-enum _FlowStage { welcome, login }
+enum _FlowStage { welcome, login, home }
 
 class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
   static const _entryMs = 650;
@@ -54,6 +56,12 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
 
   void _goWelcome() {
     setState(() => _stage = _FlowStage.welcome);
+  }
+
+  // PLACEHOLDER: navigates without authenticating; real auth lands in a
+  // later round.
+  void _goHome() {
+    setState(() => _stage = _FlowStage.home);
   }
 
   @override
@@ -95,11 +103,14 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
             onRegister: () => _goLogin(true),
             onLogin: () => _goLogin(false),
           )
-        else
+        else if (_stage == _FlowStage.login)
           LoginScreen(
             initialRegisterMode: _loginIsRegister,
             onBack: _goWelcome,
-          ),
+            onPlaceholderLogin: _goHome,
+          )
+        else
+          const HomeScreen(),
         if (_splashVisible)
           AnimatedBuilder(
             animation: _exit,

@@ -17,21 +17,28 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///   15sp SemiBold NotelTextPrimary label
 /// - Terms line: 8.5sp, centered below the card
 ///
-/// UI only this round: the Log In / Sign Up / Google / reset buttons are
-/// no-ops (auth logic lands later). The login/register/forgot mode switch
-/// is live UI state, as is the password-visibility toggle.
+/// UI only this round: the Sign Up / Google / reset buttons are
+/// no-ops (auth logic lands later). The "Log In" button (login mode)
+/// fires [onPlaceholderLogin] — PLACEHOLDER navigation, no
+/// authentication happens; real auth lands in a later round.
+/// The login/register/forgot mode switch is live UI state, as is the
+/// password-visibility toggle.
 ///
 /// [initialRegisterMode] mirrors the native `mode` query arg: `true`
 /// starts on "Create Your Account", `false` on "Welcome Back".
 /// [onBack] pops to the welcome screen (native back button).
+/// [onPlaceholderLogin] navigates to the home screen without
+/// authenticating (placeholder until real auth exists).
 class LoginScreen extends StatefulWidget {
   final bool initialRegisterMode;
   final VoidCallback? onBack;
+  final VoidCallback? onPlaceholderLogin;
 
   const LoginScreen({
     super.key,
     this.initialRegisterMode = true,
     this.onBack,
+    this.onPlaceholderLogin,
   });
 
   @override
@@ -246,12 +253,20 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
             const SizedBox(height: 4),
           ],
-          // Main action button (no-op this round).
+          // Main action button: "Log In" (login mode) fires the
+          // placeholder navigation; "Sign Up" and "Send Reset Link"
+          // stay no-ops (their real destinations don't exist yet).
           SizedBox(
             width: double.infinity,
             height: 50,
             child: ElevatedButton(
-              onPressed: () {},
+              onPressed: () {
+                // PLACEHOLDER: navigates without authenticating; real
+                // auth lands in a later round.
+                if (!_isRegisterMode && !_isForgotPasswordMode) {
+                  widget.onPlaceholderLogin?.call();
+                }
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: NotelColors.primary,
                 foregroundColor: NotelColors.background,
