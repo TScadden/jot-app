@@ -503,7 +503,7 @@ class MainActivity : FlutterFragmentActivity() {
                     agg.forEach { bucket ->
                         val avg = bucket.result[HeartRateRecord.BPM_AVG]
                         if (avg != null && avg > 0) {
-                            avgByDate[dateOf(bucket.startTime)] = avg
+                            avgByDate[dateOf(bucket.startTime)] = avg.toDouble()
                         }
                     }
                     val windowDates = (0 until n).map { i ->
