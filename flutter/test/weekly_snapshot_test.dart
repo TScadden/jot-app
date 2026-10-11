@@ -6,7 +6,7 @@ import 'package:tabs_lab/src/features/home/weekly_snapshot_card.dart';
 
 void main() {
   group('TodaySummaryCard', () {
-    testWidgets('renders title, subtitle, and chevron; expanded by default',
+    testWidgets('renders title, subtitle, and chevron; collapsed by default',
         (tester) async {
       await tester.pumpWidget(
         const MaterialApp(home: Scaffold(body: TodaySummaryCard())),
@@ -14,12 +14,30 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Today Summary'), findsOneWidget);
-      // Honest empty state — no plan sources wired yet.
-      expect(find.text('No plans recorded today'), findsNWidgets(2));
+      // Header subtitle only — expanded content (with its second
+      // "No plans recorded today") is hidden while collapsed.
+      expect(find.text('No plans recorded today'), findsOneWidget);
+      expect(find.text("Today's Plan"), findsNothing);
+      expect(find.text('Trends'), findsNothing);
+      expect(find.text('Not enough data yet'), findsNothing);
+      // Chevron points down when collapsed.
+      expect(find.byIcon(Icons.keyboard_arrow_down), findsOneWidget);
+    });
+
+    testWidgets('tapping expands the collapsed card', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(home: Scaffold(body: TodaySummaryCard())),
+      );
+      await tester.pumpAndSettle();
+
+      // Starts collapsed.
+      expect(find.text("Today's Plan"), findsNothing);
+
+      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
+      await tester.pumpAndSettle();
       expect(find.text("Today's Plan"), findsOneWidget);
       expect(find.text('Trends'), findsOneWidget);
       expect(find.text('Not enough data yet'), findsOneWidget);
-      // Chevron points up when expanded.
       expect(find.byIcon(Icons.keyboard_arrow_up), findsOneWidget);
     });
 
@@ -29,14 +47,15 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.keyboard_arrow_up), findsOneWidget);
+      expect(find.text("Today's Plan"), findsOneWidget);
+
       await tester.tap(find.byIcon(Icons.keyboard_arrow_up));
       await tester.pumpAndSettle();
       expect(find.byIcon(Icons.keyboard_arrow_down), findsOneWidget);
       expect(find.text("Today's Plan"), findsNothing);
-
-      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
-      await tester.pumpAndSettle();
-      expect(find.text("Today's Plan"), findsOneWidget);
     });
   });
 

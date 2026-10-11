@@ -15,8 +15,8 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// - plan list: "No plans recorded today"
 /// - trends: "Not enough data yet" (native `TodayTrendsState.Empty`)
 ///
-/// The chevron expand/collapse is live UI state (native default:
-/// expanded).
+/// The chevron expand/collapse is live UI state; the card starts
+/// collapsed per founder request (native defaults to expanded).
 class TodaySummaryCard extends StatefulWidget {
   const TodaySummaryCard({super.key});
 
@@ -25,8 +25,11 @@ class TodaySummaryCard extends StatefulWidget {
 }
 
 class _TodaySummaryCardState extends State<TodaySummaryCard> {
-  // Native default: expanded (todaySummaryExpanded pref defaults true).
-  bool _expanded = true;
+  // Round 13c — DELIBERATE DIVERGENCE FROM NATIVE: the native
+  // `todaySummaryExpanded` pref defaults to true (expanded), but the
+  // founder explicitly requested the card start collapsed in the
+  // Flutter rebuild. Toggle behavior is unchanged.
+  bool _expanded = false;
 
   void _toggle() => setState(() => _expanded = !_expanded);
 
