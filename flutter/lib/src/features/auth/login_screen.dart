@@ -20,8 +20,19 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// UI only this round: the Log In / Sign Up / Google / reset buttons are
 /// no-ops (auth logic lands later). The login/register/forgot mode switch
 /// is live UI state, as is the password-visibility toggle.
+///
+/// [initialRegisterMode] mirrors the native `mode` query arg: `true`
+/// starts on "Create Your Account", `false` on "Welcome Back".
+/// [onBack] pops to the welcome screen (native back button).
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  final bool initialRegisterMode;
+  final VoidCallback? onBack;
+
+  const LoginScreen({
+    super.key,
+    this.initialRegisterMode = true,
+    this.onBack,
+  });
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -29,7 +40,7 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   // Native default: initialMode = "register".
-  bool _isRegisterMode = true;
+  late bool _isRegisterMode = widget.initialRegisterMode;
   bool _isForgotPasswordMode = false;
   bool _passwordVisible = false;
   bool _ageConfirmed = false;
@@ -89,7 +100,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
             // Logo header — pinned to the top.
-            const Positioned(
+            Positioned(
               top: 0,
               left: 0,
               right: 0,
@@ -98,7 +109,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
                 child: Padding(
                   padding: EdgeInsets.only(top: 8.0),
-                  child: _TopLogoHeader(),
+                  child: _TopLogoHeader(onBack: widget.onBack),
                 ),
               ),
             ),
@@ -383,7 +394,9 @@ class _LoginScreenState extends State<LoginScreen> {
 /// Port of the native `TopLogoHeader`: circular back button on the left,
 /// centered Tabs logo + wordmark.
 class _TopLogoHeader extends StatelessWidget {
-  const _TopLogoHeader();
+  final VoidCallback? onBack;
+
+  const _TopLogoHeader({this.onBack});
 
   @override
   Widget build(BuildContext context) {
@@ -401,7 +414,7 @@ class _TopLogoHeader extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               child: IconButton(
-                onPressed: () {},
+                onPressed: onBack,
                 padding: EdgeInsets.zero,
                 icon: const Icon(
                   Icons.arrow_back,

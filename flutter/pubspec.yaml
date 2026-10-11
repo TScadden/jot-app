@@ -60,6 +60,9 @@ flutter:
   assets:
     - assets/images/ic_tabs_note.png
     - assets/images/ic_google_logo.png
+    - assets/images/onboarding_avatar_man.png
+    - assets/images/onboarding_avatar_woman1.png
+    - assets/images/onboarding_avatar_woman2.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

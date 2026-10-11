@@ -40,7 +40,7 @@ void main() {
     expect(find.text('Back to Log In'), findsOneWidget);
   });
 
-  testWidgets('app flow reveals login after splash exit', (tester) async {
+  testWidgets('app flow reveals welcome after splash exit', (tester) async {
     await tester.pumpWidget(const TabsLabApp());
     // Splash entry visible first.
     expect(find.text('Health & Symptom Intelligence'), findsOneWidget);
@@ -48,7 +48,16 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1900));
     await tester.pump(const Duration(milliseconds: 700));
     await tester.pump();
-    expect(find.text('Create Your Account'), findsOneWidget);
+    expect(find.text('Notes that build'), findsOneWidget);
     expect(find.text('Health & Symptom Intelligence'), findsNothing);
+  });
+
+  testWidgets('login screen honors initialRegisterMode=false', (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: LoginScreen(initialRegisterMode: false),
+    ));
+    expect(find.text('Welcome Back'), findsOneWidget);
+    expect(find.text('Forgot Password?'), findsOneWidget);
+    expect(find.text('I confirm I am 13 or older.'), findsNothing);
   });
 }

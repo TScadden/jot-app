@@ -10,6 +10,12 @@ abstract final class NotelColors {
   static const textPrimary = Color(0xFFF0EEFF); // Near-white
   static const textSecondary = Color(0xFF7A8FAF); // Muted blue-grey
   static const error = Color(0xFFFF6B6B);
+  static const info = Color(0xFF42A5F5); // NotelInfo (dark palette)
+
+  /// Callout-chip icon backgrounds on the welcome screen
+  /// (native: 0xFFA855F7 / 0xFFEC4899 literals).
+  static const chipPurple = Color(0xFFA855F7);
+  static const chipPink = Color(0xFFEC4899);
 
   /// Card hairline: primary at 15% alpha (native: NotelPrimary.copy(alpha = 0.15f)).
   static const cardBorder = Color(0x267C6EFF);

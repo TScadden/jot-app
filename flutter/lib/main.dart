@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/features/auth/login_screen.dart';
+import 'package:tabs_lab/src/features/onboarding/welcome_screen.dart';
 import 'package:tabs_lab/src/features/splash/splash_screen.dart';
 
 void main() {
@@ -19,18 +20,19 @@ class TabsLabApp extends StatelessWidget {
   }
 }
 
-/// Round 2 app flow: splash entry (650ms) -> hold (1200ms) -> native-spec
+/// Round 3 app flow: splash entry (650ms) -> hold (1200ms) -> native-spec
 /// exit (650ms slide-up, FastOutSlowIn, alpha holding through the first 60%
-/// of travel then fading) revealing the login screen underneath.
-///
-/// The welcome_onboarding screen does not exist yet; it will slot in
-/// between splash and login in a later round.
+/// of travel then fading) revealing the welcome screen underneath.
+/// Welcome Register -> login screen in register mode;
+/// welcome Log In -> login screen in login mode; login back -> welcome.
 class AppFlow extends StatefulWidget {
   const AppFlow({super.key});
 
   @override
   State<AppFlow> createState() => _AppFlowState();
 }
+
+enum _FlowStage { welcome, login }
 
 class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
   static const _entryMs = 650;
@@ -40,6 +42,19 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
   late final AnimationController _exitController;
   late final Animation<double> _exit;
   bool _splashVisible = true;
+  _FlowStage _stage = _FlowStage.welcome;
+  bool _loginIsRegister = true;
+
+  void _goLogin(bool isRegister) {
+    setState(() {
+      _loginIsRegister = isRegister;
+      _stage = _FlowStage.login;
+    });
+  }
+
+  void _goWelcome() {
+    setState(() => _stage = _FlowStage.welcome);
+  }
 
   @override
   void initState() {
@@ -75,7 +90,16 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
     final screenHeight = MediaQuery.sizeOf(context).height;
     return Stack(
       children: [
-        const LoginScreen(),
+        if (_stage == _FlowStage.welcome)
+          WelcomeScreen(
+            onRegister: () => _goLogin(true),
+            onLogin: () => _goLogin(false),
+          )
+        else
+          LoginScreen(
+            initialRegisterMode: _loginIsRegister,
+            onBack: _goWelcome,
+          ),
         if (_splashVisible)
           AnimatedBuilder(
             animation: _exit,
