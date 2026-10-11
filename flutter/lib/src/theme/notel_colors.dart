@@ -10,7 +10,18 @@ abstract final class NotelColors {
   static const textPrimary = Color(0xFFF0EEFF); // Near-white
   static const textSecondary = Color(0xFF7A8FAF); // Muted blue-grey
   static const error = Color(0xFFFF6B6B);
+  static const success = Color(0xFF4CAF50); // NotelSuccess (dark palette)
+  static const warning = Color(0xFFFFB74D); // NotelWarning (dark palette)
   static const info = Color(0xFF42A5F5); // NotelInfo (dark palette)
+
+  /// Legacy dark-theme glass tokens (native `LegacyDark*` in Color.kt).
+  static const legacyDarkScrim = Color(0x4D000000); // Black @ 30% — dark card fill
+  static const legacyDarkHairline = Color(0x1AFFFFFF); // White @ 10% — hairline border
+  static const legacyDarkDivider = Color(0x26FFFFFF); // White @ 15% — dividers
+  static const legacyDarkOnDark = Color(0xFFFFFFFF); // White — text on dark scrim
+
+  /// Best-streak gold (native: Color(0xFFFFD700) literal in TodayScreen.kt).
+  static const streakGold = Color(0xFFFFD700);
 
   /// Callout-chip icon backgrounds on the welcome screen
   /// (native: 0xFFA855F7 / 0xFFEC4899 literals).

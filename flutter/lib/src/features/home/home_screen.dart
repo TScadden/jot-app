@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
+import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// Round 4 — home screen, background only (native `today` route).
@@ -19,6 +20,9 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// - Watch action: watch icon (24dp, `NotelPrimary`). Native calls
 ///   `onNavigateToConnections` here; that screen doesn't exist yet, so
 ///   the tap is a no-op for now.
+/// Round 7 — vitals strip + streak row sit under the header (native
+/// `TodayScreen.kt` items 1–2). The "Logged in as" indicator stays below
+/// them until real home content lands.
 class HomeScreen extends StatefulWidget {
   final String? email;
   final WeatherApiClient? weatherApi;
@@ -114,10 +118,15 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: SizedBox.expand(
-        child: widget.email == null
-            ? null
-            : Center(
+      body: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const VitalsStrip(),
+            const HomeStreakRow(),
+            if (widget.email != null)
+              Padding(
+                padding: const EdgeInsets.all(24.0),
                 child: Text(
                   'Logged in as ${widget.email}',
                   style: const TextStyle(
@@ -127,6 +136,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   textAlign: TextAlign.center,
                 ),
               ),
+          ],
+        ),
       ),
     );
   }
