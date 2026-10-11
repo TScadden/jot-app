@@ -327,9 +327,10 @@ void main() {
         ),
       ));
       // First frame: cached numbers, no "--" flash for the seeded cells.
+      // (Round 17b: sleep renders native "7h0m", not total minutes.)
       expect(find.text('72'), findsOneWidget);
       expect(find.text('450'), findsOneWidget);
-      expect(find.text('420'), findsOneWidget);
+      expect(find.text('7h0m'), findsOneWidget);
       expect(find.text('3'), findsOneWidget);
       expect(find.text('12'), findsOneWidget);
       expect(find.text('30'), findsOneWidget);

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
@@ -91,6 +92,54 @@ void main() {
       // Two streak pills + counter label + counter number = 4 placeholders.
       expect(find.text('--'), findsNWidgets(4));
       expect(find.text('Days'), findsOneWidget);
+    });
+  });
+
+  group('formatSleepMinutes (round 17b — native TodayScreen.kt format)', () {
+    test('522 minutes renders as 8h42m', () {
+      expect(formatSleepMinutes(522), '8h42m');
+    });
+
+    test('exactly one hour renders as 1h0m', () {
+      expect(formatSleepMinutes(60), '1h0m');
+    });
+
+    test('under an hour renders as minutes only', () {
+      expect(formatSleepMinutes(45), '45m');
+      expect(formatSleepMinutes(59), '59m');
+    });
+
+    testWidgets('sleep cell shows hours+minutes, not total minutes',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            backgroundColor: NotelColors.background,
+            body: const VitalsStrip(
+              vitals: TodayVitals(sleepMinutes: 522),
+              // Instant render — no animation timing involved.
+              animateCountUps: false,
+            ),
+          ),
+        ),
+      );
+      expect(find.text('8h42m'), findsOneWidget);
+      expect(find.text('522'), findsNothing);
+    });
+
+    testWidgets('missing sleep still shows "--"', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            backgroundColor: NotelColors.background,
+            body: const VitalsStrip(
+              vitals: TodayVitals(sleepMinutes: null),
+              animateCountUps: false,
+            ),
+          ),
+        ),
+      );
+      expect(find.text('--'), findsWidgets);
     });
   });
 }

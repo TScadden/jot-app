@@ -3,6 +3,18 @@ import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
+/// Round 17b — formats sleep minutes exactly like the native
+/// `TodayScreen.kt` vitals strip: "8h42m", "1h0m", "45m" (under an hour).
+/// Missing/zero sleep never reaches here (the repo nulls it and [CountUp]
+/// renders "--"); the cache keeps storing raw minutes and formatting
+/// happens at render time, so the CountUp animation tweens the minute
+/// value and formats each frame.
+String formatSleepMinutes(int minutes) {
+  final h = minutes ~/ 60;
+  final m = minutes % 60;
+  return h > 0 ? '${h}h${m}m' : '${m}m';
+}
+
 /// Round 7 — the vitals strip ("Restored Black Health Metrics Box" in the
 /// native `TodayScreen.kt`).
 ///
@@ -88,6 +100,8 @@ class VitalsStrip extends StatelessWidget {
               value: v?.sleepMinutes,
               style: _valueStyle,
               animate: animateCountUps,
+              // Round 17b — native shows "8h42m", not total minutes.
+              format: formatSleepMinutes,
             ),
           ),
         ],
