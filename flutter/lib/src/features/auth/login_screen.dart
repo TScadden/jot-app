@@ -45,6 +45,22 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _passwordVisible = false;
   bool _ageConfirmed = false;
 
+  /// Total vertical footprint of the pinned logo header: the outer
+  /// vertical padding (16) + the extra top padding (8) + the header
+  /// itself (40). Keep in sync with the header Padding widgets below.
+  static const double _headerFootprint = 64.0;
+
+  /// Breathing room between the pinned header and the card's scroll
+  /// region. The scroll region starts at _headerFootprint + _headerGap,
+  /// so card content can never slide under the header, in any viewport
+  /// configuration (keyboard open or closed).
+  static const double _headerGap = 16.0;
+
+  /// Breathing room between the pinned header and the card's scroll
+  /// region. The scroll region starts at _headerFootprint + _headerGap,
+  /// so card content can never slide under the header, in any viewport
+  /// configuration (keyboard open or closed).
+
   String get _title => _isForgotPasswordMode
       ? 'Reset Password'
       : _isRegisterMode
@@ -82,38 +98,55 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       backgroundColor: NotelColors.background,
       body: SafeArea(
-        child: Stack(
-          children: [
-            // Card + terms — centered vertically and horizontally.
-            Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 20.0, vertical: 16.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildCard(),
-                    const SizedBox(height: 10),
-                    _buildTermsLine(),
-                  ],
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // The card's scroll region starts below the pinned header and
+            // can never slide under it. When the keyboard shrinks the
+            // viewport, this whole region shrinks with it and the card
+            // scrolls internally.
+            final double regionTop = _headerFootprint + _headerGap;
+            final double regionMinHeight =
+                (constraints.maxHeight - regionTop - 32.0)
+                    .clamp(0.0, double.infinity);
+            return Stack(
+              children: [
+                Padding(
+                  padding: EdgeInsets.only(top: regionTop),
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20.0, vertical: 16.0),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: regionMinHeight,
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _buildCard(),
+                          const SizedBox(height: 10),
+                          _buildTermsLine(),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            // Logo header — pinned to the top.
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: Padding(
-                padding:
-                    EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
-                child: Padding(
-                  padding: EdgeInsets.only(top: 8.0),
-                  child: _TopLogoHeader(onBack: widget.onBack),
+                // Logo header — pinned to the top.
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20.0, vertical: 16.0),
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: _TopLogoHeader(onBack: widget.onBack),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          ],
+              ],
+            );
+          },
         ),
       ),
     );
@@ -121,6 +154,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Widget _buildCard() {
     return Container(
+      key: const ValueKey('login_card'),
       width: double.infinity,
       decoration: BoxDecoration(
         color: NotelColors.surface,
@@ -289,11 +323,14 @@ class _LoginScreenState extends State<LoginScreen> {
                     height: 20,
                   ),
                   const SizedBox(width: 12),
-                  Text(
-                    _googleButtonLabel,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
+                  Flexible(
+                    child: Text(
+                      _googleButtonLabel,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
