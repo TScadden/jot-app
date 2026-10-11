@@ -95,7 +95,7 @@ class WeatherDetails {
 /// - Location data (city/lat/lon) is used only to build the Open-Meteo
 ///   request and is NEVER logged or persisted. Round 15 adds a
 ///   deliberate, founder-requested exception: an IN-MEMORY cache
-///   (process lifetime only, 15-minute TTL) keyed by rounded coordinates,
+///   (process lifetime only, 5-minute TTL) keyed by rounded coordinates,
 ///   so repeat opens don't re-hit the network. Nothing is written to
 ///   disk; entries expire and vanish.
 /// - Timeouts: 6s for ipinfo, 8s for Open-Meteo (tightened in round 15
@@ -119,7 +119,7 @@ class WeatherApiClient {
 
   WeatherApiClient({
     http.Client? client,
-    this.cacheTtl = const Duration(minutes: 15),
+    this.cacheTtl = const Duration(minutes: 5),
     this.ipInfoTimeout = const Duration(seconds: 6),
     this.meteoTimeout = const Duration(seconds: 8),
   }) : _client = client ?? http.Client();

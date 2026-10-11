@@ -31,6 +31,11 @@ class _CountingClient {
 
 void main() {
   group('weather cache (round 15)', () {
+    test('default cache TTL is 5 minutes (round 15b)', () {
+      final api = WeatherApiClient();
+      expect(api.cacheTtl, const Duration(minutes: 5));
+    });
+
     test('second detailed call is a cache hit: no new network requests',
         () async {
       final counter = _CountingClient();
