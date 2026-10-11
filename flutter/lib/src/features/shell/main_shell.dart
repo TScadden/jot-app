@@ -4,6 +4,7 @@ import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
+import 'package:tabs_lab/src/features/tools/tools_screen.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// Round 9 — the post-login shell: tab state, the bottom nav dock, and
@@ -11,7 +12,9 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///
 /// - Home tab → the real home screen we've been building (Today header,
 ///   vitals strip, summary, weekly snapshot).
-/// - Tools, quick-log, Heart, Settings → blank navy placeholders for now;
+/// - Tools → the tools grid (round 17, UI only — cards open blank
+///   placeholders for now).
+/// - Quick-log, Heart, Settings → blank navy placeholders for now;
 ///   their real screens land in future rounds. The founder's directive:
 ///   "they should just go to a blank screen."
 /// - The dock stays visible on every tab. The active icon highlights in
@@ -54,7 +57,7 @@ class _MainShellState extends State<MainShell> {
               locationService: widget.locationService,
               healthConnectService: widget.healthConnectService,
             ),
-          DockTab.tools => const _BlankTab(key: ValueKey('blank_tools')),
+          DockTab.tools => const ToolsScreen(key: ValueKey('tools_screen')),
           DockTab.quickLog =>
             const _BlankTab(key: ValueKey('blank_quicklog')),
           DockTab.heart => const _BlankTab(key: ValueKey('blank_heart')),
