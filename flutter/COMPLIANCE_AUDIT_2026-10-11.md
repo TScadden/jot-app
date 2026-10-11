@@ -20,7 +20,7 @@
 | Session token, refresh token, user ID, email | Login success | Bearer header to `api.jottracker.com` | `flutter_secure_storage` (Android Keystore-backed EncryptedSharedPreferences) | Never |
 | IP-based location (city, lat/lon, country from ipinfo.io) | Home screen load (weather) | `https://ipinfo.io/json` → coords forwarded to `https://api.open-meteo.com/v1/forecast` (HTTPS) | Memory only, never persisted | Never |
 | GPS coordinates | Weather-icon tap + system permission grant | `api.open-meteo.com` only (HTTPS) | Memory only, never persisted | Never |
-| Health Connect reads (HR samples, sleep, calories, steps, resting HR, BP) | Home screen load, only when HC connected | Nowhere — on-device reads, used in-memory for vitals/snapshot | Not persisted (only error *codes*, never values, in `lastReadErrorCode`) | Never |
+| Health Connect reads (HR samples, sleep, calories, steps, resting HR, BP) | Home screen load, only when HC connected | Nowhere — on-device reads, used in-memory for vitals/snapshot | Round 16+: one encrypted JSON blob in `flutter_secure_storage` (`home_data_cache_v1`): today's vitals + streaks, stale-while-revalidate, date-bound (vitals apply only when fetched today; streaks ≤7 days). No network transmission. (Was "Not persisted" before round 16.) | Never |
 | HC connection state (granted permission *names* + timestamp) | Permission grant | Nowhere | `flutter_secure_storage` | Never |
 | Streak, log entries, habits, manual BP logs | Home screen load, only when logged in | `GET https://api.jottracker.com/api/sync/pull`, `/api/habits` (Bearer, HTTPS) | Memory only | Never |
 
@@ -57,6 +57,8 @@ No analytics, crash-reporting, or ad SDKs in `pubspec.yaml`. No `print`/`debugPr
 
 ### MF-4 — Verify the hosted privacy policy covers the Flutter flows
 **Not a code change; a verification step.** With MF-2 fixed, users can reach `https://api.jottracker.com/privacy.html`. Confirm that page discloses: (a) the 14 Health Connect data types + history read, (b) IP-based geolocation via ipinfo.io and weather via Open-Meteo, (c) GPS use for weather on explicit tap. If any are missing, update the hosted page (server repo) before the next phone build.
+
+**Round 16 extension:** when the hosted policy is next updated, also note the on-device encrypted caching of home-screen health values (one `flutter_secure_storage` JSON blob: today's vitals + streaks, stale-while-revalidate, no network transmission). The policy's §1b currently describes health data as backend-stored only.
 
 ---
 

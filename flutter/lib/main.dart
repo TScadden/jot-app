@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
+import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
@@ -9,7 +10,12 @@ import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/onboarding/welcome_screen.dart';
 import 'package:tabs_lab/src/features/splash/splash_screen.dart';
 
-void main() {
+void main() async {
+  // Round 16 — warm the home-data cache before the first frame so a
+  // cold start shows last-known numbers instantly instead of "--".
+  // Never throws; a missing/corrupt cache just starts empty.
+  WidgetsFlutterBinding.ensureInitialized();
+  await HomeDataCache.instance.warmFromDisk();
   runApp(const TabsLabApp());
 }
 

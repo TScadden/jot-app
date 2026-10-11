@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
+import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/connections/connections_screen.dart';
@@ -54,12 +57,18 @@ class HomeScreen extends StatefulWidget {
   /// is persisted, so any instance sees the same connection.
   final HealthConnectService? healthConnectService;
 
+  /// Injectable for tests; defaults to a real repository built from
+  /// [healthConnectService]. Lets tests control (or stall) the
+  /// background health-data load.
+  final HealthRepository? healthRepository;
+
   const HomeScreen(
       {super.key,
       this.email,
       this.weatherApi,
       this.locationService,
-      this.healthConnectService});
+      this.healthConnectService,
+      this.healthRepository});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -92,9 +101,20 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _healthRepo = HealthRepository(
-      hc: widget.healthConnectService ?? HealthConnectService(),
-    );
+    _healthRepo = widget.healthRepository ??
+        HealthRepository(
+          hc: widget.healthConnectService ?? HealthConnectService(),
+        );
+    // Round 16 — stale-while-revalidate: seed the numbers from the
+    // cache so they render on the first frame (no "--" flash on tab
+    // switches or cold start). The refresh below runs in the background
+    // and swaps in silently when it differs.
+    final cached = HomeDataCache.instance.snapshot;
+    if (cached.vitalsLoaded) _vitals = cached.vitals;
+    if (cached.streakLoaded) {
+      _currentStreak = cached.currentStreak;
+      _bestStreak = cached.bestStreak;
+    }
     _resolveCountUpGate();
     _loadWeather();
     _loadHealthData();
@@ -114,9 +134,17 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _countUpsAnimate = animate);
   }
 
-  /// Loads today's vitals + streaks once at startup. Everything is
+  /// Loads today's vitals + streaks once per mount. Everything is
   /// honest-empty on failure: the repository never throws, and any
   /// individual piece simply stays null/"--".
+  ///
+  /// Round 16 — stale-while-revalidate: the completed load is written
+  /// into [HomeDataCache] (memory + disk) and the UI only rebuilds when
+  /// the fresh data actually differs from what was seeded. A failed
+  /// refresh keeps the old cache — the numbers never flash empty.
+  /// Background updates never animate: the once-per-day count-up gate
+  /// (round 15c) already fired for this view, so CountUp renders
+  /// instantly.
   Future<void> _loadHealthData() async {
     final hc = _healthRepo.hc;
     bool connected = false;
@@ -127,12 +155,19 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     final vitals = await _healthRepo.loadTodayVitals(connected: connected);
     final streak = await _healthRepo.loadStreak();
+    final cache = HomeDataCache.instance;
+    final changed = cache.applyVitals(vitals) |
+        cache.applyStreak(streak.current, streak.best);
+    // Persist in the background; never block the UI on storage.
+    unawaited(cache.persist());
     if (!mounted) return;
-    setState(() {
-      _vitals = vitals;
-      _currentStreak = streak.current;
-      _bestStreak = streak.best;
-    });
+    if (changed) {
+      setState(() {
+        _vitals = vitals;
+        _currentStreak = streak.current;
+        _bestStreak = streak.best;
+      });
+    }
   }
 
   Future<void> _loadWeather() async {
