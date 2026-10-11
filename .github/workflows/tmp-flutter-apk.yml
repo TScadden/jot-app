@@ -3,6 +3,10 @@ name: tmp-flutter-apk-r1
 
 on:
   workflow_dispatch:
+  push:
+    branches: [flutter-app]
+    paths:
+      - '.github/workflows/tmp-flutter-apk.yml'
 
 jobs:
   build-apk:
