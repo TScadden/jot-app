@@ -7,7 +7,10 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// (`welcome_onboarding` route, dark theme). Values taken straight from
 /// the Kotlin source:
 /// - Scaffold background: NotelBackground #080E1A
-/// - Content: horizontal 20dp / vertical 16dp padding, SpaceBetween column
+/// - Content: horizontal 20dp / vertical 16dp padding; outer Column is
+///   SpaceBetween with three sections — logo header pinned top, avatar rows
+///   vertically centered in the middle (equal free space above/below),
+///   slogan + buttons pinned bottom (native SpaceBetween semantics).
 /// - TopLogoHeader (no back button here): 28dp logo + "Tabs" 26sp Black,
 ///   NotelPrimary, 1sp letter spacing; 8dp top padding
 /// - Avatar rows: 58dp circles, radial gradient (tint @ 40% -> NotelSurface),
@@ -52,58 +55,56 @@ class WelcomeScreen extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
+                    // TOP LOGO HEADER (no back / skip on welcome) — pinned top.
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8.0),
+                      child: _WelcomeHeader(),
+                    ),
+                    // AVATAR + CALLOUT ROWS — middle section. spaceBetween puts
+                    // equal free space above and below it, so the rows sit
+                    // vertically centered between the header and the buttons
+                    // (native SpaceBetween semantics: header top, rows middle,
+                    // slogan + buttons bottom).
                     Column(
                       children: [
-                        // TOP LOGO HEADER (no back / skip on welcome)
-                        const Padding(
-                          padding: EdgeInsets.only(top: 8.0),
-                          child: _WelcomeHeader(),
+                        _AvatarRow(
+                          avatarAsset:
+                              'assets/images/onboarding_avatar_man.png',
+                          ringTint: NotelColors.primary,
+                          chip: const _CalloutChip(
+                            icon: Icons.biotech,
+                            iconBg: NotelColors.info,
+                            text: 'Track symptoms and treatments',
+                          ),
+                          avatarFirst: true,
                         ),
-                        const SizedBox(height: 12),
-                        // AVATAR + CALLOUT ROWS
-                        Column(
-                          children: [
-                            _AvatarRow(
-                              avatarAsset:
-                                  'assets/images/onboarding_avatar_man.png',
-                              ringTint: NotelColors.primary,
-                              chip: const _CalloutChip(
-                                icon: Icons.biotech,
-                                iconBg: NotelColors.info,
-                                text: 'Track symptoms and treatments',
-                              ),
-                              avatarFirst: true,
-                            ),
-                            const SizedBox(height: 16),
-                            _AvatarRow(
-                              avatarAsset:
-                                  'assets/images/onboarding_avatar_woman1.png',
-                              ringTint: NotelColors.primary,
-                              chip: const _CalloutChip(
-                                icon: Icons.emoji_events,
-                                iconBg: NotelColors.chipPurple,
-                                text: 'Reach your goals',
-                              ),
-                              avatarFirst: false,
-                            ),
-                            const SizedBox(height: 16),
-                            _AvatarRow(
-                              avatarAsset:
-                                  'assets/images/onboarding_avatar_woman2.png',
-                              ringTint: NotelColors.chipPink,
-                              chip: const _CalloutChip(
-                                icon: Icons.fingerprint,
-                                iconBg: NotelColors.chipPurple,
-                                text: 'Learn patterns and get insights',
-                              ),
-                              avatarFirst: true,
-                            ),
-                          ],
+                        const SizedBox(height: 16),
+                        _AvatarRow(
+                          avatarAsset:
+                              'assets/images/onboarding_avatar_woman1.png',
+                          ringTint: NotelColors.primary,
+                          chip: const _CalloutChip(
+                            icon: Icons.emoji_events,
+                            iconBg: NotelColors.chipPurple,
+                            text: 'Reach your goals',
+                          ),
+                          avatarFirst: false,
+                        ),
+                        const SizedBox(height: 16),
+                        _AvatarRow(
+                          avatarAsset:
+                              'assets/images/onboarding_avatar_woman2.png',
+                          ringTint: NotelColors.chipPink,
+                          chip: const _CalloutChip(
+                            icon: Icons.fingerprint,
+                            iconBg: NotelColors.chipPurple,
+                            text: 'Learn patterns and get insights',
+                          ),
+                          avatarFirst: true,
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    // SLOGAN + BUTTONS
+                    // SLOGAN + BUTTONS — pinned bottom.
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
