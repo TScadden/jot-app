@@ -4,6 +4,7 @@ import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/home/today_summary_card.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
+import 'package:tabs_lab/src/features/home/weather_sheet.dart';
 import 'package:tabs_lab/src/features/home/weekly_snapshot_card.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
@@ -89,8 +90,28 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Privacy: the position is used ONLY to build the Open-Meteo
   /// request below. It is never logged, stored, or sent anywhere
   /// except api.open-meteo.com (HTTPS).
+  /// Round 11 — weather icon tap: opens the weather detail sheet AND
+  /// keeps the round-10 permission flow (tap → permission dialog → GPS
+  /// fetch → header temp upgrade). The sheet shares the same GPS future
+  /// so it can load detailed GPS weather once the fix lands.
   Future<void> _onWeatherTap() async {
-    if (_locationRefreshInFlight) return;
+    // Kick off the GPS fix without awaiting — the sheet awaits the same
+    // future for its detailed weather.
+    final gpsFuture = _fetchGpsPositionForHeader();
+    if (!mounted) return;
+    await showWeatherSheet(
+      context: context,
+      weatherApi: widget.weatherApi ?? WeatherApiClient(),
+      locationService: widget.locationService ?? LocationService(),
+      gpsPositionFuture: gpsFuture,
+    );
+  }
+
+  /// Round 10 GPS upgrade, refactored to return the position so the
+  /// weather sheet can share it. Upgrades the header temp on success;
+  /// any failure falls back silently to the IP fetch.
+  Future<Position?> _fetchGpsPositionForHeader() async {
+    if (_locationRefreshInFlight) return null;
     _locationRefreshInFlight = true;
     try {
       final location = widget.locationService ?? LocationService();
@@ -98,7 +119,7 @@ class _HomeScreenState extends State<HomeScreen> {
       // Location services off → IP fallback, silently.
       if (!await location.isServiceEnabled()) {
         await _loadWeather();
-        return;
+        return null;
       }
 
       var permission = await location.checkPermission();
@@ -110,14 +131,14 @@ class _HomeScreenState extends State<HomeScreen> {
       if (permission != LocationPermission.whileInUse &&
           permission != LocationPermission.always) {
         await _loadWeather();
-        return;
+        return null;
       }
 
       final position = await location.getPosition();
       // No fix (timeout etc.) → IP fallback, silently.
       if (position == null) {
         await _loadWeather();
-        return;
+        return null;
       }
 
       final temp = await (widget.weatherApi ?? WeatherApiClient())
@@ -126,15 +147,17 @@ class _HomeScreenState extends State<HomeScreen> {
         longitude: position.longitude,
         countryCode: _countryCode,
       );
-      if (!mounted) return;
+      if (!mounted) return position;
       setState(() {
         _temp = temp;
         _weatherLoaded = temp != null;
       });
+      return position;
     } catch (_) {
       // Anything unexpected: fall back to the IP fetch rather than
       // surfacing an error.
       await _loadWeather();
+      return null;
     } finally {
       _locationRefreshInFlight = false;
     }
