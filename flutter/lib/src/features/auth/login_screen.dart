@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Round 2 — login / register screen.
 ///
@@ -529,6 +530,21 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  /// MF-2 (Juno compliance, Oct 2026): the Terms/Privacy links open the
+  /// hosted legal pages in the external browser, matching native
+  /// (`LoginScreen.kt`: ACTION_VIEW intents). Silent on failure — the
+  /// links simply don't open rather than surfacing an error.
+  Future<void> _openLegalPage(String url) async {
+    final uri = Uri.parse(url);
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    } catch (_) {
+      // Link doesn't open; keep the user on the login screen.
+    }
+  }
+
   Widget _buildTermsLine() {
     const base = TextStyle(
         fontSize: 8.5, color: NotelColors.textSecondary);
@@ -539,12 +555,20 @@ class _LoginScreenState extends State<LoginScreen> {
     return Wrap(
       alignment: WrapAlignment.center,
       crossAxisAlignment: WrapCrossAlignment.center,
-      children: const [
-        Text('By signing up you agree to our ', style: base),
-        Text('Terms of Use', style: link),
-        Text(' and ', style: base),
-        Text('Privacy Policy', style: link),
-        Text('.', style: base),
+      children: [
+        const Text('By signing up you agree to our ', style: base),
+        GestureDetector(
+          onTap: () =>
+              _openLegalPage('https://api.jottracker.com/terms.html'),
+          child: const Text('Terms of Use', style: link),
+        ),
+        const Text(' and ', style: base),
+        GestureDetector(
+          onTap: () =>
+              _openLegalPage('https://api.jottracker.com/privacy.html'),
+          child: const Text('Privacy Policy', style: link),
+        ),
+        const Text('.', style: base),
       ],
     );
   }

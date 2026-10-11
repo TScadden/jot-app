@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:tabs_lab/src/data/health_connect_service.dart';
+import 'package:tabs_lab/src/features/connections/health_connect_disclosure.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// Round 12 — data connections screen.
@@ -73,6 +74,10 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
 
   Future<void> _onConnectTap() async {
     if (_requesting) return;
+    // MF-3 (Juno compliance): prominent in-app disclosure BEFORE the
+    // system permission UI. "Not now" or dismissal never triggers it.
+    final proceed = await showHealthConnectDisclosure(context);
+    if (!proceed || !mounted) return;
     setState(() {
       _requesting = true;
       _error = null;

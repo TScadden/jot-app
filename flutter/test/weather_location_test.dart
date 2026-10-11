@@ -136,8 +136,9 @@ void main() {
       String? meteoUrl;
       final weather = WeatherApiClient(
           client: _weatherClient(onMeteo: (u) => meteoUrl = u));
+      // MF-1: permission is PRE-granted — the tap must NOT request it.
       final location = FakeLocationService()
-        ..permissionAfterRequest = LocationPermission.whileInUse
+        ..permission = LocationPermission.whileInUse
         ..position = _pos(41.0, -112.0);
 
       await _pumpHome(tester, weather: weather, location: location);
@@ -147,7 +148,8 @@ void main() {
       await tester.tap(_weatherButton());
       await tester.pumpAndSettle();
 
-      expect(location.requestPermissionCalls, 1);
+      // Tap never fires the system dialog; GPS position fetched silently.
+      expect(location.requestPermissionCalls, 0);
       expect(location.getPositionCalls, 1);
       expect(meteoUrl, contains('latitude=41.0'));
       expect(meteoUrl, contains('longitude=-112.0'));
@@ -173,9 +175,11 @@ void main() {
       await tester.tap(_weatherButton());
       await tester.pumpAndSettle();
 
-      // Asked once, denied → no position attempt, IP fallback re-ran.
-      expect(location.requestPermissionCalls, 1);
+      // MF-1: the tap NEVER fires the system dialog — no request call.
+      // The sheet opens with the in-app rationale card instead.
+      expect(location.requestPermissionCalls, 0);
       expect(location.getPositionCalls, 0);
+      expect(find.text('Use your location for weather?'), findsOneWidget);
       expect(ipInfoHits, greaterThan(hitsAfterLoad));
       // Still showing the IP temp — no error, no fake zero.
       expect(find.text('61°'), findsOneWidget);
@@ -217,15 +221,63 @@ void main() {
         (tester) async {
       final weather =
           WeatherApiClient(client: _weatherClient());
+      // MF-1: pre-granted; getPosition returns null (timeout path).
       final location = FakeLocationService()
-        ..permissionAfterRequest = LocationPermission.whileInUse
-        ..position = null; // getPosition returns null (timeout path)
+        ..permission = LocationPermission.whileInUse
+        ..position = null;
 
       await _pumpHome(tester, weather: weather, location: location);
       await tester.tap(_weatherButton());
       await tester.pumpAndSettle();
 
       expect(location.getPositionCalls, 1);
+      expect(find.text('61°'), findsOneWidget);
+    });
+
+    testWidgets(
+        'MF-1: rationale card Share location is the sole permission path',
+        (tester) async {
+      String? meteoUrl;
+      final weather = WeatherApiClient(
+          client: _weatherClient(onMeteo: (u) => meteoUrl = u));
+      final location = FakeLocationService()
+        ..permissionAfterRequest = LocationPermission.whileInUse
+        ..position = _pos(41.0, -112.0);
+
+      await _pumpHome(tester, weather: weather, location: location);
+      await tester.tap(_weatherButton());
+      await tester.pumpAndSettle();
+
+      // Tap opened the sheet with the rationale card — no system dialog.
+      expect(location.requestPermissionCalls, 0);
+      expect(find.text('Use your location for weather?'), findsOneWidget);
+
+      // "Share location" fires the one and only permission request.
+      await tester.tap(find.text('Share location'));
+      await tester.pumpAndSettle();
+
+      expect(location.requestPermissionCalls, 1);
+      expect(meteoUrl, contains('latitude=41.0'));
+      // The grant upgraded the header temp behind the sheet.
+      expect(find.text('70°'), findsOneWidget);
+    });
+
+    testWidgets('MF-1: rationale card Not now never requests permission',
+        (tester) async {
+      final weather = WeatherApiClient(client: _weatherClient());
+      final location = FakeLocationService();
+
+      await _pumpHome(tester, weather: weather, location: location);
+      await tester.tap(_weatherButton());
+      await tester.pumpAndSettle();
+
+      expect(find.text('Use your location for weather?'), findsOneWidget);
+      await tester.tap(find.text('Not now'));
+      await tester.pumpAndSettle();
+
+      expect(location.requestPermissionCalls, 0);
+      expect(find.text('Use your location for weather?'), findsNothing);
+      // Sheet still shows IP-based weather, no error.
       expect(find.text('61°'), findsOneWidget);
     });
   });

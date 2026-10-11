@@ -18,11 +18,17 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///
 /// Tapping a row opens that metric's info sheet (native `showTempInfo`
 /// etc.), ported with the native static copy.
+///
+/// MF-1 (Juno compliance, Oct 2026): the sheet is the ONLY place that may
+/// trigger the system location dialog, and only from the rationale card's
+/// "Share location" button. A grant there is reported back through
+/// [onLocationGranted] so the caller can refresh its own location UI.
 Future<void> showWeatherSheet({
   required BuildContext context,
   required WeatherApiClient weatherApi,
   required LocationService locationService,
   Future<Position?>? gpsPositionFuture,
+  ValueChanged<Position>? onLocationGranted,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -32,6 +38,7 @@ Future<void> showWeatherSheet({
       weatherApi: weatherApi,
       locationService: locationService,
       gpsPositionFuture: gpsPositionFuture,
+      onLocationGranted: onLocationGranted,
     ),
   );
 }
@@ -40,11 +47,13 @@ class _WeatherSheet extends StatefulWidget {
   final WeatherApiClient weatherApi;
   final LocationService locationService;
   final Future<Position?>? gpsPositionFuture;
+  final ValueChanged<Position>? onLocationGranted;
 
   const _WeatherSheet({
     required this.weatherApi,
     required this.locationService,
     this.gpsPositionFuture,
+    this.onLocationGranted,
   });
 
   @override
@@ -109,8 +118,10 @@ class _WeatherSheetState extends State<_WeatherSheet> {
         _loading = false;
         _details = details;
       });
-      // The tap also fired the system permission dialog (round-10
-      // behavior); re-check so a fresh grant hides the rationale card.
+      // Re-check the rationale in case permission changed while the sheet
+      // was open (e.g. granted in system settings); a fresh grant hides
+      // the rationale card. The sheet itself is the only place that may
+      // trigger the system dialog (MF-1).
       _refreshRationale();
     } catch (_) {
       if (!mounted || token != _loadToken) return;
@@ -128,7 +139,10 @@ class _WeatherSheetState extends State<_WeatherSheet> {
       if (permission == LocationPermission.whileInUse ||
           permission == LocationPermission.always) {
         setState(() => _showRationale = false);
-        await _loadWithGps();
+        // MF-1: this is the SOLE system-dialog trigger in the app. Report
+        // the granted position so the caller can refresh its location UI.
+        final position = await _loadWithGps();
+        if (position != null) widget.onLocationGranted?.call(position);
       }
       // Denied: rationale stays; the sheet keeps IP-based weather.
     } catch (_) {
@@ -136,7 +150,7 @@ class _WeatherSheetState extends State<_WeatherSheet> {
     }
   }
 
-  Future<void> _loadWithGps() async {
+  Future<Position?> _loadWithGps() async {
     final token = ++_loadToken;
     setState(() {
       _loading = true;
@@ -154,17 +168,19 @@ class _WeatherSheetState extends State<_WeatherSheet> {
       } else {
         details = await widget.weatherApi.getDetailedWeather();
       }
-      if (!mounted || token != _loadToken) return;
+      if (!mounted || token != _loadToken) return null;
       setState(() {
         _loading = false;
         _details = details;
       });
+      return position;
     } catch (_) {
-      if (!mounted || token != _loadToken) return;
+      if (!mounted || token != _loadToken) return null;
       setState(() {
         _loading = false;
         _details = null;
       });
+      return null;
     }
   }
 

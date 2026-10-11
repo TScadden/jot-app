@@ -264,6 +264,10 @@ void main() {
 
       await tester.tap(find.text('Available'));
       await tester.pumpAndSettle();
+      // MF-3: the in-app disclosure precedes the permission UI.
+      expect(find.text('Connect Health Connect?'), findsOneWidget);
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
       expect(find.text('Connected'), findsOneWidget);
       expect(find.text('No trackers connected yet.'), findsNothing);
     });
@@ -285,6 +289,9 @@ void main() {
       );
       await tester.pumpAndSettle();
       await tester.tap(find.text('Available'));
+      await tester.pumpAndSettle();
+      // MF-3: the in-app disclosure precedes the permission UI.
+      await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
       expect(find.text('No permissions were granted.'), findsOneWidget);
       // Still not connected.

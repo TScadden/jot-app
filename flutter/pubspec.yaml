@@ -37,10 +37,14 @@ dependencies:
   http: ^1.6.0
   flutter_secure_storage: ^11.2.0
   geolocator: ^14.1.1
+  url_launcher: ^6.3.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # Test-only: mocks for url_launcher's platform interface (MF-2 tests).
+  plugin_platform_interface: ^2.1.8
+  url_launcher_platform_interface: ^2.3.2
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

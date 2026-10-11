@@ -71,10 +71,6 @@ class _HomeScreenState extends State<HomeScreen> {
   /// upgrades to GPS weather via the weather-icon tap.
   String _countryCode = 'US';
 
-  /// Guards against stacked location requests from rapid taps (a stuck
-  /// request must never wedge future taps).
-  bool _locationRefreshInFlight = false;
-
   // ── Round 13: real health data ──────────────────────────────────────────
   late final HealthRepository _healthRepo;
   TodayVitals? _vitals;
@@ -125,87 +121,69 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  /// Round 10 — weather icon tap: ask for the device location and
-  /// upgrade the header temp to GPS-based weather.
-  ///
-  /// Permission is requested ONLY here (never at startup). Any denial,
-  /// disabled services, timeout, or error falls back SILENTLY to the
-  /// IP-based fetch — the user never sees an error and the header
-  /// never shows a fake reading.
+  /// MF-1 (Juno compliance, Oct 2026): the weather tap NEVER requests
+  /// location permission — it only *checks* the current status.
+  /// - Already granted → fetch the GPS position silently (no system
+  ///   dialog can appear) and share it with the sheet; the header temp
+  ///   upgrades in the background.
+  /// - Not granted → the sheet opens with the in-app rationale card, and
+  ///   only the card's "Share location" button may trigger the system
+  ///   dialog. A grant there upgrades the header temp via
+  ///   [showWeatherSheet]'s onLocationGranted.
+  /// Any denial, disabled services, timeout, or error falls back SILENTLY
+  /// to the IP-based fetch — the user never sees an error and the header
+  /// never shows a fake reading. (Play prominent-disclosure rule: the
+  /// in-app rationale must precede the system dialog.)
   ///
   /// Privacy: the position is used ONLY to build the Open-Meteo
   /// request below. It is never logged, stored, or sent anywhere
   /// except api.open-meteo.com (HTTPS).
-  /// Round 11 — weather icon tap: opens the weather detail sheet AND
-  /// keeps the round-10 permission flow (tap → permission dialog → GPS
-  /// fetch → header temp upgrade). The sheet shares the same GPS future
-  /// so it can load detailed GPS weather once the fix lands.
   Future<void> _onWeatherTap() async {
-    // Kick off the GPS fix without awaiting — the sheet awaits the same
-    // future for its detailed weather.
-    final gpsFuture = _fetchGpsPositionForHeader();
+    final location = widget.locationService ?? LocationService();
+    Future<Position?>? gpsFuture;
+    try {
+      final permission = await location.checkPermission();
+      if (permission == LocationPermission.whileInUse ||
+          permission == LocationPermission.always) {
+        gpsFuture = location.getPosition();
+        // Upgrade the header temp in the background; any failure keeps
+        // the IP-based reading silently.
+        gpsFuture.then((position) {
+          if (position != null && mounted) _upgradeHeaderTemp(position);
+        });
+      }
+    } catch (_) {
+      gpsFuture = null;
+    }
     if (!mounted) return;
     await showWeatherSheet(
       context: context,
       weatherApi: widget.weatherApi ?? WeatherApiClient(),
-      locationService: widget.locationService ?? LocationService(),
+      locationService: location,
       gpsPositionFuture: gpsFuture,
+      onLocationGranted: (position) {
+        if (mounted) _upgradeHeaderTemp(position);
+      },
     );
   }
 
-  /// Round 10 GPS upgrade, refactored to return the position so the
-  /// weather sheet can share it. Upgrades the header temp on success;
-  /// any failure falls back silently to the IP fetch.
-  Future<Position?> _fetchGpsPositionForHeader() async {
-    if (_locationRefreshInFlight) return null;
-    _locationRefreshInFlight = true;
+  /// Fetches the current temp at [position] and upgrades the header.
+  /// Silent on any failure — the IP-based reading stays.
+  Future<void> _upgradeHeaderTemp(Position position) async {
     try {
-      final location = widget.locationService ?? LocationService();
-
-      // Location services off → IP fallback, silently.
-      if (!await location.isServiceEnabled()) {
-        await _loadWeather();
-        return null;
-      }
-
-      var permission = await location.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await location.requestPermission();
-      }
-      // Denied (including permanently) → IP fallback, silently. Never
-      // nag, never error.
-      if (permission != LocationPermission.whileInUse &&
-          permission != LocationPermission.always) {
-        await _loadWeather();
-        return null;
-      }
-
-      final position = await location.getPosition();
-      // No fix (timeout etc.) → IP fallback, silently.
-      if (position == null) {
-        await _loadWeather();
-        return null;
-      }
-
       final temp = await (widget.weatherApi ?? WeatherApiClient())
           .getCurrentTempAt(
         latitude: position.latitude,
         longitude: position.longitude,
         countryCode: _countryCode,
       );
-      if (!mounted) return position;
+      if (!mounted) return;
       setState(() {
         _temp = temp;
         _weatherLoaded = temp != null;
       });
-      return position;
     } catch (_) {
-      // Anything unexpected: fall back to the IP fetch rather than
-      // surfacing an error.
-      await _loadWeather();
-      return null;
-    } finally {
-      _locationRefreshInFlight = false;
+      // Keep the IP-based reading.
     }
   }
 
