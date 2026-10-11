@@ -1,4 +1,4 @@
-package com.notel.notel.playground.tabs_lab
+package com.notel.notel.playground.flutter
 
 import io.flutter.embedding.android.FlutterActivity
 
