@@ -53,17 +53,12 @@ class HomeScreen extends StatefulWidget {
   /// is persisted, so any instance sees the same connection.
   final HealthConnectService? healthConnectService;
 
-  /// Storage for the streak-milestone celebration watermark (round 14).
-  /// Injectable for tests; defaults to the secure store.
-  final SecureStore? streakStore;
-
   const HomeScreen(
       {super.key,
       this.email,
       this.weatherApi,
       this.locationService,
-      this.healthConnectService,
-      this.streakStore});
+      this.healthConnectService});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -116,34 +111,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _currentStreak = streak.current;
       _bestStreak = streak.best;
     });
-    // Round 14 — confetti only when a NEW milestone is crossed upward.
-    // Best-effort: never breaks the home screen.
-    _maybeCelebrateStreak();
-  }
-
-  /// Fires the confetti burst at most once per streak milestone (7, 30).
-  /// The highest celebrated milestone persists in secure storage, so a
-  /// rebuild, a dip below the milestone, or a reinstall-less relaunch
-  /// can never re-trigger it.
-  Future<void> _maybeCelebrateStreak() async {
-    final current = _currentStreak;
-    if (current == null) return;
-    try {
-      final store = widget.streakStore ?? const FlutterSecureStore();
-      final raw = await store.read(streakMilestoneStorageKey);
-      final lastCelebrated = int.tryParse(raw ?? '') ?? 0;
-      final milestone = nextMilestoneToCelebrate(
-        currentStreak: current,
-        lastCelebrated: lastCelebrated,
-      );
-      if (milestone == null || !mounted) return;
-      // Persist BEFORE showing: a rebuild mid-burst must not re-fire.
-      await store.write(streakMilestoneStorageKey, '$milestone');
-      if (!mounted) return;
-      await ConfettiOverlay.show(context);
-    } catch (_) {
-      // Celebration is decorative — swallow everything.
-    }
   }
 
   Future<void> _loadWeather() async {

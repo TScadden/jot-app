@@ -195,7 +195,9 @@ void main() {
       expect(location.requestPermissionCalls, 0);
       expect(location.getPositionCalls, 0);
       expect(find.text('Use your location for weather?'), findsOneWidget);
-      expect(ipInfoHits, greaterThan(hitsAfterLoad));
+      // Round 15: the sheet shares the header's cached IP lookup and
+      // weather entry — no duplicate network work on open.
+      expect(ipInfoHits, hitsAfterLoad);
       // Still showing the IP temp — no error, no fake zero.
       expect(find.text('61°'), findsOneWidget);
       expect(meteoUrl, isNot(contains('latitude=41.0')));

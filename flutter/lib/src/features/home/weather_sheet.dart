@@ -90,46 +90,83 @@ class _WeatherSheetState extends State<_WeatherSheet> {
 
   Future<void> _load() async {
     final token = ++_loadToken;
-    setState(() {
-      _loading = true;
-      _details = null;
-    });
+    Position? position;
+    final gpsFuture = widget.gpsPositionFuture;
+    if (gpsFuture != null) {
+      position = await gpsFuture.timeout(
+        const Duration(seconds: 15),
+        onTimeout: () => null,
+      );
+    }
+    await _loadDetails(
+      token: token,
+      manualLat: position?.latitude,
+      manualLon: position?.longitude,
+      manualCity: position != null ? 'Current Location' : null,
+    );
+    // Re-check the rationale in case permission changed while the sheet
+    // was open (e.g. granted in system settings); a fresh grant hides
+    // the rationale card. The sheet itself is the only place that may
+    // trigger the system dialog (MF-1).
+    _refreshRationale();
+  }
+
+  /// Round 15 — cache-first load shared by [_load] and [_loadWithGps]:
+  /// a fresh cached entry renders instantly (no spinner), then a
+  /// background refresh swaps in fresh data when it arrives. If the
+  /// refresh fails, the cached value keeps showing until TTL expiry;
+  /// with no cache at all we fall back to the honest loading /
+  /// unavailable states.
+  Future<void> _loadDetails({
+    required int token,
+    double? manualLat,
+    double? manualLon,
+    String? manualCity,
+  }) async {
+    final api = widget.weatherApi;
+    WeatherDetails? shown;
     try {
-      Position? position;
-      final gpsFuture = widget.gpsPositionFuture;
-      if (gpsFuture != null) {
-        position = await gpsFuture.timeout(
-          const Duration(seconds: 15),
-          onTimeout: () => null,
-        );
-      }
-      final WeatherDetails? details;
-      if (position != null) {
-        details = await widget.weatherApi.getDetailedWeather(
-          manualLat: position.latitude,
-          manualLon: position.longitude,
-          manualCity: 'Current Location',
-        );
-      } else {
-        details = await widget.weatherApi.getDetailedWeather();
-      }
-      if (!mounted || token != _loadToken) return;
+      // Instant path: fresh in-memory cache entry, no network.
+      shown = await api.getDetailedWeather(
+        manualLat: manualLat,
+        manualLon: manualLon,
+        manualCity: manualCity,
+      );
+    } catch (_) {
+      shown = null;
+    }
+    if (!mounted || token != _loadToken) return;
+    final hasCached = shown != null && shown.loaded;
+    setState(() {
+      _loading = !hasCached;
+      _details = hasCached ? shown : null;
+    });
+    // Refresh in the background; swap in fresh data when it arrives.
+    WeatherDetails? fresh;
+    try {
+      fresh = await api.getDetailedWeather(
+        manualLat: manualLat,
+        manualLon: manualLon,
+        manualCity: manualCity,
+        forceRefresh: true,
+      );
+    } catch (_) {
+      fresh = null;
+    }
+    if (!mounted || token != _loadToken) return;
+    if (fresh != null) {
       setState(() {
         _loading = false;
-        _details = details;
+        _details = fresh;
       });
-      // Re-check the rationale in case permission changed while the sheet
-      // was open (e.g. granted in system settings); a fresh grant hides
-      // the rationale card. The sheet itself is the only place that may
-      // trigger the system dialog (MF-1).
-      _refreshRationale();
-    } catch (_) {
-      if (!mounted || token != _loadToken) return;
+    } else if (!hasCached) {
+      // No cached value to keep showing: honest unavailable state.
       setState(() {
         _loading = false;
         _details = null;
       });
     }
+    // Else: refresh failed but a cached value is on screen — keep it.
   }
 
   Future<void> _onShareLocation() async {
@@ -152,36 +189,19 @@ class _WeatherSheetState extends State<_WeatherSheet> {
 
   Future<Position?> _loadWithGps() async {
     final token = ++_loadToken;
-    setState(() {
-      _loading = true;
-      _details = null;
-    });
+    Position? position;
     try {
-      final position = await widget.locationService.getPosition();
-      final WeatherDetails? details;
-      if (position != null) {
-        details = await widget.weatherApi.getDetailedWeather(
-          manualLat: position.latitude,
-          manualLon: position.longitude,
-          manualCity: 'Current Location',
-        );
-      } else {
-        details = await widget.weatherApi.getDetailedWeather();
-      }
-      if (!mounted || token != _loadToken) return null;
-      setState(() {
-        _loading = false;
-        _details = details;
-      });
-      return position;
+      position = await widget.locationService.getPosition();
     } catch (_) {
-      if (!mounted || token != _loadToken) return null;
-      setState(() {
-        _loading = false;
-        _details = null;
-      });
-      return null;
+      position = null;
     }
+    await _loadDetails(
+      token: token,
+      manualLat: position?.latitude,
+      manualLon: position?.longitude,
+      manualCity: position != null ? 'Current Location' : null,
+    );
+    return position;
   }
 
   @override

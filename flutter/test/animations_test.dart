@@ -2,98 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 
-/// In-memory SecureStore fake — mirrors the one in health_connect_test.dart
-/// (test files can't share it without a shared helper).
-class _MemorySecureStore implements SecureStore {
-  final Map<String, String> _map = {};
-
-  @override
-  Future<String?> read(String key) async => _map[key];
-
-  @override
-  Future<void> write(String key, String value) async {
-    _map[key] = value;
-  }
-
-  @override
-  Future<void> delete(String key) async {
-    _map.remove(key);
-  }
-}
-
-/// Mirrors [_HomeScreenState._maybeCelebrateStreak]'s storage dance so the
-/// once-per-milestone guarantee is tested end to end at the logic level.
-Future<int?> _celebrateOnce(_MemorySecureStore store, int? current) async {
-  final raw = await store.read(streakMilestoneStorageKey);
-  final last = int.tryParse(raw ?? '') ?? 0;
-  final milestone = nextMilestoneToCelebrate(
-    currentStreak: current,
-    lastCelebrated: last,
-  );
-  if (milestone == null) return null;
-  // Persist BEFORE celebrating: a rebuild mid-burst must not re-fire.
-  await store.write(streakMilestoneStorageKey, '$milestone');
-  return milestone;
-}
 
 void main() {
-  group('nextMilestoneToCelebrate', () {
-    test('fires when crossing 7', () {
-      expect(
-          nextMilestoneToCelebrate(currentStreak: 7, lastCelebrated: 0), 7);
-    });
-
-    test('does not fire below the first milestone', () {
-      expect(
-          nextMilestoneToCelebrate(currentStreak: 6, lastCelebrated: 0), isNull);
-    });
-
-    test('fires at 30 after 7 was celebrated', () {
-      expect(
-          nextMilestoneToCelebrate(currentStreak: 30, lastCelebrated: 7), 30);
-    });
-
-    test('a big jump celebrates the highest crossed milestone only', () {
-      expect(
-          nextMilestoneToCelebrate(currentStreak: 35, lastCelebrated: 0), 30);
-    });
-
-    test('never fires on null or non-positive streaks', () {
-      expect(nextMilestoneToCelebrate(currentStreak: null, lastCelebrated: 0),
-          isNull);
-      expect(
-          nextMilestoneToCelebrate(currentStreak: 0, lastCelebrated: 0), isNull);
-    });
-  });
-
-  group('milestone persistence (once per milestone)', () {
-    test('fires exactly once, never re-fires on rebuild', () async {
-      final store = _MemorySecureStore();
-      expect(await _celebrateOnce(store, 7), 7);
-      // Rebuild / reload with the same streak: silent.
-      expect(await _celebrateOnce(store, 7), isNull);
-      expect(await _celebrateOnce(store, 8), isNull);
-    });
-
-    test('never fires when the streak decreases', () async {
-      final store = _MemorySecureStore();
-      expect(await _celebrateOnce(store, 30), 30);
-      expect(await _celebrateOnce(store, 5), isNull);
-      // Climbing back to 30 does NOT re-celebrate.
-      expect(await _celebrateOnce(store, 30), isNull);
-    });
-
-    test('malformed stored value is treated as never celebrated', () async {
-      final store = _MemorySecureStore();
-      await store.write(streakMilestoneStorageKey, 'garbage');
-      expect(await _celebrateOnce(store, 7), 7);
-    });
-  });
 
   group('CountUp', () {
     testWidgets('tweens from 0 to the real value', (tester) async {
@@ -191,50 +105,6 @@ void main() {
     });
   });
 
-  group('ConfettiOverlay', () {
-    /// The burst root is the only IgnorePointer with ignoring: true in
-    /// the tree (Scaffold internals use ignoring: false).
-    Finder burst() => find.byWidgetPredicate(
-          (w) => w is IgnorePointer && w.ignoring,
-        );
-
-    testWidgets('shows the burst and removes it', (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: Builder(
-            builder: (context) => TextButton(
-              onPressed: () => ConfettiOverlay.show(context),
-              child: const Text('celebrate'),
-            ),
-          ),
-        ),
-      ));
-      await tester.tap(find.text('celebrate'));
-      await tester.pump();
-      expect(burst(), findsOneWidget);
-      await tester.pump(const Duration(milliseconds: 3000));
-      expect(burst(), findsNothing);
-    });
-
-    testWidgets('skipped entirely under reduced motion', (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: MediaQuery(
-            data: const MediaQueryData(disableAnimations: true),
-            child: Builder(
-              builder: (context) => TextButton(
-                onPressed: () => ConfettiOverlay.show(context),
-                child: const Text('celebrate'),
-              ),
-            ),
-          ),
-        ),
-      ));
-      await tester.tap(find.text('celebrate'));
-      await tester.pump();
-      expect(burst(), findsNothing);
-    });
-  });
 
   group('NavDock springy pill', () {
     testWidgets('pill glides to the newly selected tab', (tester) async {
