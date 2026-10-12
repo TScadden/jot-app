@@ -54,6 +54,15 @@ import 'package:tabs_lab/src/theme/skeleton.dart';
 /// the full error state appears only when there is nothing cached
 /// to show. Membership gating renders the CACHED gate state first —
 /// the wrong gate never flashes.
+///
+/// Round 19c fix (Vera BLOCKING 2): the cached gate state is a
+/// VISUAL seed only. No live AI action — Load Suggestions, Retry, or
+/// the category-tap auto-fetch — may fire until this session's first
+/// fresh refresh has completed with a successful membership fetch
+/// (`_freshMembershipVerified`). `_fetchSuggestions` itself refuses
+/// to POST before that point, so no caller can weaken the gate.
+/// Round 19's rule stands: no interaction until fresh membership
+/// arrives; 19c only lets the tray *render* in the meantime.
 class QuickLogScreen extends StatefulWidget {
   final TabsBackend? backend;
   final WeatherApiClient? weatherApi;
@@ -100,6 +109,16 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
   bool _isUnlimited = false;
   bool _isAdmin = false;
   bool _membershipKnown = false;
+
+  /// Round 19c fix (Vera BLOCKING 2): true only after THIS session's
+  /// first fresh refresh completes with a successful membership
+  /// fetch. Deliberately NEVER seeded from [QuickLogCache] — the
+  /// cached `_isUnlimited`/`_isAdmin`/`_membershipKnown` above are a
+  /// visual seed only, and every live AI action (Load Suggestions,
+  /// Retry, category-tap fetch, and `_fetchSuggestions` itself) is
+  /// locked until this flips. A failed refresh leaves it false, so
+  /// a stale gate can never fire a real `POST /api/ai/suggestions`.
+  bool _freshMembershipVerified = false;
   bool _autoAiSuggestions = false;
   String _profileUserContext = '';
 
@@ -196,6 +215,11 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
         _isUnlimited = membership.isUnlimited;
         _isAdmin = membership.isAdmin;
         _membershipKnown = true;
+        // Vera BLOCKING 2: reaching this line means the sync pull
+        // succeeded above and fetchMembership() read real membership
+        // from it in THIS session — only now may live AI actions
+        // fire. The pull==null and catch paths below never set this.
+        _freshMembershipVerified = true;
         _autoAiSuggestions = auto;
         _profileUserContext = userContext;
         _medicationCategoryId = medCat?.id;
@@ -259,6 +283,13 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
   /// exactly like native `LogRepository.getChipSuggestions` (which fails
   /// with "Unlimited membership required for AI features.").
   Future<void> _fetchSuggestions({bool forceRefresh = false}) async {
+    // Vera BLOCKING 2: refuse to POST on a stale cache gate. Until
+    // this session's first fresh refresh has verified membership
+    // against the server, the cached flags are visual-only and this
+    // method is a no-op — no caller (Load, Retry, category tap, or
+    // the refresh's own auto-fetch, which runs only after the flag
+    // is set) can reach `POST /api/ai/suggestions` before that.
+    if (!_freshMembershipVerified) return;
     final cat = _selectedCategory;
     if (cat == null) return;
     if (!_isUnlimited && !_isAdmin) {
@@ -357,11 +388,15 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
       _selectedCategory = cat;
       _selectedChips = const [];
       _chips = cached ?? const [];
-      _chipsLoading = cached == null && _autoAiSuggestions;
+      // Vera BLOCKING 2: no AI fetch (and no fetch spinner) from a
+      // category tap until fresh membership is verified this session.
+      _chipsLoading =
+          cached == null && _autoAiSuggestions && _freshMembershipVerified;
       _chipsError = null;
     });
     if (cached != null) return;
     if (!_autoAiSuggestions) return;
+    if (!_freshMembershipVerified) return;
     Future.delayed(const Duration(milliseconds: 300), () {
       if (mounted && _selectedCategory?.id == cat.id) _fetchSuggestions();
     });
@@ -1167,7 +1202,12 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
           ),
           const SizedBox(height: 12),
           TextButton(
-            onPressed: () => _fetchSuggestions(forceRefresh: true),
+            // Vera BLOCKING 2: rendered from the cache seed, but
+            // disabled until fresh membership is verified this
+            // session (`_fetchSuggestions` also refuses pre-refresh).
+            onPressed: _freshMembershipVerified
+                ? () => _fetchSuggestions(forceRefresh: true)
+                : null,
             child: const Text('Retry',
                 style: TextStyle(
                     color: NotelColors.primary,
@@ -1185,7 +1225,12 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
           ),
           const SizedBox(height: 8),
           TextButton(
-            onPressed: () => _fetchSuggestions(forceRefresh: true),
+            // Vera BLOCKING 2: rendered from the cache seed, but
+            // disabled until fresh membership is verified this
+            // session (`_fetchSuggestions` also refuses pre-refresh).
+            onPressed: _freshMembershipVerified
+                ? () => _fetchSuggestions(forceRefresh: true)
+                : null,
             child: const Text(
               'Load Suggestions',
               style: TextStyle(

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
@@ -16,10 +18,23 @@ void main() async {
   // cold start shows last-known numbers instantly instead of "--".
   // Never throws; a missing/corrupt cache just starts empty.
   WidgetsFlutterBinding.ensureInitialized();
-  await HomeDataCache.instance.warmFromDisk();
+  // Round 19c fix (Vera BLOCKING 1) — account-bound warm: read the
+  // stored session account first, and warm each cache against it.
+  // A blob owned by a different account (or by no recorded account)
+  // is dropped inside warmFromDisk instead of loaded, so a cold
+  // start can never seed one account's rows into another's session.
+  // The login-success hook enforces the same check again. Never
+  // throws; an unreadable session just warms unbound.
+  String? sessionEmail;
+  try {
+    sessionEmail = await SessionStore().readEmail();
+  } catch (_) {
+    sessionEmail = null;
+  }
+  await HomeDataCache.instance.warmFromDisk(currentEmail: sessionEmail);
   // Round 19c — same warm for Quick Log: cold starts seed last-known
   // categories / recents / count / membership instead of skeletons.
-  await QuickLogCache.instance.warmFromDisk();
+  await QuickLogCache.instance.warmFromDisk(currentEmail: sessionEmail);
   runApp(const TabsLabApp());
 }
 
@@ -102,7 +117,20 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
   // Round 5: real login succeeded — the session is already in secure
   // storage (LoginScreen handles that); record the email for the home
   // indicator and navigate.
+  //
+  // Round 19c fix (Vera BLOCKING 1): BEFORE the shell can mount, drop
+  // any cached snapshot owned by a different account. The memory wipe
+  // inside clearIfOwnerMismatch runs synchronously before its first
+  // await, so by the time setState mounts the shell below, a previous
+  // account's Quick Log rows / home numbers are already gone and the
+  // first frame can only show skeletons / honest empty states. The
+  // disk wipe completes in the background. HomeDataCache gets the
+  // same clear-on-mismatch for parity (Vera named it in the same
+  // fix). Both calls also bind the new account, so subsequent loads
+  // stamp their cache blobs with this owner.
   void _onLoginSuccess(String email) {
+    unawaited(QuickLogCache.instance.clearIfOwnerMismatch(email));
+    unawaited(HomeDataCache.instance.clearIfOwnerMismatch(email));
     setState(() {
       _loggedInEmail = email;
       _stage = _FlowStage.home;

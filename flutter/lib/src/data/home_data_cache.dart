@@ -43,6 +43,16 @@ import 'package:tabs_lab/src/data/health_repository.dart';
 /// auth session (see `session_store.dart`). The values are the user's
 /// own on-device data (already readable by any code in this process)
 /// and this cache adds no new transmission path.
+///
+/// Account binding (Round 19c fix, Vera BLOCKING 1 — parity with
+/// [QuickLogCache]): the snapshot is owned by exactly one account.
+/// The owner's session email is stored in the disk blob
+/// (`ownerEmail`) and in memory; [warmFromDisk] and the login-success
+/// hook ([clearIfOwnerMismatch], called from `main.dart`) drop the
+/// whole snapshot — memory AND disk — whenever the cached owner
+/// differs from the current session account. A blob with no owner
+/// (written before this binding existed) is dropped the same way as
+/// soon as a current account is known.
 class HomeDataCache {
   /// Disk key for the JSON blob.
   static const String storageKey = 'home_data_cache_v1';
@@ -83,6 +93,47 @@ class HomeDataCache {
     _bestStreak = null;
     _streakLoaded = false;
     _fetchedAt = null;
+    _ownerEmail = null;
+  }
+
+  /// The account this snapshot belongs to (normalized session email),
+  /// or null when no load has ever been bound to an account.
+  String? _ownerEmail;
+  String? get ownerEmail => _ownerEmail;
+
+  static String? _normalizeEmail(String? email) {
+    final e = email?.trim().toLowerCase();
+    return (e == null || e.isEmpty) ? null : e;
+  }
+
+  /// Binds the (possibly empty) cache to [email] without dropping
+  /// data. Used after [clearIfOwnerMismatch] has already enforced
+  /// ownership, and by loads that carry the session email.
+  void bindToAccount(String? email) {
+    final normalized = _normalizeEmail(email);
+    if (normalized != null) _ownerEmail = normalized;
+  }
+
+  /// Login-success / warm-time ownership enforcement (Vera BLOCKING
+  /// 1, parity with QuickLogCache). If the cached snapshot belongs
+  /// to a different account than [email] — or carries data with no
+  /// recorded owner at all — the whole snapshot is wiped (memory
+  /// synchronously, disk asynchronously) and true is returned. The
+  /// new account is bound either way, so the next load stamps its
+  /// data with the new owner. A matching owner (or an empty, unowned
+  /// cache) keeps everything and returns false. Never throws.
+  Future<bool> clearIfOwnerMismatch(String? email) async {
+    final expected = _normalizeEmail(email);
+    if (expected == null) return false;
+    final hasData = _vitalsLoaded || _streakLoaded;
+    if (_ownerEmail == expected) return false;
+    if (_ownerEmail == null && !hasData) {
+      _ownerEmail = expected;
+      return false;
+    }
+    await clear();
+    _ownerEmail = expected;
+    return true;
   }
 
   TodayVitals? _vitals;
@@ -115,6 +166,7 @@ class HomeDataCache {
       currentStreak: streakFresh ? _currentStreak : null,
       bestStreak: streakFresh ? _bestStreak : null,
       streakLoaded: streakFresh,
+      ownerEmail: _ownerEmail,
     );
   }
 
@@ -132,18 +184,21 @@ class HomeDataCache {
   /// every return is an honest result — including all-null biometrics
   /// when Health Connect isn't connected). Returns true when the
   /// in-memory snapshot changed.
-  bool applyVitals(TodayVitals vitals, {DateTime? now}) {
+  bool applyVitals(TodayVitals vitals,
+      {DateTime? now, String? ownerEmail}) {
     final changed = !_vitalsLoaded || !_vitalsEqual(_vitals, vitals);
     _vitals = vitals;
     _vitalsLoaded = true;
     _fetchedAt = now ?? DateTime.now();
+    bindToAccount(ownerEmail);
     return changed;
   }
 
   /// Stores a completed streak load. Nulls are honest (logged out or
   /// backend failure) and cached as "loaded, empty". Returns true when
   /// the in-memory snapshot changed.
-  bool applyStreak(int? current, int? best, {DateTime? now}) {
+  bool applyStreak(int? current, int? best,
+      {DateTime? now, String? ownerEmail}) {
     final changed = !_streakLoaded ||
         _currentStreak != current ||
         _bestStreak != best;
@@ -151,6 +206,7 @@ class HomeDataCache {
     _bestStreak = best;
     _streakLoaded = true;
     _fetchedAt = now ?? DateTime.now();
+    bindToAccount(ownerEmail);
     return changed;
   }
 
@@ -172,10 +228,29 @@ class HomeDataCache {
   ///
   /// Sections already loaded in memory are left alone (warm is only
   /// meant to fill an empty cache).
-  Future<void> warmFromDisk({DateTime? now}) async {
+  ///
+  /// Account binding (Vera BLOCKING 1): when [currentEmail] (the
+  /// stored session account) is known, a blob owned by a different
+  /// account — or by no recorded account — is dropped entirely
+  /// (memory + disk) instead of loaded, and the current account is
+  /// bound in its place.
+  Future<void> warmFromDisk({DateTime? now, String? currentEmail}) async {
     final at = now ?? DateTime.now();
     final map = await _readCacheMap();
     if (map == null) return;
+    final expected = _normalizeEmail(currentEmail);
+    if (expected != null) {
+      final rawOwner = map['ownerEmail'];
+      final blobOwner = rawOwner is String ? _normalizeEmail(rawOwner) : null;
+      if (blobOwner != expected) {
+        _resetMemory();
+        _ownerEmail = expected;
+        try {
+          await _delete(storageKey);
+        } catch (_) {}
+        return;
+      }
+    }
     try {
       _applyDiskMap(map, at);
     } catch (_) {
@@ -188,6 +263,8 @@ class HomeDataCache {
   void _applyDiskMap(Map<String, dynamic> map, DateTime at) {
     final fetchedAt = DateTime.tryParse(map['fetchedAt'] as String? ?? '');
     if (fetchedAt == null) return;
+    final rawOwner = map['ownerEmail'];
+    if (rawOwner is String) _ownerEmail = _normalizeEmail(rawOwner);
 
     // Vitals are date-bound: only today's cache applies.
     if (!_vitalsLoaded &&
@@ -226,6 +303,7 @@ class HomeDataCache {
   }
 
   Map<String, dynamic> _toJson() => {
+        'ownerEmail': _ownerEmail,
         'fetchedAt': _fetchedAt?.toIso8601String(),
         'vitalsLoaded': _vitalsLoaded,
         'vitals': _vitals == null
@@ -267,11 +345,16 @@ class HomeCacheSnapshot {
   final int? bestStreak;
   final bool streakLoaded;
 
+  /// Account that owns this snapshot (normalized session email), or
+  /// null when the cache was never bound to an account.
+  final String? ownerEmail;
+
   const HomeCacheSnapshot({
     required this.vitals,
     required this.vitalsLoaded,
     required this.currentStreak,
     required this.bestStreak,
     required this.streakLoaded,
+    this.ownerEmail,
   });
 }

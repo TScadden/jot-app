@@ -46,6 +46,19 @@ import 'package:tabs_lab/src/data/quick_log_models.dart';
 /// Recent-suggestion rows are the user's own on-device log data,
 /// already readable by any code in this process; this cache adds no
 /// new transmission path.
+///
+/// Account binding (Round 19c fix, Vera BLOCKING 1): the snapshot is
+/// owned by exactly one account. The owner's session email is stored
+/// in the disk blob (`ownerEmail`) and in memory; [warmFromDisk] and
+/// the login-success hook ([clearIfOwnerMismatch], called from
+/// `main.dart`) drop the whole snapshot — memory AND disk — whenever
+/// the cached owner differs from the current session account. A
+/// blob with no owner (written before this binding existed) is
+/// treated as untrusted and dropped the same way as soon as a
+/// current account is known. After a drop, the first frame can only
+/// show skeletons — never another account's rows. The new account is
+/// bound in place of the old one, so the next completed load stamps
+/// its loads with the new owner.
 class QuickLogCache {
   /// Disk key for the JSON blob.
   static const String storageKey = 'quick_log_cache_v1';
@@ -88,6 +101,48 @@ class QuickLogCache {
     _isAdmin = false;
     _membershipKnown = false;
     _fetchedAt = null;
+    _ownerEmail = null;
+  }
+
+  /// The account this snapshot belongs to (normalized session email),
+  /// or null when no load has ever been bound to an account.
+  String? _ownerEmail;
+  String? get ownerEmail => _ownerEmail;
+
+  static String? _normalizeEmail(String? email) {
+    final e = email?.trim().toLowerCase();
+    return (e == null || e.isEmpty) ? null : e;
+  }
+
+  /// Binds the (possibly empty) cache to [email] without dropping
+  /// data. Used after [clearIfOwnerMismatch] has already enforced
+  /// ownership, and by loads that carry the session email.
+  void bindToAccount(String? email) {
+    final normalized = _normalizeEmail(email);
+    if (normalized != null) _ownerEmail = normalized;
+  }
+
+  /// Login-success / warm-time ownership enforcement (Vera BLOCKING
+  /// 1). If the cached snapshot belongs to a different account than
+  /// [email] — or carries data with no recorded owner at all — the
+  /// whole snapshot is wiped (memory synchronously, disk
+  /// asynchronously) and true is returned. The new account is bound
+  /// either way, so the next [applyLoad] stamps its data with the
+  /// new owner. A matching owner (or an empty, unowned cache) keeps
+  /// everything and returns false. Never throws.
+  Future<bool> clearIfOwnerMismatch(String? email) async {
+    final expected = _normalizeEmail(email);
+    if (expected == null) return false;
+    final hasData =
+        _categoriesLoaded || _recentsLoaded || _membershipKnown;
+    if (_ownerEmail == expected) return false;
+    if (_ownerEmail == null && !hasData) {
+      _ownerEmail = expected;
+      return false;
+    }
+    await clear();
+    _ownerEmail = expected;
+    return true;
   }
 
   List<QuickLogCategory> _categories = const [];
@@ -125,11 +180,13 @@ class QuickLogCache {
       isUnlimited: _isUnlimited,
       isAdmin: _isAdmin,
       membershipKnown: _membershipKnown,
+      ownerEmail: _ownerEmail,
     );
   }
 
-  /// Wipes memory + disk. Same future logout/account-deletion hook as
-  /// HomeDataCache. Never throws.
+  /// Wipes memory + disk. Called by [clearIfOwnerMismatch] on an
+  /// account change, and the hook for a future
+  /// logout/account-deletion flow. Never throws.
   Future<void> clear() async {
     _resetMemory();
     try {
@@ -147,8 +204,10 @@ class QuickLogCache {
     required bool isUnlimited,
     required bool isAdmin,
     DateTime? now,
+    String? ownerEmail,
   }) {
     final at = now ?? DateTime.now();
+    final newOwner = _normalizeEmail(ownerEmail);
     final changed = !_categoriesLoaded ||
         !_listEqual(_categories, categories, (c) => c.toSyncJson()) ||
         !_recentsLoaded ||
@@ -158,7 +217,9 @@ class QuickLogCache {
         _todayCount != todayCount ||
         !_membershipKnown ||
         _isUnlimited != isUnlimited ||
-        _isAdmin != isAdmin;
+        _isAdmin != isAdmin ||
+        (newOwner != null && newOwner != _ownerEmail);
+    if (newOwner != null) _ownerEmail = newOwner;
     _categories = categories;
     _categoriesLoaded = true;
     _recentSuggestions = recentSuggestions;
@@ -210,10 +271,31 @@ class QuickLogCache {
   ///
   /// Sections already loaded in memory are left alone (warm is only
   /// meant to fill an empty cache).
-  Future<void> warmFromDisk({DateTime? now}) async {
+  ///
+  /// Account binding (Vera BLOCKING 1): when [currentEmail] (the
+  /// stored session account) is known, a blob owned by a different
+  /// account — or by no recorded account — is dropped entirely
+  /// (memory + disk) instead of loaded, and the current account is
+  /// bound in its place. Without a known current account the blob
+  /// loads as before; the login-success hook enforces ownership
+  /// again before any screen can mount.
+  Future<void> warmFromDisk({DateTime? now, String? currentEmail}) async {
     final at = now ?? DateTime.now();
     final map = await _readCacheMap();
     if (map == null) return;
+    final expected = _normalizeEmail(currentEmail);
+    if (expected != null) {
+      final rawOwner = map['ownerEmail'];
+      final blobOwner = rawOwner is String ? _normalizeEmail(rawOwner) : null;
+      if (blobOwner != expected) {
+        _resetMemory();
+        _ownerEmail = expected;
+        try {
+          await _delete(storageKey);
+        } catch (_) {}
+        return;
+      }
+    }
     try {
       _applyDiskMap(map, at);
     } catch (_) {
@@ -224,6 +306,8 @@ class QuickLogCache {
   void _applyDiskMap(Map<String, dynamic> map, DateTime at) {
     final fetchedAt = DateTime.tryParse(map['fetchedAt'] as String? ?? '');
     if (fetchedAt == null) return;
+    final rawOwner = map['ownerEmail'];
+    if (rawOwner is String) _ownerEmail = _normalizeEmail(rawOwner);
 
     if (!_categoriesLoaded && map['categoriesLoaded'] == true) {
       _categories = _parseList(
@@ -279,6 +363,7 @@ class QuickLogCache {
   }
 
   Map<String, dynamic> _toJson() => {
+        'ownerEmail': _ownerEmail,
         'fetchedAt': _fetchedAt?.toIso8601String(),
         'categoriesLoaded': _categoriesLoaded,
         'categories': _categories.map((c) => c.toSyncJson()).toList(),
@@ -336,6 +421,10 @@ class QuickLogCacheSnapshot {
   final bool isAdmin;
   final bool membershipKnown;
 
+  /// Account that owns this snapshot (normalized session email), or
+  /// null when the cache was never bound to an account.
+  final String? ownerEmail;
+
   const QuickLogCacheSnapshot({
     required this.categories,
     required this.categoriesLoaded,
@@ -346,5 +435,6 @@ class QuickLogCacheSnapshot {
     required this.isUnlimited,
     required this.isAdmin,
     required this.membershipKnown,
+    this.ownerEmail,
   });
 }
