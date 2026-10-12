@@ -10,6 +10,9 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// Data sources:
 /// - Health Connect `readSleepMinutes(dateStr)` for the 7-day window
 ///   (behind the `isConnected()` gate; "--"/empty when not connected).
+/// - Health Connect `readSleepStages(today)` for the hero's REM row,
+///   Deep/Light stage cards, and Efficiency chip (round 18b; ports
+///   native `HealthConnectManager.readSleepSession` stage logic).
 /// - `profile['todaySleepMins']` and `profile['todaySleepDebt']` from the
 ///   sync pull for the hero card.
 ///
@@ -18,10 +21,9 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///
 /// Rendered (layout per native):
 /// - Hero card: bed icon, "Time Asleep Today", big sleep time, Deficit
-///   row, REM row ("--", stage data isn't exposed by the current reads),
-///   Efficiency chip ("--", same reason). Tapping shows the Sleep Science
+///   row, REM row, Efficiency chip. Tapping shows the Sleep Science
 ///   dialog (read-only, like native).
-/// - "Sleep Stages" grid: Deep / Light ("--" — stage reads unavailable).
+/// - "Sleep Stages" grid: Deep / Light.
 /// - "Recent Nights": the 7-day window with per-night totals or "--",
 ///   plus a 7-day average over non-zero nights.
 ///
@@ -57,6 +59,11 @@ class _SleepScreenState extends State<SleepScreen> {
   bool _connected = false;
   int? _todayMins;
   int? _debtMins;
+  // Round 18b — per-stage breakdown (null = missing, never shown as 0).
+  int? _deepMins;
+  int? _lightMins;
+  int? _remMins;
+  int? _efficiency;
   List<({String dateStr, String dayLabel, int? mins})> _nights = const [];
 
   @override
@@ -72,6 +79,7 @@ class _SleepScreenState extends State<SleepScreen> {
       final connected = await _hc.isConnected();
       int? todayMins;
       int? debtMins;
+      SleepStages? stages;
       final nights = <({String dateStr, String dayLabel, int? mins})>[];
 
       if (connected) {
@@ -89,6 +97,12 @@ class _SleepScreenState extends State<SleepScreen> {
           ));
         }
 
+        // Round 18b — per-stage breakdown for the hero's "today" night.
+        // Stages come from the same best-session pick as the minutes.
+        stages = window.isNotEmpty
+            ? await _hc.readSleepStages(window.last.dateStr)
+            : null;
+
         final profile = await _backend.fetchProfile();
         todayMins = _asPositiveInt(profile?['todaySleepMins']);
         debtMins = _asInt(profile?['todaySleepDebt']);
@@ -100,6 +114,10 @@ class _SleepScreenState extends State<SleepScreen> {
         _connected = connected;
         _todayMins = todayMins;
         _debtMins = debtMins;
+        _deepMins = _positiveOrNull(stages?.deepMinutes);
+        _lightMins = _positiveOrNull(stages?.lightMinutes);
+        _remMins = _positiveOrNull(stages?.remMinutes);
+        _efficiency = _positiveOrNull(stages?.efficiency);
         _nights = nights;
         _loading = false;
       });
@@ -123,6 +141,10 @@ class _SleepScreenState extends State<SleepScreen> {
     final i = _asInt(v);
     return (i != null && i > 0) ? i : null;
   }
+
+  /// Founder rule: a 0 stage/efficiency value is a missing reading,
+  /// never displayed as real data.
+  static int? _positiveOrNull(int? v) => (v != null && v > 0) ? v : null;
 
   @override
   Widget build(BuildContext context) {
@@ -254,9 +276,9 @@ class _SleepScreenState extends State<SleepScreen> {
           const SizedBox(height: 12),
           Row(
             children: [
-              Expanded(child: _stageCard('Deep', null)),
+              Expanded(child: _stageCard('Deep', _deepMins)),
               const SizedBox(width: 12),
-              Expanded(child: _stageCard('Light', null)),
+              Expanded(child: _stageCard('Light', _lightMins)),
             ],
           ),
           const SizedBox(height: 24),
@@ -325,18 +347,20 @@ class _SleepScreenState extends State<SleepScreen> {
               ],
             ),
             const SizedBox(height: 8),
-            const Row(
+            Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
+                const Icon(
                   Icons.auto_graph,
                   size: 16,
                   color: NotelColors.info,
                 ),
-                SizedBox(width: 8),
+                const SizedBox(width: 8),
                 Text(
-                  'REM: --',
-                  style: TextStyle(
+                  _remMins != null
+                      ? 'REM: ${_formatMins(_remMins!)}'
+                      : 'REM: --',
+                  style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
                     color: NotelColors.textPrimary,
@@ -355,9 +379,11 @@ class _SleepScreenState extends State<SleepScreen> {
                   color: NotelColors.primary.withValues(alpha: 0.2),
                 ),
               ),
-              child: const Text(
-                'Efficiency: --',
-                style: TextStyle(
+              child: Text(
+                _efficiency != null
+                    ? 'Efficiency: ${_efficiency!}%'
+                    : 'Efficiency: --',
+                style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w900,
                   color: NotelColors.primary,

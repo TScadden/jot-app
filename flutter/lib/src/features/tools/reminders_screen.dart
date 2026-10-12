@@ -90,6 +90,21 @@ class ReminderModel {
   }
 }
 
+/// Parses reminder rows fail-soft: a row that throws is skipped instead
+/// of killing the whole list. Never throws.
+List<ReminderModel> parseReminderModels(
+    List<Map<String, dynamic>> rows) {
+  final out = <ReminderModel>[];
+  for (final row in rows) {
+    try {
+      out.add(ReminderModel.fromJson(row));
+    } catch (_) {
+      // Skip the bad row; keep the rest.
+    }
+  }
+  return out;
+}
+
 /// One row of native `DayTimeConfig` (Mon 9:00 AM, …).
 class DayTimeConfig {
   final String dayName;
@@ -114,8 +129,7 @@ class DayTimeConfig {
   }
 }
 
-int _asInt(dynamic v, int fallback) {
-  if (v is num) return v.toInt();
+int _asInt(dynamic v, int fallback) {  if (v is num) return v.toInt();
   if (v is String) return int.tryParse(v) ?? fallback;
   return fallback;
 }
@@ -192,8 +206,9 @@ class _RemindersScreenState extends State<RemindersScreen> {
       final rows =
           TabsBackend.decodeProfileList(profile['reminders']);
       setState(() {
-        _reminders =
-            rows.map(ReminderModel.fromJson).toList();
+        // Round 18b: fail soft per item — one bad reminder row must not
+        // kill the whole screen.
+        _reminders = parseReminderModels(rows);
         _loading = false;
       });
     } catch (_) {

@@ -1,8 +1,10 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Medical disclaimer — always visible at the top (native ResearchScreen.kt,
 /// verbatim copy).
@@ -10,107 +12,127 @@ const String researchDisclaimer =
     'For educational purposes only. This is not medical advice. '
     'Talk to your doctor before trying anything here.';
 
-/// One document from the sync-pull `documents` array — the backend's
-/// `KnowledgeDocumentDtoModel` (`{id, name, mimeType, fileData?, createdAt}`).
-class ResearchDocument {
-  final String id;
-  final String name;
-  final String mimeType;
-  final String? fileData; // base64; nullable
-  final int createdAt; // epoch ms
+/// Round 18b — the research library is BUNDLED, not server data.
+///
+/// Native ground truth (`ResearchViewModel` + `ResearchEntryLoader`):
+/// entries are JSON files under `app/src/main/assets/research/`, loaded
+/// from the app bundle and filtered by the user's conditions
+/// (`conditionTags`). Round 18 wrongly wired this screen to sync-pull
+/// `documents` (the knowledge-base upload store), so it showed
+/// "Nothing here yet" despite the library existing.
+///
+/// The 15 JSON files are copied verbatim to `flutter/assets/research/`
+/// and registered in `pubspec.yaml`. Entries whose `conditionTags`
+/// contain the selected condition are shown, like native.
 
-  const ResearchDocument({
+/// One research library entry — mirrors native `ResearchEntry`.
+class ResearchEntry {
+  final String id;
+  final String title;
+  final String summary;
+  final List<String> takeaways;
+  final String detail;
+  final String sourceName;
+  final String sourceUrl;
+  final List<String> conditionTags;
+
+  const ResearchEntry({
     required this.id,
-    required this.name,
-    required this.mimeType,
-    this.fileData,
-    required this.createdAt,
+    required this.title,
+    required this.summary,
+    required this.takeaways,
+    required this.detail,
+    required this.sourceName,
+    required this.sourceUrl,
+    required this.conditionTags,
   });
 
-  /// Tolerant parse; throws [FormatException] on a malformed row and the
-  /// caller skips it.
-  factory ResearchDocument.fromJson(Map<String, dynamic> map) {
-    final id = map['id']?.toString() ?? '';
-    final name = map['name']?.toString() ?? '';
-    if (id.isEmpty || name.isEmpty) {
-      throw const FormatException('Research document needs id and name');
+  /// Tolerant parse; null when the map isn't entry-shaped. Never throws.
+  static ResearchEntry? fromJson(Map<String, dynamic> json) {
+    try {
+      final id = '${json['id'] ?? ''}'.trim();
+      final title = '${json['title'] ?? ''}'.trim();
+      if (id.isEmpty || title.isEmpty) return null;
+      List<String> asStrings(dynamic v) {
+        if (v is List) {
+          return [
+            for (final e in v)
+              if ('$e'.trim().isNotEmpty) '$e'.trim()
+          ];
+        }
+        return const [];
+      }
+
+      return ResearchEntry(
+        id: id,
+        title: title,
+        summary: '${json['summary'] ?? ''}'.trim(),
+        takeaways: asStrings(json['takeaways']),
+        detail: '${json['detail'] ?? ''}'.trim(),
+        sourceName: '${json['sourceName'] ?? ''}'.trim(),
+        sourceUrl: '${json['sourceUrl'] ?? ''}'.trim(),
+        conditionTags: asStrings(json['conditionTags']),
+      );
+    } catch (_) {
+      return null;
     }
-    final created = map['createdAt'];
-    return ResearchDocument(
-      id: id,
-      name: name,
-      mimeType: map['mimeType']?.toString() ?? '',
-      fileData: map['fileData']?.toString(),
-      createdAt: created is num
-          ? created.toInt()
-          : int.tryParse(created?.toString() ?? '') ?? 0,
-    );
   }
 }
 
-/// Parse the sync-pull `documents` array; skips malformed rows, never throws.
-List<ResearchDocument> parseResearchDocuments(dynamic raw) {
-  if (raw is! List) return const [];
-  final out = <ResearchDocument>[];
-  for (final item in raw) {
-    if (item is Map<String, dynamic>) {
+/// Loads every `assets/research/*.json` entry via [bundle].
+/// Malformed files are skipped; never throws.
+Future<List<ResearchEntry>> loadResearchEntries(AssetBundle bundle) async {
+  final out = <ResearchEntry>[];
+  try {
+    final manifestRaw = await bundle.loadString('AssetManifest.json');
+    final manifest = jsonDecode(manifestRaw);
+    if (manifest is! Map) return out;
+    final files = manifest.keys
+        .where((k) =>
+            k is String &&
+            k.startsWith('assets/research/') &&
+            k.endsWith('.json'))
+        .toList()
+      ..sort();
+    for (final path in files) {
       try {
-        out.add(ResearchDocument.fromJson(item));
+        final raw = await bundle.loadString(path as String);
+        final decoded = jsonDecode(raw);
+        if (decoded is Map<String, dynamic>) {
+          final entry = ResearchEntry.fromJson(decoded);
+          if (entry != null) out.add(entry);
+        }
       } catch (_) {
-        // Skip malformed rows — never fail the whole library.
+        // Skip malformed entry files — never fail the whole library.
       }
     }
+  } catch (_) {
+    // Manifest unreadable → empty library.
   }
   return out;
 }
 
-/// Best-effort text preview of a document's content.
-///
-/// Only attempts to decode when the MIME type looks textual; binary files
-/// (PDFs, images) return null so the UI says so honestly instead of
-/// showing garbage. Never throws.
-String? researchPreview(ResearchDocument doc, {int maxChars = 1500}) {
-  final data = doc.fileData;
-  if (data == null || data.isEmpty) return null;
-  final mime = doc.mimeType.toLowerCase();
-  final looksText = mime.startsWith('text/') ||
-      mime.contains('json') ||
-      mime.contains('xml') ||
-      mime.contains('markdown');
-  if (!looksText) return null;
-  try {
-    final bytes = base64Decode(data.trim());
-    final text = utf8.decode(bytes, allowMalformed: true).trim();
-    if (text.isEmpty) return null;
-    return text.length > maxChars ? '${text.substring(0, maxChars)}…' : text;
-  } catch (_) {
-    return null;
-  }
+/// Entries whose [ResearchEntry.conditionTags] contain [condition],
+/// mirroring native's filter. Never throws.
+List<ResearchEntry> entriesForCondition(
+    List<ResearchEntry> entries, String? condition) {
+  if (condition == null || condition.isEmpty) return const [];
+  return entries
+      .where((e) => e.conditionTags.contains(condition))
+      .toList();
 }
 
-/// "Oct 11, 2026" — small local formatter (no intl dep allowed).
-String formatResearchDate(int timeEpochMs) {
-  if (timeEpochMs <= 0) return '';
-  final d = DateTime.fromMillisecondsSinceEpoch(timeEpochMs);
-  const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-  ];
-  return '${months[d.month - 1]} ${d.day}, ${d.year}';
-}
-
-/// Round 18, Team D — Research tool screen.
+/// Round 18b — Research tool screen backed by the bundled library.
 ///
-/// Ports the spirit of `ResearchScreen.kt`: the pinned medical disclaimer and
-/// a research library whose entries expand to show content. The data layer
-/// differs per the round brief — documents come from the sync-pull
-/// `documents` array (backend `KnowledgeDocumentDtoModel`) and the user's
-/// conditions from `profile.conditions` provide a context line.
+/// [bundle] is injectable so widget tests can drive the screen with a
+/// fake asset bundle; production defaults to [rootBundle].
 class ResearchToolScreen extends StatefulWidget {
   final VoidCallback? onBack;
   final TabsBackend? backend;
+  final AssetBundle? bundle;
 
-  const ResearchToolScreen({super.key, this.onBack, this.backend});
+  const ResearchToolScreen(
+      {super.key, this.onBack, this.backend, this.bundle});
 
   @override
   State<ResearchToolScreen> createState() => _ResearchToolScreenState();
@@ -118,10 +140,12 @@ class ResearchToolScreen extends StatefulWidget {
 
 class _ResearchToolScreenState extends State<ResearchToolScreen> {
   TabsBackend get _backend => widget.backend ?? TabsBackend();
+  AssetBundle get _bundle => widget.bundle ?? rootBundle;
 
   bool _loading = true;
-  List<ResearchDocument> _documents = const [];
+  List<ResearchEntry> _entries = const [];
   List<String> _conditions = const [];
+  String? _selectedCondition;
   String? _error;
   String? _expandedId;
 
@@ -133,28 +157,45 @@ class _ResearchToolScreenState extends State<ResearchToolScreen> {
 
   Future<void> _load() async {
     try {
-      final body = await _backend.fetchSyncPull();
-      final docs = parseResearchDocuments(body?['documents']);
-      final profile = body?['profile'];
+      final entries = await loadResearchEntries(_bundle);
+      final profile = await _backend.fetchProfile();
       final conditions = profile is Map<String, dynamic>
           ? TabsBackend.decodeProfileList(profile['conditions'])
-              .map((c) => c['name']?.toString() ?? '')
+              .map((c) => '${c['name'] ?? ''}'.trim())
               .where((n) => n.isNotEmpty)
               .toList()
           : <String>[];
       if (!mounted) return;
       setState(() {
-        _documents = docs;
+        _entries = entries;
         _conditions = conditions;
+        // Native: default to the first saved condition.
+        if (_selectedCondition == null ||
+            !_conditions.contains(_selectedCondition)) {
+          _selectedCondition =
+              _conditions.isNotEmpty ? _conditions.first : null;
+        }
         _loading = false;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error = 'Could not load your data. We could not pull your latest '
-            'entries. Check your connection and try again.';
+        _error = 'Could not load your data. Check your connection and try again.';
         _loading = false;
       });
+    }
+  }
+
+  List<ResearchEntry> get _visible =>
+      entriesForCondition(_entries, _selectedCondition);
+
+  Future<void> _openSource(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      // Silent on failure — the link is informational.
     }
   }
 
@@ -181,7 +222,6 @@ class _ResearchToolScreenState extends State<ResearchToolScreen> {
       body: Column(
         children: [
           _disclaimerBanner(),
-          if (_conditions.isNotEmpty) _conditionsLine(),
           const SizedBox(height: 14),
           Expanded(child: _body()),
         ],
@@ -219,22 +259,6 @@ class _ResearchToolScreenState extends State<ResearchToolScreen> {
     );
   }
 
-  Widget _conditionsLine() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Text(
-          'Personalized for: ${_conditions.join(', ')}',
-          style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: NotelColors.textSecondary),
-        ),
-      ),
-    );
-  }
-
   Widget _body() {
     if (_loading) {
       return const Center(
@@ -246,47 +270,118 @@ class _ResearchToolScreenState extends State<ResearchToolScreen> {
         children: [_errorBanner(_error!)],
       );
     }
-    if (_documents.isEmpty) {
-      return ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+      children: [
+        if (_conditions.isEmpty)
+          _noConditionsCard()
+        else ...[
+          _conditionSelector(),
+          const SizedBox(height: 14),
+          if (_visible.isEmpty)
+            _nothingHereCard()
+          else
+            ..._visible.map(_entryCard),
+        ],
+      ],
+    );
+  }
+
+  Widget _noConditionsCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: NotelColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: NotelColors.divider),
+      ),
+      child: const Column(
         children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: NotelColors.surface,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: NotelColors.divider),
-            ),
-            child: const Column(
-              children: [
-                Icon(Icons.science,
-                    size: 40, color: NotelColors.textSecondary),
-                SizedBox(height: 12),
-                Text('Nothing here yet',
-                    style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: NotelColors.textPrimary)),
-                SizedBox(height: 6),
-                Text(
-                  'The research library is empty. New documents will appear here when they are added.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: 13,
-                      height: 1.4,
-                      color: NotelColors.textSecondary),
-                ),
-              ],
-            ),
+          Icon(Icons.person_add, size: 40, color: NotelColors.primary),
+          SizedBox(height: 12),
+          Text('No conditions saved yet',
+              style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: NotelColors.textPrimary)),
+          SizedBox(height: 6),
+          Text(
+            'Research is personalized to your conditions. Add them in Profile → Conditions to see relevant entries.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                fontSize: 13, height: 1.4, color: NotelColors.textSecondary),
           ),
         ],
-      );
-    }
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-      itemCount: _documents.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 14),
-      itemBuilder: (context, i) => _documentCard(_documents[i]),
+      ),
+    );
+  }
+
+  Widget _nothingHereCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: NotelColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: NotelColors.divider),
+      ),
+      child: const Column(
+        children: [
+          Icon(Icons.science, size: 40, color: NotelColors.textSecondary),
+          SizedBox(height: 12),
+          Text('Nothing here yet',
+              style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: NotelColors.textPrimary)),
+          SizedBox(height: 6),
+          Text(
+            'The founder adds new research as he finds it.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                fontSize: 13, height: 1.4, color: NotelColors.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _conditionSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Your conditions',
+          style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: NotelColors.textSecondary),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: NotelColors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: NotelColors.divider),
+          ),
+          child: DropdownButton<String>(
+            value: _selectedCondition,
+            isExpanded: true,
+            underline: const SizedBox.shrink(),
+            dropdownColor: NotelColors.surface,
+            style: const TextStyle(
+                fontSize: 14, color: NotelColors.textPrimary),
+            items: [
+              for (final c in _conditions)
+                DropdownMenuItem(value: c, child: Text(c)),
+            ],
+            onChanged: (v) => setState(() {
+              _selectedCondition = v;
+              _expandedId = null;
+            }),
+          ),
+        ),
+      ],
     );
   }
 
@@ -305,77 +400,113 @@ class _ResearchToolScreenState extends State<ResearchToolScreen> {
     );
   }
 
-  Widget _documentCard(ResearchDocument doc) {
-    final expanded = _expandedId == doc.id;
-    final preview = researchPreview(doc);
-    final dateStr = formatResearchDate(doc.createdAt);
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: () =>
-          setState(() => _expandedId = expanded ? null : doc.id),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: NotelColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: NotelColors.divider),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(Icons.menu_book,
-                    size: 20, color: NotelColors.primary),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    doc.name,
-                    style: const TextStyle(
-                        fontSize: 15,
-                        height: 1.3,
-                        fontWeight: FontWeight.bold,
-                        color: NotelColors.textPrimary),
+  Widget _entryCard(ResearchEntry entry) {
+    final expanded = _expandedId == entry.id;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () =>
+            setState(() => _expandedId = expanded ? null : entry.id),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: NotelColors.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: NotelColors.divider),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          entry.title,
+                          style: const TextStyle(
+                              fontSize: 15,
+                              height: 1.3,
+                              fontWeight: FontWeight.bold,
+                              color: NotelColors.textPrimary),
+                        ),
+                        const SizedBox(height: 8),
+                        if (entry.takeaways.isNotEmpty)
+                          ...entry.takeaways.map((t) => Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 3),
+                                child: Row(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('•  ',
+                                        style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                            color: NotelColors.primary)),
+                                    Expanded(
+                                      child: Text(t,
+                                          style: const TextStyle(
+                                              fontSize: 13,
+                                              height: 1.4,
+                                              color:
+                                                  NotelColors.textPrimary)),
+                                    ),
+                                  ],
+                                ),
+                              ))
+                        else if (entry.summary.isNotEmpty)
+                          Text(entry.summary,
+                              style: const TextStyle(
+                                  fontSize: 13,
+                                  height: 1.4,
+                                  color: NotelColors.textSecondary)),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                      expanded
+                          ? Icons.expand_less
+                          : Icons.expand_more,
+                      color: NotelColors.textSecondary),
+                ],
+              ),
+              if (entry.sourceUrl.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => _openSource(entry.sourceUrl),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.open_in_new,
+                            size: 12, color: NotelColors.textSecondary),
+                        SizedBox(width: 4),
+                        Text('Source',
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: NotelColors.textSecondary)),
+                      ],
+                    ),
                   ),
                 ),
-                Icon(
-                    expanded
-                        ? Icons.expand_less
-                        : Icons.expand_more,
-                    color: NotelColors.textSecondary),
               ],
-            ),
-            if (dateStr.isNotEmpty || doc.mimeType.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(
-                [if (doc.mimeType.isNotEmpty) doc.mimeType, if (dateStr.isNotEmpty) dateStr]
-                    .join(' · '),
-                style: const TextStyle(
-                    fontSize: 12, color: NotelColors.textSecondary),
-              ),
-            ],
-            if (expanded) ...[
-              const SizedBox(height: 12),
-              const Divider(color: NotelColors.divider),
-              const SizedBox(height: 12),
-              if (preview != null)
-                Text(preview,
+              if (expanded && entry.detail.isNotEmpty) ...[
+                const Divider(color: NotelColors.divider),
+                const SizedBox(height: 12),
+                Text(entry.detail,
                     style: const TextStyle(
                         fontSize: 13,
                         height: 1.5,
-                        color: NotelColors.textPrimary))
-              else
-                const Text(
-                  'Preview is not available for this file type. '
-                  'Open the main Tabs app to view the full document.',
-                  style: TextStyle(
-                      fontSize: 13,
-                      height: 1.4,
-                      color: NotelColors.textSecondary),
-                ),
+                        color: NotelColors.textPrimary)),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

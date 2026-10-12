@@ -164,65 +164,11 @@ void main() {
     });
   });
 
-  group('parseResearchDocuments', () {
-    test('parses valid rows, skips malformed ones', () {
-      final docs = parseResearchDocuments([
-        {
-          'id': 'd1',
-          'name': 'POTS overview',
-          'mimeType': 'text/markdown',
-          'createdAt': 1700000000000
-        },
-        {'id': '', 'name': ''}, // malformed: skipped
-        'not a map', // skipped
-        {'id': 'd2', 'name': 'MCAS notes', 'mimeType': 'application/pdf'},
-      ]);
-      expect(docs.length, 2);
-      expect(docs.first.name, 'POTS overview');
-    });
+  // Round 18b: the research library is bundled assets, not sync-pull
+  // `documents`. See tools_r18b_test.dart for ResearchEntry parsing,
+  // entriesForCondition filtering, and loadResearchEntries tests.
 
-    test('non-list → empty', () {
-      expect(parseResearchDocuments(null), isEmpty);
-      expect(parseResearchDocuments({'a': 1}), isEmpty);
-    });
-  });
-
-  group('researchPreview', () {
-    test('decodes textual base64 content', () {
-      final doc = ResearchDocument(
-        id: 'd1',
-        name: 'notes',
-        mimeType: 'text/markdown',
-        fileData: base64Encode(utf8.encode('hello research')),
-        createdAt: 1,
-      );
-      expect(researchPreview(doc), 'hello research');
-    });
-
-    test('binary MIME → null (honest unavailable instead of garbage)', () {
-      final doc = ResearchDocument(
-        id: 'd1',
-        name: 'scan',
-        mimeType: 'application/pdf',
-        fileData: base64Encode([1, 2, 3]),
-        createdAt: 1,
-      );
-      expect(researchPreview(doc), isNull);
-    });
-
-    test('null fileData → null; bad base64 → null (never throws)', () {
-      final doc = const ResearchDocument(
-          id: 'd1', name: 'n', mimeType: 'text/plain', createdAt: 1);
-      expect(researchPreview(doc), isNull);
-      final bad = const ResearchDocument(
-          id: 'd1',
-          name: 'n',
-          mimeType: 'text/plain',
-          fileData: '%%%not-base64%%%',
-          createdAt: 1);
-      expect(researchPreview(bad), isNull);
-    });
-  });
+  group('buildLeaderboard', () {
 
   group('buildLeaderboard', () {
     test('sorts friends by level, highest first', () {
@@ -422,6 +368,11 @@ token: 't',
       expect(find.text('Nudy'), findsWidgets);
       expect(find.text('#12345'), findsWidgets);
       expect(find.text('42 pts'), findsWidgets);
+      // Round 18b: no presence badge is ever rendered (native never had
+      // one; the server has no last-active data). "Online"/"Offline"
+      // must not appear anywhere.
+      expect(find.text('Online'), findsNothing);
+      expect(find.text('Offline'), findsNothing);
       // Leaderboard ranks highest level first.
       expect(find.text('#1'), findsOneWidget);
       // Notification opens in the sheet with the unread message.
@@ -448,47 +399,127 @@ token: 't',
     });
   });
 
+  // Round 18b: the library is bundled assets; entries filter by the
+  // user's conditions. A fake AssetBundle drives the screen in tests.
   group('ResearchToolScreen widget', () {
-    testWidgets('documents render and expand to show content', (tester) async {
-      final backend = backendWith(
-        MockClient((_) async => http.Response(
-            jsonEncode({
-              'profile': {'conditions': jsonEncode(['POTS'])},
-              'documents': [
-                {
-                  'id': 'd1',
-                  'name': 'POTS overview',
-                  'mimeType': 'text/markdown',
-                  'fileData':
-                      base64Encode(utf8.encode('Postural orthostatic tachycardia syndrome…')),
-                  'createdAt': 1700000000000,
-                }
-              ],
-            }),
-            200)),
-token: 't',
-      );
-      await tester.pumpWidget(
-          MaterialApp(home: ResearchToolScreen(backend: backend)));
+    _TestBundle bundleWith(List<Map<String, dynamic>> entries) {
+      final files = <String, String>{};
+      final manifest = <String, Object?>{};
+      for (var i = 0; i < entries.length; i++) {
+        final path = 'assets/research/e$i.json';
+        manifest[path] = {};
+        files[path] = jsonEncode(entries[i]);
+      }
+      files['AssetManifest.json'] = jsonEncode(manifest);
+      return _TestBundle(files);
+    }
+
+    Map<String, dynamic> researchEntryJson({
+      required String id,
+      required String title,
+      required List<String> takeaways,
+      required List<String> conditionTags,
+      String detail = 'Full detail text here.',
+      String sourceUrl = 'https://example.com/source',
+    }) =>
+        {
+          'id': id,
+          'title': title,
+          'summary': 'Summary of $title.',
+          'takeaways': takeaways,
+          'detail': detail,
+          'sourceName': 'Example Source',
+          'sourceUrl': sourceUrl,
+          'conditionTags': conditionTags,
+        };
+
+    TabsBackend backendWithConditions(List<String> conditions) =>
+        backendWith(
+          MockClient((_) async => http.Response(
+              jsonEncode({
+                'profile': {'conditions': jsonEncode(conditions)},
+              }),
+              200)),
+          token: 'tok',
+        );
+
+    testWidgets('entries render filtered by condition and expand',
+        (tester) async {
+      final bundle = bundleWith([
+        researchEntryJson(
+          id: 'pots-1',
+          title: 'POTS overview',
+          takeaways: ['Drink more fluids', 'Increase salt intake'],
+          conditionTags: ['POTS'],
+        ),
+        researchEntryJson(
+          id: 'mcas-1',
+          title: 'MCAS basics',
+          takeaways: ['Avoid triggers'],
+          conditionTags: ['MCAS'],
+        ),
+      ]);
+      await tester.pumpWidget(MaterialApp(
+          home: ResearchToolScreen(
+              backend: backendWithConditions(['POTS']), bundle: bundle)));
       await tester.pumpAndSettle();
-      expect(find.text('POTS overview'), findsOneWidget);
+      // Disclaimer always visible.
       expect(find.textContaining('For educational purposes only'),
           findsOneWidget);
-      expect(find.textContaining('Personalized for: POTS'), findsOneWidget);
+      // Only the POTS entry shows for the POTS condition.
+      expect(find.text('POTS overview'), findsOneWidget);
+      expect(find.text('MCAS basics'), findsNothing);
+      // Takeaway bullets render.
+      expect(find.textContaining('Drink more fluids'), findsOneWidget);
+      // Tap to expand → detail shows.
       await tester.tap(find.text('POTS overview'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('Postural orthostatic'), findsOneWidget);
+      expect(find.text('Full detail text here.'), findsOneWidget);
     });
 
-    testWidgets('empty library is honest', (tester) async {
-      final backend = backendWith(
-        MockClient((_) async => http.Response('{}', 200)),
-token: 't',
-      );
-      await tester.pumpWidget(
-          MaterialApp(home: ResearchToolScreen(backend: backend)));
+    testWidgets('no entries for condition → honest empty', (tester) async {
+      final bundle = bundleWith([
+        researchEntryJson(
+          id: 'mcas-1',
+          title: 'MCAS basics',
+          takeaways: ['Avoid triggers'],
+          conditionTags: ['MCAS'],
+        ),
+      ]);
+      await tester.pumpWidget(MaterialApp(
+          home: ResearchToolScreen(
+              backend: backendWithConditions(['POTS']), bundle: bundle)));
       await tester.pumpAndSettle();
       expect(find.text('Nothing here yet'), findsOneWidget);
+      expect(find.text('MCAS basics'), findsNothing);
+    });
+
+    testWidgets('no conditions → prompt to add them', (tester) async {
+      final bundle = bundleWith([]);
+      await tester.pumpWidget(MaterialApp(
+          home: ResearchToolScreen(
+              backend: backendWithConditions([]), bundle: bundle)));
+      await tester.pumpAndSettle();
+      expect(find.text('No conditions saved yet'), findsOneWidget);
     });
   });
+}
+
+/// In-memory AssetBundle for Research widget tests.
+class _TestBundle extends AssetBundle {
+  _TestBundle(this.strings);
+
+  final Map<String, String> strings;
+
+  @override
+  Future<ByteData> load(String key) =>
+      throw UnsupportedError('not needed');
+
+  @override
+  Future<String> loadString(String key, {bool cache = true}) async {
+    final s = strings[key];
+    if (s == null) throw FlutterError('asset not found: $key');
+    return s;
+  }
+}
 }

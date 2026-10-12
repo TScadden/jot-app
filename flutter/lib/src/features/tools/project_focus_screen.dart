@@ -49,8 +49,7 @@ class FocusTest {
   });
 
   /// Tolerant parse: null on a map that isn't test-shaped. Never throws.
-  static FocusTest? fromJson(Map<String, dynamic> json) {
-    try {
+  static FocusTest? fromJson(Map<String, dynamic> json) {    try {
       final title = json['title']?.toString().trim() ?? '';
       final durationRaw = json['durationDays'];
       final startRaw = json['startTimestamp'];
@@ -90,6 +89,22 @@ class FocusTest {
       return null;
     }
   }
+
+  /// Mirrors native `ProjectFocusScreen.kt` (`leftMs <= 0` where
+  /// `leftMs = max(durationMs - elapsedMs, 0)`).
+  /// Pure and unit-testable via [nowMs].
+  bool isCompletedAt(int nowMs) {
+    const msPerDay = 24 * 60 * 60 * 1000;
+    final durationMs = durationDays * msPerDay;
+    final elapsedMs = nowMs - startTimestamp;
+    final leftMs =
+        elapsedMs < 0 ? durationMs : (durationMs - elapsedMs).clamp(0, durationMs);
+    return leftMs <= 0;
+  }
+
+  /// True when the test's window has fully elapsed, device-local now.
+  bool get isCompleted =>
+      isCompletedAt(DateTime.now().millisecondsSinceEpoch);
 }
 
 /// Collects every active test from the decoded focusState maps.
@@ -127,6 +142,45 @@ List<FocusTest> collectFocusTests(List<Map<String, dynamic>> decoded) {
     }
   }
   return out;
+}
+
+/// Default test selection on open.
+///
+/// Founder-directed behavior (deliberate divergence from native, which
+/// falls back to `tests.firstOrNull()` even when that test completed):
+/// - If an in-progress test exists, select it — preferring the blob's
+///   persisted `selectedTestId`, then the blob's `activeTest`, then the
+///   first in-progress test.
+/// - If NO in-progress test exists, return null so the screen opens in
+///   the new-project/empty flow ("What are you trying to work towards?").
+///   Completed tests stay reachable via the selector chips (manual tap).
+/// A `selectedTestId`/`activeTest` naming a completed test is never
+/// auto-selected. Pure and unit-tested.
+String? defaultSelectedTestId(
+    List<Map<String, dynamic>> decoded, List<FocusTest> tests) {
+  String keyOf(FocusTest t) => t.id ?? t.title;
+  final inProgress = tests.where((t) => !t.isCompleted).toList();
+  if (inProgress.isEmpty) return null;
+  final inProgressKeys = {for (final t in inProgress) keyOf(t)};
+  for (final map in decoded) {
+    final sid = map['selectedTestId']?.toString().trim();
+    if (sid != null && sid.isNotEmpty && inProgressKeys.contains(sid)) {
+      return sid;
+    }
+  }
+  for (final map in decoded) {
+    final active = map['activeTest'];
+    if (active is Map<String, dynamic>) {
+      final t = FocusTest.fromJson(active);
+      final key = t == null ? null : keyOf(t);
+      // inProgressKeys membership already guarantees not-completed.
+      if (key != null && key.isNotEmpty && inProgressKeys.contains(key)) {
+        return key;
+      }
+    }
+  }
+  final first = inProgress.first;
+  return first.id ?? first.title;
 }
 
 String _dateStr(DateTime d) =>
@@ -173,7 +227,10 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
       if (!mounted) return;
       setState(() {
         _tests = tests;
-        _selectedId = tests.isEmpty ? null : tests.first.id ?? tests.first.title;
+        // Founder-directed: an in-progress test is selected; with none,
+        // the screen opens in the new-project/empty flow (completed tests
+        // stay reachable via the selector chips).
+        _selectedId = defaultSelectedTestId(decoded, tests);
         _loading = false;
       });
     } catch (_) {
@@ -187,11 +244,12 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
   }
 
   FocusTest? get _selected {
-    if (_tests.isEmpty) return null;
-    return _tests.firstWhere(
-      (t) => (t.id ?? t.title) == _selectedId,
-      orElse: () => _tests.first,
-    );
+    final id = _selectedId;
+    if (id == null) return null; // new-project/empty flow
+    for (final t in _tests) {
+      if ((t.id ?? t.title) == id) return t;
+    }
+    return null;
   }
 
   @override
@@ -242,53 +300,62 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
   }
 
   Widget _emptyState() {
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 40),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: const Color(0x590A0A0E),
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.08),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Completed tests stay reachable via the selector chips even
+          // when nothing is in progress (founder direction).
+          if (_tests.isNotEmpty) ...[
+            _testSelector(),
+            const SizedBox(height: 16),
+          ],
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: const Color(0x590A0A0E),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.08),
+              ),
+            ),
+            child: const Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Project Focus',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    color: NotelColors.textPrimary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 6),
+                Text(
+                  'What are you trying to work towards?',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: NotelColors.textSecondary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 16),
+                Text(
+                  'No active experiments right now. Creating new projects is coming soon — for now, set one up in the main Tabs app and it will appear here.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.5,
+                    color: NotelColors.textSecondary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
             ),
           ),
-          child: const Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Project Focus',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  color: NotelColors.textPrimary,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              SizedBox(height: 6),
-              Text(
-                'What are you trying to work towards?',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: NotelColors.textSecondary,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              SizedBox(height: 16),
-              Text(
-                'No active experiments right now. Creating new projects is coming soon — for now, set one up in the main Tabs app and it will appear here.',
-                style: TextStyle(
-                  fontSize: 13,
-                  height: 1.5,
-                  color: NotelColors.textSecondary,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
+        ],
       ),
     );
   }

@@ -210,6 +210,33 @@ class HealthConnectService {
   Future<int?> readSleepMinutes(String dateStr) =>
       _readInt('readSleepMinutes', {'dateStr': dateStr});
 
+  /// Round 18b — per-stage sleep breakdown for the Sleep Profile screen.
+  /// Null when no session. Zero stage values are possible from the
+  /// bridge (a stage with no intervals); the UI treats them as missing
+  /// per the founder's biometric rule, same as elsewhere.
+  Future<SleepStages?> readSleepStages(String dateStr) async {
+    try {
+      final raw = await _channel
+          .invokeMethod<Map>('readSleepStages', {'dateStr': dateStr});
+      if (raw == null) return null;
+      int? asInt(dynamic v) {
+        if (v is num) return v.toInt();
+        if (v is String) return int.tryParse(v);
+        return null;
+      }
+
+      return SleepStages(
+        minutesAsleep: asInt(raw['minutesAsleep']),
+        deepMinutes: asInt(raw['deepMinutes']),
+        lightMinutes: asInt(raw['lightMinutes']),
+        remMinutes: asInt(raw['remMinutes']),
+        efficiency: asInt(raw['efficiency']),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Resting heart rate (bpm): non-mock records, highest package priority,
   /// latest by time. Null when none.
   Future<int?> readRestingHeartRate(String dateStr) =>
@@ -333,6 +360,27 @@ class HealthConnectException implements Exception {
 
   @override
   String toString() => 'HealthConnectException[$code]: $message';
+}
+
+/// Round 18b — per-stage sleep breakdown from the `readSleepStages`
+/// bridge call (ports native `HealthConnectManager.readSleepSession`).
+/// All fields nullable; null means the bridge had no session.
+/// A 0 stage value is a missing reading per the founder's biometric
+/// rule (never displayed as real data) — the UI maps 0 → null.
+class SleepStages {
+  final int? minutesAsleep;
+  final int? deepMinutes;
+  final int? lightMinutes;
+  final int? remMinutes;
+  final int? efficiency; // percent 0–100
+
+  const SleepStages({
+    this.minutesAsleep,
+    this.deepMinutes,
+    this.lightMinutes,
+    this.remMinutes,
+    this.efficiency,
+  });
 }
 
 /// Minimal storage abstraction so tests can inject an in-memory fake.

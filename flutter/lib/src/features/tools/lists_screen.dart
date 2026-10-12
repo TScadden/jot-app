@@ -49,6 +49,21 @@ const String notesPseudoListName = '__user_notes__';
 List<UserListModel> visibleUserLists(List<UserListModel> lists) =>
     lists.where((l) => l.name != notesPseudoListName).toList();
 
+/// Parses user-list rows fail-soft: a row that throws is skipped
+/// instead of killing the whole list. Never throws.
+List<UserListModel> parseUserListModels(
+    List<Map<String, dynamic>> rows) {
+  final out = <UserListModel>[];
+  for (final row in rows) {
+    try {
+      out.add(UserListModel.fromJson(row));
+    } catch (_) {
+      // Skip the bad row; keep the rest.
+    }
+  }
+  return out;
+}
+
 /// Round 18 — display-only Lists screen.
 ///
 /// [backend] is injectable so widget tests can drive the screen with a
@@ -97,7 +112,7 @@ class _ListsScreenState extends State<ListsScreen> {
       final rows =
           TabsBackend.decodeProfileList(profile['userLists']);
       final lists =
-          visibleUserLists(rows.map(UserListModel.fromJson).toList());
+          visibleUserLists(parseUserListModels(rows));
       setState(() {
         _lists = lists;
         _loading = false;

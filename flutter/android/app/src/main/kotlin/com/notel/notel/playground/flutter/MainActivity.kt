@@ -122,6 +122,7 @@ class MainActivity : FlutterFragmentActivity() {
                     "readHeartRateSamples" -> readHeartRateSamples(call.argument<String>("dateStr"), result)
                     "readActiveCalories" -> readActiveCalories(call.argument<String>("dateStr"), result)
                     "readSleepMinutes" -> readSleepMinutes(call.argument<String>("dateStr"), result)
+                    "readSleepStages" -> readSleepStages(call.argument<String>("dateStr"), result)
                     "readRestingHeartRate" -> readRestingHeartRate(call.argument<String>("dateStr"), result)
                     "readRestingHrHistory" -> readRestingHrHistory(call.argument<Int>("days"), result)
                     "readCaloriesHistory" -> readCaloriesHistory(call.argument<Int>("days"), result)
@@ -415,6 +416,82 @@ class MainActivity : FlutterFragmentActivity() {
                 result.success(minutesAsleep)
             } catch (_: Exception) {
                 result.error("SLEEP_READ_FAILED", "Could not read sleep session.", null)
+            }
+        }
+    }
+
+    /// Round 18b — per-stage sleep breakdown for the Sleep Profile screen.
+    /// Ports native `HealthConnectManager.readSleepSession` stage logic:
+    /// best session (priority + duration), per-type merged intervals,
+    /// `efficiency = totalAsleep / timeInBed * 100`.
+    /// Returns a map {minutesAsleep, deepMinutes, lightMinutes,
+    /// remMinutes, efficiency}, or null when no session. Never throws
+    /// across the channel.
+    private fun readSleepStages(dateStr: String?, result: MethodChannel.Result) {
+        val client = hcClientOrError(result) ?: return
+        lifecycleScope.launch {
+            try {
+                val (startOfDay, endOfDay) = dayRange(dateStr)
+                val response = client.readRecords(
+                    ReadRecordsRequest(
+                        recordType = SleepSessionRecord::class,
+                        timeRangeFilter = TimeRangeFilter.between(
+                            startOfDay.minus(1, ChronoUnit.DAYS), endOfDay
+                        )
+                    )
+                )
+                var target: SleepSessionRecord? = null
+                var maxPriority = -999
+                var maxDuration = -1L
+                for (session in nonMock(response.records)) {
+                    if (session.endTime.isAfter(startOfDay) &&
+                        session.endTime.isBefore(endOfDay.plus(12, ChronoUnit.HOURS))
+                    ) {
+                        val priority = packagePriority(session.metadata.dataOrigin.packageName)
+                        val duration = ChronoUnit.MINUTES.between(session.startTime, session.endTime)
+                        if (priority > maxPriority || (priority == maxPriority && duration > maxDuration)) {
+                            maxPriority = priority
+                            maxDuration = duration
+                            target = session
+                        }
+                    }
+                }
+                val session = target
+                if (session == null) {
+                    result.success(null)
+                    return@launch
+                }
+                fun stageMinutes(vararg types: Int): Int {
+                    val intervals = session.stages
+                        .filter { it.stage in types }
+                        .map { it.startTime to it.endTime }
+                    return mergeIntervals(intervals)
+                        .sumOf { Duration.between(it.first, it.second).toMinutes().toInt() }
+                }
+                val deep = stageMinutes(SleepSessionRecord.STAGE_TYPE_DEEP)
+                val light = stageMinutes(SleepSessionRecord.STAGE_TYPE_LIGHT)
+                val rem = stageMinutes(SleepSessionRecord.STAGE_TYPE_REM)
+                val awake = stageMinutes(
+                    SleepSessionRecord.STAGE_TYPE_AWAKE,
+                    SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED,
+                    SleepSessionRecord.STAGE_TYPE_OUT_OF_BED
+                )
+                val timeInBed =
+                    ChronoUnit.MINUTES.between(session.startTime, session.endTime).toInt()
+                val totalAsleep = timeInBed - awake
+                val efficiency =
+                    if (timeInBed > 0) ((totalAsleep.toFloat() / timeInBed.toFloat()) * 100).toInt() else 0
+                result.success(
+                    mapOf(
+                        "minutesAsleep" to totalAsleep,
+                        "deepMinutes" to deep,
+                        "lightMinutes" to light,
+                        "remMinutes" to rem,
+                        "efficiency" to efficiency
+                    )
+                )
+            } catch (_: Exception) {
+                result.error("SLEEP_STAGES_READ_FAILED", "Could not read sleep stages.", null)
             }
         }
     }

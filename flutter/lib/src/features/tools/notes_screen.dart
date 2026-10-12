@@ -2,30 +2,32 @@ import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
-/// Round 18 — Notes tool screen, DISPLAY-ONLY. Layout follows native
-/// `ui/screen/NotesScreen.kt`'s note cards (purple 14sp bold title, 13sp
-/// body, 11sp secondary date, 14dp rounded cards).
+/// Round 18b — Notes tool screen, DISPLAY-ONLY.
 ///
-/// - Data: `/api/sync/pull` `entries` via `TabsBackend.fetchSyncPull()`.
-///   Each entry follows native `LogEntryDtoModel`
-///   (`{id, categoryId, body, chips, manualText, timestamp, updatedAt}`).
-/// - Title: the entry's category name from the sync pull's `categories`
-///   map (real data), falling back to `"Note"` only when the category is
-///   unknown — no invented titles.
-/// - Text: `body` plus `manualText` joined with a blank line, mirroring
-///   native `EntryDetailScreen`'s display of the same fields. Entries with
-///   no text at all are skipped rather than rendered as blank cards.
-/// - Newest first; dates render "MMM d, yyyy h:mm a" like native.
-/// - DEFERRED (later round): adding, editing, and deleting notes. The
-///   native add-note input area, edit dialog, and ✕ delete affordance
-///   are omitted; cards are read-only.
+/// REAL DATA SOURCE (fixed round 18b): the native app does NOT store notes
+/// as log entries. Per native `NotesViewModel`, notes live in the
+/// `"__user_notes__"` pseudo-list inside the profile `userLists` blob
+/// (each item a string `"title_||_body_||_timestampMs"`). Round 18 wrongly
+/// wired this screen to sync-pull `entries` (log entries) — the founder
+/// reported "My notes are just showing all my logs."
 ///
-/// [parseNoteEntries] and [formatNoteDate] are pure and unit-tested.
+/// - Data: `TabsBackend.fetchProfile()['userLists']` via
+///   `TabsBackend.decodeProfileList`, keeping every list named
+///   `"__user_notes__"` (the account can hold more than one; items from
+///   all of them are merged).
+/// - Item parse mirrors native `NotesScreen.kt`: 3 parts →
+///   (title, body, timestamp); 2 parts → ("New Note", parts[0],
+///   parts[1] as timestamp); otherwise ("New Note", whole text, no
+///   timestamp). Native sorts by id descending (newest first); the blob
+///   has no ids, so we sort by timestamp descending, untimestamped last.
+/// - DEFERRED (later round): adding, editing, and deleting notes.
+///
+/// [parseUserNotes] and [formatNoteDate] are pure and unit-tested.
 
-/// One rendered note row, parsed from a sync-pull entry map.
+/// One rendered note row, parsed from a `__user_notes__` list item.
 class NoteEntry {
-  final String title; // category name, or "Note" when unknown
-  final String text; // body + manualText
+  final String title;
+  final String text;
   final int? timestampMs;
 
   const NoteEntry({
@@ -35,39 +37,46 @@ class NoteEntry {
   });
 }
 
-/// Parses sync-pull `entries` into displayable [NoteEntry]s (newest
-/// first). Blank entries (no body and no manualText) are dropped;
-/// malformed rows are skipped. Never throws.
-List<NoteEntry> parseNoteEntries(Map<String, dynamic>? body) {
-  final categories = <String, String>{};
-  final rawCategories = body?['categories'];
-  if (rawCategories is Map) {
-    rawCategories.forEach((k, v) {
-      categories['$k'] = '$v';
-    });
-  }
-  final rawEntries = body?['entries'];
-  if (rawEntries is! List) return const [];
+/// The pseudo-list name the native app uses for real user notes
+/// (native `NotesViewModel`).
+const String userNotesListName = '__user_notes__';
+
+/// Parses every `"__user_notes__"` list in the decoded `userLists` blob
+/// into displayable [NoteEntry]s, newest first. Items that are blank
+/// after parsing are dropped; malformed rows are skipped. Never throws.
+List<NoteEntry> parseUserNotes(List<Map<String, dynamic>> decoded) {
   final out = <NoteEntry>[];
-  for (final e in rawEntries) {
-    if (e is! Map<String, dynamic>) continue;
-    final bodyText = '${e['body'] ?? ''}'.trim();
-    final manualText = '${e['manualText'] ?? ''}'.trim();
-    final text = manualText.isNotEmpty
-        ? (bodyText.isNotEmpty ? '$bodyText\n\n$manualText' : manualText)
-        : bodyText;
-    if (text.isEmpty) continue; // no text → nothing honest to show
-    final categoryId = '${e['categoryId'] ?? ''}';
-    final title =
-        categories[categoryId]?.trim().isNotEmpty == true
-            ? categories[categoryId]!.trim()
-            : 'Note';
-    final ts = _asInt(e['timestamp']);
-    out.add(NoteEntry(
-      title: title,
-      text: text,
-      timestampMs: ts != null && ts > 0 ? ts : null,
-    ));
+  for (final list in decoded) {
+    if ('${list['name'] ?? ''}' != userNotesListName) continue;
+    final rawItems = list['items'];
+    if (rawItems is! List) continue;
+    for (final item in rawItems) {
+      final text = '$item'.trim();
+      if (text.isEmpty) continue;
+      final parts = text.split('_||_');
+      final String title;
+      final String body;
+      final int? ts;
+      if (parts.length == 3) {
+        title = parts[0].trim().isEmpty ? 'New Note' : parts[0].trim();
+        body = parts[1].trim();
+        ts = int.tryParse(parts[2].trim());
+      } else if (parts.length == 2) {
+        title = 'New Note';
+        body = parts[0].trim();
+        ts = int.tryParse(parts[1].trim());
+      } else {
+        title = 'New Note';
+        body = text;
+        ts = null;
+      }
+      if (body.isEmpty) continue; // no body → nothing honest to show
+      out.add(NoteEntry(
+        title: title,
+        text: body,
+        timestampMs: ts != null && ts > 0 ? ts : null,
+      ));
+    }
   }
   // Newest first; entries without a timestamp sink to the end.
   out.sort((a, b) {
@@ -76,12 +85,6 @@ List<NoteEntry> parseNoteEntries(Map<String, dynamic>? body) {
     return tb.compareTo(ta);
   });
   return out;
-}
-
-int? _asInt(dynamic v) {
-  if (v is num) return v.toInt();
-  if (v is String) return int.tryParse(v);
-  return null;
 }
 
 const _monthNames = [
@@ -133,17 +136,21 @@ class _NotesScreenState extends State<NotesScreen> {
       _loadFailed = false;
     });
     try {
-      final body = await _backend.fetchSyncPull();
+      final profile = await _backend.fetchProfile();
       if (!mounted) return;
-      if (body == null) {
+      if (profile == null) {
         setState(() {
           _loading = false;
           _loadFailed = true;
         });
         return;
       }
+      // Real notes live in the "__user_notes__" pseudo-list(s) of the
+      // userLists blob — never in sync-pull log entries.
+      final decoded =
+          TabsBackend.decodeProfileList(profile['userLists']);
       setState(() {
-        _notes = parseNoteEntries(body);
+        _notes = parseUserNotes(decoded);
         _loading = false;
       });
     } catch (_) {

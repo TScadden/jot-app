@@ -388,7 +388,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
               compact: true,
             )
           else
-            ..._insights.map(_insightCard),
+            ..._insights.map(_insightCard).whereType<Widget>(),
           const SizedBox(height: 24),
 
           // Heart rate history strip
@@ -517,8 +517,10 @@ class _TrendsScreenState extends State<TrendsScreen> {
     );
   }
 
-  Widget _insightCard(Map<String, dynamic> insight) {
-    final text = '${insight['text'] ?? ''}';
+  Widget? _insightCard(Map<String, dynamic> insight) {
+    // Round 18b: never render raw JSON — unparseable patterns are skipped.
+    final text = renderInsightText('${insight['text'] ?? ''}');
+    if (text == null || text.isEmpty) return null;
     final type = '${insight['type'] ?? ''}';
     final range = '${insight['dateRangeText'] ?? ''}';
     return Container(
@@ -992,9 +994,75 @@ List<TrendsCategory> parseTrendsCategories(dynamic raw) {
   return out;
 }
 
+/// Round 18b — renders an insight's `text` for display.
+///
+/// Some server insights carry a raw biometric JSON blob as their text
+/// (e.g. `{"sleepMins":433,"deepSleepMins":76,"avgHr":58,
+/// "hrv":73.29897959183671,"calories":2271}`) which must never be shown
+/// raw (founder bug report). Known biometric fields are parsed into a
+/// human-readable summary with rounded numbers (`HRV 73.3`, never 17
+/// decimals) and the app's sleep format.
+///
+/// - Prose (not JSON) → returned unchanged.
+/// - JSON with renderable biometric fields → summary string.
+/// - JSON-looking but unparseable, or JSON with no renderable fields →
+///   null → the caller skips the card (never show raw JSON).
+/// Never throws.
+String? renderInsightText(String text) {
+  final trimmed = text.trim();
+  if (!trimmed.startsWith('{')) return text; // prose → as-is
+  Map<String, dynamic>? obj;
+  try {
+    final decoded = jsonDecode(trimmed);
+    if (decoded is Map<String, dynamic>) obj = decoded;
+  } catch (_) {}
+  if (obj == null) return null; // JSON-looking but unparseable → skip
+  int? asInt(dynamic v) {
+    if (v is num) return v.toInt();
+    if (v is String) return int.tryParse(v);
+    return null;
+  }
+
+  double? asDouble(dynamic v) {
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v);
+    return null;
+  }
+
+  String fmtSleep(int mins) {
+    final h = mins ~/ 60;
+    final m = mins % 60;
+    if (h > 0 && m > 0) return '${h}h ${m}m';
+    if (h > 0) return '${h}h';
+    return '${m}m';
+  }
+
+  // Founder rule: biometric zeros are failed reads — skip them.
+  // (Spike counts of 0 are real, but a 0-spike pattern card says
+  // nothing, so it is skipped like the rest.)
+  final parts = <String>[];
+  final sleepMins = asInt(obj['sleepMins']);
+  if (sleepMins != null && sleepMins > 0) {
+    parts.add('Sleep ${fmtSleep(sleepMins)}');
+  }
+  final deep = asInt(obj['deepSleepMins']);
+  if (deep != null && deep > 0) parts.add('Deep ${fmtSleep(deep)}');
+  final avgHr = asInt(obj['avgHr']);
+  if (avgHr != null && avgHr > 0) parts.add('Avg HR $avgHr');
+  final hrv = asDouble(obj['hrv']);
+  if (hrv != null && hrv > 0) parts.add('HRV ${hrv.toStringAsFixed(1)}');
+  final calories = asInt(obj['calories']);
+  if (calories != null && calories > 0) parts.add('$calories cal');
+  final spikes = asInt(obj['spikes']);
+  if (spikes != null && spikes > 0) {
+    parts.add('$spikes spike${spikes == 1 ? '' : 's'}');
+  }
+  if (parts.isEmpty) return null; // no renderable fields → skip
+  return parts.join(' · ');
+}
+
 /// Sync-pull insights, non-dismissed first. Never throws.
-List<Map<String, dynamic>> parseTrendsInsights(dynamic raw) {
-  if (raw is! List) return const [];
+List<Map<String, dynamic>> parseTrendsInsights(dynamic raw) {  if (raw is! List) return const [];
   final out = <Map<String, dynamic>>[];
   for (final i in raw) {
     if (i is Map<String, dynamic> && '${i['text'] ?? ''}'.isNotEmpty) {

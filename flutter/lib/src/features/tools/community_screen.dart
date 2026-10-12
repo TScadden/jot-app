@@ -304,19 +304,10 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
                       fontSize: 12, color: NotelColors.textSecondary)),
             ],
           ),
-          if (friend.status.isNotEmpty)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: NotelColors.success.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(friend.status,
-                  style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: NotelColors.success)),
-            ),
+          // Round 18b: no status/presence badge. Native never renders one
+          // (the server's `status` field is not presence), and no
+          // last-active timestamp exists in any friends endpoint — so
+          // nothing is rendered instead of a fake "Online".
         ],
       ),
     );

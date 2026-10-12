@@ -456,64 +456,40 @@ void main() {
     });
   });
 
-  // ── Notes ────────────────────────────────────────────────────────────
+  // ── Notes (round 18b: real source is __user_notes__) ─────────────────────
 
-  group('notes: entry parsing', () {
-    Map<String, dynamic> pullBody() => {
-          'categories': {'1': 'Food', '2': 'Mood'},
-          'entries': [
-            {
-              'id': 10,
-              'categoryId': 1,
-              'body': 'Chicken and rice',
-              'chips': '',
-              'manualText': 'Felt fine after',
-              'timestamp': 1700003600000,
-              'updatedAt': 1700003600000,
-            },
-            {
-              'id': 9,
-              'categoryId': 2,
-              'body': 'Tired morning',
-              'chips': '',
-              'manualText': '',
-              'timestamp': 1700000000000,
-              'updatedAt': 1700000000000,
-            },
-            {
-              // blank entry → skipped, never a blank card
-              'id': 8,
-              'categoryId': 1,
-              'body': '  ',
-              'manualText': '',
-              'timestamp': 1699990000000,
-            },
-            {
-              // unknown category → honest "Note" fallback
-              'id': 7,
-              'categoryId': 99,
-              'body': 'No category',
-              'manualText': '',
-            },
-          ],
-        };
+  group('notes: parsing from __user_notes__', () {
+    List<Map<String, dynamic>> notesBlob() =>
+        TabsBackend.decodeProfileList(jsonEncode([
+          {
+            'name': '__user_notes__',
+            'items': [
+              'Groceries_||_eggs, oats_||_1720000000000',
+              'PT_||_floor routine_||_1720100000000',
+            ],
+          },
+          {'name': 'Shopping', 'items': ['not a note']},
+        ]));
 
-    test('parses titles, joins body+manualText, newest first', () {
-      final notes = parseNoteEntries(pullBody());
-      expect(notes, hasLength(3));
-      expect(notes[0].title, 'Food');
-      expect(notes[0].text, 'Chicken and rice\n\nFelt fine after');
-      expect(notes[1].title, 'Mood');
-      expect(notes[1].text, 'Tired morning');
-      expect(notes[2].title, 'Note');
-      expect(notes[2].timestampMs, isNull);
+    test('parses title/body/timestamp, newest first', () {
+      final notes = parseUserNotes(notesBlob());
+      expect(notes, hasLength(2));
+      expect(notes[0].title, 'PT');
+      expect(notes[0].text, 'floor routine');
+      expect(notes[0].timestampMs, 1720100000000);
+      expect(notes[1].title, 'Groceries');
     });
 
-    test('null body or missing entries → empty, never throws', () {
-      expect(parseNoteEntries(null), isEmpty);
-      expect(parseNoteEntries({}), isEmpty);
-      expect(parseNoteEntries({'entries': 'junk'}), isEmpty);
-      expect(parseNoteEntries({'entries': ['junk']}), isEmpty);
+    test('ignores lists that are not __user_notes__', () {
+      final notes = parseUserNotes(notesBlob());
+      expect(notes.any((n) => n.text == 'not a note'), isFalse);
+    });
+
+    test('null/blank/malformed → empty, never throws', () {
+      expect(parseUserNotes([]), isEmpty);
+      expect(parseUserNotes(TabsBackend.decodeProfileList(null)), isEmpty);
+      expect(
+          parseUserNotes(TabsBackend.decodeProfileList('garbage')), isEmpty);
     });
 
     test('formatNoteDate renders native pattern', () {
@@ -529,38 +505,54 @@ void main() {
   group('notes: widget states', () {
     MockClient notesClient() => MockClient((_) async => http.Response(
           jsonEncode({
-            'categories': {'3': 'Symptoms'},
-            'entries': [
-              {
-                'id': 5,
-                'categoryId': 3,
-                'body': 'Heart rate spike after shower',
-                'chips': '',
-                'manualText': 'Had to sit down',
-                'timestamp': 1720000000000,
-                'updatedAt': 1720000000000,
-              },
-            ],
+            'profile': {
+              'userLists': jsonEncode([
+                {
+                  'name': '__user_notes__',
+                  'items': [
+                    'Evening note_||_Heart rate spike after shower_||_1720000000000',
+                  ],
+                },
+              ]),
+            },
           }),
           200,
         ));
 
-    testWidgets('renders category title, text, and date', (tester) async {
+    testWidgets('renders note title, text, and date', (tester) async {
       await _pumpScreen(tester,
           NotesScreen(backend: _backendWith(notesClient(), token: 'tok')));
-      expect(find.text('Symptoms'), findsOneWidget);
-      expect(
-          find.text(
-              'Heart rate spike after shower\n\nHad to sit down'),
-          findsOneWidget);
+      expect(find.text('Evening note'), findsOneWidget);
+      expect(find.text('Heart rate spike after shower'), findsOneWidget);
       expect(
           find.text(formatNoteDate(1720000000000)), findsOneWidget);
     });
 
-    testWidgets('empty entries → honest empty state', (tester) async {
+    testWidgets('log entries are NOT shown as notes', (tester) async {
+      // A profile with entries but no __user_notes__ list → honest empty.
       final backend = _backendWith(
         MockClient((_) async => http.Response(
-            jsonEncode({'entries': [], 'categories': {}}), 200)),
+            jsonEncode({
+              'profile': {'userLists': '[]'},
+              'entries': [
+                {'id': 1, 'body': 'This is a log, not a note'}
+              ],
+            }),
+            200)),
+        token: 'tok',
+      );
+      await _pumpScreen(tester, NotesScreen(backend: backend));
+      expect(find.text('This is a log, not a note'), findsNothing);
+      expect(find.text('No notes yet'), findsOneWidget);
+    });
+
+    testWidgets('empty userLists → honest empty state', (tester) async {
+      final backend = _backendWith(
+        MockClient((_) async => http.Response(
+            jsonEncode({
+              'profile': {'userLists': '[]'}
+            }),
+            200)),
         token: 'tok',
       );
       await _pumpScreen(tester, NotesScreen(backend: backend));

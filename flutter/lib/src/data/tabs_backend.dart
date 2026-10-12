@@ -90,32 +90,61 @@ class TabsBackend {
   /// Round 18 — decode a profile JSON-string blob (medications,
   /// conditions, reminders, userLists, focusState, ...). Tolerates
   /// null/blank/malformed → empty list. Never throws.
+  ///
+  /// Round 18b hardening: also accepts an already-decoded [List] or
+  /// [Map] (some call sites pass decoded values) and double-encoded
+  /// JSON strings (a JSON string containing a JSON string).
   static List<Map<String, dynamic>> decodeProfileList(dynamic raw) {
     List<dynamic>? list;
     if (raw is String) {
       if (raw.trim().isEmpty) return const [];
       try {
-        final decoded = jsonDecode(raw);
+        var decoded = jsonDecode(raw);
+        // Unwrap double-encoded strings: "\"[...]\", \"{...}\"".
+        var guard = 0;
+        while (decoded is String &&
+            decoded.trim().isNotEmpty &&
+            guard < 3) {
+          guard++;
+          try {
+            decoded = jsonDecode(decoded);
+          } catch (_) {
+            break;
+          }
+        }
         if (decoded is List) {
           list = decoded;
-        } else if (decoded is Map<String, dynamic>) {
-          return [decoded];
+        } else if (decoded is Map) {
+          return [_stringKeyed(decoded)];
         }
       } catch (_) {
         return const [];
       }
     } else if (raw is List) {
       list = raw;
+    } else if (raw is Map) {
+      // Already-decoded single blob.
+      return [_stringKeyed(raw)];
     }
     if (list == null) return const [];
     final out = <Map<String, dynamic>>[];
     for (final item in list) {
-      if (item is Map<String, dynamic>) {
-        out.add(item);
+      if (item is Map) {
+        out.add(_stringKeyed(item));
       } else if (item is String) {
         // Some blobs store plain strings (e.g. condition names).
         out.add({'name': item});
       }
+    }
+    return out;
+  }
+
+  /// Coerces a decoded map to `Map<String, dynamic>`; returns `{}` when
+  /// the map has no string keys. Never throws.
+  static Map<String, dynamic> _stringKeyed(Map<dynamic, dynamic> m) {
+    final out = <String, dynamic>{};
+    for (final e in m.entries) {
+      if (e.key is String) out[e.key as String] = e.value;
     }
     return out;
   }
