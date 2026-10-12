@@ -10,7 +10,7 @@ import 'package:tabs_lab/src/data/weekly_snapshot.dart';
 /// Founder data rules enforced throughout:
 /// - Biometric 0 = failed read → excluded before aggregating, never
 ///   charted/averaged/cached (see `health_data.dart`).
-/// - HR is daytime-only (7am–10pm, device-local) everywhere.
+/// - HR is daytime-only (7am–11pm, device-local hour 7..22) everywhere.
 /// - Missing → null → the UI's "--"/empty states. Nothing invented.
 /// - Nothing here ever throws: every source is caught into its honest
 ///   empty outcome.

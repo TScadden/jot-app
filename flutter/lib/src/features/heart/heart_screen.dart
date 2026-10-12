@@ -38,9 +38,9 @@ import 'package:tabs_lab/src/theme/slide_page_route.dart';
 ///   puts the prominent disclosure BEFORE the system dialog, exactly
 ///   like the Connections screen. Flagged in the round report.
 ///
-/// Data definitions live in heart_data.dart with file/line traces,
-/// including the flagged awake-window divergence (native Heart VM
-/// uses hours 7..22; the snapshot code uses 7..21).
+/// Data definitions live in heart_data.dart with file/line traces.
+/// Awake window unified in Round 26 (founder decision Oct 12, 2026):
+/// hours 7..22 everywhere — the Heart VM and the snapshot code agree.
 class HeartScreen extends StatefulWidget {
   final String? email;
 

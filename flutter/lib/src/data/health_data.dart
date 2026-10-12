@@ -4,7 +4,7 @@ import 'package:tabs_lab/src/data/weekly_snapshot.dart';
 ///
 /// Ports from the native app (`data/healthconnect/HealthConnectManager.kt`,
 /// `data/repository/WeeklySnapshotRepository.kt`):
-/// - [daytimeHeartRateAvg] — daytime-only (7am–10pm) HR average.
+/// - [daytimeHeartRateAvg] — daytime-only (7am–11pm) HR average.
 /// - [computeDailyHrSummary] — verbatim port of native
 ///   `computeDailyHeartRateSummary` (spike detection, 10th-percentile
 ///   baseline, day/night split).
@@ -16,7 +16,9 @@ import 'package:tabs_lab/src/data/weekly_snapshot.dart';
 /// - A 0 in biometric data is a failed read — excluded BEFORE aggregating,
 ///   never charted, averaged, or cached. (`bpm <= 0`, `<= 0` for calories,
 ///   sleep minutes, resting HR.)
-/// - Heart rate is daytime-only (device-local hour 7..21) everywhere.
+/// - Heart rate is daytime-only (device-local hour 7..22, i.e.
+///   [07:00, 23:00)) everywhere — founder decision Oct 12, 2026
+///   (Round 26), superseding the older 7 AM–10 PM (7..21) rule.
 /// - Missing data → null → the UI's "--"/empty states. Never invented.
 
 /// One raw intraday heart-rate sample.
@@ -125,7 +127,7 @@ List<WindowDay> sevenDayWindow() {
   });
 }
 
-/// Daytime-only (device-local hour 7..21) heart-rate average.
+/// Daytime-only (device-local hour 7..22) heart-rate average.
 ///
 /// Zero-exclusion (founder rule): bpm ≤ 0 samples are dropped first.
 /// When the day has NO daytime samples, falls back to the average of all
@@ -137,7 +139,7 @@ int? daytimeHeartRateAvg(List<HrSample> samples) {
   if (valid.isEmpty) return null;
   final daytime = valid.where((s) {
     final h = hourOf(s.timeMs);
-    return h >= 7 && h <= 21;
+    return h >= 7 && h <= 22;
   }).toList();
   final source = daytime.isNotEmpty ? daytime : valid;
   final sum = source.fold<int>(0, (a, s) => a + s.bpm);
@@ -150,6 +152,12 @@ int? daytimeHeartRateAvg(List<HrSample> samples) {
 /// - a spike event starts at the first reading ≥ 100 and absorbs
 ///   subsequent ≥100 readings within 5 minutes
 /// - day/night split by the event START hour in 7..21
+///
+/// Round 26 note: the [DailyHrSummary.awakeAvg] window in this function
+/// was aligned to the founder's 7..22 awake window (Oct 12, 2026). The
+/// day/night SPIKE split above was deliberately left at the native
+/// 7..21 — it classifies spike events, it does not select samples for
+/// the awake average — and is flagged in the Round 26 report.
 ///
 /// Deviation from native (founder rule): bpm ≤ 0 samples are excluded
 /// before the algorithm runs. Null when no usable samples remain.
@@ -173,7 +181,7 @@ DailyHrSummary? computeDailyHrSummary(String date, List<HrSample> samples) {
   final daytime =
       usable.where((s) {
         final h = hourOf(s.timeMs);
-        return h >= 7 && h <= 21;
+        return h >= 7 && h <= 22;
       }).toList();
   final awakeAvg = daytime.isNotEmpty
       ? (daytime.fold<int>(0, (a, s) => a + s.bpm) / daytime.length).toInt()

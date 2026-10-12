@@ -75,10 +75,10 @@ void main() {
       expect(data.spikeEvents, isEmpty);
     });
 
-    test('awake window is native Heart VM hours 7..22, asleep 23..6', () {
+    test('awake window is hours 7..22, asleep 23..6 (Round 26 unified)', () {
       // 2:00 asleep, 6:00 asleep, 7:00 awake, 22:30 awake (the
-      // flagged divergence hour), 23:00 asleep.
-      final samples = [_s(2, 50), _s(6, 40), _s(7, 70), _s(22, 90, 30), _s(23, 60)];
+      // Round 26 alignment hour), 23:30 asleep.
+      final samples = [_s(2, 50), _s(6, 40), _s(7, 70), _s(22, 90, 30), _s(23, 60, 30)];
       expect(heartAwakeAverage(samples), 80); // (70+90)/2
       expect(heartAsleepAverage(samples), 50); // (50+40+60)/3
     });

@@ -13,7 +13,7 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///   try/catch; a missing/failed channel yields honest "No Data Recorded").
 ///
 /// Founder's data rules: a biometric 0 is a failed read (never charted),
-/// heart rate is the daytime 7am–10pm number wherever shown, missing
+/// heart rate is the daytime 7am–11pm number wherever shown, missing
 /// values render as "--"/"No Data Recorded", never invented.
 ///
 /// Deferred (reported to parent): per-day historical tiles, the date
@@ -222,7 +222,7 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
           icon: Icons.favorite,
           color: NotelColors.primary,
           isLoading: false,
-          subtitle: 'Daytime average (7am–10pm)',
+          subtitle: 'Daytime average (7am–11pm)',
         ),
         MetricTile(
           title: 'Weight',

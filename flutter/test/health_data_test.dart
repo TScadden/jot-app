@@ -30,14 +30,22 @@ void main() {
       expect(daytimeHeartRateAvg(samples), 75);
     });
 
-    test('boundary hours 7 and 21 count as daytime', () {
+    test(
+        'boundary: 22:30 counts as daytime, 23:30 does not '
+        '(7am–11pm window, Round 26)', () {
+      // Awake window is device-local hour 7..22 ([07:00, 23:00)).
+      // In-window: 7:00 (70), 21:00 (80), 22:30 (90) → avg 80.
+      // Out-of-window: 6:59 (40) and 23:30 (40) — if 22:30 were
+      // excluded the result would be 75; if 23:30 were included it
+      // would be 70, so 80 proves both boundaries.
       final samples = [
         HrSample(timeMs: _at(2026, 10, 11, 7), bpm: 70),
         HrSample(timeMs: _at(2026, 10, 11, 21), bpm: 80),
+        HrSample(timeMs: _at(2026, 10, 11, 22, 30), bpm: 90),
         HrSample(timeMs: _at(2026, 10, 11, 6, 59), bpm: 40),
-        HrSample(timeMs: _at(2026, 10, 11, 22), bpm: 40),
+        HrSample(timeMs: _at(2026, 10, 11, 23, 30), bpm: 40),
       ];
-      expect(daytimeHeartRateAvg(samples), 75);
+      expect(daytimeHeartRateAvg(samples), 80);
     });
 
     test('no daytime samples falls back to overall non-zero average', () {
@@ -127,6 +135,19 @@ void main() {
       final s = computeDailyHrSummary('2026-10-11', samples)!;
       expect(s.awakeAvg, 75); // daytime only, not (70+80+120)/3
       expect(s.avg, 90); // overall average
+    });
+
+    test(
+        'awakeAvg boundary: 22:30 counts as awake, 23:30 does not '
+        '(Round 26)', () {
+      final samples = [
+        HrSample(timeMs: _at(2026, 10, 11, 10), bpm: 70),
+        HrSample(timeMs: _at(2026, 10, 11, 22, 30), bpm: 90),
+        HrSample(timeMs: _at(2026, 10, 11, 23, 30), bpm: 120),
+      ];
+      final s = computeDailyHrSummary('2026-10-11', samples)!;
+      expect(s.awakeAvg, 80); // (70+90)/2 — 22:30 in, 23:30 out
+      expect(s.avg, 93); // (70+90+120)/3 truncated
     });
 
     test('zero samples excluded; empty after exclusion returns null', () {

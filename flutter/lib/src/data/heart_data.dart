@@ -9,16 +9,14 @@ import 'package:tabs_lab/src/data/health_data.dart';
 /// - Spikes card: the `todaySpikes` block inside `FitbitScreen.kt`.
 /// - Spike review list: `HeartSpikeReviewScreen.kt`'s detection block.
 ///
-/// ⚠️ DIVERGENCE FLAGGED (mirror-native per the round brief): the Heart
-/// screen's ViewModel splits awake/asleep by device-local hour
-/// **7..22 awake** / **23..6 asleep** (`h in 7..22`, `h >= 23 || h < 7`),
-/// while the founder's standing rule and native
-/// `computeDailyHeartRateSummary` (HealthConnectManager.kt) use
-/// **7..21** (7 AM–10 PM) — see `daytimeHeartRateAvg` in
-/// health_data.dart, which the Home/snapshot surfaces use. This file
-/// mirrors the Heart screen's own native behavior exactly so the Heart
-/// tab matches the native Heart tab; the 22:00–22:59 hour is the only
-/// difference.
+/// AWAKE WINDOW UNIFIED (Round 26, founder decision Oct 12, 2026):
+/// the awake/daytime heart-rate window is **7 AM–11 PM everywhere** —
+/// the Heart screen's ViewModel splits awake/asleep by device-local
+/// hour **7..22 awake** / **23..6 asleep** (`h in 7..22`,
+/// `h >= 23 || h < 7`), and `daytimeHeartRateAvg` in health_data.dart
+/// (the Home/snapshot surfaces) now uses the same 7..22 window. This
+/// supersedes the older 7 AM–10 PM (7..21) snapshot rule; the Heart
+/// tab and the snapshot surfaces now agree on the 22:00–22:59 hour.
 ///
 /// FOUNDER HARD RULES (non-negotiable):
 /// - A 0 bpm sample is a failed read — filtered out BEFORE every
