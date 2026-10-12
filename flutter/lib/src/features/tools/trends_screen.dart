@@ -43,15 +43,11 @@ class TrendsEntry {
   });
 
   factory TrendsEntry.fromJson(Map<String, dynamic> json) {
-    final ts = json['timestamp'];
-    final id = json['id'];
     return TrendsEntry(
-      id: id is num ? id.toInt() : 0,
+      id: parseLooseInt(json['id']),
       body: '${json['body'] ?? ''}',
-      timestamp: ts is num ? ts.toInt() : 0,
-      categoryId: json['categoryId'] is num
-          ? (json['categoryId'] as num).toInt()
-          : 0,
+      timestamp: parseEpochMs(json['timestamp']),
+      categoryId: parseLooseInt(json['categoryId']),
       chips: '${json['chips'] ?? ''}',
     );
   }
@@ -158,9 +154,13 @@ class _TrendsScreenState extends State<TrendsScreen> {
   List<TrendsEntry> get _logsForSymptom {
     if (_selectedSymptom == null) return const [];
     final needle = _selectedSymptom!.toLowerCase();
+    // Mirrors native TrendsViewModel.selectSymptom: a log matches when
+    // one of its chips equals the symptom OR its body mentions it.
     return [
       for (final e in _entries)
-        if (splitChips(e.chips).any((c) => c.toLowerCase() == needle)) e,
+        if (splitChips(e.chips).any((c) => c.toLowerCase() == needle) ||
+            e.body.toLowerCase().contains(needle))
+          e,
     ];
   }
 
@@ -281,13 +281,16 @@ class _TrendsScreenState extends State<TrendsScreen> {
     }
 
     final totalLogs = _entries.length;
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Log volume card
-          InkWell(
+    final filtered = _filteredLogs;
+    final symptomLogs = _logsForSymptom;
+    // Lazy slivers: long lists (entries, patterns) build on demand
+    // instead of the whole column at once (founder scroll-lag report).
+    return CustomScrollView(
+      slivers: [
+        // Log volume card
+        _section(
+          top: 16,
+          child: InkWell(
             onTap: () => setState(() {
               _selectedHour = null;
               _selectedSymptom = null;
@@ -329,83 +332,120 @@ class _TrendsScreenState extends State<TrendsScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 24),
+        ),
 
-          if (totalLogs == 0) ...[
-            _emptyState(
+        if (totalLogs == 0)
+          _section(
+            child: _emptyState(
               icon: Icons.trending_up,
               title: 'No logs yet',
               body:
                   'Log your first entry from Quick Log, then come back here to see your patterns.',
             ),
-          ] else ...[
-            _daySelector(),
-            const SizedBox(height: 20),
-            _sectionLabel(_selectedHour != null
-                ? 'Logs at ${_formatHour(_selectedHour!)}'
-                : 'Log activity by hour'),
-            const SizedBox(height: 8),
-            _HourlyChart(
-              data: _frequencyByHour,
-              selectedHour: _selectedHour,
-              onHourSelected: (h) => setState(() => _selectedHour =
-                  _selectedHour == h ? null : h),
+          )
+        else ...[
+          _section(child: _daySelector()),
+          _section(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _sectionLabel(_selectedHour != null
+                    ? 'Logs at ${_formatHour(_selectedHour!)}'
+                    : 'Log activity by hour'),
+                const SizedBox(height: 8),
+                _HourlyChart(
+                  data: _frequencyByHour,
+                  selectedHour: _selectedHour,
+                  onHourSelected: (h) => setState(() => _selectedHour =
+                      _selectedHour == h ? null : h),
+                ),
+              ],
             ),
-            const SizedBox(height: 24),
-            if (_selectedHour == null) ...[
-              const Text('Category Focus',
-                  style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: NotelColors.textPrimary)),
-              const SizedBox(height: 12),
-              ..._categoryRows(),
-              const SizedBox(height: 24),
-            ],
-            if (_filteredLogs.isNotEmpty) ...[
-              _sectionLabel('Entries for this hour'),
-              const SizedBox(height: 8),
-              ..._filteredLogs.map(_entryCard),
-              const SizedBox(height: 24),
-            ],
-            if (_logsForSymptom.isNotEmpty) ...[
-              _sectionLabel("Logs for '${_selectedSymptom!}'"),
-              const SizedBox(height: 8),
-              ..._logsForSymptom.map(_entryCard),
-              const SizedBox(height: 24),
-            ],
+          ),
+          if (_selectedHour == null)
+            _section(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Category Focus',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: NotelColors.textPrimary)),
+                  const SizedBox(height: 12),
+                  ..._categoryRows(),
+                ],
+              ),
+            ),
+          if (filtered.isNotEmpty) ...[
+            _section(
+                bottom: 8, child: _sectionLabel('Entries for this hour')),
+            _lazyList(filtered.length, (i) => _entryCard(filtered[i])),
           ],
+          if (symptomLogs.isNotEmpty) ...[
+            _section(
+                bottom: 8,
+                child: _sectionLabel("Logs for '${_selectedSymptom!}'")),
+            _lazyList(symptomLogs.length, (i) => _entryCard(symptomLogs[i])),
+          ],
+        ],
 
-          // Patterns (insights) — always shown when present
-          _sectionLabel('Patterns'),
-          const SizedBox(height: 8),
-          if (_insights.isEmpty)
-            _emptyState(
+        // Patterns (insights) — always shown when present
+        _section(bottom: 8, child: _sectionLabel('Patterns')),
+        if (_insights.isEmpty)
+          _section(
+            child: _emptyState(
               icon: Icons.auto_awesome,
               title: 'No patterns yet',
               body:
                   'Insights appear here once Tabs has enough data to spot trends.',
               compact: true,
-            )
-          else
-            ..._insights.map(_insightCard).whereType<Widget>(),
-          const SizedBox(height: 24),
+            ),
+          )
+        else
+          _lazyList(
+            _insights.length,
+            (i) => _insightCard(_insights[i]) ?? const SizedBox.shrink(),
+          ),
 
-          // Heart rate history strip
-          _sectionLabel('Heart rate over time'),
-          const SizedBox(height: 8),
-          if (_hrHistory.isEmpty)
-            _emptyState(
+        // Heart rate history strip
+        _section(bottom: 8, child: _sectionLabel('Heart rate over time')),
+        if (_hrHistory.isEmpty)
+          _section(
+            bottom: 0,
+            child: _emptyState(
               icon: Icons.favorite_border,
               title: 'No heart rate history yet',
               body:
                   'Heart rate history from your profile will appear here once it syncs.',
               compact: true,
-            )
-          else
-            _HrHistoryStrip(data: _hrHistory),
-          const SizedBox(height: 100),
-        ],
+            ),
+          )
+        else
+          _section(bottom: 0, child: _HrHistoryStrip(data: _hrHistory)),
+        const SliverToBoxAdapter(child: SizedBox(height: 100)),
+      ],
+    );
+  }
+
+  /// One eagerly-built block in the trends scroll view, with the
+  /// screen's standard horizontal padding and spacing below it.
+  Widget _section({required Widget child, double top = 0, double bottom = 24}) {
+    return SliverPadding(
+      padding: EdgeInsets.fromLTRB(16, top, 16, bottom),
+      sliver: SliverToBoxAdapter(child: child),
+    );
+  }
+
+  /// A lazily-built list section: rows are only built as they scroll
+  /// into view, each in its own repaint boundary.
+  Widget _lazyList(int count, Widget Function(int index) builder,
+      {double bottom = 24}) {
+    return SliverPadding(
+      padding: EdgeInsets.fromLTRB(16, 0, 16, bottom),
+      sliver: SliverList.builder(
+        itemCount: count,
+        itemBuilder: (context, i) => RepaintBoundary(child: builder(i)),
       ),
     );
   }
@@ -950,6 +990,30 @@ class _HrHistoryStrip extends StatelessWidget {
 
 // ── Pure parsing helpers (unit-tested) ──────────────────────────────────────
 
+/// Tolerant int parse for sync-pull fields. The server serializes
+/// Postgres bigint columns as JSON strings (node-pg int8 default), so
+/// ids arrive as `"639"`, not `639`. Accepts num or numeric string;
+/// anything else → 0. Never throws.
+int parseLooseInt(dynamic v) {
+  if (v is num) return v.toInt();
+  if (v is String) return int.tryParse(v.trim()) ?? 0;
+  return 0;
+}
+
+/// Tolerant epoch-millis parse (see [parseLooseInt] for why strings
+/// arrive). Also accepts an ISO-8601 string defensively. Never throws.
+int parseEpochMs(dynamic v) {
+  if (v is num) return v.toInt();
+  if (v is String) {
+    final s = v.trim();
+    final n = int.tryParse(s);
+    if (n != null) return n;
+    final dt = DateTime.tryParse(s);
+    if (dt != null) return dt.millisecondsSinceEpoch;
+  }
+  return 0;
+}
+
 /// Sync-pull entries → view rows. Skips malformed rows; never throws.
 List<TrendsEntry> parseTrendsEntries(dynamic raw) {
   if (raw is! List) return const [];
@@ -1010,6 +1074,12 @@ List<TrendsCategory> parseTrendsCategories(dynamic raw) {
 /// Never throws.
 String? renderInsightText(String text) {
   final trimmed = text.trim();
+  // Server reports (Graph Analysis Report) carry full HTML. Raw markup
+  // must never reach the screen — convert to clean readable text.
+  if (_looksLikeHtml(trimmed)) {
+    final clean = htmlToPlainText(trimmed);
+    return clean.isEmpty ? null : clean;
+  }
   if (!trimmed.startsWith('{')) return text; // prose → as-is
   Map<String, dynamic>? obj;
   try {
@@ -1061,11 +1131,19 @@ String? renderInsightText(String text) {
   return parts.join(' · ');
 }
 
-/// Sync-pull insights, non-dismissed first. Never throws.
-List<Map<String, dynamic>> parseTrendsInsights(dynamic raw) {  if (raw is! List) return const [];
+/// Sync-pull insights, curated the way native curates them for display
+/// (SettingsScreen's AI Insights History): "Biometrics" and "BodyLoad"
+/// rows are machine data series (per-day JSON blobs), never display
+/// cards — native excludes both types outright. Of the rest: dedupe
+/// identical texts, non-dismissed first, newest first, capped at 15
+/// like native. Never throws.
+List<Map<String, dynamic>> parseTrendsInsights(dynamic raw) {
+  if (raw is! List) return const [];
   final out = <Map<String, dynamic>>[];
   for (final i in raw) {
     if (i is Map<String, dynamic> && '${i['text'] ?? ''}'.isNotEmpty) {
+      final type = '${i['type'] ?? ''}';
+      if (type == 'Biometrics' || type == 'BodyLoad') continue;
       out.add(i);
     }
   }
@@ -1073,11 +1151,11 @@ List<Map<String, dynamic>> parseTrendsInsights(dynamic raw) {  if (raw is! List)
     final da = a['isDismissed'] == true ? 1 : 0;
     final db = b['isDismissed'] == true ? 1 : 0;
     if (da != db) return da.compareTo(db);
-    final ta = a['timestamp'] is num ? (a['timestamp'] as num).toInt() : 0;
-    final tb = b['timestamp'] is num ? (b['timestamp'] as num).toInt() : 0;
-    return tb.compareTo(ta);
+    return parseEpochMs(b['timestamp']).compareTo(parseEpochMs(a['timestamp']));
   });
-  return out;
+  final seen = <String>{};
+  out.removeWhere((i) => !seen.add('${i['text']}'.trim()));
+  return out.length > 15 ? out.sublist(0, 15) : out;
 }
 
 /// Lenient decode of `profile['heartRateHistory']` (a JSON string).
@@ -1122,13 +1200,96 @@ double? _firstPositiveNum(Map<String, dynamic> map) {
   return null;
 }
 
-/// Splits an entry's chips string on commas/semicolons. Never throws.
+/// Splits an entry's chips field into plain symptom/chip names.
+///
+/// The field is a JSON-array string (`'["Heart Palpitations"]'`,
+/// `'[]'` for none) — native decodes it with
+/// `Json.decodeFromString<List<String>>`. Parsing it as plain text
+/// leaked raw array syntax onto the screen (`["Medication Tab"]`,
+/// and `[]` itself as a bogus top "symptom"). JSON arrays are decoded
+/// properly; a legacy plain string falls back to comma/semicolon
+/// splitting. Empty arrays and blank names yield nothing. Never throws.
 List<String> splitChips(String chips) {
-  return chips
+  final trimmed = chips.trim();
+  if (trimmed.isEmpty) return const [];
+  if (trimmed.startsWith('[')) {
+    try {
+      final decoded = jsonDecode(trimmed);
+      if (decoded is List) {
+        return [
+          for (final e in decoded)
+            if ('$e'.trim().isNotEmpty) '$e'.trim(),
+        ];
+      }
+    } catch (_) {
+      // Malformed array syntax is machine-format text — never a chip.
+      return const [];
+    }
+    return const [];
+  }
+  return trimmed
       .split(RegExp(r'[,;]'))
       .map((c) => c.trim())
       .where((c) => c.isNotEmpty)
       .toList();
+}
+
+/// True when [s] contains HTML markup (tags), as the server's Graph
+/// Analysis Report text does.
+bool _looksLikeHtml(String s) =>
+    s.contains(RegExp(r'<[a-zA-Z][^>]*>'));
+
+/// Converts an HTML fragment (server report text) to clean readable
+/// plain text: script/style blocks dropped, block boundaries become
+/// line breaks, list items get bullets, all tags and inline styles
+/// removed, entities decoded, blank lines collapsed. The report's
+/// actual content (headings, paragraphs) is preserved. Never throws.
+String htmlToPlainText(String html) {
+  var s = html;
+  s = s.replaceAll(
+      RegExp(r'<(script|style)\b[^>]*>[\s\S]*?</\1\s*>',
+          caseSensitive: false),
+      '');
+  s = s.replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n');
+  s = s.replaceAll(RegExp(r'<li\b[^>]*>', caseSensitive: false), '\n• ');
+  s = s.replaceAll(
+      RegExp(r'</(p|div|h[1-6]|li|tr|section|article|header|footer)\s*>',
+          caseSensitive: false),
+      '\n');
+  s = s.replaceAll(RegExp(r'<[^>]*>'), '');
+  s = _decodeHtmlEntities(s);
+  final lines = s
+      .split('\n')
+      .map((l) => l.replaceAll(RegExp(r'[ \t]+'), ' ').trim())
+      .where((l) => l.isNotEmpty)
+      .toList();
+  return lines.join('\n');
+}
+
+String _decodeHtmlEntities(String s) {
+  var out = s
+      .replaceAll('&nbsp;', ' ')
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&apos;', "'")
+      .replaceAll('&#39;', "'");
+  out = out.replaceAllMapped(RegExp(r'&#(\d+);'), (m) {
+    final code = int.tryParse(m.group(1)!);
+    // Range-check: fromCharCode throws on values above U+10FFFF, and
+    // server-supplied text is untrusted — leave bad entities literal.
+    return (code == null || code < 0 || code > 0x10FFFF)
+        ? m.group(0)!
+        : String.fromCharCode(code);
+  });
+  out = out.replaceAllMapped(RegExp(r'&#x([0-9a-fA-F]+);'), (m) {
+    final code = int.tryParse(m.group(1)!, radix: 16);
+    return (code == null || code < 0 || code > 0x10FFFF)
+        ? m.group(0)!
+        : String.fromCharCode(code);
+  });
+  // &amp; last, so "&amp;lt;" decodes to the literal "&lt;", not "<".
+  return out.replaceAll('&amp;', '&');
 }
 
 const _trendMonths = [

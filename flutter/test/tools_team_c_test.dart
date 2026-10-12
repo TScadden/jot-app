@@ -391,6 +391,96 @@ void main() {
       expect(splitChips(''), isEmpty);
     });
 
+    test('splitChips decodes JSON-array chip strings', () {
+      // The chips field is a JSON array string (native encodes a list).
+      expect(splitChips('["Heart Palpitations"]'), ['Heart Palpitations']);
+      expect(splitChips('["Daily Ranking","Nausea"]'),
+          ['Daily Ranking', 'Nausea']);
+      // Empty array = no chips, never a literal "[]" symptom.
+      expect(splitChips('[]'), isEmpty);
+      expect(splitChips('[ ]'), isEmpty);
+      // Malformed array syntax is machine text — yields nothing.
+      expect(splitChips('["broken"'), isEmpty);
+    });
+
+    test('parseTrendsEntries accepts string id/timestamp (int8 JSON)', () {
+      // node-pg serializes Postgres bigint columns as JSON strings.
+      // Cross-checked against the live DB: local_id 639 =
+      // 1791747393624 ms = Oct 11, 2026 1:36 PM MDT (hour 13);
+      // local_id 635 = 1791738774130 = 11:12 AM MDT (hour 11).
+      final out = parseTrendsEntries([
+        {
+          'id': '639',
+          'body': 'x',
+          'timestamp': '1791747393624',
+          'categoryId': 8,
+          'chips': '[]',
+        },
+        {
+          'id': '635',
+          'body': 'y',
+          'timestamp': '1791738774130',
+          'categoryId': '6',
+          'chips': '["Daily Ranking"]',
+        },
+      ]);
+      expect(out[0].id, 639);
+      expect(out[0].timestamp, 1791747393624);
+      expect(out[1].timestamp, 1791738774130);
+      expect(out[1].categoryId, 6);
+      final dt = DateTime.fromMillisecondsSinceEpoch(out[0].timestamp);
+      expect(dt.year, 2026);
+      expect(dt.month, 10);
+      expect(dt.day, isNot(0)); // a real day, not epoch 0
+    });
+
+    test('parseTrendsInsights drops Biometrics/BodyLoad machine rows', () {
+      final out = parseTrendsInsights([
+        {'id': '1', 'text': '{"spikes":12}', 'type': 'Biometrics'},
+        {'id': '2', 'text': 'body load prose', 'type': 'BodyLoad'},
+        {'id': '3', 'text': 'Real pattern', 'type': 'Pattern'},
+      ]);
+      expect(out.map((i) => i['text']), ['Real pattern']);
+    });
+
+    test('parseTrendsInsights dedupes and caps at 15 like native', () {
+      final many = [
+        for (var i = 0; i < 20; i++)
+          {'id': '$i', 'text': 'pattern $i', 'timestamp': 2000 - i},
+        {'id': 'dup', 'text': 'pattern 0', 'timestamp': 3000},
+      ];
+      final out = parseTrendsInsights(many);
+      expect(out.length, 15);
+      expect(out.where((i) => i['text'] == 'pattern 0').length, 1);
+    });
+
+    test('renderInsightText strips HTML reports to readable text', () {
+      const html = '<div style="font-family: \'Outfit\', sans-serif;">'
+          '<div style="background: rgba(99, 102, 241, 0.12);">'
+          '<strong>AI Biometric Graph Analysis</strong> '
+          '<span>Here are some patterns &amp; trends.</span></div>'
+          '<p>Sleep was &lt; 6h on 3 days.</p></div>';
+      final out = renderInsightText(html);
+      expect(out, isNotNull);
+      expect(out, contains('AI Biometric Graph Analysis'));
+      expect(out, contains('patterns & trends.'));
+      expect(out, contains('Sleep was < 6h on 3 days.'));
+      expect(out, isNot(contains('<div')));
+      expect(out, isNot(contains('style=')));
+      expect(out, isNot(contains('&amp;')));
+    });
+
+    test('renderInsightText survives out-of-range numeric entities', () {
+      // Vera audit: String.fromCharCode throws above U+10FFFF — bad
+      // entities must stay literal, never crash the card.
+      final out = renderInsightText(
+          '<p>Bad &#1114112; and &#x110000; entities</p>');
+      expect(out, isNotNull);
+      expect(out, contains('Bad'));
+      expect(out, contains('entities'));
+      expect(out, isNot(contains('<p>')));
+    });
+
     test('parseHeartRateHistory decodes list form, drops zeros', () {
       final out = parseHeartRateHistory(jsonEncode([
         {'date': '2026-10-05', 'avg': 68},
@@ -471,6 +561,18 @@ void main() {
       };
     }
 
+    // The screen builds lazily (CustomScrollView) — below-fold content
+    // only exists once scrolled into view.
+    Future<void> reveal(WidgetTester tester, String text) async {
+      await tester.scrollUntilVisible(find.text(text), 300,
+          scrollable: find
+              .descendant(
+                  of: find.byType(CustomScrollView),
+                  matching: find.byType(Scrollable))
+              .first);
+      expect(find.text(text), findsOneWidget);
+    }
+
     testWidgets('entries → volume card, chart, categories, insights',
         (tester) async {
       final backend = backendWith(
@@ -482,8 +584,8 @@ void main() {
       expect(find.text('2 Total Entries'), findsOneWidget);
       expect(find.text('Symptoms'), findsOneWidget);
       expect(find.text('Mood'), findsOneWidget);
-      expect(find.text('You log most in the morning.'), findsOneWidget);
-      expect(find.text('68'), findsOneWidget); // HR strip
+      await reveal(tester, 'You log most in the morning.');
+      await reveal(tester, '68'); // HR strip
     });
 
     testWidgets('empty entries → honest empty states, no crash',
@@ -497,8 +599,8 @@ void main() {
       );
       await pumpScreen(tester, TrendsScreen(backend: backend));
       expect(find.text('No logs yet'), findsOneWidget);
-      expect(find.text('No patterns yet'), findsOneWidget);
-      expect(find.text('No heart rate history yet'), findsOneWidget);
+      await reveal(tester, 'No patterns yet');
+      await reveal(tester, 'No heart rate history yet');
     });
 
     testWidgets('auth failure → honest error, no crash', (tester) async {
@@ -523,8 +625,8 @@ void main() {
       );
       await pumpScreen(tester, TrendsScreen(backend: backend));
       expect(find.text('No logs yet'), findsOneWidget);
-      expect(find.text('No patterns yet'), findsOneWidget);
-      expect(find.text('No heart rate history yet'), findsOneWidget);
+      await reveal(tester, 'No patterns yet');
+      await reveal(tester, 'No heart rate history yet');
     });
   });
 }
