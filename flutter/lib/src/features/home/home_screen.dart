@@ -7,8 +7,10 @@ import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
+import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/connections/connections_screen.dart';
+import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
 import 'package:tabs_lab/src/features/home/today_summary_card.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/features/home/weather_sheet.dart';
@@ -45,6 +47,14 @@ import 'package:tabs_lab/src/theme/slide_page_route.dart';
 /// the IP fetch — never an error, never a fake zero.
 /// Round 12 — the watch icon opens the data-connections screen
 /// (Health Connect permission flow + retired-Fitbit notice).
+/// Round 21 — the "How are you feeling?" check-in card is the FIRST
+/// item on Home (native `TodayScreen.kt` item 0, above the vitals
+/// strip). Its visibility and writes run through the sync pull +
+/// `POST /api/sync/entries`, mirroring native `EnergyCheckInViewModel`:
+/// shown only while no check-in entry exists for the current energy
+/// day (04:00 local boundary); one tap logs the uneditable
+/// 'Daily Ranking' entry and the card slides away. See
+/// `feeling_checkin_card.dart` for the full native trace.
 class HomeScreen extends StatefulWidget {
   final String? email;
   final WeatherApiClient? weatherApi;
@@ -62,13 +72,18 @@ class HomeScreen extends StatefulWidget {
   /// background health-data load.
   final HealthRepository? healthRepository;
 
+  /// Injectable for tests (round 21 check-in); defaults to the
+  /// [HealthRepository]'s backend so Home shares one sync-pull cache.
+  final TabsBackend? tabsBackend;
+
   const HomeScreen(
       {super.key,
       this.email,
       this.weatherApi,
       this.locationService,
       this.healthConnectService,
-      this.healthRepository});
+      this.healthRepository,
+      this.tabsBackend});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -98,6 +113,20 @@ class _HomeScreenState extends State<HomeScreen> {
   /// reads as "no data yet").
   bool _countUpsAnimate = false;
 
+  // ── Round 21: feeling check-in ───────────────────────────────────
+  /// False until the sync pull proves no check-in exists for the
+  /// current energy day (native's view model also starts hidden and
+  /// only shows the card once the entry flow says so). A failed pull
+  /// keeps the card hidden — the honest state, never a guess.
+  bool _feelingVisible = false;
+  bool _feelingLeaving = false;
+
+  /// Double-tap guard (native `tapInFlight`): one tap, one entry.
+  bool _feelingTapInFlight = false;
+  int? _feelingCategoryId;
+
+  TabsBackend get _backend => widget.tabsBackend ?? _healthRepo.backend;
+
   @override
   void initState() {
     super.initState();
@@ -118,6 +147,86 @@ class _HomeScreenState extends State<HomeScreen> {
     _resolveCountUpGate();
     _loadWeather();
     _loadHealthData();
+    _loadFeelingState();
+  }
+
+  /// Round 21 — resolves check-in visibility from the REAL pulled
+  /// entries (never invented): the card shows only when the pull
+  /// succeeded, the Mood & Energy category resolved, and no
+  /// 'Daily Ranking' entry exists in that category for the current
+  /// energy day. Any failure leaves the card hidden.
+  Future<void> _loadFeelingState() async {
+    try {
+      final pull = await _backend.fetchSyncPull();
+      if (pull == null) return;
+      final entries = await _backend.fetchLogEntryDtos();
+      final categories = await _backend.fetchLogCategories();
+      final categoryId = resolveFeelingCategoryId(categories);
+      if (categoryId == null || !mounted) return;
+      _feelingCategoryId = categoryId;
+      final visible = !hasFeelingCheckIn(entries, moodCategoryId: categoryId);
+      if (visible != _feelingVisible) {
+        setState(() => _feelingVisible = visible);
+      }
+    } catch (_) {
+      // Honest hidden state — native starts (and stays) hidden until
+      // its entry flow proves the card should show.
+    }
+  }
+
+  /// Round 21 — one tap logs the rating (native `selectLevel`).
+  /// Re-pulls fresh before writing so the new id is
+  /// max(existing ids) + 1 against current server state (the sync
+  /// endpoint upserts on (user_id, local_id) — a colliding id would
+  /// silently overwrite another entry) and so an entry logged
+  /// elsewhere since this screen loaded is never duplicated.
+  /// On success the card slides away and Home's counts refresh
+  /// quietly in the background (no spinner, no count-up replay).
+  /// On failure the card simply stays, exactly like native (its
+  /// insert catch only resets the tap guard).
+  Future<void> _onFeelingSelect(int level) async {
+    if (level < 1 || level > 5 || _feelingTapInFlight) return;
+    _feelingTapInFlight = true;
+    try {
+      _backend.invalidateSyncPull();
+      // Vera round-21 gate: the write MUST NOT proceed on a failed
+      // re-pull. fetchLogEntryDtos swallows failures into an empty
+      // list, which would compute id = 1 and the upsert could
+      // overwrite the real entry 1. A null pull aborts the tap —
+      // the card stays and the user can tap again.
+      final pull = await _backend.fetchSyncPull();
+      if (pull == null) return;
+      final entries = await _backend.fetchLogEntryDtos();
+      final categories = await _backend.fetchLogCategories();
+      final categoryId =
+          resolveFeelingCategoryId(categories) ?? _feelingCategoryId;
+      if (categoryId == null) return;
+      _feelingCategoryId = categoryId;
+      if (!mounted) return;
+      if (hasFeelingCheckIn(entries, moodCategoryId: categoryId)) {
+        // Already logged for this energy day — no second entry; the
+        // card just goes away, as native's flow would hide it.
+        setState(() => _feelingVisible = false);
+        return;
+      }
+      final entry = buildFeelingEntry(
+        level: level,
+        categoryId: categoryId,
+        existing: entries,
+      );
+      final ok = await _backend.postLogEntries([entry]);
+      if (!ok || !mounted) return;
+      _backend.invalidateSyncPull();
+      setState(() => _feelingLeaving = true);
+      // Quiet background refresh: today's log count / streak pick up
+      // the new entry with no spinner and no count-up replay (the
+      // once-per-day gate already fired for this view).
+      unawaited(_loadHealthData());
+    } catch (_) {
+      // Card stays visible; the user can tap again.
+    } finally {
+      _feelingTapInFlight = false;
+    }
   }
 
   /// Round 15c — resolves the once-per-day count-up gate from secure
@@ -351,6 +460,25 @@ class _HomeScreenState extends State<HomeScreen> {
             // Round 14 — staggered entrance: the cards cascade in with a
             // fade + slight rise, ~80ms apart. Purely visual; data loads
             // independently underneath.
+            // Round 21 — the feeling check-in is native's item 0: the
+            // first thing on Home, above the vitals strip. It renders
+            // nothing until the pulled entries prove no check-in
+            // exists for the current energy day. It is NOT wrapped in
+            // StaggeredEntrance: native gives the card its own
+            // slide-in-from-left entrance (400ms), and the existing
+            // cards keep their original stagger indices 0–3.
+            if (_feelingVisible)
+              FeelingCheckInCard(
+                onSelect: _onFeelingSelect,
+                leaving: _feelingLeaving,
+                onExitComplete: () {
+                  if (!mounted) return;
+                  setState(() {
+                    _feelingVisible = false;
+                    _feelingLeaving = false;
+                  });
+                },
+              ),
             StaggeredEntrance(
               index: 0,
               child: VitalsStrip(
