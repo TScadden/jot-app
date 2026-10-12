@@ -40,8 +40,8 @@ class DailyHrSummary {
   final int min;
   final int baseline; // 10th percentile — true resting estimate
   final int spikeCount;
-  final int daySpikeCount; // events starting 7am–10pm
-  final int nightSpikeCount; // events starting 10pm–7am
+  final int daySpikeCount; // events starting 7am–11pm
+  final int nightSpikeCount; // events starting 11pm–7am
   final int awakeAvg; // daytime-only average (falls back to [avg])
   final int maxDelta; // max - baseline (POTS orthostatic delta)
 
@@ -151,13 +151,13 @@ int? daytimeHeartRateAvg(List<HrSample> samples) {
 /// - baseline = 10th percentile of sorted bpm values
 /// - a spike event starts at the first reading ≥ 100 and absorbs
 ///   subsequent ≥100 readings within 5 minutes
-/// - day/night split by the event START hour in 7..21
+/// - day/night split by the event START hour in 7..22
 ///
-/// Round 26 note: the [DailyHrSummary.awakeAvg] window in this function
-/// was aligned to the founder's 7..22 awake window (Oct 12, 2026). The
-/// day/night SPIKE split above was deliberately left at the native
-/// 7..21 — it classifies spike events, it does not select samples for
-/// the awake average — and is flagged in the Round 26 report.
+/// Round 27 note: the founder approved (Oct 12, 2026) aligning the
+/// day/night SPIKE split with Round 26's unified awake window — event
+/// starts in hour 7..22 ([07:00, 23:00)) classify as day, everything
+/// else as night. This supersedes the Round 26 decision to leave the
+/// split at the native 7..21.
 ///
 /// Deviation from native (founder rule): bpm ≤ 0 samples are excluded
 /// before the algorithm runs. Null when no usable samples remain.
@@ -198,7 +198,7 @@ DailyHrSummary? computeDailyHrSummary(String date, List<HrSample> samples) {
     if (s.bpm >= threshold) {
       if (!inEvent || s.timeMs > eventEndMs) {
         if (inEvent) {
-          if (currentEventStartHour >= 7 && currentEventStartHour <= 21) {
+          if (currentEventStartHour >= 7 && currentEventStartHour <= 22) {
             dayCount++;
           } else {
             nightCount++;
@@ -214,7 +214,7 @@ DailyHrSummary? computeDailyHrSummary(String date, List<HrSample> samples) {
     }
   }
   if (inEvent) {
-    if (currentEventStartHour >= 7 && currentEventStartHour <= 21) {
+    if (currentEventStartHour >= 7 && currentEventStartHour <= 22) {
       dayCount++;
     } else {
       nightCount++;

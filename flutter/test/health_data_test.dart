@@ -113,6 +113,39 @@ void main() {
       expect(s.spikeCount, 2);
     });
 
+    test(
+        'spike split boundary: 22:30 start = day, 23:30 start = night '
+        '(7am–11pm window, Round 27)', () {
+      // Split is event-start hour 7..22 ([07:00, 23:00)).
+      final day = computeDailyHrSummary('2026-10-11', [
+        HrSample(timeMs: _at(2026, 10, 11, 22, 30), bpm: 105),
+      ])!;
+      expect(day.daySpikeCount, 1);
+      expect(day.nightSpikeCount, 0);
+
+      final night = computeDailyHrSummary('2026-10-11', [
+        HrSample(timeMs: _at(2026, 10, 11, 23, 30), bpm: 108),
+      ])!;
+      expect(night.daySpikeCount, 0);
+      expect(night.nightSpikeCount, 1);
+    });
+
+    test(
+        'spike split boundary: 07:00 start = day, 06:59 start = night '
+        '(Round 27)', () {
+      final day = computeDailyHrSummary('2026-10-11', [
+        HrSample(timeMs: _at(2026, 10, 11, 7), bpm: 105),
+      ])!;
+      expect(day.daySpikeCount, 1);
+      expect(day.nightSpikeCount, 0);
+
+      final night = computeDailyHrSummary('2026-10-11', [
+        HrSample(timeMs: _at(2026, 10, 11, 6, 59), bpm: 108),
+      ])!;
+      expect(night.daySpikeCount, 0);
+      expect(night.nightSpikeCount, 1);
+    });
+
     test('baseline is the 10th percentile', () {
       final samples = [
         for (var i = 0; i < 20; i++)
