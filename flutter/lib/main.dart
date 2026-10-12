@@ -124,6 +124,17 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
     setState(() => _stage = _FlowStage.welcome);
   }
 
+  // Round 29 (minimal, additive): Settings logout / account deletion
+  // has already cleared the session and every account-bound cache by
+  // the time this fires; return to the welcome flow and drop the
+  // in-memory email so no previous-account state can render.
+  void _onLogout() {
+    setState(() {
+      _loggedInEmail = null;
+      _stage = _FlowStage.welcome;
+    });
+  }
+
   // Round 5: real login succeeded — the session is already in secure
   // storage (LoginScreen handles that); record the email for the home
   // indicator and navigate.
@@ -198,7 +209,8 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
           MainShell(email: _loggedInEmail,
               weatherApi: widget.weatherApi,
               locationService: widget.locationService,
-              healthConnectService: widget.healthConnectService),
+              healthConnectService: widget.healthConnectService,
+              onLogout: _onLogout),
         if (_splashVisible)
           AnimatedBuilder(
             animation: _exit,
