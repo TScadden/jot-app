@@ -3,6 +3,7 @@ import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
+import 'package:tabs_lab/src/features/quicklog/quick_log_screen.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
 import 'package:tabs_lab/src/features/tools/tools_screen.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
@@ -14,7 +15,9 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///   vitals strip, summary, weekly snapshot).
 /// - Tools → the tools grid (round 17, UI only — cards open blank
 ///   placeholders for now).
-/// - Quick-log, Heart, Settings → blank navy placeholders for now;
+/// - Quick-log → the real Quick Log screen (round 19): details field,
+///   real categories, AI suggestions, history view.
+/// - Heart, Settings → blank navy placeholders for now;
 ///   their real screens land in future rounds. The founder's directive:
 ///   "they should just go to a blank screen."
 /// - The dock stays visible on every tab. The active icon highlights in
@@ -58,8 +61,10 @@ class _MainShellState extends State<MainShell> {
               healthConnectService: widget.healthConnectService,
             ),
           DockTab.tools => const ToolsScreen(key: ValueKey('tools_screen')),
-          DockTab.quickLog =>
-            const _BlankTab(key: ValueKey('blank_quicklog')),
+          DockTab.quickLog => QuickLogScreen(
+              key: const ValueKey('quicklog_screen'),
+              weatherApi: widget.weatherApi,
+            ),
           DockTab.heart => const _BlankTab(key: ValueKey('blank_heart')),
           DockTab.settings =>
             const _BlankTab(key: ValueKey('blank_settings')),

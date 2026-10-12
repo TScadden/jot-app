@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 import 'package:tabs_lab/src/data/health_data.dart';
+import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 
 /// Round 13 — authenticated reads against the Tabs backend.
@@ -42,6 +43,14 @@ class TabsBackend {
   static const Duration syncPullTtl = Duration(minutes: 5);
   Map<String, dynamic>? _syncPullCache;
   DateTime? _syncPullAt;
+
+  /// Round 19 — drops the cached sync pull so the next read hits the
+  /// server. Called after local writes (log save/repeat/delete,
+  /// category add/delete) so counts and lists refresh honestly.
+  void invalidateSyncPull() {
+    _syncPullCache = null;
+    _syncPullAt = null;
+  }
 
   final http.Client _client;
   final SessionStore _sessionStore;
@@ -302,6 +311,207 @@ class TabsBackend {
   }
 
   void close() => _client.close();
+
+  // ── Round 19 — Quick Log ─────────────────────────────────────────
+  //
+  // Native source of truth for every one of these is the sync pull
+  // (`GET /api/sync/pull`, native `SyncManager.pullAllData()`):
+  // - membership: the pull's `isUnlimited`/`isAdmin` fields (server
+  //   `src/routes/sync.js`: isUnlimited = isAdmin || users.is_unlimited;
+  //   isAdmin = ADMIN_EMAILS.contains(email) || users.is_admin). Native
+  //   writes both into DataStore and gates AI features on isUnlimited.
+  // - categories: the pull's `categories[]` — native inserts them into
+  //   the local DB on every pull, so the server set is authoritative
+  //   (includes the user's customized categories).
+  // - entries: the pull's `entries[]` (his ~580), ordered timestamp DESC
+  //   by the server.
+  //
+  // AI suggestions: `POST /api/ai/suggestions`
+  // `{category, recentEntries, userContext, knowledgeBase, weatherContext}`
+  // → `{result: [...]}` (native `GeminiService.getSuggestions` via
+  // Retrofit `JotApi.getSuggestions`).
+  //
+  // Entry writes: `POST /api/sync/entries` `{entries: [...]}` — server
+  // upserts on `(user_id, local_id)`; new rows use max(existing id)+1,
+  // mirroring the local autoincrement ids native inserts carry.
+
+  /// Round 19 — admin flag from the sync pull. False when unknown.
+  Future<bool> fetchIsAdmin() async {
+    final body = await fetchSyncPull();
+    return body?['isAdmin'] == true;
+  }
+
+  /// Round 19 — the membership gate native uses for AI features.
+  /// `fetchIsUnlimited` (round 18) already reads the pull's
+  /// `isUnlimited`, which the server computes as
+  /// `isAdmin || users.is_unlimited` — so admins are covered.
+  Future<({bool isUnlimited, bool isAdmin})> fetchMembership() async {
+    final body = await fetchSyncPull();
+    if (body == null) return (isUnlimited: false, isAdmin: false);
+    final isAdmin = body['isAdmin'] == true;
+    final isUnlimited = body['isUnlimited'] == true || isAdmin;
+    return (isUnlimited: isUnlimited, isAdmin: isAdmin);
+  }
+
+  /// Round 19 — full log-entry rows from the sync pull. Malformed rows
+  /// are skipped; never throws.
+  Future<List<QuickLogEntry>> fetchLogEntryDtos() async {
+    final body = await fetchSyncPull();
+    final entries = body?['entries'];
+    if (entries is! List) return const [];
+    final out = <QuickLogEntry>[];
+    for (final e in entries) {
+      if (e is Map<String, dynamic>) {
+        try {
+          out.add(QuickLogEntry.fromJson(e));
+        } catch (_) {
+          // Skip malformed rows — never fail the whole list.
+        }
+      }
+    }
+    return out;
+  }
+
+  /// Round 19 — the account's real category set from the sync pull.
+  /// Empty (never hardcoded) when unreachable — the UI shows an honest
+  /// empty/error state instead of a fallback list.
+  Future<List<QuickLogCategory>> fetchLogCategories() async {
+    final body = await fetchSyncPull();
+    final categories = body?['categories'];
+    if (categories is! List) return const [];
+    final out = <QuickLogCategory>[];
+    for (final c in categories) {
+      if (c is Map<String, dynamic>) {
+        try {
+          out.add(QuickLogCategory.fromJson(c));
+        } catch (_) {
+          // Skip malformed rows — never fail the whole list.
+        }
+      }
+    }
+    return out;
+  }
+
+  /// Round 19 — AI insights from the sync pull (with `entryId`, so the
+  /// original entry can be linked — native's history tab shows it).
+  Future<List<QuickLogInsight>> fetchLogInsights() async {
+    final body = await fetchSyncPull();
+    final insights = body?['insights'];
+    if (insights is! List) return const [];
+    final out = <QuickLogInsight>[];
+    for (final i in insights) {
+      if (i is Map<String, dynamic>) {
+        try {
+          out.add(QuickLogInsight.fromJson(i));
+        } catch (_) {
+          // Skip malformed rows — never fail the whole list.
+        }
+      }
+    }
+    return out;
+  }
+
+  /// Round 19 — `POST /api/sync/entries` `{entries: [...]}`.
+  /// Returns true on 200.
+  Future<bool> postLogEntries(List<QuickLogEntry> entries) {
+    return _postJson(
+      '/api/sync/entries',
+      {'entries': entries.map((e) => e.toSyncJson()).toList()},
+    );
+  }
+
+  /// Round 19 — `POST /api/sync/categories` with the FULL category list.
+  /// The server deletes any server-side categories missing from the
+  /// payload, so callers must always send the complete set (this is how
+  /// both add and delete are performed — the server has no single-row
+  /// category DELETE route).
+  Future<bool> postLogCategories(List<QuickLogCategory> categories) {
+    return _postJson(
+      '/api/sync/categories',
+      {'categories': categories.map((c) => c.toSyncJson()).toList()},
+    );
+  }
+
+  /// Round 19 — `DELETE /api/sync/entries/{localId}`.
+  Future<bool> deleteLogEntry(int id) => _delete('/api/sync/entries/$id');
+
+  /// Round 19 — AI chip suggestions via the real backend endpoint.
+  /// `category` and each recent entry are sent as the native DTO shapes;
+  /// `knowledgeBase` is always `""` (native omits it from chip
+  /// suggestions to stay under the TPM limit). Returns the chip list,
+  /// or null on any failure (caller shows the honest error state).
+  Future<List<String>?> postSuggestions({
+    required QuickLogCategory category,
+    required List<QuickLogEntry> recentEntries,
+    required String userContext,
+    String? weatherContext,
+  }) async {
+    final res = await postAi('/api/ai/suggestions', {
+      'category': category.toSyncJson(),
+      'recentEntries': recentEntries.map((e) => e.toSyncJson()).toList(),
+      'userContext': userContext,
+      'knowledgeBase': '',
+      'weatherContext': weatherContext,
+    });
+    final result = res?['result'];
+    if (result is! List) return null;
+    return result.map((c) => '$c').toList();
+  }
+
+  /// Authenticated POST with a JSON body → true on HTTP 200.
+  /// Token used only in the header; never logged.
+  Future<bool> _postJson(String path, Map<String, dynamic> body) async {
+    final token = await _sessionStore.readToken();
+    if (token == null || token.trim().isEmpty) return false;
+    try {
+      final response = await _client
+          .post(
+            Uri.parse('$_baseUrl$path'),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(requestTimeout);
+      return response.statusCode == 200;
+    } on TimeoutException {
+      return false;
+    } on SocketException {
+      return false;
+    } on HttpException {
+      return false;
+    } on FormatException {
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Authenticated DELETE → true on HTTP 200.
+  Future<bool> _delete(String path) async {
+    final token = await _sessionStore.readToken();
+    if (token == null || token.trim().isEmpty) return false;
+    try {
+      final response = await _client
+          .delete(
+            Uri.parse('$_baseUrl$path'),
+            headers: {'Authorization': 'Bearer $token'},
+          )
+          .timeout(requestTimeout);
+      return response.statusCode == 200;
+    } on TimeoutException {
+      return false;
+    } on SocketException {
+      return false;
+    } on HttpException {
+      return false;
+    } on FormatException {
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
 
   /// Authenticated GET → decoded JSON object, or null on any failure.
   /// The token is used only here, in the header; never logged anywhere.

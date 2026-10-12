@@ -3,7 +3,9 @@ package com.notel.notel.playground.flutter
 import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
+import android.speech.RecognizerIntent
 import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
@@ -58,6 +60,7 @@ class MainActivity : FlutterFragmentActivity() {
 
     companion object {
         const val HC_CHANNEL = "com.notel.notel.playground.flutter/health_connect"
+        const val VOICE_CHANNEL = "com.notel.notel.playground.flutter/voice"
         const val HC_PROVIDER_PACKAGE = "com.google.android.apps.healthdata"
         const val SETTINGS_ACTION = "android.health.connect.action.HEALTH_HOME_SETTINGS"
         private const val REQUEST_TIMEOUT_MS = 5 * 60 * 1000L
@@ -88,6 +91,13 @@ class MainActivity : FlutterFragmentActivity() {
     private var pendingResult: MethodChannel.Result? = null
     private var pendingSince: Long = 0L
 
+    // Round 19: voice-input launcher for the Quick Log mic button.
+    // Registered in onCreate (same rule as the HC permission launcher —
+    // never in configureFlutterEngine). Intent-based recognition needs
+    // no RECORD_AUDIO permission.
+    private lateinit var voiceLauncher: ActivityResultLauncher<Intent>
+    private var pendingVoiceResult: MethodChannel.Result? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Registered here in onCreate — never in configureFlutterEngine()
@@ -102,6 +112,30 @@ class MainActivity : FlutterFragmentActivity() {
             if (r == null) return@register // stale (timed out / cancelled / superseded)
             try {
                 r.success(granted.toList())
+            } catch (_: Exception) {
+                // Result already consumed — nothing to do.
+            }
+        }
+        voiceLauncher = activityResultRegistry.register(
+            "voice_input_launcher",
+            ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            val r = pendingVoiceResult
+            pendingVoiceResult = null
+            if (r == null) return@register // stale (superseded)
+            try {
+                if (result.resultCode == RESULT_OK) {
+                    val text = result.data
+                        ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                        ?.firstOrNull()
+                    if (!text.isNullOrBlank()) {
+                        r.success(text)
+                    } else {
+                        r.error("VOICE_EMPTY", "No speech was recognized", null)
+                    }
+                } else {
+                    r.error("VOICE_CANCELLED", "Voice input cancelled", null)
+                }
             } catch (_: Exception) {
                 // Result already consumed — nothing to do.
             }
@@ -131,6 +165,42 @@ class MainActivity : FlutterFragmentActivity() {
                     else -> result.notImplemented()
                 }
             }
+        // Round 19: voice input for the Quick Log mic button.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, VOICE_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "startVoiceInput" -> startVoiceInput(result)
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    /// Round 19: launches the system speech recognizer and returns the top
+    /// result to Dart. Every failure path returns a visible error code —
+    /// never a silent no-op (team lesson: silent channel failures).
+    private fun startVoiceInput(result: MethodChannel.Result) {
+        if (pendingVoiceResult != null) {
+            result.error("IN_FLIGHT", "Voice input already in progress", null)
+            return
+        }
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(
+                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+            )
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak your note")
+        }
+        if (intent.resolveActivity(packageManager) == null) {
+            result.error("NO_VOICE_APP", "No voice input app found on this device", null)
+            return
+        }
+        pendingVoiceResult = result
+        try {
+            voiceLauncher.launch(intent)
+        } catch (e: Exception) {
+            pendingVoiceResult = null
+            result.error("LAUNCH_FAILED", e.message, null)
+        }
     }
 
     private fun checkAvailability(result: MethodChannel.Result) {
