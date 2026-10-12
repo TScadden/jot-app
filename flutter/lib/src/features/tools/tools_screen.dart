@@ -221,7 +221,10 @@ class _ToolsScreenState extends State<ToolsScreen>
       _ => ToolPlaceholderScreen(tile: tile),
     };
     Navigator.of(context).push(
-      SlidePageRoute(builder: (_) => screen),
+      SlidePageRoute(
+        reducedMotion: animationsDisabled(context),
+        builder: (_) => screen,
+      ),
     );
   }
 

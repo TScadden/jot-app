@@ -429,6 +429,7 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () {
               Navigator.of(context).push(
                 SlidePageRoute(
+                  reducedMotion: animationsDisabled(context),
                   builder: (_) => ConnectionsScreen(
                     healthConnectService: widget.healthConnectService,
                   ),

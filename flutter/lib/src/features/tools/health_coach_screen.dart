@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/slide_page_route.dart';
 
 /// Round 18 (Team C) — Health Coach, Flutter port of the native
 /// `CoachHistoryScreen.kt` + `CoachScreen.kt` (chat core only).
@@ -123,8 +125,11 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
   }
 
   Future<void> _openChat({CoachSessionSummary? session}) async {
+    // Round 22 — shared slide route (was MaterialPageRoute, whose
+    // Material 3 fade transition ghosted; see slide_page_route.dart).
     await Navigator.of(context).push(
-      MaterialPageRoute<void>(
+      SlidePageRoute<void>(
+        reducedMotion: animationsDisabled(context),
         builder: (_) => CoachChatScreen(
           backend: widget.backend,
           sessionId: session?.id,

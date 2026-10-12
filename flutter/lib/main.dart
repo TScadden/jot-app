@@ -12,6 +12,8 @@ import 'package:tabs_lab/src/features/auth/login_screen.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/onboarding/welcome_screen.dart';
 import 'package:tabs_lab/src/features/splash/splash_screen.dart';
+import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/slide_page_route.dart';
 
 void main() async {
   // Round 16 — warm the home-data cache before the first frame so a
@@ -43,10 +45,24 @@ class TabsLabApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
       title: 'Tabs Lab',
       debugShowCheckedModeBanner: false,
-      home: AppFlow(),
+      // Round 22 — the app's first theme, added for ONE reason: the
+      // navigation flash fix. Until now MaterialApp had no theme, so
+      // every MaterialPageRoute fell back to Material 3's fade-based
+      // platform transition and ghosted against the screen underneath.
+      // pageTransitionsTheme routes EVERY platform through the shared
+      // slide-in-from-right builder (see slide_page_route.dart), and
+      // scaffoldBackgroundColor is an opacity backstop so no pushed
+      // screen can ever be transparent mid-transition. Nothing else
+      // about the theme changes — colors stay per-widget literals,
+      // exactly as before.
+      theme: ThemeData(
+        scaffoldBackgroundColor: NotelColors.background,
+        pageTransitionsTheme: slidePageTransitionsTheme(),
+      ),
+      home: const AppFlow(),
     );
   }
 }

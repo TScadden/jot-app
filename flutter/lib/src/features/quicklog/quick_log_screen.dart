@@ -8,8 +8,10 @@ import 'package:tabs_lab/src/data/voice_input.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/quicklog/history_screen.dart';
 import 'package:tabs_lab/src/features/tools/trends_screen.dart';
+import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/skeleton.dart';
+import 'package:tabs_lab/src/theme/slide_page_route.dart';
 
 /// Round 19 — the Quick Log screen (the log tab — pencil icon in the
 /// bottom dock). A faithful Flutter port of native `QuickLogScreen.kt`
@@ -694,9 +696,14 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
 
   // ── Navigation ────────────────────────────────────────────────────
 
+  // Round 22 — SlidePageRoute, not MaterialPageRoute: Material 3's
+  // default fade transition ghosted against the Quick Log screen
+  // underneath (the founder's recording). Every push in the app now
+  // uses the one shared slide-in-from-right.
   void _openHistory() {
     Navigator.of(context).push(
-      MaterialPageRoute(
+      SlidePageRoute(
+        reducedMotion: animationsDisabled(context),
         builder: (_) => HistoryScreen(backend: widget.backend),
       ),
     );
@@ -704,7 +711,8 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
 
   void _openTrends() {
     Navigator.of(context).push(
-      MaterialPageRoute(
+      SlidePageRoute(
+        reducedMotion: animationsDisabled(context),
         builder: (_) => TrendsScreen(backend: widget.backend),
       ),
     );
