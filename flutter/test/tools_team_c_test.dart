@@ -434,27 +434,6 @@ void main() {
       expect(dt.day, isNot(0)); // a real day, not epoch 0
     });
 
-    test('parseHeartRateHistory decodes list form, drops zeros', () {
-      final out = parseHeartRateHistory(jsonEncode([
-        {'date': '2026-10-05', 'avg': 68},
-        {'date': '2026-10-06', 'avg': 0},
-        {'date': '2026-10-07', 'bpm': 72},
-      ]));
-      expect(out.map((e) => e.value), [68.0, 72.0]);
-    });
-
-    test('parseHeartRateHistory decodes map form', () {
-      final out =
-          parseHeartRateHistory(jsonEncode({'2026-10-05': 68, 'bad': 'x'}));
-      expect(out.single.value, 68.0);
-    });
-
-    test('parseHeartRateHistory → empty on malformed input', () {
-      expect(parseHeartRateHistory('nope'), isEmpty);
-      expect(parseHeartRateHistory(null), isEmpty);
-      expect(parseHeartRateHistory(''), isEmpty);
-    });
-
     test('formatEntryDate renders like native rows', () {
       final dt = DateTime(2026, 10, 11, 18, 5);
       expect(
@@ -498,11 +477,6 @@ void main() {
             'timestamp': 10
           },
         ],
-        'profile': {
-          'heartRateHistory': jsonEncode([
-            {'date': '2026-10-05', 'avg': 68},
-          ]),
-        },
       };
     }
 
@@ -518,7 +492,15 @@ void main() {
       expect(find.text(text), findsOneWidget);
     }
 
-    testWidgets('entries → volume card, chart, categories, HR strip',
+    Future<void> scrollToBottom(WidgetTester tester) async {
+      for (var i = 0; i < 5; i++) {
+        await tester.drag(
+            find.byType(CustomScrollView), const Offset(0, -600));
+        await tester.pumpAndSettle();
+      }
+    }
+
+    testWidgets('entries → volume card, chart, categories',
         (tester) async {
       final backend = backendWith(
         MockClient((_) async =>
@@ -531,9 +513,13 @@ void main() {
       expect(find.text('Mood'), findsOneWidget);
       // Round 20b: the Patterns section is gone — its insight text
       // must not render anywhere, even after scrolling to the bottom.
-      await reveal(tester, '68'); // HR strip
+      // Round 20c: the Heart rate over time section is gone too.
+      await reveal(tester, 'Category Focus');
+      await scrollToBottom(tester);
       expect(find.text('You log most in the morning.'), findsNothing);
       expect(find.text('PATTERNS'), findsNothing);
+      expect(find.text('HEART RATE OVER TIME'), findsNothing);
+      expect(find.text('No heart rate history yet'), findsNothing);
     });
 
     testWidgets('empty entries → honest empty states, no crash',
@@ -547,7 +533,10 @@ void main() {
       );
       await pumpScreen(tester, TrendsScreen(backend: backend));
       expect(find.text('No logs yet'), findsOneWidget);
-      await reveal(tester, 'No heart rate history yet');
+      // Round 20c: no Heart rate section at the bottom anymore.
+      await scrollToBottom(tester);
+      expect(find.text('HEART RATE OVER TIME'), findsNothing);
+      expect(find.text('No heart rate history yet'), findsNothing);
       expect(find.text('No patterns yet'), findsNothing);
     });
 
@@ -566,14 +555,16 @@ void main() {
             jsonEncode({
               'entries': 'not-a-list',
               'insights': {'weird': true},
-              'profile': {'heartRateHistory': '[[broken'},
+              'profile': {'something': '[[broken'},
             }),
             200)),
         token: 't',
       );
       await pumpScreen(tester, TrendsScreen(backend: backend));
       expect(find.text('No logs yet'), findsOneWidget);
-      await reveal(tester, 'No heart rate history yet');
+      await scrollToBottom(tester);
+      expect(find.text('HEART RATE OVER TIME'), findsNothing);
+      expect(find.text('No heart rate history yet'), findsNothing);
     });
   });
 }

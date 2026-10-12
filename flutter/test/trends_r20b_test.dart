@@ -85,17 +85,23 @@ Finder mainScrollable() => find
 
 void main() {
   group('Round 20b Trends', () {
-    testWidgets('patterns section is gone, HR strip stays', (tester) async {
+    testWidgets('patterns section is gone, HR section gone too (20c)',
+        (tester) async {
       await pumpTrends(tester, togglePull());
-      // Scroll to the very bottom — HR section is last.
+      // Scroll to the very bottom — Category Focus is the last section
+      // now that Patterns (20b) and Heart rate over time (20c) are gone.
       await tester.scrollUntilVisible(
-        find.text('No heart rate history yet'),
+        find.text('Category Focus'),
         300,
         scrollable: mainScrollable(),
       );
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -600));
+      await tester.pump();
       expect(find.text('PATTERNS'), findsNothing);
       expect(find.text('No patterns yet'), findsNothing);
       expect(find.text('You log most in the morning.'), findsNothing);
+      expect(find.text('HEART RATE OVER TIME'), findsNothing);
+      expect(find.text('No heart rate history yet'), findsNothing);
     });
 
     testWidgets('card tap toggles day → all-time → day bucketing', (

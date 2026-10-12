@@ -9,11 +9,11 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// patterns-over-time layout.
 ///
 /// Data: sync-pull `entries` (timestamps → hourly density chart + log
-/// volume + symptom chips), `categories` (category focus rows), and
-/// `profile['heartRateHistory']` (a JSON string decoded leniently →
-/// recent HR strip). Honest empty states per section: "No logs yet"
-/// when there are no entries, "No symptoms logged yet.",
-/// "No heart rate history yet."
+/// volume + symptom chips) and `categories` (category focus rows).
+/// Honest empty states per section: "No logs yet" when there are no
+/// entries, "No symptoms logged yet."
+///
+/// Round 20c: the "Heart rate over time" section is gone.
 ///
 /// Round 20b: the Patterns (insights) section is gone. The Log volume
 /// card is now a view toggle: with no filter active, tapping it switches
@@ -67,7 +67,6 @@ class _TrendsScreenState extends State<TrendsScreen> {
   List<TrendsEntry> _entries = const [];
   Map<int, String> _categoryNames = const {};
   Map<int, Color> _categoryColors = const {};
-  List<({String label, double value})> _hrHistory = const [];
 
   /// 0 = today; negative = days in the past.
   int _dayOffset = 0;
@@ -107,10 +106,6 @@ class _TrendsScreenState extends State<TrendsScreen> {
         _categoryColors = {
           for (final c in cats) c.id: c.color,
         };
-        final profile = pull['profile'];
-        _hrHistory = profile is Map<String, dynamic>
-            ? parseHeartRateHistory(profile['heartRateHistory'])
-            : const [];
       });
     } catch (_) {
       if (!mounted) return;
@@ -429,21 +424,6 @@ class _TrendsScreenState extends State<TrendsScreen> {
           ],
         ],
 
-        // Heart rate history strip
-        _section(bottom: 8, child: _sectionLabel('Heart rate over time')),
-        if (_hrHistory.isEmpty)
-          _section(
-            bottom: 0,
-            child: _emptyState(
-              icon: Icons.favorite_border,
-              title: 'No heart rate history yet',
-              body:
-                  'Heart rate history from your profile will appear here once it syncs.',
-              compact: true,
-            ),
-          )
-        else
-          _section(bottom: 0, child: _HrHistoryStrip(data: _hrHistory)),
         const SliverToBoxAdapter(child: SizedBox(height: 100)),
       ],
     );
@@ -909,68 +889,6 @@ class _SymptomsDialog extends StatelessWidget {
   }
 }
 
-// ── Heart-rate history strip ────────────────────────────────────────────────
-
-class _HrHistoryStrip extends StatelessWidget {
-  final List<({String label, double value})> data;
-
-  const _HrHistoryStrip({required this.data});
-
-  @override
-  Widget build(BuildContext context) {
-    final shown = data.length > 14 ? data.sublist(data.length - 14) : data;
-    final maxVal = shown.map((e) => e.value).fold(0.0, math.max);
-    return Container(
-      height: 170,
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      decoration: BoxDecoration(
-        color: NotelColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: NotelColors.legacyDarkHairlineFaint),
-      ),
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        itemCount: shown.length,
-        itemBuilder: (context, i) {
-          final point = shown[i];
-          final barH =
-              maxVal > 0 ? (point.value / maxVal) * 90 : 0.0;
-          return SizedBox(
-            width: 44,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Text(point.value.toStringAsFixed(0),
-                    style: const TextStyle(
-                        fontSize: 9, color: NotelColors.textSecondary)),
-                const SizedBox(height: 4),
-                Container(
-                  width: 14,
-                  height: math.max(2, barH),
-                  decoration: BoxDecoration(
-                    color: NotelColors.heartRateRed
-                        .withValues(alpha: 0.75),
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(4),
-                      topRight: Radius.circular(4),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(point.label,
-                    style: const TextStyle(
-                        fontSize: 8, color: NotelColors.textSecondary),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
 // ── Pure parsing helpers (unit-tested) ──────────────────────────────────────
 
 /// Tolerant int parse for sync-pull fields. The server serializes
@@ -1039,48 +957,6 @@ List<TrendsCategory> parseTrendsCategories(dynamic raw) {
     }
   }
   return out;
-}
-
-/// Lenient decode of `profile['heartRateHistory']` (a JSON string).
-/// Accepts a list of {date, value-ish} maps or a {date: value} map.
-/// Zeros are dropped (failed reads); unparseable → empty. Never throws.
-List<({String label, double value})> parseHeartRateHistory(dynamic raw) {
-  if (raw is! String || raw.trim().isEmpty) return const [];
-  try {
-    final decoded = jsonDecode(raw);
-    final out = <({String label, double value})>[];
-    if (decoded is List) {
-      for (final item in decoded) {
-        if (item is Map<String, dynamic>) {
-          final label = '${item['date'] ?? item['day'] ?? item['label'] ?? ''}';
-          final value = _firstPositiveNum(item);
-          if (label.isNotEmpty && value != null) {
-            out.add((label: label, value: value));
-          }
-        }
-      }
-    } else if (decoded is Map<String, dynamic>) {
-      for (final e in decoded.entries) {
-        final v = e.value;
-        if (v is num && v > 0) out.add((label: e.key, value: v.toDouble()));
-      }
-      out.sort((a, b) => a.label.compareTo(b.label));
-    }
-    return out;
-  } catch (_) {
-    return const [];
-  }
-}
-
-double? _firstPositiveNum(Map<String, dynamic> map) {
-  for (final key in ['avg', 'value', 'bpm', 'restingHr', 'heartRate']) {
-    final v = map[key];
-    if (v is num && v > 0) return v.toDouble();
-  }
-  for (final v in map.values) {
-    if (v is num && v > 0) return v.toDouble();
-  }
-  return null;
 }
 
 /// Splits an entry's chips field into plain symptom/chip names.
