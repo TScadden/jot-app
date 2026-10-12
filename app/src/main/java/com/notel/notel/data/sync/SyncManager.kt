@@ -974,17 +974,26 @@ class SyncManager @Inject constructor(
      *
      * - Matches server DTOs to local lists by name, first-unmatched-first in order, so
      *   duplicate names (the two `__user_notes__` pseudo-lists) are NOT collapsed: each
-     *   server DTO updates at most one local list's items.
-     * - A matched local list gets ONLY its own items replaced with the server's items
-     *   (sortOrder preserved).
+     *   server DTO matches at most one local list.
+     * - When `profilePushDirty` is false: a matched local list gets ONLY its own items
+     *   replaced with the server's items (sortOrder preserved).
+     * - When `profilePushDirty` is true (local state is newer than the server — e.g. an
+     *   offline edit whose push failed): the merge is ADDITIVE-ONLY. Matched lists keep
+     *   their items exactly as they are; the retry push runs immediately after this pull
+     *   in the same cycle and converges the server to the local state, so skipping the
+     *   overwrite loses nothing. This fixes the offline-edit data-loss race where a
+     *   stale server payload would delete locally-added items before the retry push.
      * - Local lists with no server counterpart are LEFT UNTOUCHED — a failed push must
      *   never cost rows that never reached the server.
-     * - Server DTOs with no local counterpart are inserted as new lists.
+     * - Server DTOs with no local counterpart are inserted as new lists (either mode).
      * - Tombstoned names (locally deleted lists) are filtered out of the server payload,
-     *   so a stale server copy can't resurrect a deleted list.
+     *   so a stale server copy can't resurrect a deleted list; the self-clean runs
+     *   regardless of the dirty flag (it only shrinks the set once the server confirms
+     *   the delete propagated — safe).
      * - A malformed server payload decodes to empty, which merges nothing.
      */
     private suspend fun mergeServerLists(pulledLists: List<UserListSyncDto>) {
+        val additiveOnly = preferences.profilePushDirty.first()
         if (pulledLists.isEmpty()) return
 
         val tombstones = readListNameTombstones()
@@ -1005,10 +1014,15 @@ class SyncManager @Inject constructor(
             val matchIndex = unmatchedLocal.indexOfFirst { it.name == dto.name }
             if (matchIndex >= 0) {
                 val local = unmatchedLocal.removeAt(matchIndex)
-                // Replace ONLY this list's items with the server's items.
-                userListDao.getItemsForList(local.id).first().forEach { userListDao.deleteItem(it) }
-                dto.items.forEachIndexed { index, text ->
-                    userListDao.insertItem(UserListItem(listId = local.id, text = text, sortOrder = index))
+                if (additiveOnly) {
+                    // Additive-only: leave this list's items exactly as they are.
+                    Log.d(tag, "Lists: additive-only merge, keeping local items for '${dto.name}'")
+                } else {
+                    // Replace ONLY this list's items with the server's items.
+                    userListDao.getItemsForList(local.id).first().forEach { userListDao.deleteItem(it) }
+                    dto.items.forEachIndexed { index, text ->
+                        userListDao.insertItem(UserListItem(listId = local.id, text = text, sortOrder = index))
+                    }
                 }
             } else {
                 val newId = userListDao.insertList(UserList(name = dto.name)).toInt()
@@ -1018,18 +1032,29 @@ class SyncManager @Inject constructor(
             }
         }
         if (serverDtos.isNotEmpty()) {
-            log("SYNC_OK: Lists merged (${serverDtos.size} server lists, ${unmatchedLocal.size} local lists untouched)")
+            val mode = if (additiveOnly) "additive-only" else "full"
+            log("SYNC_OK: Lists merged ($mode; ${serverDtos.size} server lists, ${unmatchedLocal.size} local lists untouched)")
         }
     }
 
     /**
      * Merge server reminders into the local Room table — upsert by id, never clear-and-replace.
      * Local reminders with no server counterpart are LEFT UNTOUCHED. Tombstoned ids
-     * (locally deleted reminders) are filtered out of the server payload. Alarm
-     * scheduling is preserved per reminder: only reminders inserted/updated by the merge
-     * get cancel + reschedule.
+     * (locally deleted reminders) are filtered out of the server payload; the self-clean
+     * runs regardless of the dirty flag (it only shrinks the set once the server confirms
+     * the delete propagated — safe).
+     *
+     * When `profilePushDirty` is true (local state is newer than the server — e.g. a
+     * locally-toggled reminder whose push failed), the merge is ADDITIVE-ONLY: server
+     * reminders with unknown ids are inserted (with alarm scheduling), but matched ids
+     * are NOT updated, so the retry push that runs immediately after this pull in the
+     * same cycle converges the server to the local state instead of clobbering it.
+     *
+     * Alarm scheduling is preserved per reminder: only reminders inserted (or, in
+     * full-merge mode, updated) by the merge get cancel + reschedule.
      */
     private suspend fun mergeServerReminders(pulledReminders: List<Reminder>) {
+        val additiveOnly = preferences.profilePushDirty.first()
         if (pulledReminders.isEmpty()) return
 
         val tombstones = readReminderIdTombstones()
@@ -1048,13 +1073,22 @@ class SyncManager @Inject constructor(
         val localById = reminderDao.getAllReminders().first().associateBy { it.id }
         serverReminders.forEach { remote ->
             if (localById.containsKey(remote.id)) {
-                reminderDao.update(remote)
+                if (additiveOnly) {
+                    // Additive-only: leave the locally-edited reminder exactly as it is.
+                    Log.d(tag, "Reminders: additive-only merge, keeping local reminder id=${remote.id}")
+                } else {
+                    reminderDao.update(remote)
+                    ReminderScheduler.cancel(context, remote)
+                    if (remote.isEnabled) {
+                        ReminderScheduler.schedule(context, remote)
+                    }
+                }
             } else {
                 reminderDao.insert(remote)
-            }
-            ReminderScheduler.cancel(context, remote)
-            if (remote.isEnabled) {
-                ReminderScheduler.schedule(context, remote)
+                ReminderScheduler.cancel(context, remote)
+                if (remote.isEnabled) {
+                    ReminderScheduler.schedule(context, remote)
+                }
             }
         }
         if (serverReminders.isNotEmpty()) {
