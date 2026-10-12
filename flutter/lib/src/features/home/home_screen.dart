@@ -11,6 +11,7 @@ import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/connections/connections_screen.dart';
 import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
+import 'package:tabs_lab/src/features/home/health_connect_banner.dart';
 import 'package:tabs_lab/src/features/home/today_summary_card.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/features/home/weather_sheet.dart';
@@ -55,6 +56,12 @@ import 'package:tabs_lab/src/theme/slide_page_route.dart';
 /// day (04:00 local boundary); one tap logs the uneditable
 /// 'Daily Ranking' entry and the card slides away. See
 /// `feeling_checkin_card.dart` for the full native trace.
+/// Round 23 — Home tracks the Health Connect STATUS ENUM (not just a
+/// bool): when the status is not fully connected AND the biometrics
+/// are empty, a slim banner under the vitals strip explains the "--"
+/// cells and deep-links to Connections (partial grants get their own
+/// wording). Connected-but-empty keeps the plain "--", no banner.
+/// See `health_connect_banner.dart`.
 class HomeScreen extends StatefulWidget {
   final String? email;
   final WeatherApiClient? weatherApi;
@@ -106,6 +113,17 @@ class _HomeScreenState extends State<HomeScreen> {
   TodayVitals? _vitals;
   int? _currentStreak;
   int? _bestStreak;
+
+  // ── Round 23: Health Connect status (enum, not just a bool) ────────────
+  /// Null until the first live status check lands — the banner never
+  /// shows on a guess, and cached vitals render first regardless.
+  HealthConnectStatus? _hcStatus;
+
+  /// Visible-handling for a bridge failure (LESSONS.md): when
+  /// `getStatus()` itself throws, [_hcStatus] falls back to
+  /// notConnected (the honest user-facing state) and the exception
+  /// code is kept here so the banner can render it as `[CODE]`.
+  String? _hcStatusErrorCode;
 
   /// Round 15c — once-per-day count-up gate. False until the gate
   /// resolves; true only on the first home view of the day. On later
@@ -256,12 +274,22 @@ class _HomeScreenState extends State<HomeScreen> {
   /// instantly.
   Future<void> _loadHealthData() async {
     final hc = _healthRepo.hc;
-    bool connected = false;
+    // Round 23 — track the full status enum, not just connected/not.
+    // A bridge failure is handled visibly, never silently wedged
+    // (LESSONS.md): the status falls back to notConnected so the
+    // banner shows, and the exception code rides along for it.
+    HealthConnectStatus status;
+    String? statusErrorCode;
     try {
-      connected = await hc.isConnected();
+      status = await hc.getStatus();
+    } on HealthConnectException catch (e) {
+      status = HealthConnectStatus.notConnected;
+      statusErrorCode = e.code;
     } catch (_) {
-      connected = false;
+      status = HealthConnectStatus.notConnected;
+      statusErrorCode = 'UNKNOWN';
     }
+    final connected = status == HealthConnectStatus.connected;
     final vitals = await _healthRepo.loadTodayVitals(connected: connected);
     final streak = await _healthRepo.loadStreak();
     final cache = HomeDataCache.instance;
@@ -270,13 +298,39 @@ class _HomeScreenState extends State<HomeScreen> {
     // Persist in the background; never block the UI on storage.
     unawaited(cache.persist());
     if (!mounted) return;
-    if (changed) {
+    // Round 23 — a status-only change (e.g. the fresh load found the
+    // same empty vitals the cache already held, but now we KNOW the
+    // connection state) must also rebuild, or the banner never lands.
+    final statusChanged =
+        status != _hcStatus || statusErrorCode != _hcStatusErrorCode;
+    if (changed || statusChanged) {
       setState(() {
         _vitals = vitals;
         _currentStreak = streak.current;
         _bestStreak = streak.best;
+        _hcStatus = status;
+        _hcStatusErrorCode = statusErrorCode;
       });
     }
+  }
+
+  /// Opens the data-connections screen — the one destination/flow
+  /// shared by the header watch icon and the round-23 Health Connect
+  /// banner. On return, Home quietly re-checks the status + vitals in
+  /// the background (stale-while-revalidate, no spinner), so a
+  /// reconnect or permission fix made there clears the banner
+  /// without a tab switch.
+  Future<void> _openConnections() async {
+    await Navigator.of(context).push(
+      SlidePageRoute(
+        reducedMotion: animationsDisabled(context),
+        builder: (_) => ConnectionsScreen(
+          healthConnectService: widget.healthConnectService,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    unawaited(_loadHealthData());
   }
 
   Future<void> _loadWeather() async {
@@ -426,16 +480,7 @@ class _HomeScreenState extends State<HomeScreen> {
           // it flies to the connections screen's back arrow during the push
           // (skipped under reduced motion, where heroes are omitted).
           IconButton(
-            onPressed: () {
-              Navigator.of(context).push(
-                SlidePageRoute(
-                  reducedMotion: animationsDisabled(context),
-                  builder: (_) => ConnectionsScreen(
-                    healthConnectService: widget.healthConnectService,
-                  ),
-                ),
-              );
-            },
+            onPressed: () => unawaited(_openConnections()),
             icon: animationsDisabled(context)
                 ? const Icon(
                     Icons.watch,
@@ -487,6 +532,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 animateCountUps: _countUpsAnimate,
               ),
             ),
+            // Round 23 — slim Health Connect banner, directly under
+            // the vitals strip: only when the status is known to be
+            // not fully connected AND the biometrics are empty. It is
+            // deliberately NOT wrapped in StaggeredEntrance (no extra
+            // motion, no spinner) — it appears/disappears quietly when
+            // the background refresh lands, and cached values above it
+            // keep rendering first either way.
+            if (shouldShowHealthConnectBanner(
+                status: _hcStatus, vitals: _vitals))
+              HealthConnectBanner(
+                status: _hcStatus!,
+                errorCode: _hcStatusErrorCode,
+                onTap: () => unawaited(_openConnections()),
+              ),
             StaggeredEntrance(
               index: 1,
               child: HomeStreakRow(
