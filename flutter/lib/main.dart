@@ -12,8 +12,7 @@ import 'package:tabs_lab/src/features/auth/login_screen.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/onboarding/welcome_screen.dart';
 import 'package:tabs_lab/src/features/splash/splash_screen.dart';
-import 'package:tabs_lab/src/theme/notel_colors.dart';
-import 'package:tabs_lab/src/theme/slide_page_route.dart';
+import 'package:tabs_lab/src/theme/notel_theme.dart';
 
 void main() async {
   // Round 16 — warm the home-data cache before the first frame so a
@@ -48,20 +47,15 @@ class TabsLabApp extends StatelessWidget {
     return MaterialApp(
       title: 'Tabs Lab',
       debugShowCheckedModeBanner: false,
-      // Round 22 — the app's first theme, added for ONE reason: the
-      // navigation flash fix. Until now MaterialApp had no theme, so
-      // every MaterialPageRoute fell back to Material 3's fade-based
-      // platform transition and ghosted against the screen underneath.
-      // pageTransitionsTheme routes EVERY platform through the shared
-      // slide-in-from-right builder (see slide_page_route.dart), and
-      // scaffoldBackgroundColor is an opacity backstop so no pushed
-      // screen can ever be transparent mid-transition. Nothing else
-      // about the theme changes — colors stay per-widget literals,
-      // exactly as before.
-      theme: ThemeData(
-        scaffoldBackgroundColor: NotelColors.background,
-        pageTransitionsTheme: slidePageTransitionsTheme(),
-      ),
+      // Round 22 — the app's first theme carried only the slide
+      // pageTransitionsTheme (navigation flash fix) and the scaffold
+      // background backstop. Round 28 — notelDarkTheme() (see
+      // notel_theme.dart) keeps both and adds the full dark
+      // ColorScheme + stock-surface sub-themes from the Notel
+      // palette, so built-in Material surfaces (date picker, dialogs,
+      // menus, snackbars) render dark instead of falling back to the
+      // default light theme. Screen colors stay per-widget literals.
+      theme: notelDarkTheme(),
       home: const AppFlow(),
     );
   }
