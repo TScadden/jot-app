@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
+import 'package:tabs_lab/src/features/heart/heart_screen.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/features/quicklog/quick_log_screen.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
@@ -17,8 +18,10 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///   placeholders for now).
 /// - Quick-log → the real Quick Log screen (round 19): details field,
 ///   real categories, AI suggestions, history view.
-/// - Heart, Settings → blank navy placeholders for now;
-///   their real screens land in future rounds. The founder's directive:
+/// - Heart → the real Heart screen (round 25): native FitbitScreen
+///   port (summary, today's pattern chart, spikes, spike review).
+/// - Settings → blank navy placeholder for now; its real screen lands
+///   in a future round. The founder's directive:
 ///   "they should just go to a blank screen."
 /// - The dock stays visible on every tab. The active icon highlights in
 ///   `NotelPrimary`, matching the native dock's selected state.
@@ -69,7 +72,11 @@ class _MainShellState extends State<MainShell> {
               key: const ValueKey('quicklog_screen'),
               weatherApi: widget.weatherApi,
             ),
-          DockTab.heart => const _BlankTab(key: ValueKey('blank_heart')),
+          DockTab.heart => HeartScreen(
+              key: const ValueKey('heart_screen'),
+              email: widget.email,
+              healthConnectService: widget.healthConnectService,
+            ),
           DockTab.settings =>
             const _BlankTab(key: ValueKey('blank_settings')),
         },

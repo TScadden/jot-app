@@ -46,4 +46,20 @@ abstract final class NotelColors {
   static const noDataRing = Color(0x33FFFFFF); // White @ 20% — empty-day ring
   static const noDataTick = Color(0x40FFFFFF); // White @ 25% — empty-day tick
   static const heartRateRed = Color(0xFFFF5E62); // Resting-HR line color
+
+  /// Heart screen tokens (round 25; native `Color.kt` dark values +
+  /// `FitbitScreen.kt` graph literals).
+  static const errorTint = Color(0xFF2A121A); // NotelErrorTint (dark)
+  static const errorTintStrong = Color(0xFF4A1820); // NotelErrorTintStrong / NotelErrorBadgeFill (dark)
+  static const legacyDarkAsleepPill = Color(0xFF1A1B36);
+  static const legacyDarkAsleepPillBorder = Color(0xFF2C2E5D);
+  static const legacyDarkAsleepInk = Color(0xFFA49BFF);
+  static const legacyDarkLastPill = Color(0xFF12233D);
+  static const legacyDarkLastPillBorder = Color(0xFF1E3A66);
+  static const legacyDarkReviewButton = Color(0xFF19223D);
+  static const legacyDarkConnectCircle = Color(0xFF1E284A);
+  static const restingBand = Color(0xFF1B2847); // graph band fill (drawn @ 60% alpha)
+  static const restingSwatch = Color(0xFF2A385E); // legend band swatch
+  static const heartChartGridY = Color(0xFF222F4C); // dashed horizontal grid
+  static const heartChartGridX = Color(0xFF1D2A47); // dashed vertical grid
 }
