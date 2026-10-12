@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:tabs_lab/src/data/health_connect_service.dart';
@@ -1212,28 +1213,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
           TextButton(
             key: const ValueKey('profile_save'),
             onPressed: () async {
-              final age = int.tryParse(ageC.text) ?? 0;
-              final totalIn =
-                  (int.tryParse(ftC.text) ?? 0) * 12 +
-                      (int.tryParse(inC.text) ?? 0);
-              final weightLbs = double.tryParse(weightC.text) ?? 0;
-              final heightCm = totalIn * 2.54;
-              final weightKg = weightLbs / 2.20462;
+              // Build the payload from ONLY the fields that are
+              // non-blank and parseable (R29b Vera fix): the profile
+              // push only protects keys that are omitted, so a blank
+              // field must be left out entirely — coercing blanks to
+              // age 0 / heightCm 0.0 / weightKg 0.0 / gender '' would
+              // zero-clobber the server's real values whenever Save is
+              // tapped after a failed pull (when every field renders
+              // blank even though the server holds real data).
+              final fields = <String, dynamic>{};
+              final ageText = ageC.text.trim();
+              final age = int.tryParse(ageText);
+              if (ageText.isNotEmpty && age != null) {
+                fields['age'] = age;
+              }
+              final ft = int.tryParse(ftC.text.trim());
+              final inch = int.tryParse(inC.text.trim());
+              double? heightCm;
+              if (ft != null || inch != null) {
+                heightCm = ((ft ?? 0) * 12 + (inch ?? 0)) * 2.54;
+                fields['heightCm'] = heightCm;
+              }
+              final weightText = weightC.text.trim();
+              final weightLbs = double.tryParse(weightText);
+              double? weightKg;
+              if (weightText.isNotEmpty && weightLbs != null) {
+                weightKg = weightLbs / 2.20462;
+                fields['weightKg'] = weightKg;
+              }
+              if (genderC.text.isNotEmpty) {
+                fields['gender'] = genderC.text;
+              }
+              if (fields.isEmpty) {
+                // Nothing parseable to save — make no call at all so
+                // a failed-load Save can never touch the server copy.
+                if (ctx.mounted) Navigator.of(ctx).pop();
+                return;
+              }
               // Native saveUserProfile (SettingsViewModel.kt:653-659):
               // DataStore + pushProfileData with cm/kg conversions.
-              final ok = await _pushProfile({
-                'age': age,
-                'heightCm': heightCm,
-                'weightKg': weightKg,
-                'gender': genderC.text,
-              });
+              final ok = await _pushProfile(fields);
               if (ok && mounted) {
                 setState(() {
                   _data = _data.copyWith(
-                    age: age,
+                    age: fields.containsKey('age')
+                        ? fields['age'] as int
+                        : null,
                     heightCm: heightCm,
                     weightKg: weightKg,
-                    gender: genderC.text,
+                    gender: fields.containsKey('gender')
+                        ? fields['gender'] as String
+                        : null,
                   );
                 });
               }
@@ -1265,6 +1295,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           },
           key: const ValueKey('nav_labels_toggle'),
         ),
+        const SizedBox(height: 8),
+        // Honest disclosure (R29b Juno MF-R29-1): the preference
+        // persists in SettingsStore, but nothing consumes it yet —
+        // the Lab dock (nav_dock.dart) renders labels off.
+        const Text(
+            'Your choice is saved on this device. The Flutter Lab dock does not show labels yet.',
+            style:
+                TextStyle(color: NotelColors.textSecondary, fontSize: 11)),
       ]),
       const SizedBox(height: 12),
       _card([
@@ -1926,13 +1964,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         if (d.hrSpikeAlertsEnabled) ...[
           const SizedBox(height: 12),
-          _thresholdField(
-            'Alert Threshold',
-            'spike_threshold_field',
-            d.spikeThreshold,
-            'BPM',
-            null,
-            (v) async {
+          _ThresholdField(
+            label: 'Alert Threshold',
+            keyName: 'spike_threshold_field',
+            value: d.spikeThreshold,
+            suffix: 'BPM',
+            // Native guards (SettingsScreen.kt spike field): digits
+            // only, max 3 chars, saved only when in 40..250.
+            min: 40,
+            max: 250,
+            maxLength: 3,
+            onSave: (v) async {
               setState(() => _data = _data.copyWith(spikeThreshold: v));
               await _pushProfile({'spikeThreshold': v});
             },
@@ -1957,13 +1999,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         if (d.hrDeltaEnabled) ...[
           const SizedBox(height: 12),
-          _thresholdField(
-            'Jump Threshold',
-            'delta_threshold_field',
-            d.spikeDeltaThreshold,
-            'BPM',
-            '+',
-            (v) async {
+          _ThresholdField(
+            label: 'Jump Threshold',
+            keyName: 'delta_threshold_field',
+            value: d.spikeDeltaThreshold,
+            suffix: 'BPM',
+            prefix: '+',
+            // Native guards (SettingsScreen.kt delta field): digits
+            // only, max 2 chars, saved only when in 5..99.
+            min: 5,
+            max: 99,
+            maxLength: 2,
+            onSave: (v) async {
               setState(
                   () => _data = _data.copyWith(spikeDeltaThreshold: v));
               await _pushProfile({'spikeDeltaThreshold': v});
@@ -1972,46 +2019,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
         const SizedBox(height: 16),
         const Text(
-            'Reminder preferences save exactly as in the native app. The Flutter Lab does not schedule notifications yet, so these reminders will not fire from the Lab.',
+            'Reminder preferences save exactly as in the native app. The Flutter Lab does not schedule notifications yet, so these reminders and alerts will not fire from the Lab.',
             style:
                 TextStyle(color: NotelColors.textSecondary, fontSize: 11)),
       ]),
     ];
   }
 
-  Widget _thresholdField(String label, String keyName, int value,
-      String suffix, String? prefix, ValueChanged<int> onSave) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(label,
-              style: const TextStyle(
-                  color: NotelColors.textPrimary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500)),
-        ),
-        SizedBox(
-          width: 110,
-          child: TextFormField(
-            key: ValueKey(keyName),
-            initialValue: '$value',
-            keyboardType: TextInputType.number,
-            style: const TextStyle(color: NotelColors.textPrimary),
-            decoration: InputDecoration(
-              suffixText: suffix,
-              prefixText: prefix,
-              suffixStyle: const TextStyle(
-                  color: NotelColors.textSecondary, fontSize: 12),
-            ),
-            onFieldSubmitted: (text) {
-              final v = int.tryParse(text);
-              if (v != null) onSave(v);
-            },
-          ),
-        ),
-      ],
-    );
-  }
+  // (The threshold field itself is the stateful _ThresholdField
+  // below the screen class — it owns a controller so an out-of-range
+  // submit can revert the visible text to the stored value.)
 
   // ── SYNC SETTINGS (native :3754-3866) ────────────────────────────
 
@@ -2194,7 +2211,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ? null
                   : () async {
                       setLocal(() => loggingOut = true);
-                      await _actions.logout();
+                      // Flush a Personal Context edit still inside
+                      // its 3 s debounce before the wipe, or the edit
+                      // would be lost on an immediate logout (R29b).
+                      if (_contextDebounce?.isActive ?? false) {
+                        _contextDebounce!.cancel();
+                        await _pushProfile(
+                            {'userContext': _contextController.text});
+                      }
+                      try {
+                        await _actions.logout();
+                      } catch (_) {
+                        // AccountActions isolates every wipe step, so
+                        // this is only a last-resort guard: even an
+                        // unexpected wipe error must still complete
+                        // the flow and fire onLogout rather than
+                        // wedging this dialog in its logging-out
+                        // state (R29b Vera fix).
+                      }
                       if (ctx.mounted) Navigator.of(ctx).pop();
                       widget.onLogout?.call();
                     },
@@ -2277,7 +2311,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ? null
                   : () async {
                       setLocal(() => deleting = true);
-                      final ok = await _actions.deleteAccount();
+                      bool ok;
+                      try {
+                        ok = await _actions.deleteAccount();
+                      } catch (_) {
+                        // deleteAccount returns false itself when the
+                        // server delete fails, so a throw here can
+                        // only come from the local wipe AFTER a
+                        // successful server delete — the account is
+                        // gone; complete the flow and fire onLogout
+                        // rather than leaving a live local session
+                        // behind (R29b Vera fix).
+                        ok = true;
+                      }
                       if (!mounted) return;
                       if (ok) {
                         if (ctx.mounted) Navigator.of(ctx).pop();
@@ -2294,6 +2340,109 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// HR threshold entry field with native's input guards ported
+/// (SettingsScreen.kt spike field ~:3644-3655, delta field
+/// ~:3725-3736): digits-only input with a length cap, and a value is
+/// saved ONLY when it parses into [min]..[max]. Anything else is not
+/// pushed and the visible text reverts to the current stored value —
+/// previously any parsed int (0, -20, 99999) went verbatim to the
+/// server profile (R29b Vera fix).
+class _ThresholdField extends StatefulWidget {
+  final String label;
+  final String keyName;
+  final int value;
+  final String suffix;
+  final String? prefix;
+  final int min;
+  final int max;
+  final int maxLength;
+  final ValueChanged<int> onSave;
+
+  const _ThresholdField({
+    required this.label,
+    required this.keyName,
+    required this.value,
+    required this.suffix,
+    this.prefix,
+    required this.min,
+    required this.max,
+    required this.maxLength,
+    required this.onSave,
+  });
+
+  @override
+  State<_ThresholdField> createState() => _ThresholdFieldState();
+}
+
+class _ThresholdFieldState extends State<_ThresholdField> {
+  late final TextEditingController _controller =
+      TextEditingController(text: '${widget.value}');
+
+  @override
+  void didUpdateWidget(_ThresholdField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Keep the field in sync when the stored value changes under it
+    // (enable-time fix-up, server reload) — but never clobber text
+    // the user is mid-edit on when it already parses to the value.
+    if (widget.value != oldWidget.value &&
+        int.tryParse(_controller.text) != widget.value) {
+      _controller.text = '${widget.value}';
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit(String text) {
+    final v = int.tryParse(text);
+    if (v != null && v >= widget.min && v <= widget.max) {
+      widget.onSave(v);
+    } else {
+      // Out of range (or unparseable): do not push; revert the field
+      // to the current stored value, as native's guard implies.
+      _controller.text = '${widget.value}';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(widget.label,
+              style: const TextStyle(
+                  color: NotelColors.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500)),
+        ),
+        SizedBox(
+          width: 110,
+          child: TextField(
+            key: ValueKey(widget.keyName),
+            controller: _controller,
+            keyboardType: TextInputType.number,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(widget.maxLength),
+            ],
+            style: const TextStyle(color: NotelColors.textPrimary),
+            decoration: InputDecoration(
+              suffixText: widget.suffix,
+              prefixText: widget.prefix,
+              suffixStyle: const TextStyle(
+                  color: NotelColors.textSecondary, fontSize: 12),
+            ),
+            onSubmitted: _submit,
+          ),
+        ),
+      ],
     );
   }
 }

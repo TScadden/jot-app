@@ -54,6 +54,67 @@ class FakeSettingsBackend extends TabsBackend {
   Future<bool> deleteAccount() async => deleteResult;
 }
 
+/// A session store whose clear() throws, simulating a secure-storage
+/// failure in the middle of the account wipe (R29b fault isolation).
+class ThrowingSessionStore extends FakeSessionStore {
+  @override
+  Future<void> clear() async {
+    throw StateError('secure storage unavailable');
+  }
+}
+
+/// Seeds all three REAL account-bound cache singletons with this
+/// account's data (the same wiring the logout test originally used).
+void seedRealCaches() {
+  final cacheDisk = <String, String>{};
+  void wireCache(dynamic cache) => cache.debugSetStore(
+        read: (k) async => cacheDisk[k],
+        write: (k, v) async => cacheDisk[k] = v,
+        delete: (k) async => cacheDisk.remove(k),
+      );
+  wireCache(HomeDataCache.instance);
+  wireCache(QuickLogCache.instance);
+  wireCache(HeartDataCache.instance);
+  HomeDataCache.instance.debugReset();
+  HomeDataCache.instance.applyVitals(
+      const TodayVitals(heartRate: 80), ownerEmail: 'a@example.com');
+  QuickLogCache.instance.debugReset();
+  QuickLogCache.instance.applyLoad(
+    categories: const [
+      QuickLogCategory(
+          id: 1,
+          name: 'Mood',
+          icon: '',
+          colorHex: '',
+          isDefault: true,
+          sortOrder: 0),
+    ],
+    recentSuggestions: const [],
+    todayCount: 3,
+    isUnlimited: false,
+    isAdmin: false,
+    ownerEmail: 'a@example.com',
+  );
+  HeartDataCache.instance.debugReset();
+  HeartDataCache.instance.apply('2026-10-12', [
+    HrSample(
+        timeMs: DateTime(2026, 10, 12, 9).millisecondsSinceEpoch,
+        bpm: 82),
+  ], ownerEmail: 'a@example.com');
+}
+
+void expectRealCachesSeeded() {
+  expect(HomeDataCache.instance.snapshot.vitalsLoaded, isTrue);
+  expect(QuickLogCache.instance.snapshot.categoriesLoaded, isTrue);
+  expect(HeartDataCache.instance.hasDate('2026-10-12'), isTrue);
+}
+
+void expectRealCachesEmpty() {
+  expect(HomeDataCache.instance.snapshot.vitalsLoaded, isFalse);
+  expect(QuickLogCache.instance.snapshot.categoriesLoaded, isFalse);
+  expect(HeartDataCache.instance.hasDate('2026-10-12'), isFalse);
+}
+
 SettingsStore fakeStore(Map<String, String> map) => SettingsStore.withStorage(
       read: (k) async => map[k],
       write: (k, v) async => map[k] = v,
@@ -287,6 +348,12 @@ void main() {
           find.byKey(const ValueKey('nav_labels_toggle')).findSwitch());
       await tester.pumpAndSettle();
       expect(map[SettingsStore.showNavLabelsKey], 'false');
+      // Juno MF-R29-1 disclosure: saved on device, Lab dock has no
+      // labels yet.
+      expect(
+          find.text(
+              'Your choice is saved on this device. The Flutter Lab dock does not show labels yet.'),
+          findsOneWidget);
     });
 
     testWidgets('theme choice persists to the device store',
@@ -331,6 +398,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(backend.profilePushes,
           contains(equals({'habitReminderEnabled': true})));
+      // Footer copy covers alerts as well as reminders (Juno N1).
+      expect(
+          find.textContaining(
+              'so these reminders and alerts will not fire from the Lab.'),
+          findsOneWidget);
     });
 
     testWidgets('check-in toggle persists locally only', (tester) async {
@@ -420,6 +492,133 @@ void main() {
     });
   });
 
+  group('HR threshold fields (native guards)', () {
+    Future<void> openNotifications(
+        WidgetTester tester, FakeSettingsBackend backend) async {
+      await pumpSettings(tester, host(screen(
+          backend: backend, store: fakeStore(<String, String>{}))));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Notifications'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets(
+        'spike: out-of-range submits are not pushed and the field reverts',
+        (tester) async {
+      final backend = FakeSettingsBackend()
+        ..pullBody = pull(profile: {
+          'hrSpikeAlertsEnabled': true,
+          'spikeThreshold': 120,
+        });
+      await openNotifications(tester, backend);
+      final field = find.byKey(const ValueKey('spike_threshold_field'));
+      expect(field, findsOneWidget);
+      // 0 is below native's 40..250 save range.
+      await tester.enterText(field, '0');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(
+          backend.profilePushes
+              .where((p) => p.containsKey('spikeThreshold')),
+          isEmpty);
+      expect(tester.widget<TextField>(field).controller!.text, '120');
+      // 999 fits the 3-char cap but is above the range.
+      await tester.enterText(field, '999');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(
+          backend.profilePushes
+              .where((p) => p.containsKey('spikeThreshold')),
+          isEmpty);
+      expect(tester.widget<TextField>(field).controller!.text, '120');
+    });
+
+    testWidgets('spike: in-range value pushes; input capped at 3 digits',
+        (tester) async {
+      final backend = FakeSettingsBackend()
+        ..pullBody = pull(profile: {
+          'hrSpikeAlertsEnabled': true,
+          'spikeThreshold': 120,
+        });
+      await openNotifications(tester, backend);
+      final field = find.byKey(const ValueKey('spike_threshold_field'));
+      await tester.enterText(field, '1234');
+      await tester.pumpAndSettle();
+      // LengthLimitingTextInputFormatter(3), digits only.
+      expect(tester.widget<TextField>(field).controller!.text, '123');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(backend.profilePushes,
+          contains(equals({'spikeThreshold': 123})));
+    });
+
+    testWidgets(
+        'delta: below-5 submit is not pushed and reverts; in-range pushes; cap 2 digits',
+        (tester) async {
+      final backend = FakeSettingsBackend()
+        ..pullBody = pull(profile: {
+          'hrDeltaEnabled': true,
+          'spikeDeltaThreshold': 30,
+        });
+      await openNotifications(tester, backend);
+      final field = find.byKey(const ValueKey('delta_threshold_field'));
+      expect(field, findsOneWidget);
+      await tester.enterText(field, '3');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(
+          backend.profilePushes
+              .where((p) => p.containsKey('spikeDeltaThreshold')),
+          isEmpty);
+      expect(tester.widget<TextField>(field).controller!.text, '30');
+      await tester.enterText(field, '123');
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(field).controller!.text, '12');
+      await tester.enterText(field, '45');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(backend.profilePushes,
+          contains(equals({'spikeDeltaThreshold': 45})));
+    });
+  });
+
+  group('Edit Profile save (omit-blank)', () {
+    Future<void> openEditProfile(
+        WidgetTester tester, FakeSettingsBackend backend) async {
+      await pumpSettings(tester, host(screen(
+          backend: backend, store: fakeStore(<String, String>{}))));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('menu_user_profile')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('edit_profile_button')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('profile_save')), findsOneWidget);
+    }
+
+    testWidgets('save after a failed pull sends nothing (no zero-clobber)',
+        (tester) async {
+      final backend = FakeSettingsBackend(); // pullBody null → pull failed
+      await openEditProfile(tester, backend);
+      await tester.tap(find.byKey(const ValueKey('profile_save')));
+      await tester.pumpAndSettle();
+      expect(backend.profilePushes, isEmpty);
+      expect(find.byKey(const ValueKey('profile_save')), findsNothing);
+    });
+
+    testWidgets('only non-blank parseable fields are pushed',
+        (tester) async {
+      final backend = FakeSettingsBackend()..pullBody = pull();
+      await openEditProfile(tester, backend);
+      await tester.enterText(
+          find.widgetWithText(TextField, 'Age'), '30');
+      await tester.tap(find.byKey(const ValueKey('profile_save')));
+      await tester.pumpAndSettle();
+      // Exactly one push with exactly one key — no age/height/weight/
+      // gender zeroed companions.
+      expect(backend.profilePushes, [equals({'age': 30})]);
+    });
+  });
+
   group('AccountActions', () {
     test('logout clears session + all three caches + settings',
         () async {
@@ -432,46 +631,8 @@ void main() {
       final store = fakeStore(storeMap);
 
       // Seed all three account-bound caches with this account's data.
-      final cacheDisk = <String, String>{};
-      void wireCache(dynamic cache) => cache.debugSetStore(
-            read: (k) async => cacheDisk[k],
-            write: (k, v) async => cacheDisk[k] = v,
-            delete: (k) async => cacheDisk.remove(k),
-          );
-      wireCache(HomeDataCache.instance);
-      wireCache(QuickLogCache.instance);
-      wireCache(HeartDataCache.instance);
-      HomeDataCache.instance.debugReset();
-      HomeDataCache.instance.applyVitals(
-          const TodayVitals(heartRate: 80), ownerEmail: 'a@example.com');
-      expect(HomeDataCache.instance.snapshot.vitalsLoaded, isTrue);
-
-      QuickLogCache.instance.debugReset();
-      QuickLogCache.instance.applyLoad(
-        categories: const [
-          QuickLogCategory(
-              id: 1,
-              name: 'Mood',
-              icon: '',
-              colorHex: '',
-              isDefault: true,
-              sortOrder: 0),
-        ],
-        recentSuggestions: const [],
-        todayCount: 3,
-        isUnlimited: false,
-        isAdmin: false,
-        ownerEmail: 'a@example.com',
-      );
-      expect(QuickLogCache.instance.snapshot.categoriesLoaded, isTrue);
-
-      HeartDataCache.instance.debugReset();
-      HeartDataCache.instance.apply('2026-10-12', [
-        HrSample(
-            timeMs: DateTime(2026, 10, 12, 9).millisecondsSinceEpoch,
-            bpm: 82),
-      ], ownerEmail: 'a@example.com');
-      expect(HeartDataCache.instance.hasDate('2026-10-12'), isTrue);
+      seedRealCaches();
+      expectRealCachesSeeded();
 
       final actions = AccountActions(
         backend: backend,
@@ -483,9 +644,33 @@ void main() {
       expect(session.token, isNull);
       expect(session.refreshToken, isNull);
       expect(session.email, isNull);
-      expect(HomeDataCache.instance.snapshot.vitalsLoaded, isFalse);
-      expect(QuickLogCache.instance.snapshot.categoriesLoaded, isFalse);
-      expect(HeartDataCache.instance.hasDate('2026-10-12'), isFalse);
+      expectRealCachesEmpty();
+      expect(storeMap, isEmpty);
+    });
+
+    test(
+        'logout still clears caches + settings when session clear throws',
+        () async {
+      // R29b fault isolation: SessionStore.clear() is the one clear
+      // that can throw on a storage error; the wipe must not stop
+      // there — caches and settings still get cleared.
+      final session = ThrowingSessionStore()
+        ..token = 'tok'
+        ..refreshToken = 'ref'
+        ..email = 'a@example.com';
+      final backend = FakeSettingsBackend(sessionStore: session);
+      final storeMap = <String, String>{'settings_theme_mode': 'LIGHT'};
+      seedRealCaches();
+      expectRealCachesSeeded();
+
+      final actions = AccountActions(
+        backend: backend,
+        sessionStore: session,
+        settingsStore: fakeStore(storeMap),
+      );
+      final revoked = await actions.logout();
+      expect(revoked, isTrue);
+      expectRealCachesEmpty();
       expect(storeMap, isEmpty);
     });
 
@@ -508,22 +693,28 @@ void main() {
       expect(session.token, isNull);
     });
 
-    test('delete success wipes the session', () async {
+    test('delete success wipes the session and all three real caches',
+        () async {
+      // Juno N5 (R29b): seed the REAL cache singletons (as the
+      // logout test does) instead of the injected clearCaches stub,
+      // so the delete path is proven against the production wipe.
       final session = FakeSessionStore()
         ..token = 'tok'
         ..refreshToken = 'ref'
         ..email = 'a@example.com';
       final backend = FakeSettingsBackend(sessionStore: session);
-      var cachesCleared = false;
+      final storeMap = <String, String>{'settings_theme_mode': 'LIGHT'};
+      seedRealCaches();
+      expectRealCachesSeeded();
       final actions = AccountActions(
         backend: backend,
         sessionStore: session,
-        settingsStore: fakeStore(<String, String>{}),
-        clearCaches: () async => cachesCleared = true,
+        settingsStore: fakeStore(storeMap),
       );
       expect(await actions.deleteAccount(), isTrue);
       expect(session.token, isNull);
-      expect(cachesCleared, isTrue);
+      expectRealCachesEmpty();
+      expect(storeMap, isEmpty);
     });
 
     test('delete failure keeps the session and caches untouched',
@@ -580,6 +771,77 @@ void main() {
       await tester.pumpAndSettle();
       expect(session.token, isNull);
       expect(loggedOut, isTrue);
+    });
+
+    testWidgets(
+        'logout flushes a Personal Context edit still inside its debounce',
+        (tester) async {
+      final session = FakeSessionStore()
+        ..token = 'tok'
+        ..refreshToken = 'ref'
+        ..email = 'a@example.com';
+      final backend = FakeSettingsBackend(sessionStore: session)
+        ..pullBody = pull();
+      var loggedOut = false;
+      final actions = AccountActions(
+        backend: backend,
+        sessionStore: session,
+        settingsStore: fakeStore(<String, String>{}),
+        clearCaches: () async {},
+      );
+      await pumpSettings(tester, host(screen(
+        backend: backend,
+        store: fakeStore(<String, String>{}),
+        actions: actions,
+        onLogout: () => loggedOut = true,
+      )));
+      await tester.pumpAndSettle();
+      // Edit inside the 3 s debounce window, then log out at once:
+      // the pending push must flush before the wipe, not be lost.
+      await tester.enterText(
+          find.byKey(const ValueKey('personal_context_field')),
+          'training for a marathon');
+      await tester.tap(find.byKey(const ValueKey('logout_button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('confirm_logout')));
+      await tester.pumpAndSettle();
+      expect(backend.profilePushes,
+          contains(equals({'userContext': 'training for a marathon'})));
+      expect(loggedOut, isTrue);
+    });
+
+    testWidgets(
+        'logout dialog: session clear throws → onLogout still fires, caches cleared',
+        (tester) async {
+      // R29b: a storage throw during the wipe must not wedge the
+      // logout dialog in its logging-out state or skip the rest of
+      // the wipe.
+      final session = ThrowingSessionStore()
+        ..token = 'tok'
+        ..refreshToken = 'ref'
+        ..email = 'a@example.com';
+      final backend = FakeSettingsBackend(sessionStore: session);
+      var loggedOut = false;
+      seedRealCaches();
+      expectRealCachesSeeded();
+      final actions = AccountActions(
+        backend: backend,
+        sessionStore: session,
+        settingsStore: fakeStore(<String, String>{}),
+      );
+      await pumpSettings(tester, host(screen(
+        backend: backend,
+        store: fakeStore(<String, String>{}),
+        actions: actions,
+        onLogout: () => loggedOut = true,
+      )));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('logout_button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('confirm_logout')));
+      await tester.pumpAndSettle();
+      expect(loggedOut, isTrue);
+      expectRealCachesEmpty();
     });
 
     testWidgets(

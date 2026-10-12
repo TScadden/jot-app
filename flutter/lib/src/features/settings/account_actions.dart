@@ -43,19 +43,41 @@ class AccountActions {
         _clearCaches = clearCaches ?? _clearDefaultCaches;
 
   static Future<void> _clearDefaultCaches() async {
-    await HomeDataCache.instance.clear();
-    await QuickLogCache.instance.clear();
-    await HeartDataCache.instance.clear();
+    // Each cache isolated: one failing clear must not leave the
+    // other caches holding the previous account's data (R29b).
+    try {
+      await HomeDataCache.instance.clear();
+    } catch (_) {}
+    try {
+      await QuickLogCache.instance.clear();
+    } catch (_) {}
+    try {
+      await HeartDataCache.instance.clear();
+    } catch (_) {}
   }
 
   /// Test hook: clears the three real cache singletons.
   static Future<void> clearDefaultCaches() => _clearDefaultCaches();
 
+  /// Fault-isolated wipe (R29b Vera fix): every step is independently
+  /// best-effort. Previously four sequential awaits meant a throw in
+  /// [SessionStore.clear] (the only clear that did not swallow storage
+  /// errors) skipped the caches + settings wipe entirely — leaving
+  /// account data on device after "logout", and, after a server-side
+  /// account delete, a live local session.
   Future<void> _clearEverything() async {
-    _backend.invalidateSyncPull();
-    await _sessionStore.clear();
-    await _clearCaches();
-    await _settingsStore.clear();
+    try {
+      _backend.invalidateSyncPull();
+    } catch (_) {}
+    try {
+      await _sessionStore.clear();
+    } catch (_) {}
+    try {
+      await _clearCaches();
+    } catch (_) {}
+    try {
+      await _settingsStore.clear();
+    } catch (_) {}
   }
 
   /// Native-parity logout. Always completes the local wipe (the server

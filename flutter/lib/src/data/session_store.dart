@@ -39,8 +39,18 @@ class SessionStore {
   Future<String?> readEmail() => _storage.read(key: _emailKey);
 
   Future<void> clear() async {
-    await _storage.delete(key: _tokenKey);
-    await _storage.delete(key: _refreshTokenKey);
-    await _storage.delete(key: _emailKey);
+    // Each delete isolated (R29b): one failing storage delete must
+    // not leave the other session values behind, and must not throw
+    // into the logout/delete wipe and skip the cache clears that
+    // follow it.
+    try {
+      await _storage.delete(key: _tokenKey);
+    } catch (_) {}
+    try {
+      await _storage.delete(key: _refreshTokenKey);
+    } catch (_) {}
+    try {
+      await _storage.delete(key: _emailKey);
+    } catch (_) {}
   }
 }
