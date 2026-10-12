@@ -1137,7 +1137,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
-    controller.dispose();
+    // Not disposed here: the dialog's exit transition still builds
+    // the field after showDialog returns (dispose-after-use crash).
   }
 
   Future<void> _showEditProfileDialog() async {
@@ -1244,11 +1245,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
-    ageC.dispose();
-    genderC.dispose();
-    ftC.dispose();
-    inC.dispose();
-    weightC.dispose();
+    // Controllers intentionally not disposed here — see nickname
+    // dialog note (exit transition still builds the fields).
   }
 
   // ── CUSTOMIZE (native :1215-1292) ────────────────────────────────
@@ -1846,7 +1844,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
-    nameC.dispose();
+    // Controller intentionally not disposed here — see nickname
+    // dialog note (exit transition still builds the field).
   }
 
   // ── NOTIFICATIONS (native :3462-3753) ────────────────────────────
