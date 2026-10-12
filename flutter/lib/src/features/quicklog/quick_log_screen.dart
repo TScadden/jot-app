@@ -11,9 +11,9 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// bottom dock). A faithful Flutter port of native `QuickLogScreen.kt`
 /// + `QuickLogViewModel.kt`, with the founder's four explicit changes:
 ///
-/// 1. "Today so far" is an icon (not a card) in the top bar, next to the
-///    trending-up arrow. Tapping it opens the history screen filtered to
-///    today (native's card opened the history route).
+/// 1. (Superseded in Round 19b, founder Oct 12 2026: the "Today so
+///    far" top-bar icon was removed as redundant next to the history
+///    button. The top bar keeps just Trends + History.)
 /// 2. "Load Suggestions" calls the REAL backend endpoint
 ///    `POST /api/ai/suggestions` — no stubs, no fake chips.
 /// 3. Membership truth: the AI tray is gated on the sync pull's real
@@ -586,13 +586,10 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
 
   // ── Navigation ────────────────────────────────────────────────────
 
-  void _openHistory({bool todayOnly = false}) {
+  void _openHistory() {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => HistoryScreen(
-          backend: widget.backend,
-          initialTodayOnly: todayOnly,
-        ),
+        builder: (_) => HistoryScreen(backend: widget.backend),
       ),
     );
   }
@@ -656,14 +653,9 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
           ),
         ),
         actions: [
-          // Founder change #1: "Today so far" is an icon now, next to the
-          // trending-up arrow. Same destination native's card opened.
-          IconButton(
-            onPressed: () => _openHistory(todayOnly: true),
-            icon: const Icon(Icons.today),
-            tooltip: 'Today so far',
-            color: NotelColors.textSecondary,
-          ),
+          // Round 19b (founder, Oct 12 2026): the "Today so far"
+          // calendar icon that sat here was removed — redundant next
+          // to the History button. Top bar is Trends + History only.
           IconButton(
             onPressed: _openTrends,
             icon: const Icon(Icons.trending_up),

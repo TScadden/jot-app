@@ -1,13 +1,19 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
-/// Round 19 — the History view (clock-arrow icon on Quick Log, and the
-/// destination of the "Today so far" icon). A faithful Flutter port of
-/// native `HistoryScreen.kt` + `HistoryViewModel.kt`, plus the founder
-/// addendum: the circular-arrow button moved here from the Quick Log
-/// input row.
+/// Round 19 — the History view (clock-arrow icon on Quick Log). A
+/// faithful Flutter port of native `HistoryScreen.kt` +
+/// `HistoryViewModel.kt`, plus the founder addendum: the circular-arrow
+/// button moved here from the Quick Log input row.
+///
+/// Round 19b (founder, Oct 12 2026): the AI Insights tab was removed —
+/// the backend "insights" payload turned out to be raw biometric JSON
+/// blobs rendered as garbage (epoch-0 dates, "Original entry
+/// unavailable"). History is LOGS only now, full width, no tab bar.
 ///
 /// What the moved button does (traced from native source):
 /// `QuickLogScreen`'s replay icon calls
@@ -24,13 +30,7 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 class HistoryScreen extends StatefulWidget {
   final TabsBackend? backend;
 
-  /// When true (opened from the "Today so far" icon), the list starts
-  /// filtered to today's entries — the same history destination, pre-
-  /// filtered. The filter can be cleared from the UI.
-  final bool initialTodayOnly;
-
-  const HistoryScreen(
-      {super.key, this.backend, this.initialTodayOnly = false});
+  const HistoryScreen({super.key, this.backend});
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
@@ -43,58 +43,83 @@ class _HistoryScreenState extends State<HistoryScreen> {
   String? _loadError;
   List<QuickLogEntry> _entries = const [];
   List<QuickLogCategory> _categories = const [];
-  List<QuickLogInsight> _insights = const [];
   DateTime? _lastSyncAt;
 
   String _searchQuery = '';
   int? _categoryFilter;
-  late bool _todayOnly;
-  int _tab = 0; // 0 = logs, 1 = AI insights
-  bool _syncing = false;
+  bool _todayOnly = false;
 
   static const _chipInk = Color(0xFF0A0A0E); // native LegacyDarkChipInk
 
   @override
   void initState() {
     super.initState();
-    _todayOnly = widget.initialTodayOnly;
     _load();
   }
 
+  /// Initial load (and retry from the error state). The full-screen
+  /// spinner is correct here ONLY because nothing is on screen yet.
   Future<void> _load() async {
     setState(() {
       _loading = true;
       _loadError = null;
     });
+    await _fetchIntoState();
+  }
+
+  /// Stale-while-revalidate (founder addendum #3, Oct 12 2026).
+  ///
+  /// ROOT CAUSE of the old "every action reloads the whole screen" bug:
+  /// mutations (delete, repeat) and the old manual sync button all
+  /// funnelled into `_refresh()`, which called `_load()` — and `_load()`
+  /// unconditionally set `_loading = true`, swapping the whole body for
+  /// a spinner and refetching everything. Mutations now update
+  /// `_entries` locally (optimistically) and this quiet revalidation
+  /// merges fresh server state in the background WITHOUT ever touching
+  /// `_loading`/`_loadError` — what's on screen stays on screen.
+  Future<void> _revalidate() async {
+    _backend.invalidateSyncPull();
+    await _fetchIntoState(quiet: true);
+  }
+
+  Future<void> _fetchIntoState({bool quiet = false}) async {
     try {
       final pull = await _backend.fetchSyncPull();
+      if (!mounted) return;
       if (pull == null) {
-        setState(() {
-          _loading = false;
-          _loadError = "Couldn't reach the Tabs server. "
-              'Check your connection and retry.';
-        });
+        // Quiet failure keeps the displayed data; only the bare
+        // initial load surfaces the error screen.
+        if (!quiet) {
+          setState(() {
+            _loading = false;
+            _loadError = "Couldn't reach the Tabs server. "
+                'Check your connection and retry.';
+          });
+        }
         return;
       }
       setState(() {
         _entries = _sorted(pull);
         _lastSyncAt = DateTime.now();
         _loading = false;
+        _loadError = null;
       });
-      // Categories + insights ride the same cached pull (no extra fetch).
+      // Categories ride the same cached pull (no extra fetch).
       final cats = await _backend.fetchLogCategories();
-      final insights = await _backend.fetchLogInsights();
       if (mounted) {
         setState(() {
           _categories = cats;
-          _insights = insights;
         });
       }
     } catch (e) {
-      setState(() {
-        _loading = false;
-        _loadError = 'Something went wrong loading history: $e';
-      });
+      if (!mounted) return;
+      if (!quiet) {
+        setState(() {
+          _loading = false;
+          _loadError = 'Something went wrong loading history: $e';
+        });
+      }
+      // Quiet failure: keep what's on screen; the next action retries.
     }
   }
 
@@ -132,13 +157,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return list;
   }
 
-  Future<void> _refresh() async {
-    setState(() => _syncing = true);
-    _backend.invalidateSyncPull();
-    await _load();
-    setState(() => _syncing = false);
-  }
-
   int _nextEntryId() {
     var maxId = 0;
     for (final e in _entries) {
@@ -165,16 +183,22 @@ class _HistoryScreenState extends State<HistoryScreen> {
       manualText: last.manualText,
       timestamp: DateTime.now().millisecondsSinceEpoch,
     );
+    // Optimistic: the duplicate appears at the top immediately (its
+    // timestamp is now, and the list is timestamp-DESC). Rolled back
+    // if the server post fails.
+    setState(() => _entries = [dupe, ..._entries]);
     final ok = await _backend.postLogEntries([dupe]);
     if (!mounted) return;
     if (ok) {
-      await _refresh();
-      if (!mounted) return;
       final today = todayEntryCount(_entries);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Last entry repeated · $today today')),
       );
+      // Quiet background reconcile — never blanks the screen.
+      unawaited(_revalidate());
     } else {
+      setState(() =>
+          _entries = _entries.where((e) => e.id != dupe.id).toList());
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
             content: Text("Couldn't repeat that entry — try again.")),
@@ -212,14 +236,26 @@ class _HistoryScreenState extends State<HistoryScreen> {
       ),
     );
     if (confirmed != true) return;
+    // Optimistic delete: the entry disappears immediately — no reload,
+    // no loading flash. Restored at its original position if the
+    // server DELETE fails.
+    final index = _entries.indexWhere((e) => e.id == entry.id);
+    if (index < 0) return;
+    setState(() => _entries = [..._entries]..removeAt(index));
     final ok = await _backend.deleteLogEntry(entry.id);
     if (!mounted) return;
     if (ok) {
-      await _refresh();
-      if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Entry removed')));
+      // Quiet background reconcile — never blanks the screen.
+      unawaited(_revalidate());
     } else {
+      setState(() {
+        final restored = [..._entries];
+        restored.insert(
+            index > restored.length ? restored.length : index, entry);
+        _entries = restored;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
             content: Text("Couldn't delete that entry — try again.")),
@@ -336,24 +372,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
           // Founder addendum: the circular-arrow button moved here from
           // the Quick Log input row. Behavior preserved exactly —
           // duplicates the most recent entry (native repeatLastEntry).
+          // (Founder addendum #4, Oct 12 2026: the manual sync button
+          // that sat next to this was removed — sync runs automatically
+          // in the background; only the button/wiring went away.)
           IconButton(
             onPressed: _repeatLastEntry,
             icon: const Icon(Icons.replay),
             tooltip: 'Repeat last entry',
             color: NotelColors.primary,
-          ),
-          IconButton(
-            onPressed: _syncing ? null : _refresh,
-            icon: _syncing
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: NotelColors.primary),
-                  )
-                : const Icon(Icons.sync),
-            tooltip: 'Sync Now / Retry',
-            color: NotelColors.textSecondary,
           ),
         ],
       ),
@@ -367,12 +393,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   children: [
                     _buildSearchBar(),
                     _buildCategoryFilterRow(),
-                    _buildTabRow(),
-                    Expanded(
-                      child: _tab == 0
-                          ? _buildLogsTab()
-                          : _buildInsightsTab(),
-                    ),
+                    Expanded(child: _buildLogsTab()),
                   ],
                 ),
     );
@@ -392,7 +413,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
             const SizedBox(height: 16),
             TextButton(
-              onPressed: _refresh,
+              onPressed: _load,
               child: const Text('Retry',
                   style: TextStyle(
                       color: NotelColors.primary,
@@ -454,7 +475,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         itemCount: _categories.length + 2,
         itemBuilder: (context, index) {
           if (index == 0) {
-            // "Today" filter chip (from the Today-so-far icon).
+            // "Today" filter chip.
             final on = _todayOnly;
             return GestureDetector(
               onTap: () => setState(() => _todayOnly = !on),
@@ -551,56 +572,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
           );
         },
-      ),
-    );
-  }
-
-  Widget _buildTabRow() {
-    final filtered = _filtered;
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      decoration: BoxDecoration(
-        color: NotelColors.surface,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Expanded(child: _tabButton(0, 'LOGS (${filtered.length})')),
-          Expanded(
-              child:
-                  _tabButton(1, 'AI INSIGHTS (${_insights.length})')),
-        ],
-      ),
-    );
-  }
-
-  Widget _tabButton(int index, String label) {
-    final selected = _tab == index;
-    return GestureDetector(
-      onTap: () => setState(() => _tab = index),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: selected
-                  ? NotelColors.primary
-                  : Colors.transparent,
-              width: 2,
-            ),
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: selected
-                ? NotelColors.primary
-                : NotelColors.textSecondary,
-            fontWeight: FontWeight.bold,
-            fontSize: 12,
-          ),
-        ),
       ),
     );
   }
@@ -770,123 +741,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
       ),
     );
   }
-
-  Widget _buildInsightsTab() {
-    if (_insights.isEmpty) {
-      return const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.auto_awesome,
-                size: 64, color: NotelColors.surfaceHigh),
-            SizedBox(height: 12),
-            Text('No AI insights history',
-                style:
-                    TextStyle(color: NotelColors.textSecondary)),
-          ],
-        ),
-      );
-    }
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-      separatorBuilder: (_, _) => const SizedBox(height: 10),
-      itemCount: _insights.length,
-      itemBuilder: (context, index) {
-        final insight = _insights[index];
-        final entryId = int.tryParse(insight.entryId ?? '');
-        final entry = entryId == null
-            ? null
-            : _entries
-                .where((e) => e.id == entryId)
-                .firstOrNull;
-        final cat = entry == null
-            ? null
-            : _categories
-                .where((c) => c.id == entry.categoryId)
-                .firstOrNull;
-        return Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            color: NotelColors.surface,
-            border: Border.all(
-                color:
-                    NotelColors.primary.withValues(alpha: 0.25)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment:
-                    MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Text(
-                      _titleCase(insight.type),
-                      style: const TextStyle(
-                        color: NotelColors.primary,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    cat?.name ?? 'Uncategorized',
-                    style: const TextStyle(
-                      color: NotelColors.textSecondary,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                insight.text,
-                style: const TextStyle(
-                  color: NotelColors.textPrimary,
-                  fontSize: 14,
-                  height: 1.45,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                entry != null
-                    ? 'Original Entry: "${_truncate(entry.body, 60)}..."'
-                    : 'Original entry unavailable',
-                style: TextStyle(
-                  color: entry != null
-                      ? NotelColors.textSecondary
-                      : NotelColors.error,
-                  fontSize: 11,
-                  fontStyle: entry != null
-                      ? FontStyle.normal
-                      : FontStyle.italic,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                _formatDateTime(insight.timestamp),
-                style: TextStyle(
-                  color:
-                      NotelColors.primary.withValues(alpha: 0.5),
-                  fontSize: 10,
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  String _titleCase(String s) {
-    final t = s.toLowerCase();
-    return t.isEmpty ? t : t[0].toUpperCase() + t.substring(1);
-  }
-
-  String _truncate(String s, int n) =>
-      s.length <= n ? s : s.substring(0, n);
 }
 
 extension<T> on Iterable<T> {
