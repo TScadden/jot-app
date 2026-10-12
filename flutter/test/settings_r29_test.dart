@@ -74,6 +74,18 @@ Map<String, dynamic> pull({
       'insights': const [],
     };
 
+
+/// Pumps with a tall viewport: the native Settings pages are long
+/// ListViews and the default 800x600 test surface leaves lower rows
+/// below the fold (unbuilt / untappable).
+Future<void> pumpSettings(WidgetTester tester, Widget w) async {
+  tester.view.physicalSize = const Size(1080, 3400);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(w);
+  await tester.pumpAndSettle();
+}
+
 Widget host(SettingsScreen screen) =>
     MaterialApp(home: Scaffold(body: screen));
 
@@ -163,7 +175,7 @@ void main() {
     testWidgets('main page renders native sections and rows',
         (tester) async {
       final backend = FakeSettingsBackend()..pullBody = pull();
-      await tester.pumpWidget(host(screen(
+      await pumpSettings(tester, host(screen(
           backend: backend, store: fakeStore(<String, String>{}))));
       await tester.pumpAndSettle();
 
@@ -190,7 +202,7 @@ void main() {
     testWidgets('terms and privacy open native URLs', (tester) async {
       final launched = <Uri>[];
       final backend = FakeSettingsBackend()..pullBody = pull();
-      await tester.pumpWidget(host(screen(
+      await pumpSettings(tester, host(screen(
           backend: backend,
           store: fakeStore(<String, String>{}),
           launched: launched)));
@@ -208,7 +220,7 @@ void main() {
     testWidgets('membership segment shows free state + plan cards',
         (tester) async {
       final backend = FakeSettingsBackend()..pullBody = pull();
-      await tester.pumpWidget(host(screen(
+      await pumpSettings(tester, host(screen(
           backend: backend, store: fakeStore(<String, String>{}))));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Membership').last);
@@ -230,7 +242,7 @@ void main() {
         (tester) async {
       final backend = FakeSettingsBackend()
         ..pullBody = pull(isUnlimited: true);
-      await tester.pumpWidget(host(screen(
+      await pumpSettings(tester, host(screen(
           backend: backend, store: fakeStore(<String, String>{}))));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Membership').last);
@@ -250,7 +262,7 @@ void main() {
     testWidgets('purchase CTA shows honest Google Play unavailable',
         (tester) async {
       final backend = FakeSettingsBackend()..pullBody = pull();
-      await tester.pumpWidget(host(screen(
+      await pumpSettings(tester, host(screen(
           backend: backend, store: fakeStore(<String, String>{}))));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Membership').last);
@@ -267,8 +279,7 @@ void main() {
         (tester) async {
       final map = <String, String>{};
       final backend = FakeSettingsBackend()..pullBody = pull();
-      await tester.pumpWidget(
-          host(screen(backend: backend, store: fakeStore(map))));
+      await pumpSettings(tester, host(screen(backend: backend, store: fakeStore(map))));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Customize'));
       await tester.pumpAndSettle();
@@ -282,8 +293,7 @@ void main() {
         (tester) async {
       final map = <String, String>{};
       final backend = FakeSettingsBackend()..pullBody = pull();
-      await tester.pumpWidget(
-          host(screen(backend: backend, store: fakeStore(map))));
+      await pumpSettings(tester, host(screen(backend: backend, store: fakeStore(map))));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Customize'));
       await tester.pumpAndSettle();
@@ -295,7 +305,7 @@ void main() {
     testWidgets('share-data toggle pushes the profile field',
         (tester) async {
       final backend = FakeSettingsBackend()..pullBody = pull();
-      await tester.pumpWidget(host(screen(
+      await pumpSettings(tester, host(screen(
           backend: backend, store: fakeStore(<String, String>{}))));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Sync Settings'));
@@ -310,7 +320,7 @@ void main() {
     testWidgets('habit reminder toggle pushes the profile field',
         (tester) async {
       final backend = FakeSettingsBackend()..pullBody = pull();
-      await tester.pumpWidget(host(screen(
+      await pumpSettings(tester, host(screen(
           backend: backend, store: fakeStore(<String, String>{}))));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Notifications'));
@@ -326,8 +336,7 @@ void main() {
     testWidgets('check-in toggle persists locally only', (tester) async {
       final map = <String, String>{};
       final backend = FakeSettingsBackend()..pullBody = pull();
-      await tester.pumpWidget(
-          host(screen(backend: backend, store: fakeStore(map))));
+      await pumpSettings(tester, host(screen(backend: backend, store: fakeStore(map))));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Notifications'));
       await tester.pumpAndSettle();
@@ -342,7 +351,7 @@ void main() {
 
     testWidgets('auto AI toggle pushes the profile field', (tester) async {
       final backend = FakeSettingsBackend()..pullBody = pull();
-      await tester.pumpWidget(host(screen(
+      await pumpSettings(tester, host(screen(
           backend: backend, store: fakeStore(<String, String>{}))));
       await tester.pumpAndSettle();
       await tester.tap(find.text('AI & Clinical Advocate'));
@@ -363,7 +372,7 @@ void main() {
           'weightKg': 68.0, // → 150 lbs
           'gender': 'Male',
         });
-      await tester.pumpWidget(host(screen(
+      await pumpSettings(tester, host(screen(
           backend: backend, store: fakeStore(<String, String>{}))));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('menu_user_profile')));
@@ -379,8 +388,7 @@ void main() {
     testWidgets('sync now stamps last-sync on success', (tester) async {
       final map = <String, String>{};
       final backend = FakeSettingsBackend()..pullBody = pull();
-      await tester.pumpWidget(
-          host(screen(backend: backend, store: fakeStore(map))));
+      await pumpSettings(tester, host(screen(backend: backend, store: fakeStore(map))));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Sync Settings'));
       await tester.pumpAndSettle();
@@ -393,7 +401,7 @@ void main() {
     testWidgets('event counter add pushes eventCounters JSON',
         (tester) async {
       final backend = FakeSettingsBackend()..pullBody = pull();
-      await tester.pumpWidget(host(screen(
+      await pumpSettings(tester, host(screen(
           backend: backend, store: fakeStore(<String, String>{}))));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Event Counters'));
@@ -554,7 +562,7 @@ void main() {
         settingsStore: fakeStore(<String, String>{}),
         clearCaches: () async {},
       );
-      await tester.pumpWidget(host(screen(
+      await pumpSettings(tester, host(screen(
         backend: backend,
         store: fakeStore(<String, String>{}),
         actions: actions,
@@ -590,7 +598,7 @@ void main() {
         settingsStore: fakeStore(<String, String>{}),
         clearCaches: () async {},
       );
-      await tester.pumpWidget(host(screen(
+      await pumpSettings(tester, host(screen(
         backend: backend,
         store: fakeStore(<String, String>{}),
         actions: actions,
