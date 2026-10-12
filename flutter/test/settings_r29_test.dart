@@ -6,7 +6,6 @@ import 'package:tabs_lab/src/data/heart_data_cache.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
-import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/settings/account_actions.dart';
@@ -28,8 +27,7 @@ class FakeSettingsBackend extends TabsBackend {
   bool deleteResult = true;
   int invalidateCount = 0;
 
-  FakeSettingsBackend({SessionStore? sessionStore})
-      : super(sessionStore: sessionStore);
+  FakeSettingsBackend({super.sessionStore});
 
   @override
   Future<Map<String, dynamic>?> fetchSyncPull() async => pullBody;

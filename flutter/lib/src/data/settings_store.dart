@@ -41,14 +41,15 @@ class SettingsStore {
 
   SettingsStore();
 
+  SettingsStore._(this._read, this._write, this._delete);
+
   @visibleForTesting
-  SettingsStore.withStorage({
+  factory SettingsStore.withStorage({
     required Future<String?> Function(String key) read,
     required Future<void> Function(String key, String value) write,
     required Future<void> Function(String key) delete,
-  })  : _read = read,
-        _write = write,
-        _delete = delete;
+  }) =>
+      SettingsStore._(read, write, delete);
 
   Future<bool> _readBool(String key, bool fallback) async {
     try {
