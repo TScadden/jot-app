@@ -1016,7 +1016,7 @@ class SyncManager @Inject constructor(
                 val local = unmatchedLocal.removeAt(matchIndex)
                 if (additiveOnly) {
                     // Additive-only: leave this list's items exactly as they are.
-                    Log.d(tag, "Lists: additive-only merge, keeping local items for '${dto.name}'")
+                    Log.d(tag, "Lists: additive-only merge, keeping local items for matched list")
                 } else {
                     // Replace ONLY this list's items with the server's items.
                     userListDao.getItemsForList(local.id).first().forEach { userListDao.deleteItem(it) }

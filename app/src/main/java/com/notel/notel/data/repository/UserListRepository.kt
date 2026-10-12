@@ -64,7 +64,7 @@ class UserListRepository @Inject constructor(
             val current = if (raw.isNotBlank()) Json.decodeFromString<Set<String>>(raw) else emptySet()
             preferences.setDeletedListNames(Json.encodeToString(SetSerializer(serializer<String>()), current + name))
         } catch (e: Exception) {
-            Log.e(tag, "Failed to record list tombstone for '$name'", e)
+            Log.e(tag, "Failed to record list tombstone", e)
         }
     }
 
