@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tabs_lab/src/features/tools/habits_screen.dart';
 import 'package:tabs_lab/src/features/tools/tool_placeholder_screen.dart';
 import 'package:tabs_lab/src/features/tools/tools_screen.dart';
 
@@ -183,22 +184,24 @@ void main() {
       expect(data?.id, 'medications');
     });
 
-    testWidgets('tapping a card opens its placeholder', (tester) async {
+    testWidgets('tapping a card opens its real screen', (tester) async {
       await _pumpTools(tester, _memoryStore());
       await tester.tap(find.text('Habits').first);
-      await tester.pumpAndSettle();
-      expect(find.byType(ToolPlaceholderScreen), findsOneWidget);
-      // The placeholder app bar shows the tool title.
-      expect(find.text('Habits'), findsWidgets);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(HabitsScreen), findsOneWidget);
     });
 
-    testWidgets('back pops the placeholder', (tester) async {
+    testWidgets('back pops the tool screen', (tester) async {
       await _pumpTools(tester, _memoryStore());
       await tester.tap(find.text('Habits').first);
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(HabitsScreen), findsOneWidget);
       await tester.tap(find.byIcon(Icons.arrow_back));
-      await tester.pumpAndSettle();
-      expect(find.byType(ToolPlaceholderScreen), findsNothing);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(HabitsScreen), findsNothing);
       expect(find.text('Tools'), findsOneWidget);
     });
 

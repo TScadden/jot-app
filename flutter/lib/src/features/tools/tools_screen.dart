@@ -3,7 +3,23 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:tabs_lab/src/features/tools/blood_pressure_tool_screen.dart';
+import 'package:tabs_lab/src/features/tools/body_info_screen.dart';
+import 'package:tabs_lab/src/features/tools/community_screen.dart';
+import 'package:tabs_lab/src/features/tools/food_screen.dart';
+import 'package:tabs_lab/src/features/tools/habits_screen.dart';
+import 'package:tabs_lab/src/features/tools/health_coach_screen.dart';
+import 'package:tabs_lab/src/features/tools/key_metrics_screen.dart';
+import 'package:tabs_lab/src/features/tools/lists_screen.dart';
+import 'package:tabs_lab/src/features/tools/medications_screen.dart';
+import 'package:tabs_lab/src/features/tools/notes_screen.dart';
+import 'package:tabs_lab/src/features/tools/project_focus_screen.dart';
+import 'package:tabs_lab/src/features/tools/reminders_screen.dart';
+import 'package:tabs_lab/src/features/tools/research_screen.dart';
+import 'package:tabs_lab/src/features/tools/sleep_screen.dart';
+import 'package:tabs_lab/src/features/tools/tips_tricks_screen.dart';
 import 'package:tabs_lab/src/features/tools/tool_placeholder_screen.dart';
+import 'package:tabs_lab/src/features/tools/trends_screen.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
@@ -181,10 +197,31 @@ class _ToolsScreenState extends State<ToolsScreen>
   Future<void> _saveOrder() =>
       _store.saveOrder(_tiles.map((t) => t.id).toList());
 
+  /// Round 18 — tiles now open their real screens (real backend data).
+  /// Unknown ids fall back to the placeholder (should never happen).
   void _onTileTap(ToolTile tile) {
     if (_editMode) return;
+    final Widget screen = switch (tile.id) {
+      'habits' => const HabitsScreen(),
+      'reminders' => const RemindersScreen(),
+      'lists' => const ListsScreen(),
+      'notes' => const NotesScreen(),
+      'project_focus' => const ProjectFocusScreen(),
+      'sleep' => const SleepScreen(),
+      'body_info' => const BodyInfoScreen(),
+      'medications' => const MedicationsScreen(),
+      'tips_and_tricks' => const TipsTricksScreen(),
+      'health_coach' => const HealthCoachScreen(),
+      'key_metrics' => const KeyMetricsScreen(),
+      'trends' => const TrendsScreen(),
+      'blood_pressure' => const BloodPressureToolScreen(),
+      'food' => const FoodToolScreen(),
+      'research' => const ResearchToolScreen(),
+      'community' => const CommunityToolScreen(),
+      _ => ToolPlaceholderScreen(tile: tile),
+    };
     Navigator.of(context).push(
-      SlidePageRoute(builder: (_) => ToolPlaceholderScreen(tile: tile)),
+      SlidePageRoute(builder: (_) => screen),
     );
   }
 
