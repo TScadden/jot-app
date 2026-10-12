@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/auth_api.dart';
+import 'package:tabs_lab/src/data/google_sign_in_service.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -33,9 +34,21 @@ import 'package:url_launcher/url_launcher.dart';
 /// The password is never logged or stored — it lives in memory only for
 /// the request duration.
 ///
-/// "Sign Up", "Send Reset Link" and Google stay no-ops this round.
+/// "Sign Up" and "Send Reset Link" stay no-ops this round.
 /// The login/register/forgot mode switch is live UI state, as is the
 /// password-visibility toggle.
+///
+/// Round 24 — REAL Google sign-in (both modes): tapping the Google
+/// button runs `GoogleSignInService.signInForIdToken()` (native
+/// parity: sign-out first so the chooser always shows, then the
+/// Credential Manager authentication call) and exchanges the ID
+/// token via `AuthApiClient.googleLogin`. Register mode is gated on
+/// the 13+ attestation first, with the native age-gate error, and
+/// never launches sign-in without it. On success the session goes
+/// through the EXACT same SessionStore + [onLoginSuccess] path as
+/// password login. Cancellation is a quiet return with no error;
+/// configuration-class failures show the Lab-build message below;
+/// server rejections show the server's own message.
 ///
 /// [initialRegisterMode] mirrors the native `mode` query arg: `true`
 /// starts on "Create Your Account", `false` on "Welcome Back".
@@ -52,6 +65,10 @@ class LoginScreen extends StatefulWidget {
   /// Injectable for tests; defaults to flutter_secure_storage.
   final SessionStore? sessionStore;
 
+  /// Injectable for tests; defaults to the real Google sign-in
+  /// service (Round 24).
+  final GoogleSignInService? googleSignInService;
+
   const LoginScreen({
     super.key,
     this.initialRegisterMode = true,
@@ -59,6 +76,7 @@ class LoginScreen extends StatefulWidget {
     this.onLoginSuccess,
     this.authApi,
     this.sessionStore,
+    this.googleSignInService,
   });
 
   @override
@@ -123,6 +141,84 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (_) {
       // The API client already maps transport failures; this is a
       // last-resort guard so the button can never wedge loading.
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Something went wrong. Please try again.';
+      });
+    }
+  }
+
+  /// Round 24: real Google sign-in. Mirrors the native flow
+  /// (`LoginScreen.kt`): register mode requires the 13+
+  /// attestation before sign-in is even launched, with the exact
+  /// native age-gate error; otherwise the ID token comes from
+  /// [GoogleSignInService] and is exchanged via
+  /// `AuthApiClient.googleLogin`. Success takes the exact same
+  /// downstream path as [_onLoginPressed] — SessionStore, then
+  /// [LoginScreen.onLoginSuccess] with the account email.
+  Future<void> _onGooglePressed() async {
+    if (_isLoading) return;
+    if (_isRegisterMode && !_ageConfirmed) {
+      setState(() => _errorMessage =
+          'Tabs is for people 13 and older. You cannot create an account yet.');
+      return;
+    }
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+    try {
+      final service = widget.googleSignInService ?? GoogleSignInService();
+      final idToken = await service.signInForIdToken();
+      if (!mounted) return;
+      final api = widget.authApi ?? AuthApiClient();
+      final result = await api.googleLogin(
+        idToken: idToken,
+        isRegisterMode: _isRegisterMode,
+        ageConfirmed: _ageConfirmed,
+      );
+      if (!mounted) return;
+      switch (result) {
+        case LoginSuccess(:final token, :final refreshToken):
+          final store = widget.sessionStore ?? SessionStore();
+          await store.saveSession(
+            token: token,
+            refreshToken: refreshToken,
+            email: result.email,
+          );
+          if (!mounted) return;
+          setState(() => _isLoading = false);
+          widget.onLoginSuccess?.call(result.email);
+        case LoginFailure(:final message):
+          setState(() {
+            _isLoading = false;
+            _errorMessage = message;
+          });
+      }
+    } on GoogleSignInOutcome catch (outcome) {
+      if (!mounted) return;
+      switch (outcome.kind) {
+        case GoogleSignInOutcomeKind.cancelled:
+          // Quiet return: the user dismissed the chooser, so no
+          // error is shown.
+          setState(() => _isLoading = false);
+        case GoogleSignInOutcomeKind.unavailable:
+          // Configuration-class failure (Juno N3): exact Lab-build
+          // message, never raw plugin exception text.
+          setState(() {
+            _isLoading = false;
+            _errorMessage =
+                "Google sign-in isn't available in this Lab build yet.";
+          });
+        case GoogleSignInOutcomeKind.failed:
+          setState(() {
+            _isLoading = false;
+            _errorMessage = outcome.message;
+          });
+      }
+    } catch (_) {
+      // Last-resort guard so the button can never wedge loading.
       if (!mounted) return;
       setState(() {
         _isLoading = false;
@@ -418,12 +514,13 @@ class _LoginScreenState extends State<LoginScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          // Google button (no-op this round).
+          // Google button (Round 24: real sign-in; disabled while
+          // any auth attempt is in flight so it cannot double-fire).
           SizedBox(
             width: double.infinity,
             height: 50,
             child: ElevatedButton(
-              onPressed: () {},
+              onPressed: _isLoading ? null : _onGooglePressed,
               style: ElevatedButton.styleFrom(
                 backgroundColor: NotelColors.surfaceHigh,
                 foregroundColor: NotelColors.textPrimary,

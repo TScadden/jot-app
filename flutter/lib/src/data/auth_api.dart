@@ -127,6 +127,99 @@ class AuthApiClient {
     );
   }
 
+  /// Round 24 — Google sign-in against the Tabs backend.
+  ///
+  /// Mirrors the native flow (`LoginScreen.kt` + `JotApi.kt`):
+  /// `POST api/auth/google` with `{"idToken": ..., "isRegisterMode":
+  /// ..., "ageConfirmed": ...}`, returning the same `AuthResponse`
+  /// as password login. The server verifies the ID token with
+  /// google-auth-library (audience = the web client ID in
+  /// `google_sign_in_service.dart`).
+  ///
+  /// Unlike [login], non-200 responses are NOT mapped to fixed
+  /// 404/401 strings: the server's own `{"error": "..."}` message is
+  /// surfaced verbatim as a server failure (e.g. login mode with no
+  /// account → "No account was found with that Google account.
+  /// Please sign up first."), falling back to the generic server
+  /// message when the body carries no usable error.
+  ///
+  /// The ID token is never logged, printed, or included in
+  /// exceptions (Vera rule) — it lives in memory only for the
+  /// duration of the request, same as the password in [login].
+  Future<LoginResult> googleLogin({
+    required String idToken,
+    required bool isRegisterMode,
+    required bool ageConfirmed,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/api/auth/google');
+    http.Response response;
+    try {
+      response = await _client
+          .post(
+            uri,
+            headers: const {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'idToken': idToken,
+              'isRegisterMode': isRegisterMode,
+              'ageConfirmed': ageConfirmed,
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
+    } on TimeoutException {
+      return const LoginFailure(
+        LoginFailureKind.network,
+        "Couldn't reach the server. Check your connection and try again.",
+      );
+    } on SocketException {
+      return const LoginFailure(
+        LoginFailureKind.network,
+        "Couldn't reach the server. Check your connection and try again.",
+      );
+    } on HttpException {
+      return const LoginFailure(
+        LoginFailureKind.network,
+        "Couldn't reach the server. Check your connection and try again.",
+      );
+    } catch (_) {
+      // Deliberately generic: never leak transport details.
+      return const LoginFailure(
+        LoginFailureKind.network,
+        "Couldn't reach the server. Check your connection and try again.",
+      );
+    }
+
+    if (response.statusCode == 200) {
+      final body = _decodeJson(response.body);
+      final token = body['token']?.toString() ?? '';
+      if (token.isNotBlank) {
+        return LoginSuccess(
+          token: token,
+          refreshToken: body['refreshToken']?.toString() ?? '',
+          userId: body['userId']?.toString(),
+          // No typed email on this flow — the account email comes
+          // back in the AuthResponse, same as password login.
+          email: body['email']?.toString() ?? '',
+        );
+      }
+      // 200 without a token is a server bug — treat as a server error.
+      return const LoginFailure(
+        LoginFailureKind.server,
+        'Something went wrong. Please try again.',
+      );
+    }
+
+    // Any non-200: surface the server's real message verbatim when
+    // it has one, otherwise a generic fallback. Never echo the
+    // request (and never the ID token) back.
+    final serverMessage = _decodeJson(response.body)['error']?.toString();
+    return LoginFailure(
+      LoginFailureKind.server,
+      (serverMessage?.isNotBlank ?? false)
+          ? serverMessage!
+          : 'Something went wrong. Please try again.',
+    );
+  }
+
   Map<String, dynamic> _decodeJson(String source) {
     try {
       final decoded = jsonDecode(source);
