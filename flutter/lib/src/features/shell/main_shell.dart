@@ -5,9 +5,9 @@ import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/heart/heart_screen.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/features/quicklog/quick_log_screen.dart';
+import 'package:tabs_lab/src/features/settings/settings_screen.dart';
 import 'package:tabs_lab/src/features/shell/nav_dock.dart';
 import 'package:tabs_lab/src/features/tools/tools_screen.dart';
-import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// Round 9 — the post-login shell: tab state, the bottom nav dock, and
 /// placeholder screens.
@@ -20,9 +20,9 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///   real categories, AI suggestions, history view.
 /// - Heart → the real Heart screen (round 25): native FitbitScreen
 ///   port (summary, today's pattern chart, spikes, spike review).
-/// - Settings → blank navy placeholder for now; its real screen lands
-///   in a future round. The founder's directive:
-///   "they should just go to a blank screen."
+/// - Settings → the real Settings screen (round 29): native
+///   SettingsScreen port with membership, profile-backed toggles,
+///   and real logout / delete-account flows.
 /// - The dock stays visible on every tab. The active icon highlights in
 ///   `NotelPrimary`, matching the native dock's selected state.
 /// - The dock is NOT shown on splash / welcome / login — same as native
@@ -37,12 +37,18 @@ class MainShell extends StatefulWidget {
   /// Injectable for tests; defaults to a real HealthConnectService.
   final HealthConnectService? healthConnectService;
 
+  /// Round 29 — called by Settings after a completed logout or
+  /// account deletion (session + caches already cleared) so the app
+  /// returns to the welcome flow.
+  final VoidCallback? onLogout;
+
   const MainShell(
       {super.key,
       this.email,
       this.weatherApi,
       this.locationService,
-      this.healthConnectService});
+      this.healthConnectService,
+      this.onLogout});
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -77,8 +83,12 @@ class _MainShellState extends State<MainShell> {
               email: widget.email,
               healthConnectService: widget.healthConnectService,
             ),
-          DockTab.settings =>
-            const _BlankTab(key: ValueKey('blank_settings')),
+          DockTab.settings => SettingsScreen(
+              key: const ValueKey('settings_screen'),
+              email: widget.email,
+              onLogout: widget.onLogout,
+              healthConnectService: widget.healthConnectService,
+            ),
         },
         // Dock floats above every tab.
         Positioned(
@@ -93,19 +103,6 @@ class _MainShellState extends State<MainShell> {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// Blank placeholder tab: empty navy background, no content.
-/// Replaced by the real screen in a future round.
-class _BlankTab extends StatelessWidget {
-  const _BlankTab({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      backgroundColor: NotelColors.background,
     );
   }
 }

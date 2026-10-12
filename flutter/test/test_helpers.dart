@@ -22,6 +22,9 @@ class FakeSessionStore extends SessionStore {
   Future<String?> readToken() async => token;
 
   @override
+  Future<String?> readRefreshToken() async => refreshToken;
+
+  @override
   Future<String?> readEmail() async => email;
 
   @override

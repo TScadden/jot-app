@@ -458,6 +458,75 @@ class TabsBackend {
     return result.map((c) => '$c').toList();
   }
 
+  // ── Round 29 — Settings ──────────────────────────────────────────
+  //
+  // Native evidence (data/remote/JotApi.kt):
+  // - `POST api/sync/profile` (:665-666) with `SyncProfileRequest`
+  //   (:219-261, every field nullable). Native `SyncManager.
+  //   pushProfileData` sends the profile fields the Settings setters
+  //   mutate (userContext, age/heightCm/weightKg/gender,
+  //   autoAiSuggestions, shareDataWithFriends, hrSpikeAlertsEnabled,
+  //   spikeThreshold, hrDeltaEnabled, spikeDeltaThreshold,
+  //   habitReminderEnabled, projectReminderEnabled,
+  //   eventReminderEnabled, eventCounters, counterHistory,
+  //   professionalUpdates, knowledgeBase, medications, conditions).
+  //   Only the changed keys are sent here; omitted keys stay untouched
+  //   server-side (native sync comments rely on the same COALESCE
+  //   behaviour for null fields).
+  // - `POST api/auth/update-nickname` (:577-578) `{nickname}` →
+  //   `{success, nickname, tag, error}` (:478-488).
+  // - `POST api/auth/logout` (:586-587) `{refreshToken}` (:178).
+  // - `DELETE api/auth/delete-account` (:580-581) → GenericResponse.
+
+  /// Round 29 — partial profile push via `POST /api/sync/profile`.
+  Future<bool> postSyncProfile(Map<String, dynamic> fields) =>
+      _postJson('/api/sync/profile', fields);
+
+  /// Round 29 — nickname update. Returns the decoded body on HTTP 200
+  /// (callers check `success`), null on any failure.
+  Future<Map<String, dynamic>?> updateNickname(String nickname) async {
+    final token = await _sessionStore.readToken();
+    if (token == null || token.trim().isEmpty) return null;
+    try {
+      final response = await _client
+          .post(
+            Uri.parse('$_baseUrl/api/auth/update-nickname'),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({'nickname': nickname}),
+          )
+          .timeout(requestTimeout);
+      if (response.statusCode != 200) return null;
+      final decoded = jsonDecode(response.body);
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Round 29 — server logout (revokes the refresh token), mirroring
+  /// native `SettingsViewModel.logout` step 1. Best-effort: native
+  /// proceeds with local cleanup even when this call fails, so callers
+  /// treat the result as informational.
+  Future<bool> logoutAccount() async {
+    String? refresh;
+    try {
+      refresh = await _sessionStore.readRefreshToken();
+    } catch (_) {
+      refresh = null;
+    }
+    if (refresh == null || refresh.isEmpty) return false;
+    return _postJson('/api/auth/logout', {'refreshToken': refresh});
+  }
+
+  /// Round 29 — permanent account deletion, mirroring native
+  /// `LogRepository.deleteAccountData()` step 1. True only on HTTP 200;
+  /// callers must NOT clear the local session on failure (native keeps
+  /// the account and surfaces the error).
+  Future<bool> deleteAccount() => _delete('/api/auth/delete-account');
+
   /// Authenticated POST with a JSON body → true on HTTP 200.
   /// Token used only in the header; never logged.
   Future<bool> _postJson(String path, Map<String, dynamic> body) async {

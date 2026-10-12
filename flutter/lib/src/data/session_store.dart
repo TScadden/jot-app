@@ -32,6 +32,10 @@ class SessionStore {
 
   Future<String?> readToken() => _storage.read(key: _tokenKey);
 
+  /// Round 29 — the stored refresh token, needed by the native-parity
+  /// logout call (`POST /api/auth/logout` with `{refreshToken}`).
+  Future<String?> readRefreshToken() => _storage.read(key: _refreshTokenKey);
+
   Future<String?> readEmail() => _storage.read(key: _emailKey);
 
   Future<void> clear() async {
