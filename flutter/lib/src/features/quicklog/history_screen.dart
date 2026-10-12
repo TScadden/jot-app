@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/skeleton.dart';
 
 /// Round 19 — the History view (clock-arrow icon on Quick Log). A
 /// faithful Flutter port of native `HistoryScreen.kt` +
@@ -57,8 +58,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
     _load();
   }
 
-  /// Initial load (and retry from the error state). The full-screen
-  /// spinner is correct here ONLY because nothing is on screen yet.
+  /// Initial load (and retry from the error state).
+  ///
+  /// Round 19c: the initial open no longer shows a full-screen
+  /// spinner either — the body renders a skeleton shaped like the
+  /// real history (search field, filter chips, entry cards) while
+  /// this runs (see `_buildInitialSkeleton`). `_loading` still means
+  /// ONLY "initial load / error retry" — round 19b's mutation paths
+  /// (optimistic delete/repeat + quiet `_revalidate()`) never touch
+  /// it and are unchanged.
   Future<void> _load() async {
     setState(() {
       _loading = true;
@@ -384,9 +392,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         ],
       ),
       body: _loading
-          ? const Center(
-              child:
-                  CircularProgressIndicator(color: NotelColors.primary))
+          ? _buildInitialSkeleton()
           : _loadError != null
               ? _buildLoadError()
               : Column(
@@ -396,6 +402,67 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     Expanded(child: _buildLogsTab()),
                   ],
                 ),
+    );
+  }
+
+  /// Round 19c — initial-load skeleton, shaped like the real history:
+  /// a search-field block, a filter-chip row, and entry cards (chip
+  /// line, two body lines, timestamp line) in the real list's padding.
+  /// Shown only for the initial load / error retry — never for 19b's
+  /// quiet revalidations.
+  Widget _buildInitialSkeleton() {
+    return SkeletonGroup(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: SkeletonBox(height: 48, radius: 14),
+          ),
+          const SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: NeverScrollableScrollPhysics(),
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                SkeletonBox(width: 64, height: 36, radius: 12),
+                SizedBox(width: 8),
+                SkeletonBox(width: 52, height: 36, radius: 12),
+                SizedBox(width: 8),
+                SkeletonBox(width: 96, height: 36, radius: 12),
+                SizedBox(width: 8),
+                SkeletonBox(width: 84, height: 36, radius: 12),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+              separatorBuilder: (_, _) => const SizedBox(height: 10),
+              itemCount: 4,
+              itemBuilder: (_, _) => Container(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  color: NotelColors.surface,
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SkeletonBox(width: 72, height: 18, radius: 8),
+                    SizedBox(height: 10),
+                    SkeletonBox(height: 15, radius: 4),
+                    SizedBox(height: 6),
+                    SkeletonBox(width: 180, height: 15, radius: 4),
+                    SizedBox(height: 10),
+                    SkeletonBox(width: 110, height: 11, radius: 4),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

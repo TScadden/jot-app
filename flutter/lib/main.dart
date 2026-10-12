@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
+import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
@@ -16,6 +17,9 @@ void main() async {
   // Never throws; a missing/corrupt cache just starts empty.
   WidgetsFlutterBinding.ensureInitialized();
   await HomeDataCache.instance.warmFromDisk();
+  // Round 19c — same warm for Quick Log: cold starts seed last-known
+  // categories / recents / count / membership instead of skeletons.
+  await QuickLogCache.instance.warmFromDisk();
   runApp(const TabsLabApp());
 }
 

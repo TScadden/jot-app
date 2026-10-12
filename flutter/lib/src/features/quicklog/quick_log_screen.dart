@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/voice_input.dart';
@@ -6,6 +9,7 @@ import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/quicklog/history_screen.dart';
 import 'package:tabs_lab/src/features/tools/trends_screen.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/skeleton.dart';
 
 /// Round 19 — the Quick Log screen (the log tab — pencil icon in the
 /// bottom dock). A faithful Flutter port of native `QuickLogScreen.kt`
@@ -37,6 +41,19 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// (`TemplateAndDefaultsRepository.getDeduplicatedRecentSuggestions`),
 /// saves via `POST /api/sync/entries` (server upserts on local_id).
 /// Nothing is invented; unreachable backend → honest error states.
+///
+/// Round 19c — instant render (founder's directive): the screen draws
+/// its static shell on the first frame and NEVER shows a blocking
+/// spinner on open. Last-known categories / recent suggestions /
+/// today's count / membership seed synchronously from
+/// [QuickLogCache] (the Home stale-while-revalidate pattern, round
+/// 16); the server refresh runs quietly in the background on every
+/// open and merges in without blanking. A cold start (empty cache)
+/// shows skeleton loaders shaped like the real content for the
+/// sections still loading. A failed refresh keeps the cached values;
+/// the full error state appears only when there is nothing cached
+/// to show. Membership gating renders the CACHED gate state first —
+/// the wrong gate never flashes.
 class QuickLogScreen extends StatefulWidget {
   final TabsBackend? backend;
   final WeatherApiClient? weatherApi;
@@ -52,7 +69,16 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
   TabsBackend get _backend => widget.backend ?? TabsBackend();
   VoiceInput get _voice => widget.voiceInput ?? VoiceInput();
 
-  bool _loading = true;
+  /// Round 19c: no blocking `_loading` flag exists anymore. The first
+  /// background refresh flips this when it lands; until then, any
+  /// section without a cache seed shows its skeleton. [_loadError] is
+  /// only surfaced when there is no cached data to show.
+  bool _firstRefreshDone = false;
+
+  /// True once real categories have been on screen (cache seed or a
+  /// completed refresh). A failed refresh surfaces the error state
+  /// only while this is false — afterwards it keeps what's shown.
+  bool _everHadCategories = false;
   String? _loadError;
 
   List<QuickLogEntry> _entries = const [];
@@ -90,7 +116,23 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
       final has = _manualController.text.trim().isNotEmpty;
       if (has != _hasTypedText) setState(() => _hasTypedText = has);
     });
-    _load();
+    // Round 19c — stale-while-revalidate: seed synchronously from the
+    // cache so the first frame already carries real last-known values
+    // (cached gate state included), then refresh in the background.
+    final cached = QuickLogCache.instance.snapshot;
+    if (cached.categoriesLoaded) {
+      _categories = cached.categories;
+      _selectedCategory = cached.categories.firstOrNull;
+    }
+    if (cached.recentsLoaded) _recentSuggestions = cached.recentSuggestions;
+    if (cached.todayCountLoaded) _todayCount = cached.todayCount;
+    if (cached.membershipKnown) {
+      _isUnlimited = cached.isUnlimited;
+      _isAdmin = cached.isAdmin;
+      _membershipKnown = true;
+    }
+    _everHadCategories = cached.categoriesLoaded;
+    _refresh();
   }
 
   @override
@@ -99,20 +141,25 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
     super.dispose();
   }
 
-  // ── Load ──────────────────────────────────────────────────────────
+  // ── Load (round 19c: background refresh, never blocking) ─────────
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _loadError = null;
-    });
+  /// Stale-while-revalidate refresh. Runs on every open (and on
+  /// pull-to-refresh / retry / category mutations, as `_load` did in
+  /// round 19). NEVER blanks the screen: state is swapped atomically
+  /// when the fresh data lands, a failed refresh keeps whatever is on
+  /// screen (cached seed or previous data), and the error state is
+  /// surfaced only when nothing has ever been shown.
+  Future<void> _refresh() async {
     try {
       final pull = await _backend.fetchSyncPull();
+      if (!mounted) return;
       if (pull == null) {
         setState(() {
-          _loading = false;
-          _loadError = "Couldn't reach the Tabs server. "
-              'Check your connection and pull down to retry.';
+          _firstRefreshDone = true;
+          if (!_everHadCategories) {
+            _loadError = "Couldn't reach the Tabs server. "
+                'Check your connection and pull down to retry.';
+          }
         });
         return;
       }
@@ -141,6 +188,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
           : ranked.where((c) => c.id == _selectedCategory!.id).firstOrNull ??
               ranked.firstOrNull;
 
+      if (!mounted) return;
       setState(() {
         _entries = entries;
         _categories = ranked;
@@ -153,8 +201,20 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
         _medicationCategoryId = medCat?.id;
         _recentSuggestions = recents;
         _todayCount = todayEntryCount(entries);
-        _loading = false;
+        _firstRefreshDone = true;
+        _everHadCategories = true;
+        _loadError = null;
       });
+      // Round 19c: this completed load becomes the next open's seed.
+      final cache = QuickLogCache.instance;
+      cache.applyLoad(
+        categories: ranked,
+        recentSuggestions: recents,
+        todayCount: _todayCount,
+        isUnlimited: membership.isUnlimited,
+        isAdmin: membership.isAdmin,
+      );
+      unawaited(cache.persist());
 
       // Native auto-fetch: Auto Ping on + category + access + no chips.
       if (auto &&
@@ -166,9 +226,14 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
         _fetchSuggestions();
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _loading = false;
-        _loadError = 'Something went wrong loading Quick Log: $e';
+        _firstRefreshDone = true;
+        // Keep cached/on-screen values on failure (Home pattern);
+        // surface the error only when nothing has ever been shown.
+        if (!_everHadCategories) {
+          _loadError = 'Something went wrong loading Quick Log: $e';
+        }
       });
     }
   }
@@ -386,6 +451,12 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
         _selectedChips = const [];
         _manualController.clear();
       });
+      // Round 19c: keep the cache seed in step with the mutation.
+      QuickLogCache.instance.applyCounts(
+        todayCount: _todayCount,
+        recentSuggestions: _recentSuggestions,
+      );
+      unawaited(QuickLogCache.instance.persist());
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Entry logged · $_todayCount today')),
@@ -420,6 +491,8 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
         _entries = entries;
         _todayCount = todayEntryCount(entries);
       });
+      QuickLogCache.instance.applyCounts(todayCount: _todayCount);
+      unawaited(QuickLogCache.instance.persist());
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Entry logged · $_todayCount today')),
       );
@@ -522,7 +595,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
     if (!mounted) return;
     if (ok) {
       _backend.invalidateSyncPull();
-      await _load();
+      await _refresh();
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('Added "$name"')));
@@ -573,7 +646,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
     if (!mounted) return;
     if (ok) {
       _backend.invalidateSyncPull();
-      await _load();
+      await _refresh();
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('Deleted "${cat.name}"')));
@@ -670,35 +743,39 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
           ),
         ],
       ),
-      body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(color: NotelColors.primary))
-          : _loadError != null
-              ? _buildLoadError()
-              : RefreshIndicator(
-                  color: NotelColors.primary,
-                  onRefresh: () async {
-                    _backend.invalidateSyncPull();
-                    await _load();
-                  },
-                  child: SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.only(top: 8, bottom: 110),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildDetailsRow(activeCatColor),
-                        _buildCategoriesLabel(),
-                        _buildCategoryRow(),
-                        if (_recentSuggestions.isNotEmpty)
-                          _buildRecentSuggestions(),
-                        _buildAiTray(activeCatColor),
-                        _buildQuickNoteCard(activeCatColor),
-                        const SizedBox(height: 12),
-                      ],
-                    ),
-                  ),
+      // Round 19c: the shell (details field, labels, Log flow) draws
+      // on the FIRST frame — no blocking spinner branch exists. The
+      // error body appears only when a refresh failed AND nothing
+      // cached was ever shown; otherwise sections render their cache
+      // seed or their skeleton while the refresh runs behind them.
+      body: _loadError != null
+          ? _buildLoadError()
+          : RefreshIndicator(
+              color: NotelColors.primary,
+              onRefresh: () async {
+                _backend.invalidateSyncPull();
+                await _refresh();
+              },
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.only(top: 8, bottom: 110),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildDetailsRow(activeCatColor),
+                    _buildCategoriesLabel(),
+                    _buildCategoryRow(),
+                    if (_recentSuggestions.isNotEmpty)
+                      _buildRecentSuggestions()
+                    else if (!_firstRefreshDone)
+                      _buildRecentSuggestionsSkeleton(),
+                    _buildAiTray(activeCatColor),
+                    _buildQuickNoteCard(activeCatColor),
+                    const SizedBox(height: 12),
+                  ],
                 ),
+              ),
+            ),
     );
   }
 
@@ -717,8 +794,9 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
             const SizedBox(height: 16),
             TextButton(
               onPressed: () {
+                setState(() => _loadError = null);
                 _backend.invalidateSyncPull();
-                _load();
+                _refresh();
               },
               child: const Text('Retry',
                   style: TextStyle(
@@ -806,8 +884,13 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
 
   /// The REAL category set (sync pull) — never hardcoded. Honest empty
   /// state when the pull carried none.
+  ///
+  /// Round 19c: while the first refresh is still running and no cache
+  /// seed exists, the row is chip-shaped skeletons (same 48dp row
+  /// height, same 12dp chip radius) — never a spinner.
   Widget _buildCategoryRow() {
     if (_categories.isEmpty) {
+      if (!_firstRefreshDone) return _buildCategorySkeleton();
       return const Padding(
         padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         child: Text(
@@ -858,6 +941,67 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
           );
         },
       ),
+    );
+  }
+
+  /// Chip-shaped skeleton row for the category area (cold start).
+  Widget _buildCategorySkeleton() {
+    return const SkeletonGroup(
+      child: SizedBox(
+        height: 48,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: NeverScrollableScrollPhysics(),
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          child: Row(
+            children: [
+              SkeletonBox(width: 92, height: 36, radius: 12),
+              SizedBox(width: 8),
+              SkeletonBox(width: 118, height: 36, radius: 12),
+              SizedBox(width: 8),
+              SkeletonBox(width: 74, height: 36, radius: 12),
+              SizedBox(width: 8),
+              SkeletonBox(width: 96, height: 36, radius: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Label + chip-shaped skeleton row for recent suggestions (cold
+  /// start, first refresh pending). Mirrors the real section's label
+  /// position and 44dp chip row.
+  Widget _buildRecentSuggestionsSkeleton() {
+    return const Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: EdgeInsets.only(left: 16, top: 8, bottom: 4),
+          child: SkeletonGroup(
+            child: SkeletonBox(width: 130, height: 14, radius: 4),
+          ),
+        ),
+        SkeletonGroup(
+          child: SizedBox(
+            height: 44,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: NeverScrollableScrollPhysics(),
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Row(
+                children: [
+                  SkeletonBox(width: 120, height: 36, radius: 12),
+                  SizedBox(width: 8),
+                  SkeletonBox(width: 96, height: 36, radius: 12),
+                  SizedBox(width: 8),
+                  SkeletonBox(width: 110, height: 36, radius: 12),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -962,7 +1106,18 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
   Widget _buildAiTray(Color activeCatColor) {
     Widget body;
     if (!_membershipKnown) {
-      body = const SizedBox.shrink();
+      // Round 19c: gate state unknown (no cache seed, first refresh
+      // pending) → shaped skeleton, NEVER a guessed gate. A cached
+      // gate state renders here instead, from the first frame.
+      body = const SkeletonGroup(
+        child: Column(
+          children: [
+            SkeletonBox(width: 140, height: 16, radius: 4),
+            SizedBox(height: 12),
+            SkeletonBox(width: 190, height: 14, radius: 4),
+          ],
+        ),
+      );
     } else if (!_isUnlimited && !_isAdmin) {
       body = Column(
         children: [

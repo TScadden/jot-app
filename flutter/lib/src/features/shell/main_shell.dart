@@ -46,6 +46,10 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
+  // Round 19c audit: this single field is the ONLY source of truth
+  // for both the body switch below and the dock's `selected:` — they
+  // cannot disagree. (The founder-reported wrong highlight lived one
+  // level down, in NavDock's pill controller bounds; see nav_dock.dart.)
   DockTab _tab = DockTab.home;
 
   @override

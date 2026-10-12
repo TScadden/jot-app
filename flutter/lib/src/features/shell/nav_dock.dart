@@ -25,6 +25,21 @@ enum DockTab { home, tools, quickLog, heart, settings }
 /// All five slots are equal-width (Expanded), so the pill's center is
 /// deterministic: slot i → (i + 0.5) * slotWidth. Under reduced motion
 /// the pill jumps to its slot with no animation.
+///
+/// Round 19c fix (founder-reported): on Quick Log the dock highlighted
+/// TOOLS instead. Root cause — the pill controller was a default
+/// [AnimationController], whose value is bounded to 0.0–1.0, but slot
+/// indices run 0–4: selecting Quick Log (2), Heart (3), or Settings (4)
+/// clamped the pill to 1.0 — the Tools slot. Home (0) and Tools (1)
+/// were correct only by accident. The controller is now UNBOUNDED, so
+/// the pill value is the true slot index (spring overshoot past the
+/// target is also legal). Audit of the same class of bug: the side
+/// icons' colors derive directly from `selected == DockTab.x` and were
+/// always correct; only the pill was misplaced. The center quick-log
+/// button additionally had NO selected state of its own and its opaque
+/// fill hides the pill behind it, so it now carries an explicit
+/// selected ring (see below) — every tab now has exactly one visible
+/// selected indication, on its own slot.
 class NavDock extends StatefulWidget {
   final DockTab selected;
   final ValueChanged<DockTab> onSelect;
@@ -51,7 +66,10 @@ class _NavDockState extends State<NavDock>
   void initState() {
     super.initState();
     // No fixed duration: the spring simulation drives the timing.
-    _controller = AnimationController(vsync: this);
+    // UNBOUNDED (round 19c): the value is a slot index (0–4), not a
+    // 0–1 progress — a bounded controller clamps every tab past Tools
+    // onto the Tools slot (the founder-reported bug).
+    _controller = AnimationController.unbounded(vsync: this);
     _controller.value = _slotFor(widget.selected);
   }
 
@@ -155,26 +173,47 @@ class _NavDockState extends State<NavDock>
               onTap: () => widget.onSelect(DockTab.tools),
             ),
             // Center quick-log button: inline inside the dock.
+            // Round 19c: the button is always primary-filled, so its
+            // selected state is an explicit ring around it (the gliding
+            // pill sits behind the opaque fill and can't show through).
+            // The ring wrapper is a fixed 52x48 in both states (border
+            // transparent when unselected) so nothing shifts on select.
             Expanded(
               child: SizedBox(
                 height: double.infinity,
                 child: Center(
-                  child: Material(
-                    color: NotelColors.primary,
-                    borderRadius: BorderRadius.circular(16),
-                    elevation: 4,
-                    child: InkWell(
+                  child: Container(
+                    key: const ValueKey('dock_quicklog_ring'),
+                    width: 52,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: widget.selected == DockTab.quickLog
+                            ? NotelColors.textPrimary
+                            : Colors.transparent,
+                        width: 2,
+                      ),
+                    ),
+                    alignment: Alignment.center,
+                    child: Material(
+                      color: NotelColors.primary,
                       borderRadius: BorderRadius.circular(16),
-                      onTap: () => widget.onSelect(DockTab.quickLog),
-                      child: const SizedBox(
-                        width: 48,
-                        height: 44,
-                        child: Center(
-                          child: Icon(
-                            Icons.edit,
-                            size: 22,
-                            color: Colors.white,
-                            semanticLabel: 'Quick log',
+                      elevation:
+                          widget.selected == DockTab.quickLog ? 8 : 4,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () => widget.onSelect(DockTab.quickLog),
+                        child: const SizedBox(
+                          width: 48,
+                          height: 44,
+                          child: Center(
+                            child: Icon(
+                              Icons.edit,
+                              size: 22,
+                              color: Colors.white,
+                              semanticLabel: 'Quick log',
+                            ),
                           ),
                         ),
                       ),
