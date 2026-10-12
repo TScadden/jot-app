@@ -542,14 +542,17 @@ void main() {
         });
       await openNotifications(tester, backend);
       final field = find.byKey(const ValueKey('spike_threshold_field'));
-      await tester.enterText(field, '1234');
-      await tester.pumpAndSettle();
-      // LengthLimitingTextInputFormatter(3), digits only.
-      expect(tester.widget<TextField>(field).controller!.text, '123');
+      await tester.enterText(field, '150');
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
       expect(backend.profilePushes,
-          contains(equals({'spikeThreshold': 123})));
+          contains(equals({'spikeThreshold': 150})));
+      // Length cap: from an empty field, a 4-digit entry truncates
+      // to 3 digits (LengthLimitingTextInputFormatter(3)).
+      await tester.enterText(field, '');
+      await tester.enterText(field, '1234');
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(field).controller!.text, '123');
     });
 
     testWidgets(
@@ -571,6 +574,9 @@ void main() {
               .where((p) => p.containsKey('spikeDeltaThreshold')),
           isEmpty);
       expect(tester.widget<TextField>(field).controller!.text, '30');
+      // Length cap: from an empty field, a 3-digit entry truncates
+      // to 2 digits (LengthLimitingTextInputFormatter(2)).
+      await tester.enterText(field, '');
       await tester.enterText(field, '123');
       await tester.pumpAndSettle();
       expect(tester.widget<TextField>(field).controller!.text, '12');
