@@ -97,6 +97,15 @@ open class NotelPreferences(
         // union, so without these a stale server copy would resurrect a deleted
         // counter when a sync's pull phase lands after the local delete.
         val DELETED_EVENT_COUNTER_IDS = stringPreferencesKey("deleted_event_counter_ids")
+        // Tombstones for locally-deleted user lists (matched by name). The profile pull
+        // merge is a union, so without these a stale server copy would resurrect a deleted
+        // list when a sync's pull phase lands after the local delete.
+        val DELETED_LIST_NAMES = stringPreferencesKey("deleted_list_names")
+        // Tombstones for locally-deleted reminders (matched by reminder id, stored as strings).
+        val DELETED_REMINDER_IDS = stringPreferencesKey("deleted_reminder_ids")
+        // Set when a mutation-time profile push fails, so the failure is surfaced (not
+        // swallowed) and the next syncAllData() cycle retries it.
+        val PROFILE_PUSH_DIRTY = booleanPreferencesKey("profile_push_dirty")
         val SETTINGS_TUTORIAL_SEEN = booleanPreferencesKey("settings_tutorial_seen")
         val HR_SPIKE_ALERTS_ENABLED = booleanPreferencesKey("hr_spike_alerts_enabled")
         val SPIKE_THRESHOLD = intPreferencesKey("spike_threshold")
@@ -408,6 +417,9 @@ open class NotelPreferences(
     val eventCounters: Flow<String> = context.dataStore.data.map { it[EVENT_COUNTERS] ?: "[]" }
     val counterHistory: Flow<String> = context.dataStore.data.map { it[COUNTER_HISTORY] ?: "[]" }
     val deletedEventCounterIds: Flow<String> = context.dataStore.data.map { it[DELETED_EVENT_COUNTER_IDS] ?: "[]" }
+    val deletedListNames: Flow<String> = context.dataStore.data.map { it[DELETED_LIST_NAMES] ?: "[]" }
+    val deletedReminderIds: Flow<String> = context.dataStore.data.map { it[DELETED_REMINDER_IDS] ?: "[]" }
+    val profilePushDirty: Flow<Boolean> = context.dataStore.data.map { it[PROFILE_PUSH_DIRTY] ?: false }
     val settingsTutorialSeen: Flow<Boolean> = context.dataStore.data.map { it[SETTINGS_TUTORIAL_SEEN] ?: false }
     val hrSpikeAlertsEnabled: Flow<Boolean> = context.dataStore.data.map { it[HR_SPIKE_ALERTS_ENABLED] ?: false }
     val spikeThreshold: Flow<Int> = context.dataStore.data.map { it[SPIKE_THRESHOLD] ?: 120 }
@@ -730,6 +742,15 @@ open class NotelPreferences(
     }
     suspend fun setLastSyncTime(timestamp: Long) {
         context.dataStore.edit { prefs -> prefs[LAST_SYNC_TIME] = timestamp }
+    }
+    suspend fun setDeletedListNames(jsonArray: String) {
+        context.dataStore.edit { it[DELETED_LIST_NAMES] = jsonArray }
+    }
+    suspend fun setDeletedReminderIds(jsonArray: String) {
+        context.dataStore.edit { it[DELETED_REMINDER_IDS] = jsonArray }
+    }
+    suspend fun setProfilePushDirty(dirty: Boolean) {
+        context.dataStore.edit { it[PROFILE_PUSH_DIRTY] = dirty }
     }
     suspend fun updateStreak(clockDate: java.time.LocalDate = java.time.LocalDate.now()) {
         val today = clockDate
