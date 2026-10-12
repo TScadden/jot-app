@@ -9,11 +9,17 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// patterns-over-time layout.
 ///
 /// Data: sync-pull `entries` (timestamps → hourly density chart + log
-/// volume + symptom chips), `categories` (category focus rows), `insights`
-/// (patterns section), and `profile['heartRateHistory']` (a JSON string
-/// decoded leniently → recent HR strip). Honest empty states per section:
-/// "No logs yet" when there are no entries, "No symptoms logged yet.",
-/// "No patterns yet.", "No heart rate history yet."
+/// volume + symptom chips), `categories` (category focus rows), and
+/// `profile['heartRateHistory']` (a JSON string decoded leniently →
+/// recent HR strip). Honest empty states per section: "No logs yet"
+/// when there are no entries, "No symptoms logged yet.",
+/// "No heart rate history yet."
+///
+/// Round 20b: the Patterns (insights) section is gone. The Log volume
+/// card is now a view toggle: with no filter active, tapping it switches
+/// the hourly chart between the selected day and an all-time view
+/// (every entry bucketed by hour of day across all days); with an hour
+/// or symptom filter active, the first tap only clears the filter.
 ///
 /// Founder's data rules: biometric zeros are failed reads (never
 /// charted); missing → empty/"--", never invented.
@@ -61,11 +67,14 @@ class _TrendsScreenState extends State<TrendsScreen> {
   List<TrendsEntry> _entries = const [];
   Map<int, String> _categoryNames = const {};
   Map<int, Color> _categoryColors = const {};
-  List<Map<String, dynamic>> _insights = const [];
   List<({String label, double value})> _hrHistory = const [];
 
   /// 0 = today; negative = days in the past.
   int _dayOffset = 0;
+
+  /// Hourly chart mode: false = selected day only, true = all-time
+  /// (every entry bucketed by hour of day, day selector hidden).
+  bool _allTime = false;
   int? _selectedHour;
   String? _selectedSymptom;
   bool _showSymptomsDialog = false;
@@ -98,7 +107,6 @@ class _TrendsScreenState extends State<TrendsScreen> {
         _categoryColors = {
           for (final c in cats) c.id: c.color,
         };
-        _insights = parseTrendsInsights(pull['insights']);
         final profile = pull['profile'];
         _hrHistory = profile is Map<String, dynamic>
             ? parseHeartRateHistory(profile['heartRateHistory'])
@@ -120,13 +128,18 @@ class _TrendsScreenState extends State<TrendsScreen> {
     return today.add(Duration(days: _dayOffset));
   }
 
-  Map<int, int> get _frequencyByHour {
+  bool _isOnSelectedDay(DateTime dt) {
     final sel = _selectedDate;
+    return dt.year == sel.year && dt.month == sel.month && dt.day == sel.day;
+  }
+
+  Map<int, int> get _frequencyByHour {
     final out = <int, int>{};
     for (final e in _entries) {
       if (e.timestamp <= 0) continue;
       final dt = DateTime.fromMillisecondsSinceEpoch(e.timestamp);
-      if (dt.year == sel.year && dt.month == sel.month && dt.day == sel.day) {
+      // All-time mode buckets every entry by hour of day, any day.
+      if (_allTime || _isOnSelectedDay(dt)) {
         out[dt.hour] = (out[dt.hour] ?? 0) + 1;
       }
     }
@@ -135,15 +148,13 @@ class _TrendsScreenState extends State<TrendsScreen> {
 
   List<TrendsEntry> get _filteredLogs {
     if (_selectedHour == null) return const [];
-    final sel = _selectedDate;
     return [
       for (final e in _entries)
         if (e.timestamp > 0)
           () {
             final dt = DateTime.fromMillisecondsSinceEpoch(e.timestamp);
-            return (dt.year == sel.year &&
-                    dt.month == sel.month &&
-                    dt.day == sel.day &&
+            // All-time mode: the hour matches on any day.
+            return ((_allTime || _isOnSelectedDay(dt)) &&
                     dt.hour == _selectedHour)
                 ? e
                 : null;
@@ -283,50 +294,75 @@ class _TrendsScreenState extends State<TrendsScreen> {
     final totalLogs = _entries.length;
     final filtered = _filteredLogs;
     final symptomLogs = _logsForSymptom;
-    // Lazy slivers: long lists (entries, patterns) build on demand
-    // instead of the whole column at once (founder scroll-lag report).
+    // Lazy slivers: long entry lists build on demand instead of the
+    // whole column at once (founder scroll-lag report).
     return CustomScrollView(
       slivers: [
-        // Log volume card
+        // Log volume card — also the day/all-time view toggle.
+        // Interaction rule (Round 20b): if an hour or symptom filter
+        // is active, a tap clears the filter only (no mode change);
+        // with no filter active, a tap toggles day ↔ all-time mode.
         _section(
           top: 16,
           child: InkWell(
             onTap: () => setState(() {
-              _selectedHour = null;
-              _selectedSymptom = null;
+              if (_selectedHour != null || _selectedSymptom != null) {
+                _selectedHour = null;
+                _selectedSymptom = null;
+              } else {
+                _allTime = !_allTime;
+                if (!_allTime) {
+                  // The all-time hint promises "return to today": the
+                  // day view restarts at today, cross-day hour
+                  // selection cleared.
+                  _dayOffset = 0;
+                  _selectedHour = null;
+                }
+              }
             }),
             borderRadius: BorderRadius.circular(16),
             child: Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: NotelColors.surface,
+                color: _allTime
+                    ? NotelColors.primary.withValues(alpha: 0.12)
+                    : NotelColors.surface,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                    color: NotelColors.primary.withValues(alpha: 0.18)),
+                    color: _allTime
+                        ? NotelColors.primary
+                        : NotelColors.primary.withValues(alpha: 0.18),
+                    width: _allTime ? 1.5 : 1),
               ),
               child: Row(
                 children: [
                   const Icon(Icons.trending_up,
                       size: 32, color: NotelColors.primary),
                   const SizedBox(width: 16),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Log volume',
-                          style: TextStyle(
-                              fontSize: 13, color: NotelColors.primary)),
-                      Text('$totalLogs Total Entries',
-                          style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: NotelColors.textPrimary)),
-                      if (_selectedHour != null || _selectedSymptom != null)
-                        Text('Tap to reset filter',
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Log volume',
+                            style: TextStyle(
+                                fontSize: 13, color: NotelColors.primary)),
+                        Text('$totalLogs Total Entries',
+                            style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: NotelColors.textPrimary)),
+                        Text(
+                            _selectedHour != null || _selectedSymptom != null
+                                ? 'Tap to reset filter'
+                                : _allTime
+                                    ? 'Showing all time · tap to return to today'
+                                    : 'Tap to view all time',
                             style: TextStyle(
                                 fontSize: 11,
                                 color: NotelColors.primary
                                     .withValues(alpha: 0.7))),
-                    ],
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -344,14 +380,17 @@ class _TrendsScreenState extends State<TrendsScreen> {
             ),
           )
         else ...[
-          _section(child: _daySelector()),
+          // The day selector has no meaning in all-time mode.
+          if (!_allTime) _section(child: _daySelector()),
           _section(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _sectionLabel(_selectedHour != null
                     ? 'Logs at ${_formatHour(_selectedHour!)}'
-                    : 'Log activity by hour'),
+                    : _allTime
+                        ? 'Log activity by hour · All time'
+                        : 'Log activity by hour'),
                 const SizedBox(height: 8),
                 _HourlyChart(
                   data: _frequencyByHour,
@@ -389,24 +428,6 @@ class _TrendsScreenState extends State<TrendsScreen> {
             _lazyList(symptomLogs.length, (i) => _entryCard(symptomLogs[i])),
           ],
         ],
-
-        // Patterns (insights) — always shown when present
-        _section(bottom: 8, child: _sectionLabel('Patterns')),
-        if (_insights.isEmpty)
-          _section(
-            child: _emptyState(
-              icon: Icons.auto_awesome,
-              title: 'No patterns yet',
-              body:
-                  'Insights appear here once Tabs has enough data to spot trends.',
-              compact: true,
-            ),
-          )
-        else
-          _lazyList(
-            _insights.length,
-            (i) => _insightCard(_insights[i]) ?? const SizedBox.shrink(),
-          ),
 
         // Heart rate history strip
         _section(bottom: 8, child: _sectionLabel('Heart rate over time')),
@@ -553,54 +574,6 @@ class _TrendsScreenState extends State<TrendsScreen> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget? _insightCard(Map<String, dynamic> insight) {
-    // Round 18b: never render raw JSON — unparseable patterns are skipped.
-    final text = renderInsightText('${insight['text'] ?? ''}');
-    if (text == null || text.isEmpty) return null;
-    final type = '${insight['type'] ?? ''}';
-    final range = '${insight['dateRangeText'] ?? ''}';
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: NotelColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border:
-            Border.all(color: NotelColors.primary.withValues(alpha: 0.18)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (type.isNotEmpty)
-            Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: NotelColors.primary.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(type.toUpperCase(),
-                  style: const TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: NotelColors.primary)),
-            ),
-          Text(text,
-              style: const TextStyle(
-                  fontSize: 14, height: 1.5, color: NotelColors.textPrimary)),
-          if (range.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(range,
-                style: const TextStyle(
-                    fontSize: 12, color: NotelColors.textSecondary)),
-          ],
-        ],
       ),
     );
   }
@@ -839,6 +812,12 @@ class _SymptomsDialog extends StatelessWidget {
         child: Container(
           margin: const EdgeInsets.all(32),
           padding: const EdgeInsets.all(24),
+          // Round 20b: cap the dialog at ~80% of screen height and
+          // scroll ONLY the chip area — with ~20 chips the old fixed
+          // layout cut the bottom chips off with no way to reach them.
+          // Header and Close stay pinned outside the scroll view.
+          constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(context).height * 0.8),
           decoration: BoxDecoration(
             color: NotelColors.surface,
             borderRadius: BorderRadius.circular(20),
@@ -860,49 +839,53 @@ class _SymptomsDialog extends StatelessWidget {
                     style: TextStyle(
                         fontSize: 14, color: NotelColors.textSecondary))
               else
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final c in chips)
-                      InkWell(
-                        onTap: () => onSelect(c.chip),
-                        borderRadius: BorderRadius.circular(10),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: selected == c.chip
-                                ? NotelColors.primary
-                                : NotelColors.surfaceHigh,
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final c in chips)
+                          InkWell(
+                            onTap: () => onSelect(c.chip),
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                                color: NotelColors.primary.withValues(
-                                    alpha:
-                                        selected == c.chip ? 1.0 : 0.25)),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: selected == c.chip
+                                    ? NotelColors.primary
+                                    : NotelColors.surfaceHigh,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                    color: NotelColors.primary.withValues(
+                                        alpha:
+                                            selected == c.chip ? 1.0 : 0.25)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(c.chip,
+                                      style: TextStyle(
+                                          fontSize: 13,
+                                          color: selected == c.chip
+                                              ? Colors.white
+                                              : NotelColors.textPrimary)),
+                                  const SizedBox(width: 6),
+                                  Text('${c.count}',
+                                      style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: selected == c.chip
+                                              ? Colors.white
+                                              : NotelColors.primary)),
+                                ],
+                              ),
+                            ),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(c.chip,
-                                  style: TextStyle(
-                                      fontSize: 13,
-                                      color: selected == c.chip
-                                          ? Colors.white
-                                          : NotelColors.textPrimary)),
-                              const SizedBox(width: 6),
-                              Text('${c.count}',
-                                  style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: selected == c.chip
-                                          ? Colors.white
-                                          : NotelColors.primary)),
-                            ],
-                          ),
-                        ),
-                      ),
-                  ],
+                      ],
+                    ),
+                  ),
                 ),
               const SizedBox(height: 24),
               SizedBox(
@@ -1058,106 +1041,6 @@ List<TrendsCategory> parseTrendsCategories(dynamic raw) {
   return out;
 }
 
-/// Round 18b — renders an insight's `text` for display.
-///
-/// Some server insights carry a raw biometric JSON blob as their text
-/// (e.g. `{"sleepMins":433,"deepSleepMins":76,"avgHr":58,
-/// "hrv":73.29897959183671,"calories":2271}`) which must never be shown
-/// raw (founder bug report). Known biometric fields are parsed into a
-/// human-readable summary with rounded numbers (`HRV 73.3`, never 17
-/// decimals) and the app's sleep format.
-///
-/// - Prose (not JSON) → returned unchanged.
-/// - JSON with renderable biometric fields → summary string.
-/// - JSON-looking but unparseable, or JSON with no renderable fields →
-///   null → the caller skips the card (never show raw JSON).
-/// Never throws.
-String? renderInsightText(String text) {
-  final trimmed = text.trim();
-  // Server reports (Graph Analysis Report) carry full HTML. Raw markup
-  // must never reach the screen — convert to clean readable text.
-  if (_looksLikeHtml(trimmed)) {
-    final clean = htmlToPlainText(trimmed);
-    return clean.isEmpty ? null : clean;
-  }
-  if (!trimmed.startsWith('{')) return text; // prose → as-is
-  Map<String, dynamic>? obj;
-  try {
-    final decoded = jsonDecode(trimmed);
-    if (decoded is Map<String, dynamic>) obj = decoded;
-  } catch (_) {}
-  if (obj == null) return null; // JSON-looking but unparseable → skip
-  int? asInt(dynamic v) {
-    if (v is num) return v.toInt();
-    if (v is String) return int.tryParse(v);
-    return null;
-  }
-
-  double? asDouble(dynamic v) {
-    if (v is num) return v.toDouble();
-    if (v is String) return double.tryParse(v);
-    return null;
-  }
-
-  String fmtSleep(int mins) {
-    final h = mins ~/ 60;
-    final m = mins % 60;
-    if (h > 0 && m > 0) return '${h}h ${m}m';
-    if (h > 0) return '${h}h';
-    return '${m}m';
-  }
-
-  // Founder rule: biometric zeros are failed reads — skip them.
-  // (Spike counts of 0 are real, but a 0-spike pattern card says
-  // nothing, so it is skipped like the rest.)
-  final parts = <String>[];
-  final sleepMins = asInt(obj['sleepMins']);
-  if (sleepMins != null && sleepMins > 0) {
-    parts.add('Sleep ${fmtSleep(sleepMins)}');
-  }
-  final deep = asInt(obj['deepSleepMins']);
-  if (deep != null && deep > 0) parts.add('Deep ${fmtSleep(deep)}');
-  final avgHr = asInt(obj['avgHr']);
-  if (avgHr != null && avgHr > 0) parts.add('Avg HR $avgHr');
-  final hrv = asDouble(obj['hrv']);
-  if (hrv != null && hrv > 0) parts.add('HRV ${hrv.toStringAsFixed(1)}');
-  final calories = asInt(obj['calories']);
-  if (calories != null && calories > 0) parts.add('$calories cal');
-  final spikes = asInt(obj['spikes']);
-  if (spikes != null && spikes > 0) {
-    parts.add('$spikes spike${spikes == 1 ? '' : 's'}');
-  }
-  if (parts.isEmpty) return null; // no renderable fields → skip
-  return parts.join(' · ');
-}
-
-/// Sync-pull insights, curated the way native curates them for display
-/// (SettingsScreen's AI Insights History): "Biometrics" and "BodyLoad"
-/// rows are machine data series (per-day JSON blobs), never display
-/// cards — native excludes both types outright. Of the rest: dedupe
-/// identical texts, non-dismissed first, newest first, capped at 15
-/// like native. Never throws.
-List<Map<String, dynamic>> parseTrendsInsights(dynamic raw) {
-  if (raw is! List) return const [];
-  final out = <Map<String, dynamic>>[];
-  for (final i in raw) {
-    if (i is Map<String, dynamic> && '${i['text'] ?? ''}'.isNotEmpty) {
-      final type = '${i['type'] ?? ''}';
-      if (type == 'Biometrics' || type == 'BodyLoad') continue;
-      out.add(i);
-    }
-  }
-  out.sort((a, b) {
-    final da = a['isDismissed'] == true ? 1 : 0;
-    final db = b['isDismissed'] == true ? 1 : 0;
-    if (da != db) return da.compareTo(db);
-    return parseEpochMs(b['timestamp']).compareTo(parseEpochMs(a['timestamp']));
-  });
-  final seen = <String>{};
-  out.removeWhere((i) => !seen.add('${i['text']}'.trim()));
-  return out.length > 15 ? out.sublist(0, 15) : out;
-}
-
 /// Lenient decode of `profile['heartRateHistory']` (a JSON string).
 /// Accepts a list of {date, value-ish} maps or a {date: value} map.
 /// Zeros are dropped (failed reads); unparseable → empty. Never throws.
@@ -1232,64 +1115,6 @@ List<String> splitChips(String chips) {
       .map((c) => c.trim())
       .where((c) => c.isNotEmpty)
       .toList();
-}
-
-/// True when [s] contains HTML markup (tags), as the server's Graph
-/// Analysis Report text does.
-bool _looksLikeHtml(String s) =>
-    s.contains(RegExp(r'<[a-zA-Z][^>]*>'));
-
-/// Converts an HTML fragment (server report text) to clean readable
-/// plain text: script/style blocks dropped, block boundaries become
-/// line breaks, list items get bullets, all tags and inline styles
-/// removed, entities decoded, blank lines collapsed. The report's
-/// actual content (headings, paragraphs) is preserved. Never throws.
-String htmlToPlainText(String html) {
-  var s = html;
-  s = s.replaceAll(
-      RegExp(r'<(script|style)\b[^>]*>[\s\S]*?</\1\s*>',
-          caseSensitive: false),
-      '');
-  s = s.replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n');
-  s = s.replaceAll(RegExp(r'<li\b[^>]*>', caseSensitive: false), '\n• ');
-  s = s.replaceAll(
-      RegExp(r'</(p|div|h[1-6]|li|tr|section|article|header|footer)\s*>',
-          caseSensitive: false),
-      '\n');
-  s = s.replaceAll(RegExp(r'<[^>]*>'), '');
-  s = _decodeHtmlEntities(s);
-  final lines = s
-      .split('\n')
-      .map((l) => l.replaceAll(RegExp(r'[ \t]+'), ' ').trim())
-      .where((l) => l.isNotEmpty)
-      .toList();
-  return lines.join('\n');
-}
-
-String _decodeHtmlEntities(String s) {
-  var out = s
-      .replaceAll('&nbsp;', ' ')
-      .replaceAll('&lt;', '<')
-      .replaceAll('&gt;', '>')
-      .replaceAll('&quot;', '"')
-      .replaceAll('&apos;', "'")
-      .replaceAll('&#39;', "'");
-  out = out.replaceAllMapped(RegExp(r'&#(\d+);'), (m) {
-    final code = int.tryParse(m.group(1)!);
-    // Range-check: fromCharCode throws on values above U+10FFFF, and
-    // server-supplied text is untrusted — leave bad entities literal.
-    return (code == null || code < 0 || code > 0x10FFFF)
-        ? m.group(0)!
-        : String.fromCharCode(code);
-  });
-  out = out.replaceAllMapped(RegExp(r'&#x([0-9a-fA-F]+);'), (m) {
-    final code = int.tryParse(m.group(1)!, radix: 16);
-    return (code == null || code < 0 || code > 0x10FFFF)
-        ? m.group(0)!
-        : String.fromCharCode(code);
-  });
-  // &amp; last, so "&amp;lt;" decodes to the literal "&lt;", not "<".
-  return out.replaceAll('&amp;', '&');
 }
 
 const _trendMonths = [

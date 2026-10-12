@@ -434,53 +434,6 @@ void main() {
       expect(dt.day, isNot(0)); // a real day, not epoch 0
     });
 
-    test('parseTrendsInsights drops Biometrics/BodyLoad machine rows', () {
-      final out = parseTrendsInsights([
-        {'id': '1', 'text': '{"spikes":12}', 'type': 'Biometrics'},
-        {'id': '2', 'text': 'body load prose', 'type': 'BodyLoad'},
-        {'id': '3', 'text': 'Real pattern', 'type': 'Pattern'},
-      ]);
-      expect(out.map((i) => i['text']), ['Real pattern']);
-    });
-
-    test('parseTrendsInsights dedupes and caps at 15 like native', () {
-      final many = [
-        for (var i = 0; i < 20; i++)
-          {'id': '$i', 'text': 'pattern $i', 'timestamp': 2000 - i},
-        {'id': 'dup', 'text': 'pattern 0', 'timestamp': 3000},
-      ];
-      final out = parseTrendsInsights(many);
-      expect(out.length, 15);
-      expect(out.where((i) => i['text'] == 'pattern 0').length, 1);
-    });
-
-    test('renderInsightText strips HTML reports to readable text', () {
-      const html = '<div style="font-family: \'Outfit\', sans-serif;">'
-          '<div style="background: rgba(99, 102, 241, 0.12);">'
-          '<strong>AI Biometric Graph Analysis</strong> '
-          '<span>Here are some patterns &amp; trends.</span></div>'
-          '<p>Sleep was &lt; 6h on 3 days.</p></div>';
-      final out = renderInsightText(html);
-      expect(out, isNotNull);
-      expect(out, contains('AI Biometric Graph Analysis'));
-      expect(out, contains('patterns & trends.'));
-      expect(out, contains('Sleep was < 6h on 3 days.'));
-      expect(out, isNot(contains('<div')));
-      expect(out, isNot(contains('style=')));
-      expect(out, isNot(contains('&amp;')));
-    });
-
-    test('renderInsightText survives out-of-range numeric entities', () {
-      // Vera audit: String.fromCharCode throws above U+10FFFF — bad
-      // entities must stay literal, never crash the card.
-      final out = renderInsightText(
-          '<p>Bad &#1114112; and &#x110000; entities</p>');
-      expect(out, isNotNull);
-      expect(out, contains('Bad'));
-      expect(out, contains('entities'));
-      expect(out, isNot(contains('<p>')));
-    });
-
     test('parseHeartRateHistory decodes list form, drops zeros', () {
       final out = parseHeartRateHistory(jsonEncode([
         {'date': '2026-10-05', 'avg': 68},
@@ -500,14 +453,6 @@ void main() {
       expect(parseHeartRateHistory('nope'), isEmpty);
       expect(parseHeartRateHistory(null), isEmpty);
       expect(parseHeartRateHistory(''), isEmpty);
-    });
-
-    test('parseTrendsInsights sorts non-dismissed first', () {
-      final out = parseTrendsInsights([
-        {'id': '1', 'text': 'b', 'isDismissed': true, 'timestamp': 5},
-        {'id': '2', 'text': 'a', 'isDismissed': false, 'timestamp': 1},
-      ]);
-      expect(out.map((i) => i['text']), ['a', 'b']);
     });
 
     test('formatEntryDate renders like native rows', () {
@@ -573,7 +518,7 @@ void main() {
       expect(find.text(text), findsOneWidget);
     }
 
-    testWidgets('entries → volume card, chart, categories, insights',
+    testWidgets('entries → volume card, chart, categories, HR strip',
         (tester) async {
       final backend = backendWith(
         MockClient((_) async =>
@@ -584,8 +529,11 @@ void main() {
       expect(find.text('2 Total Entries'), findsOneWidget);
       expect(find.text('Symptoms'), findsOneWidget);
       expect(find.text('Mood'), findsOneWidget);
-      await reveal(tester, 'You log most in the morning.');
+      // Round 20b: the Patterns section is gone — its insight text
+      // must not render anywhere, even after scrolling to the bottom.
       await reveal(tester, '68'); // HR strip
+      expect(find.text('You log most in the morning.'), findsNothing);
+      expect(find.text('PATTERNS'), findsNothing);
     });
 
     testWidgets('empty entries → honest empty states, no crash',
@@ -599,8 +547,8 @@ void main() {
       );
       await pumpScreen(tester, TrendsScreen(backend: backend));
       expect(find.text('No logs yet'), findsOneWidget);
-      await reveal(tester, 'No patterns yet');
       await reveal(tester, 'No heart rate history yet');
+      expect(find.text('No patterns yet'), findsNothing);
     });
 
     testWidgets('auth failure → honest error, no crash', (tester) async {
@@ -625,7 +573,6 @@ void main() {
       );
       await pumpScreen(tester, TrendsScreen(backend: backend));
       expect(find.text('No logs yet'), findsOneWidget);
-      await reveal(tester, 'No patterns yet');
       await reveal(tester, 'No heart rate history yet');
     });
   });
