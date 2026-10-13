@@ -475,7 +475,8 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
       expect(find.text('Skip for now'), findsOneWidget);
-      await tester.tap(find.text('Connect Health Data'));
+      await tester.tap(
+          find.widgetWithText(FilledButton, 'Connect Health Data'));
       await tester.pumpAndSettle();
       // Disclosure is up; the system request has NOT fired.
       expect(find.text('Connect Health Connect?'), findsOneWidget);
