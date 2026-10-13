@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
+import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 
 /// Round 16 — stale-while-revalidate cache for the home screen's numbers
 /// (vitals strip + streak pills).
@@ -93,6 +94,9 @@ class HomeDataCache {
     _bestStreak = null;
     _streakLoaded = false;
     _fetchedAt = null;
+    _counters = const [];
+    _countersLoaded = false;
+    _countersFetchedAt = null;
     _ownerEmail = null;
   }
 
@@ -125,7 +129,7 @@ class HomeDataCache {
   Future<bool> clearIfOwnerMismatch(String? email) async {
     final expected = _normalizeEmail(email);
     if (expected == null) return false;
-    final hasData = _vitalsLoaded || _streakLoaded;
+    final hasData = _vitalsLoaded || _streakLoaded || _countersLoaded;
     if (_ownerEmail == expected) return false;
     if (_ownerEmail == null && !hasData) {
       _ownerEmail = expected;
@@ -142,6 +146,21 @@ class HomeDataCache {
   int? _bestStreak;
   bool _streakLoaded = false;
   DateTime? _fetchedAt;
+
+  // ── Round 34: event counters ─────────────────────────────────────
+  /// The ACTIVE counters from the last completed profile pull, in
+  /// Settings list order. The day counts are NOT cached — they are
+  /// recomputed from [EventCounterItem.targetDate] at render time,
+  /// so a cached counter can never show a stale day count across a
+  /// local-midnight rollover.
+  List<EventCounterItem> _counters = const [];
+  bool _countersLoaded = false;
+  DateTime? _countersFetchedAt;
+
+  /// Counters cache max age (same policy as streaks: the values move
+  /// slowly — they change only when the user edits Settings — and the
+  /// background refresh corrects them within seconds anyway).
+  static const Duration countersMaxAge = Duration(days: 7);
 
   /// Synchronous first-frame snapshot for `HomeScreen.initState`.
   ///
@@ -160,12 +179,17 @@ class HomeDataCache {
     final streakFresh = _streakLoaded &&
         _fetchedAt != null &&
         now.difference(_fetchedAt!).abs() <= streakMaxAge;
+    final countersFresh = _countersLoaded &&
+        _countersFetchedAt != null &&
+        now.difference(_countersFetchedAt!).abs() <= countersMaxAge;
     return HomeCacheSnapshot(
       vitals: vitalsFresh ? _vitals : null,
       vitalsLoaded: vitalsFresh,
       currentStreak: streakFresh ? _currentStreak : null,
       bestStreak: streakFresh ? _bestStreak : null,
       streakLoaded: streakFresh,
+      counters: countersFresh ? _counters : const [],
+      countersLoaded: countersFresh,
       ownerEmail: _ownerEmail,
     );
   }
@@ -210,11 +234,35 @@ class HomeDataCache {
     return changed;
   }
 
+  /// Stores a completed counters load (the ACTIVE counters only —
+  /// the caller filters archived out via [activeEventCounters], so
+  /// an archived counter is never persisted or rendered). An empty
+  /// list is an honest completed load ("no active counters") and is
+  /// cached as loaded. Returns true when the snapshot changed.
+  bool applyCounters(List<EventCounterItem> counters,
+      {DateTime? now, String? ownerEmail}) {
+    final changed = !_countersLoaded || !_countersEqual(_counters, counters);
+    _counters = List<EventCounterItem>.unmodifiable(counters);
+    _countersLoaded = true;
+    _countersFetchedAt = now ?? DateTime.now();
+    bindToAccount(ownerEmail);
+    return changed;
+  }
+
+  static bool _countersEqual(
+      List<EventCounterItem> a, List<EventCounterItem> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
   /// Persists the current memory state to disk. No-op when nothing has
   /// ever loaded. Never throws — storage failures keep the memory
   /// cache and are silently dropped.
   Future<void> persist() async {
-    if (!_vitalsLoaded && !_streakLoaded) return;
+    if (!_vitalsLoaded && !_streakLoaded && !_countersLoaded) return;
     try {
       await _write(storageKey, jsonEncode(_toJson()));
     } catch (_) {
@@ -262,12 +310,19 @@ class HomeDataCache {
   /// policy. May throw on malformed types — the caller guards it.
   void _applyDiskMap(Map<String, dynamic> map, DateTime at) {
     final fetchedAt = DateTime.tryParse(map['fetchedAt'] as String? ?? '');
-    if (fetchedAt == null) return;
+    // Round 34: a counters-only blob carries no vitals/streak stamp
+    // (fetchedAt) — it must not bail before the counters section,
+    // which judges staleness on its own stamp.
+    final countersAt =
+        DateTime.tryParse(map['countersFetchedAt'] as String? ?? '') ??
+            fetchedAt;
+    if (fetchedAt == null && countersAt == null) return;
     final rawOwner = map['ownerEmail'];
     if (rawOwner is String) _ownerEmail = _normalizeEmail(rawOwner);
 
     // Vitals are date-bound: only today's cache applies.
-    if (!_vitalsLoaded &&
+    if (fetchedAt != null &&
+        !_vitalsLoaded &&
         map['vitalsLoaded'] == true &&
         _dayString(fetchedAt) == _dayString(at)) {
       final v = map['vitals'] as Map<String, dynamic>?;
@@ -280,12 +335,29 @@ class HomeDataCache {
       _vitalsLoaded = true;
     }
     // Streaks: valid up to streakMaxAge.
-    if (!_streakLoaded &&
+    if (fetchedAt != null &&
+        !_streakLoaded &&
         map['streakLoaded'] == true &&
         at.difference(fetchedAt).abs() <= streakMaxAge) {
       _currentStreak = map['currentStreak'] as int?;
       _bestStreak = map['bestStreak'] as int?;
       _streakLoaded = true;
+    }
+    // Counters (round 34): valid up to countersMaxAge, judged on
+    // their own fetch stamp (falling back to the blob's stamp for
+    // blobs written before the counters stamp existed — in practice
+    // those blobs carry no counters at all).
+    if (countersAt != null &&
+        !_countersLoaded &&
+        map['countersLoaded'] == true &&
+        at.difference(countersAt).abs() <= countersMaxAge) {
+      final raw = map['counters'] as List?;
+      _counters = List<EventCounterItem>.unmodifiable([
+        for (final e in raw ?? const [])
+          if (e is Map<String, dynamic>) EventCounterItem.fromMap(e),
+      ]);
+      _countersLoaded = true;
+      _countersFetchedAt = countersAt;
     }
     if (_vitalsLoaded || _streakLoaded) _fetchedAt = fetchedAt;
   }
@@ -317,6 +389,9 @@ class HomeDataCache {
         'streakLoaded': _streakLoaded,
         'currentStreak': _currentStreak,
         'bestStreak': _bestStreak,
+        'countersLoaded': _countersLoaded,
+        'counters': _counters.map((c) => c.toMap()).toList(),
+        'countersFetchedAt': _countersFetchedAt?.toIso8601String(),
       };
 
   static bool _vitalsEqual(TodayVitals? a, TodayVitals? b) {
@@ -345,6 +420,12 @@ class HomeCacheSnapshot {
   final int? bestStreak;
   final bool streakLoaded;
 
+  /// Round 34 — the cached ACTIVE counters in Settings list order
+  /// (empty when [countersLoaded] is false or no counters are
+  /// active). Day counts are recomputed at render time.
+  final List<EventCounterItem> counters;
+  final bool countersLoaded;
+
   /// Account that owns this snapshot (normalized session email), or
   /// null when the cache was never bound to an account.
   final String? ownerEmail;
@@ -355,6 +436,8 @@ class HomeCacheSnapshot {
     required this.currentStreak,
     required this.bestStreak,
     required this.streakLoaded,
+    this.counters = const [],
+    this.countersLoaded = false,
     this.ownerEmail,
   });
 }

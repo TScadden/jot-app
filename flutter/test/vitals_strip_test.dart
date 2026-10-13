@@ -89,9 +89,10 @@ void main() {
     testWidgets('unwired streaks show "--", never invented numbers',
         (tester) async {
       await _pumpStreakRow(tester);
-      // Two streak pills + counter label + counter number = 4 placeholders.
-      expect(find.text('--'), findsNWidgets(4));
-      expect(find.text('Days'), findsOneWidget);
+      // Two streak pills. Round 34: with zero active counters the
+      // counter slot renders NOTHING (no placeholder label/count).
+      expect(find.text('--'), findsNWidgets(2));
+      expect(find.text('Days'), findsNothing);
     });
   });
 

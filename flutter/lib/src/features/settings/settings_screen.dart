@@ -77,6 +77,12 @@ class SettingsScreen extends StatefulWidget {
   /// Injectable for tests (native opens these in the system browser).
   final Future<bool> Function(Uri uri)? urlLauncher;
 
+  /// Round 34 — open directly on the Event Counters page instead of
+  /// the main menu (the Home counter slot pushes Settings this way).
+  /// Back from that page pops the route (it was pushed as a
+  /// destination, not reached from the Settings menu).
+  final bool openEventCounters;
+
   const SettingsScreen({
     super.key,
     this.email,
@@ -88,6 +94,7 @@ class SettingsScreen extends StatefulWidget {
     this.notificationService,
     this.googleSignInService,
     this.urlLauncher,
+    this.openEventCounters = false,
   });
 
   @override
@@ -116,7 +123,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final ReminderNotificationService _notifs;
   late final GoogleSignInService _google;
 
-  _Page _page = _Page.main;
+  late _Page _page;
   SettingsProfileData _data = const SettingsProfileData();
   bool _loaded = false;
 
@@ -155,6 +162,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    _page = widget.openEventCounters ? _Page.eventCounters : _Page.main;
     _backend = widget.backend ?? TabsBackend();
     _store = widget.settingsStore ?? SettingsStore();
     _actions = widget.accountActions ??
@@ -372,6 +380,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       };
 
   void _back() {
+    // Round 34 — a Settings screen pushed directly at Event Counters
+    // (from the Home counter slot) backs OUT to the caller instead of
+    // landing on the Settings menu it never showed.
+    if (widget.openEventCounters &&
+        _page == _Page.eventCounters &&
+        Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+      return;
+    }
     setState(() {
       _page = _page == _Page.progressReports ? _Page.aiKnowledge : _Page.main;
     });

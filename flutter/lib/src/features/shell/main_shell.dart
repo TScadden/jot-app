@@ -100,6 +100,9 @@ class _MainShellState extends State<MainShell> {
               weatherApi: widget.weatherApi,
               locationService: widget.locationService,
               healthConnectService: widget.healthConnectService,
+              // Round 34 — so a logout started in the Settings screen
+              // pushed from Home's counter slot exits the shell too.
+              onLogout: widget.onLogout,
             ),
           DockTab.tools => const ToolsScreen(key: ValueKey('tools_screen')),
           DockTab.quickLog => QuickLogScreen(

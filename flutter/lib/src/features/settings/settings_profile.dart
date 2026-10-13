@@ -285,15 +285,79 @@ class EventCounterItem {
         isArchived: isArchived ?? this.isArchived,
       );
 
+  @override
+  bool operator ==(Object other) =>
+      other is EventCounterItem &&
+      other.id == id &&
+      other.name == name &&
+      other.targetDate == targetDate &&
+      other.isUp == isUp &&
+      other.autoUp == autoUp &&
+      other.isFavorite == isFavorite &&
+      other.isArchived == isArchived;
+
+  @override
+  int get hashCode =>
+      Object.hash(id, name, targetDate, isUp, autoUp, isFavorite, isArchived);
+
+  /// Signed whole calendar days from the target's local calendar day
+  /// to today's local calendar day (positive when the target day is
+  /// in the past). Computed on UTC-normalized dates built from the
+  /// local year/month/day components, so DST transitions (23/25-hour
+  /// local days) never shift the count — device-local day boundaries,
+  /// matching native `TodayScreen.kt`'s
+  /// `ChronoUnit.DAYS.between(targetLocalDate, LocalDate.now())` and
+  /// the Settings label's local-midnight semantics. (The previous
+  /// millisecond implementation divided a raw ms span by 86400000,
+  /// which undercounts by a day whenever the target's time-of-day is
+  /// after local midnight — e.g. yesterday 01:00 read as 0 days.)
+  int calendarDayDiff({DateTime? now}) {
+    final n = now ?? DateTime.now();
+    final t = DateTime.fromMillisecondsSinceEpoch(targetDate);
+    final todayUtc = DateTime.utc(n.year, n.month, n.day);
+    final targetUtc = DateTime.utc(t.year, t.month, t.day);
+    return todayUtc.difference(targetUtc).inDays;
+  }
+
+  /// Whether this counter counts UP at [now]: explicitly ([isUp]),
+  /// or via [autoUp] once the target day has passed (native
+  /// `TodayScreen.kt`: `diffDays > 0`; native `SettingsScreen.kt`:
+  /// `todayStart > targetDate` — the same boundary in calendar days).
+  bool countsUp({DateTime? now}) {
+    final diff = calendarDayDiff(now: now);
+    return isUp || (autoUp && diff > 0);
+  }
+
+  /// Native Today display (TodayScreen.kt rotating counter pager):
+  /// the directed day count — up counters show days since the
+  /// target, down counters show days until it — clamped at 0, so a
+  /// past target without autoUp reads "0 Days / Until", never a
+  /// negative number and never the Settings label's absolute value.
+  ({int days, bool up}) todayDisplay({DateTime? now}) {
+    final diff = calendarDayDiff(now: now);
+    final up = isUp || (autoUp && diff > 0);
+    final directed = up ? diff : -diff;
+    return (days: directed < 0 ? 0 : directed, up: up);
+  }
+
   /// Native label (SettingsScreen.kt:1355-1357): whole days between
   /// local midnight today and the target, "since" when counting up
   /// (explicitly or via autoUp once the day has arrived).
   String daysLabel({DateTime? now}) {
-    final n = now ?? DateTime.now();
-    final todayStart = DateTime(n.year, n.month, n.day);
-    final days =
-        (todayStart.millisecondsSinceEpoch - targetDate).abs() ~/ 86400000;
-    final up = isUp || (autoUp && todayStart.millisecondsSinceEpoch > targetDate);
+    final days = calendarDayDiff(now: now).abs();
+    final up = countsUp(now: now);
     return '$days days ${up ? 'since' : 'until'}';
   }
 }
+
+/// The counters Home shows (Round 34): every counter that is not
+/// archived, in profile (Settings list) order — native
+/// `TodayScreen.kt` filters `quickLogState.eventCounters` with
+/// `!it.isArchived` and keeps the stored order, and the Settings
+/// list renders active counters in that same order, so Home and
+/// Settings always agree. Ended-and-saved counters are REMOVED from
+/// the profile list by Settings (they live in counter history), so
+/// they can never reach this filter.
+List<EventCounterItem> activeEventCounters(
+        Iterable<EventCounterItem> counters) =>
+    counters.where((c) => !c.isArchived).toList();

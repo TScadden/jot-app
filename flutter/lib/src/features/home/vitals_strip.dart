@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
+import 'package:tabs_lab/src/features/home/event_counter_rotator.dart';
+import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
@@ -151,8 +153,16 @@ class VitalsStrip extends StatelessWidget {
 /// rotating event-counter slot ("Until X … N Days").
 ///
 /// Round 13 — [currentStreak]/[bestStreak] carry the real streaks from the
-/// backend sync pull; null renders "--". The event counter stays "--"
-/// (out of scope — user-created counters aren't wired yet).
+/// backend sync pull; null renders "--".
+///
+/// Round 34 — [counters] carries the real ACTIVE event counters
+/// (profile-synced, Settings list order, archived already excluded by
+/// the caller via [activeEventCounters]). The slot is the native
+/// rotating pager ([EventCounterRotator]): multiple counters rotate
+/// every 10s, one counter is static, and ZERO active counters render
+/// no slot at all — no placeholder (native's zero-counter fallback is
+/// its upcoming-reminders line, which is not counter data; the
+/// founder's round-34 spec rules out an empty placeholder here).
 class HomeStreakRow extends StatelessWidget {
   final int? currentStreak;
   final int? bestStreak;
@@ -161,8 +171,20 @@ class HomeStreakRow extends StatelessWidget {
   /// count-up gate already fired): numbers render instantly.
   final bool animateCountUps;
 
+  /// Round 34 — active event counters for the rotating slot.
+  final List<EventCounterItem> counters;
+
+  /// Round 34 — tap on the counter slot (opens Settings → Event
+  /// Counters). Null disables the tap.
+  final VoidCallback? onCountersTap;
+
   const HomeStreakRow(
-      {super.key, this.currentStreak, this.bestStreak, this.animateCountUps = true});
+      {super.key,
+      this.currentStreak,
+      this.bestStreak,
+      this.animateCountUps = true,
+      this.counters = const [],
+      this.onCountersTap});
 
   @override
   Widget build(BuildContext context) {
@@ -204,53 +226,19 @@ class HomeStreakRow extends StatelessWidget {
               ),
             ],
           ),
-          // Right: event-counter slot. Native shows a rotating pager of
-          // user-created counters here; with no counters wired, the exact
-          // layout renders with "--" placeholders.
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(left: 12.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Flexible(
-                    child: Text(
-                      '--', // TODO: wire event-counter label ("Until …")
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.end,
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.5,
-                        color: NotelColors.primary.withValues(alpha: 0.8),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '--', // TODO: wire event-counter day count
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
-                      color: NotelColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(width: 2),
-                  Text(
-                    'Days',
-                    style: TextStyle(
-                      fontSize: 8,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.5,
-                      color: NotelColors.textSecondary,
-                    ),
-                  ),
-                ],
+          // Right: event-counter slot (round 34) — the native rotating
+          // pager. Zero active counters render NOTHING here (the row
+          // is just the streak pills).
+          if (counters.isNotEmpty)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(left: 12.0),
+                child: EventCounterRotator(
+                  counters: counters,
+                  onTap: onCountersTap,
+                ),
               ),
             ),
-          ),
         ],
       ),
     );

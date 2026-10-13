@@ -11,6 +11,8 @@ import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/connections/connections_screen.dart';
 import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
+import 'package:tabs_lab/src/features/settings/settings_profile.dart';
+import 'package:tabs_lab/src/features/settings/settings_screen.dart';
 import 'package:tabs_lab/src/features/home/health_connect_banner.dart';
 import 'package:tabs_lab/src/features/home/today_summary_card.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart';
@@ -62,6 +64,18 @@ import 'package:tabs_lab/src/theme/slide_page_route.dart';
 /// cells and deep-links to Connections (partial grants get their own
 /// wording). Connected-but-empty keeps the plain "--", no banner.
 /// See `health_connect_banner.dart`.
+/// Round 34 — the streak row's right slot is the native rotating
+/// event-counter pager (native `TodayScreen.kt` section 2 — native
+/// DOES surface its Settings event counters on Today; the
+/// `📅 ${firstEvent.title}` line at TodayScreen.kt:461 is only the
+/// zero-counter FALLBACK and its `firstEvent` is an
+/// `UpcomingEventItem` built from today's reminders in
+/// `TodayViewModel`, not a counter). Counters come from the SAME
+/// profile-synced source Settings round 29 uses (the sync pull's
+/// `profile.eventCounters`, decoded via [SettingsProfileData]), so
+/// archiving in Settings removes a counter from Home and vice versa.
+/// Cached counters render instantly (account-bound [HomeDataCache],
+/// stale-while-revalidate); zero active counters render no slot.
 class HomeScreen extends StatefulWidget {
   final String? email;
   final WeatherApiClient? weatherApi;
@@ -83,6 +97,11 @@ class HomeScreen extends StatefulWidget {
   /// [HealthRepository]'s backend so Home shares one sync-pull cache.
   final TabsBackend? tabsBackend;
 
+  /// Round 34 — forwarded to the Settings screen pushed from the
+  /// counter slot, so a logout started there still exits to the
+  /// welcome flow (the shell owns that callback).
+  final VoidCallback? onLogout;
+
   const HomeScreen(
       {super.key,
       this.email,
@@ -90,7 +109,8 @@ class HomeScreen extends StatefulWidget {
       this.locationService,
       this.healthConnectService,
       this.healthRepository,
-      this.tabsBackend});
+      this.tabsBackend,
+      this.onLogout});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -143,6 +163,12 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _feelingTapInFlight = false;
   int? _feelingCategoryId;
 
+  // ── Round 34: event counters ─────────────────────────────────────
+  /// Active counters in Settings list order. Empty until the cache or
+  /// the first pull proves otherwise — the slot renders nothing while
+  /// empty (honest state, no placeholder).
+  List<EventCounterItem> _counters = const [];
+
   TabsBackend get _backend => widget.tabsBackend ?? _healthRepo.backend;
 
   @override
@@ -162,10 +188,61 @@ class _HomeScreenState extends State<HomeScreen> {
       _currentStreak = cached.currentStreak;
       _bestStreak = cached.bestStreak;
     }
+    // Round 34 — cached counters seed the first frame the same way;
+    // day counts recompute from the target dates at render time, so
+    // a cached counter never shows a stale count.
+    if (cached.countersLoaded) _counters = cached.counters;
     _resolveCountUpGate();
     _loadWeather();
     _loadHealthData();
     _loadFeelingState();
+    _loadCounters();
+  }
+
+  /// Round 34 — loads the ACTIVE event counters from the sync pull's
+  /// profile — the exact source Settings round 29 reads and writes
+  /// (`SettingsProfileData.eventCounters` →
+  /// `TabsBackend.decodeProfileList`), never a second store. A failed
+  /// pull keeps the cached counters (stale-while-revalidate); the
+  /// completed load lands in the account-bound [HomeDataCache].
+  Future<void> _loadCounters() async {
+    try {
+      final body = await _backend.fetchSyncPull();
+      if (body == null) return;
+      final data = SettingsProfileData.fromPull(body);
+      final active = activeEventCounters(
+          data.eventCounters.map(EventCounterItem.fromMap));
+      final cache = HomeDataCache.instance;
+      final changed = cache.applyCounters(active, ownerEmail: widget.email);
+      unawaited(cache.persist());
+      if (!mounted) return;
+      if (changed) setState(() => _counters = active);
+    } catch (_) {
+      // Keep whatever the cache seeded — never invent counters.
+    }
+  }
+
+  /// Round 34 — the counter slot's tap: pushes Settings opened
+  /// directly on its Event Counters page, via the round-22 app-wide
+  /// slide transition. On return the pull cache is invalidated and
+  /// the counters re-read, so an archive / end-and-save / edit made
+  /// there reflects on Home immediately.
+  Future<void> _openEventCounters() async {
+    await Navigator.of(context).push(
+      SlidePageRoute(
+        reducedMotion: animationsDisabled(context),
+        builder: (_) => SettingsScreen(
+          email: widget.email,
+          onLogout: widget.onLogout,
+          backend: _backend,
+          healthConnectService: widget.healthConnectService,
+          openEventCounters: true,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    _backend.invalidateSyncPull();
+    unawaited(_loadCounters());
   }
 
   /// Round 21 — resolves check-in visibility from the REAL pulled
@@ -552,6 +629,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 currentStreak: _currentStreak,
                 bestStreak: _bestStreak,
                 animateCountUps: _countUpsAnimate,
+                counters: _counters,
+                onCountersTap: () => unawaited(_openEventCounters()),
               ),
             ),
             const StaggeredEntrance(
