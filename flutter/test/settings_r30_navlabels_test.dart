@@ -74,7 +74,8 @@ void main() {
     expect(dockWidget.showLabels, isFalse);
     // Flip the stored value and switch tabs: MainShell re-reads.
     map[SettingsStore.showNavLabelsKey] = 'true';
-    await tester.tap(find.byIcon(Icons.favorite));
+    await tester.tap(find.descendant(
+        of: find.byType(NavDock), matching: find.byIcon(Icons.favorite)));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     final updated = tester.widget<NavDock>(find.byType(NavDock));
