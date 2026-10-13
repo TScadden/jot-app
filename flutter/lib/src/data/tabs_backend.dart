@@ -581,10 +581,25 @@ class TabsBackend {
   }
 
   /// Habits from `GET /api/habits` → `{"habits": [...]}`.
-  Future<List<HabitDto>> fetchHabits() async {
+  /// Empty list on any failure — see [fetchHabitsOrNull] for the
+  /// failure-distinguishing variant.
+  Future<List<HabitDto>> fetchHabits() async =>
+      await fetchHabitsOrNull() ?? const [];
+
+  /// Round 48 (Vera R47 ledger) — nullable variant of [fetchHabits]:
+  /// returns null when the fetch itself failed (no token, transport
+  /// error, non-200, malformed body, or a body whose `habits` is
+  /// not a list), and the parsed list — possibly empty — only when
+  /// the server actually answered. Callers that already hold a list
+  /// (the Habits screen's post-write refresh) use this to tell
+  /// "the server has no habits" apart from "the refresh failed",
+  /// so a failed refresh preserves the on-screen list instead of
+  /// blanking it to the empty state until the next load.
+  Future<List<HabitDto>?> fetchHabitsOrNull() async {
     final body = await _getJson('/api/habits');
-    final habits = body?['habits'];
-    if (habits is! List) return const [];
+    if (body == null) return null;
+    final habits = body['habits'];
+    if (habits is! List) return null;
     final out = <HabitDto>[];
     for (final h in habits) {
       if (h is Map<String, dynamic>) {

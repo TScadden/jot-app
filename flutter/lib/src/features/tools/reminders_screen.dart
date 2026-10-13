@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/reminder_alarm_sync.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/data/today_summary.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// Round 18 — Reminders tool screen (display).
@@ -108,7 +109,11 @@ class ReminderModel {
       startMinute: _asInt(json['startMinute'], 0),
       endHour: _asInt(json['endHour'], 21),
       endMinute: _asInt(json['endMinute'], 0),
-      isEnabled: json['isEnabled'] != false,
+      // Round 48 — tolerant bool (shared parser, as in the
+      // medication model): the old `!= false` check read a
+      // string-serialized "false" (and numeric 0) as ENABLED.
+      // Absent/unparseable keeps the native default: enabled.
+      isEnabled: parseLooseBoolOrNull(json['isEnabled']) ?? true,
       dayConfigs: dayConfigs,
     );
   }
@@ -155,7 +160,11 @@ class DayTimeConfig {
           ? rawDay
           : dayOfWeekForDayName(name),
       dayName: name,
-      isEnabled: json['isEnabled'] == true,
+      // Round 48 — tolerant bool (shared parser): the old
+      // `== true` check read a string-serialized "true" (and
+      // numeric 1) as DISABLED, silently dropping that day's
+      // alarm from the schedule summary and the alarm sync.
+      isEnabled: parseLooseBoolOrNull(json['isEnabled']) ?? false,
       hour: _asInt(json['hour'], 9),
       minute: _asInt(json['minute'], 0),
     );
@@ -885,6 +894,14 @@ class _ReminderSheetState extends State<_ReminderSheet> {
   late List<_DayRow> _days;
   late int _intervalValue;
   late String _intervalUnit; // 'hours' | 'minutes'
+  // Round 48 — set when the user actually changes an interval
+  // control. The picker can only represent an XOR interval
+  // (hours 1..5 or minutes 1..60), so an INTERVAL reminder whose
+  // stored pair is zero (0h 0m — the alarm sync treats it as "no
+  // slots") or mixed (e.g. 1h 30m) would be silently REWRITTEN
+  // by a title-only edit. While untouched, [_save] writes the
+  // stored pair back verbatim instead of the picker's view.
+  bool _intervalDirty = false;
   late TimeOfDay _start;
   late TimeOfDay _end;
 
@@ -969,14 +986,30 @@ class _ReminderSheetState extends State<_ReminderSheet> {
   void _save() {
     final title = _title.text.trim();
     if (title.isEmpty) return;
+    // Round 48 — untouched interval on an INTERVAL reminder:
+    // preserve the stored pair verbatim (see [_intervalDirty]).
+    // Only applies when the reminder being edited IS an interval
+    // reminder — a FIXED reminder switched to Repeating in this
+    // sheet saves the picker's displayed value, as shown.
+    final initial = widget.initial;
+    final preserveInterval =
+        !_intervalDirty && initial != null && initial.type == 'INTERVAL';
     Navigator.of(context).pop(buildReminderRow(
       id: widget.initial?.id ?? 0,
       title: title,
       type: _type,
       fixedHour: _fixed.hour,
       fixedMinute: _fixed.minute,
-      intervalHours: _intervalUnit == 'hours' ? _intervalValue : 0,
-      intervalMinutes: _intervalUnit == 'minutes' ? _intervalValue : 0,
+      intervalHours: preserveInterval
+          ? initial!.intervalHours
+          : _intervalUnit == 'hours'
+              ? _intervalValue
+              : 0,
+      intervalMinutes: preserveInterval
+          ? initial!.intervalMinutes
+          : _intervalUnit == 'minutes'
+              ? _intervalValue
+              : 0,
       startHour: _start.hour,
       startMinute: _start.minute,
       endHour: _end.hour,
@@ -1144,7 +1177,12 @@ class _ReminderSheetState extends State<_ReminderSheet> {
                         DropdownMenuItem(value: v, child: Text('$v')),
                     ],
                     onChanged: (v) {
-                      if (v != null) setState(() => _intervalValue = v);
+                      if (v != null) {
+                        setState(() {
+                          _intervalValue = v;
+                          _intervalDirty = true;
+                        });
+                      }
                     },
                   ),
                   const SizedBox(width: 12),
@@ -1160,6 +1198,7 @@ class _ReminderSheetState extends State<_ReminderSheet> {
                       if (v == null) return;
                       setState(() {
                         _intervalUnit = v;
+                        _intervalDirty = true;
                         if (v == 'hours' && _intervalValue > 5) {
                           _intervalValue = 5;
                         }
