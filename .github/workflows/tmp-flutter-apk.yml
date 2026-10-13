@@ -15,14 +15,5 @@ jobs:
           flutter-version: '3.47.7'
           channel: stable
       - run: cd flutter && flutter pub get
-      - run: cd flutter && flutter analyze lib test/widget_sync_r50_test.dart test/widget_sync_r52_test.dart test/widget_sync_r52_fix_test.dart test/settings_r51_connstate_test.dart test/session_restore_r31_test.dart test/today_summary_r35_test.dart test/home_data_cache_test.dart test/r19c_instant_render_test.dart test/home_counters_r34_test.dart test/settings_r29_test.dart test/login_screen_test.dart test/google_sign_in_r24_test.dart test/test_helpers.dart
-        # onboarding_r32_test.dart stays in the TEST scope only: pre-existing warnings in that file fail CI analyze (same exclusion as the R47 workflow).
-      - name: Scoped tests (R52 widget fix + R50 widget + R51 connstate + session/logout/cache paths)
-        run: cd flutter && flutter test test/widget_sync_r50_test.dart test/widget_sync_r52_test.dart test/widget_sync_r52_fix_test.dart test/settings_r51_connstate_test.dart test/session_restore_r31_test.dart test/today_summary_r35_test.dart test/home_data_cache_test.dart test/r19c_instant_render_test.dart test/home_counters_r34_test.dart test/settings_r29_test.dart test/login_screen_test.dart test/google_sign_in_r24_test.dart test/onboarding_r32_test.dart
-      - run: cd flutter && flutter build apk --release --split-per-abi
-      - name: Round 52 widget artifact gate (receiver + dex/resources superset check)
-        run: bash flutter/tool/check_widget_apk.sh flutter/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tabs-flutter-widgetfix-r52-apk
-          path: flutter/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+      - run: cd flutter && flutter analyze
+      - run: cd flutter && flutter test
