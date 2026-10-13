@@ -382,6 +382,92 @@ String reminderScheduleSummary(ReminderModel r) {
   return '$intervalStr  •  ${formatTime12h(r.startHour, r.startMinute)} to ${formatTime12h(r.endHour, r.endMinute)}';
 }
 
+/// CREATE permission gate (Juno F1), shared verbatim by the
+/// Reminders create flow and the Health Coach reminder approval
+/// (Round 48 fix round, Juno F2) so both run the SAME ordering:
+///
+/// 1. Exact-alarm gate FIRST: when exact alarms are unavailable,
+///    an advisory dialog offers system settings (dismissing it
+///    still continues the gate; scheduling falls back to inexact
+///    alarms per the notification service).
+/// 2. Notification rationale dialog ("Enable Notifications"):
+///    the system POST_NOTIFICATIONS request fires ONLY from its
+///    Allow button — never bare, never before the rationale.
+/// 3. The caller may proceed ONLY when notification permission
+///    is granted. When it is denied (Not now, or denied at the
+///    system dialog), the caller must not write or claim a
+///    reminder was set: a reminder must never show ON while it
+///    can never fire, silently.
+///
+/// Returns whether the caller may proceed. When the system
+/// request itself throws, [onNotificationsRequestError] runs
+/// (the Reminders screen shows its alarm note there, exactly as
+/// before this extraction) and the gate returns false.
+Future<bool> runReminderCreatePermissionGate({
+  required BuildContext context,
+  required ReminderNotificationService notifs,
+  VoidCallback? onNotificationsRequestError,
+}) async {
+  try {
+    final exact = await notifs.canScheduleExact();
+    if (!exact && context.mounted) {
+      final openSettings = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Exact alarms are off'),
+          content: const Text(
+              'Without exact alarm permission, reminders may arrive late. You can turn it on in system settings.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Not now'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Open Settings'),
+            ),
+          ],
+        ),
+      );
+      if (openSettings == true) {
+        try {
+          await notifs.requestExactAlarmsPermission();
+        } catch (_) {
+          // Advisory gate — the rationale step still runs below.
+        }
+      }
+    }
+  } catch (_) {
+    // Advisory gate — the rationale step still runs below.
+  }
+  if (!context.mounted) return false;
+  final allow = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Enable Notifications'),
+      content: const Text(
+          'Tabs needs notification permission to send your reminders. Tap Allow to continue.'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(false),
+          child: const Text('Not now'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(true),
+          child: const Text('Allow'),
+        ),
+      ],
+    ),
+  );
+  if (allow != true || !context.mounted) return false;
+  try {
+    return await notifs.requestNotificationsPermission();
+  } catch (_) {
+    onNotificationsRequestError?.call();
+    return false;
+  }
+}
+
 /// Round 18 — Reminders screen. Round 47 — full write actions.
 ///
 /// [backend] and [notificationService] are injectable so widget
@@ -537,80 +623,19 @@ class _RemindersScreenState extends State<RemindersScreen> {
     await _applyAndPush(newDoc, cancelledReminderId: id);
   }
 
-  /// CREATE-only permission gate (Juno F1), in native's exact
-  /// order:
-  /// 1. Exact-alarm gate FIRST: when exact alarms are unavailable,
-  ///    an advisory dialog offers system settings (dismissing it
-  ///    still continues the gate; scheduling falls back to inexact
-  ///    alarms per the notification service).
-  /// 2. Notification rationale dialog ("Enable Notifications"):
-  ///    the system POST_NOTIFICATIONS request fires ONLY from its
-  ///    Allow button — never bare, never before the rationale.
-  /// 3. The editor sheet opens ONLY when notification permission
-  ///    is granted. When it is denied (Not now, or denied at the
-  ///    system dialog), no sheet opens: a reminder must never show
-  ///    ON while it can never fire, silently. Existing reminders
-  ///    stay viewable and toggleable either way.
+  /// CREATE-only permission gate (Juno F1) — now the shared
+  /// [runReminderCreatePermissionGate] above, which this screen
+  /// and the Health Coach both run with the same ordering and
+  /// copy. The Reminders behaviour is unchanged: on a system
+  /// request failure the alarm note shows, and the editor sheet
+  /// opens ONLY when notification permission is granted.
   /// Returns whether the sheet may open.
-  Future<bool> _runCreatePermissionGate() async {
-    try {
-      final exact = await _notifs.canScheduleExact();
-      if (!exact && mounted) {
-        final openSettings = await showDialog<bool>(
-          context: context,
-          builder: (dialogContext) => AlertDialog(
-            title: const Text('Exact alarms are off'),
-            content: const Text(
-                'Without exact alarm permission, reminders may arrive late. You can turn it on in system settings.'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(false),
-                child: const Text('Not now'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(true),
-                child: const Text('Open Settings'),
-              ),
-            ],
-          ),
-        );
-        if (openSettings == true) {
-          try {
-            await _notifs.requestExactAlarmsPermission();
-          } catch (_) {
-            // Advisory gate — the rationale step still runs below.
-          }
-        }
-      }
-    } catch (_) {
-      // Advisory gate — the rationale step still runs below.
-    }
-    if (!mounted) return false;
-    final allow = await showDialog<bool>(
+  Future<bool> _runCreatePermissionGate() {
+    return runReminderCreatePermissionGate(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Enable Notifications'),
-        content: const Text(
-            'Tabs needs notification permission to send your reminders. Tap Allow to continue.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Not now'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Allow'),
-          ),
-        ],
-      ),
+      notifs: _notifs,
+      onNotificationsRequestError: _showAlarmNote,
     );
-    if (allow != true || !mounted) return false;
-    try {
-      return await _notifs.requestNotificationsPermission();
-    } catch (_) {
-      _showAlarmNote();
-      return false;
-    }
   }
 
   /// Opens the editor sheet. CREATE (the FAB) runs the permission
