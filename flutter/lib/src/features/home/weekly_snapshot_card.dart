@@ -140,18 +140,18 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
         ),
         // Refresh: reloads the current metric's data via [loadData].
         // No loader → no-op (round-8 behavior).
-        SizedBox(
-          width: 28,
-          height: 28,
-          child: IconButton(
-            onPressed: () => _reload(),
-            padding: EdgeInsets.zero,
-            tooltip: 'Refresh weekly snapshot',
-            icon: const Icon(
-              Icons.refresh,
-              size: 16,
-              color: NotelColors.textSecondary,
-            ),
+        IconButton(
+          onPressed: () => _reload(),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(
+            minWidth: 48,
+            minHeight: 48,
+          ),
+          tooltip: 'Refresh weekly snapshot',
+          icon: const Icon(
+            Icons.refresh,
+            size: 16,
+            color: NotelColors.textSecondary,
           ),
         ),
       ],
@@ -220,7 +220,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: NotelColors.legacyDarkDivider, width: 1),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 6.0),
+      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -234,18 +234,18 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
               ),
             ),
           ),
-          SizedBox(
-            width: 24,
-            height: 24,
-            child: IconButton(
-              onPressed: () => setState(() => _selectedPoint = null),
-              padding: EdgeInsets.zero,
-              tooltip: 'Dismiss Tooltip',
-              icon: const Icon(
-                Icons.close,
-                size: 14,
-                color: NotelColors.textSecondary,
-              ),
+          IconButton(
+            onPressed: () => setState(() => _selectedPoint = null),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(
+              minWidth: 48,
+              minHeight: 48,
+            ),
+            tooltip: 'Dismiss Tooltip',
+            icon: const Icon(
+              Icons.close,
+              size: 14,
+              color: NotelColors.textSecondary,
             ),
           ),
         ],
@@ -297,8 +297,9 @@ class _LegendDot extends StatelessWidget {
   }
 }
 
-/// The 40dp metric selector box + floating dropdown, styled like the
-/// native `DropdownMenu` (NotelSurfaceHigh, current metric Bold primary).
+/// The metric selector box (Round 49: 48dp tall target) + floating
+/// dropdown, styled like the native `DropdownMenu` (NotelSurfaceHigh,
+/// current metric Bold).
 class _MetricSelector extends StatefulWidget {
   final SnapshotMetric selected;
   final ValueChanged<SnapshotMetric> onSelect;
@@ -405,7 +406,7 @@ class _MetricSelectorState extends State<_MetricSelector> {
         onTap: _toggle,
         behavior: HitTestBehavior.opaque,
         child: Container(
-          height: 40,
+          height: 48,
           decoration: BoxDecoration(
             color: NotelColors.surfaceHigh,
             borderRadius: BorderRadius.circular(10),

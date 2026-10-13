@@ -13,6 +13,7 @@ import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/today_plan_store.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
+import 'package:tabs_lab/src/data/widget_sync.dart';
 import 'package:tabs_lab/src/features/auth/login_screen.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/onboarding/onboarding_flow.dart';
@@ -42,6 +43,17 @@ void main() async {
   // Round 19c — same warm for Quick Log: cold starts seed last-known
   // categories / recents / count / membership instead of skeletons.
   await QuickLogCache.instance.warmFromDisk(currentEmail: sessionEmail);
+  // Round 52 — re-publish the widget on EVERY app start, once,
+  // unawaited: a signed-in snapshot when a session exists and the
+  // warmed cache holds one, the signed-out payload otherwise. This
+  // closes the after-update orphan gap (a new build's first launch
+  // re-binds a placed widget to current state) and the welcome-route
+  // gap (a cold start that never mounts Home still refreshes the
+  // widget). Fire-and-forget; WidgetSync never throws.
+  unawaited(WidgetSync.republishAppStart(
+    hasSession: sessionEmail != null,
+    snapshot: HomeDataCache.instance.snapshot,
+  ));
   runApp(const TabsLabApp());
 }
 
@@ -325,6 +337,11 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
     // clear is independently best-effort, like the two above.
     unawaited(TodaySummaryCache.instance.clear());
     unawaited(TodayPlanStore.instance.clear());
+    // Round 52 — single widget-clear funnel: HomeDataCache.clear()
+    // above IS the widget clear (it fire-and-forgets
+    // WidgetSync.clear()); the Round 50 duplicate explicit call
+    // here was removed so session expiry requests exactly ONE
+    // widget update end-to-end.
     if (!mounted) return;
     _onLogout();
   }

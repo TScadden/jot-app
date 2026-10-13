@@ -121,7 +121,7 @@ void showHumidityInfoSheet(BuildContext context) {
               ),
               thinDivider(),
               dotRangeRow(
-                dotColor: const Color(0xFFFF6B6B),
+                dotColor: NotelColors.error,
                 label: 'High Humidity (Sticky/Hot)',
                 value: '> 60%',
                 dotEmoji: '🔴',

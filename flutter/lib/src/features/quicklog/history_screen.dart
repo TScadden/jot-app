@@ -526,7 +526,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemCount: 4,
               itemBuilder: (_, _) => Container(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
                   color: NotelColors.surface,
@@ -622,7 +622,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
         separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemCount: _categories.length + 2,
         itemBuilder: (context, index) {
@@ -630,30 +630,37 @@ class _HistoryScreenState extends State<HistoryScreen> {
             // "Today" filter chip.
             final on = _todayOnly;
             return GestureDetector(
+              behavior: HitTestBehavior.opaque,
               onTap: () => setState(() => _todayOnly = !on),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 8),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  color: on
-                      ? NotelColors.primary
-                      : NotelColors.surface,
-                  border: Border.all(
-                    color: on
-                        ? NotelColors.primary
-                        : NotelColors.primary
-                            .withValues(alpha: 0.25),
-                  ),
-                ),
-                child: Text(
-                  'TODAY',
-                  style: TextStyle(
-                    color: on ? _chipInk : NotelColors.textSecondary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.8,
+              // R49 HI1: 48dp hit area around the 36dp visual chip.
+              child: SizedBox(
+                height: 48,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 8),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      color: on
+                          ? NotelColors.primary
+                          : NotelColors.surface,
+                      border: Border.all(
+                        color: on
+                            ? NotelColors.primary
+                            : NotelColors.primary
+                                .withValues(alpha: 0.25),
+                      ),
+                    ),
+                    child: Text(
+                      'TODAY',
+                      style: TextStyle(
+                        color: on ? _chipInk : NotelColors.textSecondary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -662,32 +669,39 @@ class _HistoryScreenState extends State<HistoryScreen> {
           if (index == 1) {
             final allSelected = _categoryFilter == null;
             return GestureDetector(
+              behavior: HitTestBehavior.opaque,
               onTap: () => setState(() => _categoryFilter = null),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 8),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  color: allSelected
-                      ? NotelColors.primary
-                      : NotelColors.surface,
-                  border: Border.all(
-                    color: allSelected
-                        ? NotelColors.primary
-                        : NotelColors.primary
-                            .withValues(alpha: 0.25),
-                  ),
-                ),
-                child: Text(
-                  'ALL',
-                  style: TextStyle(
-                    color: allSelected
-                        ? _chipInk
-                        : NotelColors.textSecondary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.8,
+              // R49 HI1: 48dp hit area around the 36dp visual chip.
+              child: SizedBox(
+                height: 48,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 8),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      color: allSelected
+                          ? NotelColors.primary
+                          : NotelColors.surface,
+                      border: Border.all(
+                        color: allSelected
+                            ? NotelColors.primary
+                            : NotelColors.primary
+                                .withValues(alpha: 0.25),
+                      ),
+                    ),
+                    child: Text(
+                      'ALL',
+                      style: TextStyle(
+                        color: allSelected
+                            ? _chipInk
+                            : NotelColors.textSecondary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -697,28 +711,36 @@ class _HistoryScreenState extends State<HistoryScreen> {
           final selected = _categoryFilter == cat.id;
           final catColor = cat.color;
           return GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onTap: () => setState(() =>
                 _categoryFilter = selected ? null : cat.id),
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 8),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                color: selected ? catColor : NotelColors.surface,
-                border: Border.all(
-                  color: selected
-                      ? catColor
-                      : catColor.withValues(alpha: 0.35),
-                ),
-              ),
-              child: Text(
-                cat.name,
-                style: TextStyle(
-                  color:
-                      selected ? _chipInk : NotelColors.textSecondary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
+            // R49 HI1: 48dp hit area around the 36dp visual chip.
+            child: SizedBox(
+              height: 48,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 8),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    color: selected ? catColor : NotelColors.surface,
+                    border: Border.all(
+                      color: selected
+                          ? catColor
+                          : catColor.withValues(alpha: 0.35),
+                    ),
+                  ),
+                  child: Text(
+                    cat.name,
+                    style: TextStyle(
+                      color: selected
+                          ? _chipInk
+                          : NotelColors.textSecondary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -795,7 +817,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 4, 14),
+              // R49 HI6: vertical card padding 14→16 (the right-4
+              // delete-button inset is construction; kept).
+              padding: const EdgeInsets.fromLTRB(16, 16, 4, 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -830,8 +854,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             : const SizedBox.shrink(),
                       ),
                       SizedBox(
-                        width: 28,
-                        height: 28,
+                        // R49 HI2: 48dp target (was 28×28); glyph
+                        // stays 16dp.
+                        width: 48,
+                        height: 48,
                         child: IconButton(
                           padding: EdgeInsets.zero,
                           onPressed: () => _deleteEntry(entry),
@@ -861,9 +887,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     children: [
                       Text(
                         _formatDateTime(entry.timestamp),
-                        style: TextStyle(
-                          color: NotelColors.primary
-                              .withValues(alpha: 0.55),
+                        style: const TextStyle(
+                          // R49 HI3: full-opacity primary = 4.82:1
+                          // on surface (was α0.55 = 2.32:1).
+                          color: NotelColors.primary,
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
                           letterSpacing: 0.3,
@@ -873,16 +900,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       // so SYNCED is the honest status.
                       Row(
                         children: [
-                          Icon(Icons.cloud_done,
+                          const Icon(Icons.cloud_done,
                               size: 12,
-                              color: NotelColors.primary
-                                  .withValues(alpha: 0.6)),
+                              // R49 HI4: full-opacity primary = 4.82:1
+                              // on surface (was α0.6 = 2.52:1).
+                              color: NotelColors.primary),
                           const SizedBox(width: 4),
                           Text(
                             'Synced',
-                            style: TextStyle(
-                              color: NotelColors.primary
-                                  .withValues(alpha: 0.6),
+                            style: const TextStyle(
+                              color: NotelColors.primary,
                               fontSize: 10,
                               fontWeight: FontWeight.w600,
                             ),

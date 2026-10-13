@@ -109,46 +109,55 @@ class HealthConnectBanner extends StatelessWidget {
           child: InkWell(
             borderRadius: BorderRadius.circular(10),
             onTap: onTap,
-            child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-              child: Row(
-                children: [
-                  Icon(
-                    isPartial ? Icons.lock_outline : Icons.link_off,
-                    size: 16,
-                    color: isPartial
-                        ? NotelColors.warning
-                        : NotelColors.primary,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      text,
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        color: NotelColors.textPrimary,
+            // Round 49 (audit H5): the tap area was ≈34dp tall (v8
+            // padding + one text line). The 48dp minimum height makes
+            // the whole banner a full-size target; the row's content
+            // and padding are unchanged.
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12.0, vertical: 8.0),
+                child: Row(
+                  children: [
+                    Icon(
+                      isPartial ? Icons.lock_outline : Icons.link_off,
+                      size: 16,
+                      color: isPartial
+                          ? NotelColors.warning
+                          : NotelColors.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        text,
+                        style: const TextStyle(
+                          // Round 49 (audit H15): 12.5 was the app's only
+                          // non-integer size; 12 is the caption step.
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: NotelColors.textPrimary,
+                        ),
                       ),
                     ),
-                  ),
-                  if (errorCode != null) ...[
-                    const SizedBox(width: 6),
-                    Text(
-                      '[$errorCode]',
-                      style: const TextStyle(
-                        fontSize: 10,
-                        color: NotelColors.error,
+                    if (errorCode != null) ...[
+                      const SizedBox(width: 6),
+                      Text(
+                        '[$errorCode]',
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: NotelColors.error,
+                        ),
                       ),
+                    ],
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.chevron_right,
+                      size: 16,
+                      color: NotelColors.textSecondary.withValues(alpha: 0.7),
                     ),
                   ],
-                  const SizedBox(width: 4),
-                  Icon(
-                    Icons.chevron_right,
-                    size: 16,
-                    color: NotelColors.textSecondary.withValues(alpha: 0.7),
-                  ),
-                ],
+                ),
               ),
             ),
           ),

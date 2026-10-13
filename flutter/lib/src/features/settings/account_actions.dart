@@ -65,6 +65,13 @@ class AccountActions {
     try {
       await TodayPlanStore.instance.clear();
     } catch (_) {}
+    // Round 52 — single widget-clear funnel: the HomeDataCache
+    // clear at the top of this sequence IS the widget clear (it
+    // fire-and-forgets WidgetSync.clear() — unawaited inside the
+    // cache, so the widget bridge can never wedge the wipe, the
+    // R50 stuck-channel concern). The Round 50 duplicate explicit
+    // WidgetSync.clear() here was removed so logout / account
+    // delete requests exactly ONE widget update end-to-end.
   }
 
   /// Test hook: clears the real cache singletons.

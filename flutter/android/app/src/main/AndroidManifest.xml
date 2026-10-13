@@ -111,6 +111,22 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- Round 50: home-screen vitals widget (native RemoteViews;
+             data arrives via the home_widget bridge from Dart's
+             WidgetSync). Exported=false: widget updates are delivered
+             by the system AppWidgetService. -->
+        <receiver
+            android:name=".VitalsWidgetProvider"
+            android:exported="false"
+            android:label="Tabs vitals">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/vitals_widget_info" />
+        </receiver>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

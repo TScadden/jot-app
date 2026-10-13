@@ -78,7 +78,7 @@ void showUvInfoSheet(BuildContext context) {
               infoThinDivider(),
               _uvRangeRow(NotelColors.warning, 'High', '6-7'),
               infoThinDivider(),
-              _uvRangeRow(const Color(0xFFFF6B6B), 'Very High', '8-10'),
+              _uvRangeRow(NotelColors.error, 'Very High', '8-10'),
             ],
           ),
         ),
@@ -158,7 +158,7 @@ void showUvInfoSheet(BuildContext context) {
               'Avoid sun between 10am-4pm. Use SPF 50+ mineral sunscreen, '
               'full coverage UPF clothing, hat, and sunglasses are '
               'mandatory. Reapply sunscreen every 2 hours.',
-          color: const Color(0xFFFF6B6B),
+          color: NotelColors.error,
         ),
         const SizedBox(height: 12),
         _protectionLevelCard(
@@ -168,7 +168,7 @@ void showUvInfoSheet(BuildContext context) {
               'shade, wear full protective UPF clothing, SPF 50+ mineral '
               'sunscreen, and wrap-around sunglasses. Unprotected skin '
               'burns in minutes.',
-          color: const Color(0xFFCE93D8),
+          color: NotelColors.uvExtreme,
         ),
       ],
     ),

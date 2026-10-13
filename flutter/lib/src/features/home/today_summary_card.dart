@@ -568,7 +568,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                             // completed message, never a blank void.
                             Padding(
                               padding:
-                                  const EdgeInsets.symmetric(vertical: 6.0),
+                                  const EdgeInsets.symmetric(vertical: 8.0),
                               child: Text(
                                 data != null && data.plan.plannedCount > 0
                                     ? 'Everything planned for today is '
@@ -600,20 +600,20 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                                   color: NotelColors.textPrimary,
                                 ),
                               ),
-                              SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: IconButton(
-                                  onPressed: _trendsRefreshing
-                                      ? null
-                                      : () => unawaited(_refreshTrends()),
-                                  padding: EdgeInsets.zero,
-                                  tooltip: 'Refresh Trends',
-                                  icon: const Icon(
-                                    Icons.refresh,
-                                    size: 14,
-                                    color: NotelColors.textSecondary,
-                                  ),
+                              IconButton(
+                                onPressed: _trendsRefreshing
+                                    ? null
+                                    : () => unawaited(_refreshTrends()),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(
+                                  minWidth: 48,
+                                  minHeight: 48,
+                                ),
+                                tooltip: 'Refresh Trends',
+                                icon: const Icon(
+                                  Icons.refresh,
+                                  size: 14,
+                                  color: NotelColors.textSecondary,
                                 ),
                               ),
                             ],
@@ -649,7 +649,8 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
 /// items ever render (completed/resolved items are excluded from
 /// the plan data), so there is no dimmed/struck-through state and
 /// no Undo affordance here:
-/// - reminder/habit: a 32dp toggle button (unchecked circle);
+/// - reminder/habit: a toggle button (unchecked circle; Round 49:
+///   48dp hit area, glyph unchanged);
 /// - medication: a status icon, "{dose} · {slot}" line, and the
 ///   Take/Skip buttons (a pending or snoozed dose).
 class _PlanItemRow extends StatelessWidget {
@@ -671,7 +672,7 @@ class _PlanItemRow extends StatelessWidget {
     final overdue = item.isOverdue(now);
     final isMed = item.kind == PlanItemKind.medication;
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 3.0),
+      margin: const EdgeInsets.symmetric(vertical: 4.0),
       decoration: BoxDecoration(
         color: NotelColors.surfaceHigh,
         borderRadius: BorderRadius.circular(10),
@@ -699,18 +700,18 @@ class _PlanItemRow extends StatelessWidget {
               ),
               const SizedBox(width: 10),
             ] else ...[
-              SizedBox(
-                width: 32,
-                height: 32,
-                child: IconButton(
-                  onPressed: busy ? null : onToggle,
-                  padding: EdgeInsets.zero,
-                  tooltip: 'Mark complete',
-                  icon: const Icon(
-                    Icons.radio_button_unchecked,
-                    size: 18,
-                    color: NotelColors.textSecondary,
-                  ),
+              IconButton(
+                onPressed: busy ? null : onToggle,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 48,
+                  minHeight: 48,
+                ),
+                tooltip: 'Mark complete',
+                icon: const Icon(
+                  Icons.radio_button_unchecked,
+                  size: 18,
+                  color: NotelColors.textSecondary,
                 ),
               ),
               const SizedBox(width: 6),
@@ -762,37 +763,58 @@ class _PlanItemRow extends StatelessWidget {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Round 49 (audit H3): the hit area is 48dp, but the
+                  // tinted disc stays the original 32dp visual — so the
+                  // disc is painted behind a transparent IconButton
+                  // instead of as the button's own background (which
+                  // would have grown to 48dp with the button).
                   SizedBox(
-                    width: 32,
-                    height: 32,
-                    child: IconButton(
-                      onPressed:
-                          busy ? null : () => onMedAction(DoseStatus.taken),
-                      padding: EdgeInsets.zero,
-                      tooltip: 'Take Medication',
-                      style: IconButton.styleFrom(
-                        backgroundColor:
-                            NotelColors.primary.withValues(alpha: 0.15),
-                        foregroundColor: NotelColors.primary,
-                      ),
-                      icon: const Icon(Icons.check, size: 16),
+                    width: 48,
+                    height: 48,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color:
+                                NotelColors.primary.withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: busy
+                              ? null
+                              : () => onMedAction(DoseStatus.taken),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 48,
+                            minHeight: 48,
+                          ),
+                          tooltip: 'Take Medication',
+                          style: IconButton.styleFrom(
+                            foregroundColor: NotelColors.primary,
+                          ),
+                          icon: const Icon(Icons.check, size: 16),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 6),
-                  SizedBox(
-                    width: 32,
-                    height: 32,
-                    child: IconButton(
-                      onPressed: busy
-                          ? null
-                          : () => onMedAction(DoseStatus.skipped),
-                      padding: EdgeInsets.zero,
-                      tooltip: 'Skip Medication',
-                      icon: const Icon(
-                        Icons.block,
-                        size: 16,
-                        color: NotelColors.textSecondary,
-                      ),
+                  IconButton(
+                    onPressed:
+                        busy ? null : () => onMedAction(DoseStatus.skipped),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: 48,
+                      minHeight: 48,
+                    ),
+                    tooltip: 'Skip Medication',
+                    icon: const Icon(
+                      Icons.block,
+                      size: 16,
+                      color: NotelColors.textSecondary,
                     ),
                   ),
                 ],

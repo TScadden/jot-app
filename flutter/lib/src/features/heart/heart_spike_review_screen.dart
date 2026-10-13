@@ -122,7 +122,7 @@ class _HeartSpikeReviewScreenState extends State<HeartSpikeReviewScreen> {
                   '$count Significant Spikes Detected',
                   style: const TextStyle(
                     color: NotelColors.textPrimary,
-                    fontSize: 17,
+                    fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
                 ),

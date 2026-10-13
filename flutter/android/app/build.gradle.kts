@@ -50,6 +50,15 @@ android {
         release {
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            // Round 52: explicit R8 keep rules for the home-screen
+            // widget receiver + home_widget classes (see the file —
+            // a silently renamed manifest-facing class is the R51
+            // regression class). Rules only; minify/shrink settings
+            // are unchanged from the Flutter defaults.
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 }
