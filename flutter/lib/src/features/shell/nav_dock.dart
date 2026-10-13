@@ -9,7 +9,7 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// `MainActivity.kt` (~line 651):
 /// - Bottom-center, full width, 16dp horizontal padding,
 ///   12dp bottom padding + system nav-bar inset.
-/// - Height 56dp (nav labels off — matches the founder's phone).
+/// - Height 56dp with labels off (66dp with labels on — Round 30).
 /// - 20dp rounded rect, `NotelSurface` @ 94% (the native `liquidGlass`
 ///   is a solid tile now, not a blur), 1dp `NotelPrimary` @ 18% border.
 /// - Row `SpaceEvenly`, 4dp horizontal padding; five weight-1 slots:
@@ -44,7 +44,22 @@ class NavDock extends StatefulWidget {
   final DockTab selected;
   final ValueChanged<DockTab> onSelect;
 
-  const NavDock({super.key, required this.selected, required this.onSelect});
+  /// Round 30 — the Settings "Show Navigation Bar Labels" preference,
+  /// wired for real. Native (MainActivity.kt:657, NavIcon :1005-1043):
+  /// labels ON grows the dock 56dp → 66dp and each side slot renders
+  /// its label under the icon (10sp, primary + bold when selected,
+  /// text-secondary + medium otherwise, 2dp gap). The center quick-log
+  /// button never carries a label in native. Defaults to false so
+  /// existing direct usages keep the Round 9 geometry; MainShell
+  /// passes the stored preference.
+  final bool showLabels;
+
+  const NavDock({
+    super.key,
+    required this.selected,
+    required this.onSelect,
+    this.showLabels = false,
+  });
 
   @override
   State<NavDock> createState() => _NavDockState();
@@ -107,6 +122,8 @@ class _NavDockState extends State<NavDock>
   Widget build(BuildContext context) {
     // Native: bottom 12dp + navigationBarsPadding().
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+    // Native MainActivity.kt:657 — labels on: 66dp dock, off: 56dp.
+    final dockHeight = widget.showLabels ? 66.0 : 56.0;
     return Padding(
       padding: EdgeInsets.only(
         left: 16,
@@ -126,7 +143,7 @@ class _NavDockState extends State<NavDock>
           ),
         ),
         child: Container(
-          height: 56,
+          height: dockHeight,
           padding: const EdgeInsets.symmetric(horizontal: 4),
           child: LayoutBuilder(
             builder: (context, constraints) {
@@ -143,7 +160,7 @@ class _NavDockState extends State<NavDock>
                           (slotWidth - pillWidth) / 2;
                       return Positioned(
                         left: left,
-                        top: (56 - pillHeight) / 2,
+                        top: (dockHeight - pillHeight) / 2,
                         child: Container(
                           key: const ValueKey('dock_selection_pill'),
                           width: pillWidth,
@@ -163,12 +180,16 @@ class _NavDockState extends State<NavDock>
             _DockIcon(
               icon: Icons.home,
               semanticLabel: 'Home',
+              label: 'Home',
+              showLabel: widget.showLabels,
               selected: widget.selected == DockTab.home,
               onTap: () => widget.onSelect(DockTab.home),
             ),
             _DockIcon(
               icon: Icons.assignment,
               semanticLabel: 'Tools',
+              label: 'Tools',
+              showLabel: widget.showLabels,
               selected: widget.selected == DockTab.tools,
               onTap: () => widget.onSelect(DockTab.tools),
             ),
@@ -225,12 +246,16 @@ class _NavDockState extends State<NavDock>
             _DockIcon(
               icon: Icons.favorite,
               semanticLabel: 'Heart',
+              label: 'Heart',
+              showLabel: widget.showLabels,
               selected: widget.selected == DockTab.heart,
               onTap: () => widget.onSelect(DockTab.heart),
             ),
             _DockIcon(
               icon: Icons.settings,
               semanticLabel: 'Settings',
+              label: 'Settings',
+              showLabel: widget.showLabels,
               selected: widget.selected == DockTab.settings,
               onTap: () => widget.onSelect(DockTab.settings),
             ),
@@ -247,22 +272,31 @@ class _NavDockState extends State<NavDock>
 }
 
 /// One side icon slot: weight-1, 16dp ink clip, 4dp vertical padding —
-/// mirrors the native `NavIcon` composable (labels off).
+/// mirrors the native `NavIcon` composable (MainActivity.kt:1005-1043).
+/// With [showLabel] the slot is a column: 22dp icon, 2dp gap, 10sp
+/// label (primary + bold when selected, text-secondary + medium
+/// otherwise) — native's exact values.
 class _DockIcon extends StatelessWidget {
   final IconData icon;
   final String semanticLabel;
+  final String label;
+  final bool showLabel;
   final bool selected;
   final VoidCallback onTap;
 
   const _DockIcon({
     required this.icon,
     required this.semanticLabel,
+    required this.label,
+    required this.showLabel,
     required this.selected,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final color =
+        selected ? NotelColors.primary : NotelColors.textSecondary;
     return Expanded(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
@@ -270,13 +304,29 @@ class _DockIcon extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           onTap: onTap,
           child: Center(
-            child: Icon(
-              icon,
-              size: 22,
-              semanticLabel: semanticLabel,
-              color: selected
-                  ? NotelColors.primary
-                  : NotelColors.textSecondary,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  size: 22,
+                  semanticLabel: semanticLabel,
+                  color: color,
+                ),
+                if (showLabel) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    label,
+                    maxLines: 1,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: color,
+                      fontWeight:
+                          selected ? FontWeight.bold : FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         ),

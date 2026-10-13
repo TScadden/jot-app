@@ -1938,14 +1938,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           },
           key: const ValueKey('nav_labels_toggle'),
         ),
-        const SizedBox(height: 8),
-        // Honest disclosure (R29b Juno MF-R29-1): the preference
-        // persists in SettingsStore, but nothing consumes it yet —
-        // the Lab dock (nav_dock.dart) renders labels off.
-        const Text(
-            'Your choice is saved on this device. The Flutter Lab dock does not show labels yet.',
-            style:
-                TextStyle(color: NotelColors.textSecondary, fontSize: 11)),
+        // Round 30: the dock consumes this preference now (MainShell
+        // passes it to NavDock, which renders native's labeled
+        // geometry) — the R29b honesty note is retired because the
+        // statement is true.
       ]),
       const SizedBox(height: 12),
       _card([

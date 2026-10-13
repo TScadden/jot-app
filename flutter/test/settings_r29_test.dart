@@ -354,12 +354,12 @@ void main() {
           find.byKey(const ValueKey('nav_labels_toggle')).findSwitch());
       await tester.pumpAndSettle();
       expect(map[SettingsStore.showNavLabelsKey], 'false');
-      // Juno MF-R29-1 disclosure: saved on device, Lab dock has no
-      // labels yet.
+      // Round 30: the Juno MF-R29-1 honesty note is retired — the
+      // dock renders labels now (see settings_r30_navlabels_test).
       expect(
           find.text(
               'Your choice is saved on this device. The Flutter Lab dock does not show labels yet.'),
-          findsOneWidget);
+          findsNothing);
     });
 
     testWidgets('theme choice persists to the device store',

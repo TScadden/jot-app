@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
+import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/heart/heart_screen.dart';
@@ -42,13 +43,17 @@ class MainShell extends StatefulWidget {
   /// returns to the welcome flow.
   final VoidCallback? onLogout;
 
+  /// Injectable for tests (Round 30 nav-labels preference source).
+  final SettingsStore? settingsStore;
+
   const MainShell(
       {super.key,
       this.email,
       this.weatherApi,
       this.locationService,
       this.healthConnectService,
-      this.onLogout});
+      this.onLogout,
+      this.settingsStore});
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -60,6 +65,29 @@ class _MainShellState extends State<MainShell> {
   // cannot disagree. (The founder-reported wrong highlight lived one
   // level down, in NavDock's pill controller bounds; see nav_dock.dart.)
   DockTab _tab = DockTab.home;
+
+  // Round 30 — the dock's label preference, read from the same
+  // device store the Settings toggle writes. Native collects the
+  // DataStore flow with initial = true (MainActivity.kt:137), so the
+  // first frame assumes the native default and the stored value
+  // lands a frame later. Re-read on every tab change so flipping the
+  // Settings toggle takes effect as soon as the user leaves Settings.
+  bool _showNavLabels = true;
+  late final SettingsStore _settingsStore;
+
+  @override
+  void initState() {
+    super.initState();
+    _settingsStore = widget.settingsStore ?? SettingsStore();
+    _refreshNavLabels();
+  }
+
+  Future<void> _refreshNavLabels() async {
+    final v = await _settingsStore.getShowNavLabels();
+    if (mounted && v != _showNavLabels) {
+      setState(() => _showNavLabels = v);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -97,8 +125,10 @@ class _MainShellState extends State<MainShell> {
           bottom: 0,
           child: NavDock(
             selected: _tab,
+            showLabels: _showNavLabels,
             onSelect: (tab) {
               if (tab != _tab) setState(() => _tab = tab);
+              _refreshNavLabels();
             },
           ),
         ),
