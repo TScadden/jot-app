@@ -69,7 +69,7 @@ void main() {
     test('target tomorrow at midnight → 1 day until', () {
       final c = _counter(target: DateTime(2026, 10, 14));
       expect(c.calendarDayDiff(now: now), -1);
-      expect(c.daysLabel(now: now), '1 days until');
+      expect(c.daysLabel(now: now), '1 day until');
       expect(c.todayDisplay(now: now), (days: 1, up: false));
     });
 
@@ -78,7 +78,7 @@ void main() {
       // 01:00) = 23h by 24h and read 0. Calendar days read 1.
       final c = _counter(target: DateTime(2026, 10, 12, 1, 0));
       expect(c.calendarDayDiff(now: now), 1);
-      expect(c.daysLabel(now: now), '1 days until');
+      expect(c.daysLabel(now: now), '1 day until');
       // Native Today clamps a past non-autoUp counter to 0.
       expect(c.todayDisplay(now: now), (days: 0, up: false));
     });
@@ -94,13 +94,13 @@ void main() {
       final justBefore = DateTime(2026, 10, 12, 23, 59);
       final c = _counter(target: DateTime(2026, 10, 13, 0, 1));
       expect(c.calendarDayDiff(now: justBefore), -1);
-      expect(c.daysLabel(now: justBefore), '1 days until');
+      expect(c.daysLabel(now: justBefore), '1 day until');
     });
 
     test('autoUp flips to since once the target day has passed', () {
       final c = _counter(target: DateTime(2026, 10, 12, 23, 59), autoUp: true);
       expect(c.countsUp(now: now), isTrue);
-      expect(c.daysLabel(now: now), '1 days since');
+      expect(c.daysLabel(now: now), '1 day since');
       expect(c.todayDisplay(now: now), (days: 1, up: true));
     });
 

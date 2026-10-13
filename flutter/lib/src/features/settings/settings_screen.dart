@@ -2592,61 +2592,93 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
       const SizedBox(height: 16),
-      _card([
-        if (counters.isEmpty)
+      // Round 37 — visual polish (presentation only): one standard
+      // _card per section instead of a single loose card; the muted
+      // explainer is a page footer under the last section. Every
+      // action keeps its exact pre-round behavior.
+      if (counters.isEmpty)
+        _card([
           const Text('No counters yet.',
               style:
                   TextStyle(color: NotelColors.textSecondary, fontSize: 13))
-        else ...[
-          ...active.map((c) => _counterRow(c, archived: false)),
-          if (archived.isNotEmpty) ...[
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text('ARCHIVED',
-                  style: TextStyle(
-                      color: NotelColors.textSecondary,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w900)),
-            ),
-            ...archived.map((c) => _counterRow(c, archived: true)),
-          ],
-        ],
-        const SizedBox(height: 12),
-        const Text(
+        ])
+      else if (active.isNotEmpty)
+        _counterCard(active, archived: false),
+      if (archived.isNotEmpty) ...[
+        const SizedBox(height: 16),
+        _sectionLabel('ARCHIVED'),
+        _counterCard(archived, archived: true),
+      ],
+      if (history.isNotEmpty) ...[
+        const SizedBox(height: 16),
+        _sectionLabel('PAST COUNTERS'),
+        _card(_pastCounterRows(history),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 8)),
+      ],
+      const SizedBox(height: 12),
+      const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 4),
+        child: Text(
             'Track important upcoming or past events. All active counters will show on the main screen and sync with the AI.',
             style:
                 TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
-        if (history.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          const Text('Past Counters:',
-              style: TextStyle(
-                  color: NotelColors.textSecondary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold)),
-          ...history.map((h) {
-            final ended = h['endedAt'];
-            final ms = ended is num
-                ? ended.toInt()
-                : (ended is String ? int.tryParse(ended) ?? 0 : 0);
-            final date = DateTime.fromMillisecondsSinceEpoch(ms);
-            const months = [
-              'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-              'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-            ];
-            final label =
-                '${months[date.month - 1]} ${date.day.toString().padLeft(2, '0')}, ${date.year}';
-            return Text('${h['name'] ?? ''} (Ended: $label)',
-                style: const TextStyle(
-                    color: NotelColors.textSecondary, fontSize: 11));
-          }),
-        ],
-      ]),
+      ),
     ];
   }
 
+  /// One section's counters in the standard card surface (same
+  /// surface color / radius / padding family as every Settings
+  /// card), rows separated by the standard divider — the menu-card
+  /// rhythm from Rounds 29–30.
+  Widget _counterCard(List<EventCounterItem> list,
+      {required bool archived}) {
+    final children = <Widget>[];
+    for (var i = 0; i < list.length; i++) {
+      if (i > 0) {
+        children.add(const Divider(color: NotelColors.divider, height: 1));
+      }
+      children.add(_counterRow(list[i], archived: archived));
+    }
+    return _card(children,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8));
+  }
+
+  List<Widget> _pastCounterRows(List<Map<String, dynamic>> history) {
+    final rows = <Widget>[];
+    for (var i = 0; i < history.length; i++) {
+      if (i > 0) {
+        rows.add(const Divider(color: NotelColors.divider, height: 1));
+      }
+      final h = history[i];
+      final ended = h['endedAt'];
+      final ms = ended is num
+          ? ended.toInt()
+          : (ended is String ? int.tryParse(ended) ?? 0 : 0);
+      final date = DateTime.fromMillisecondsSinceEpoch(ms);
+      const months = [
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      ];
+      final label =
+          '${months[date.month - 1]} ${date.day.toString().padLeft(2, '0')}, ${date.year}';
+      rows.add(Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Text('${h['name'] ?? ''} (Ended: $label)',
+            style: const TextStyle(
+                color: NotelColors.textSecondary, fontSize: 11)),
+      ));
+    }
+    return rows;
+  }
+
   Widget _counterRow(EventCounterItem c, {required bool archived}) {
+    // Archived rows recede: name and day label both render in the
+    // muted secondary tone at the smaller sizes. Active rows stay
+    // full strength with the Tabs-purple day label.
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      key: ValueKey('counter_row_${c.id}'),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
           Expanded(
@@ -2655,10 +2687,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: [
                 Text(c.name,
                     style: TextStyle(
-                        color: NotelColors.textPrimary,
+                        color: archived
+                            ? NotelColors.textSecondary
+                            : NotelColors.textPrimary,
                         fontWeight:
                             archived ? FontWeight.w600 : FontWeight.bold,
                         fontSize: archived ? 12 : 13)),
+                const SizedBox(height: 2),
                 Text(c.daysLabel(),
                     style: TextStyle(
                         color: archived
@@ -2668,7 +2703,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ),
           ),
+          const SizedBox(width: 8),
+          // Right rail: the same three actions in the same order,
+          // each on an explicit 48dp touch target with a tooltip
+          // (the tooltip doubles as the semantics label).
           IconButton(
+            key: ValueKey('counter_archive_${c.id}'),
+            tooltip: archived ? 'Unarchive counter' : 'Archive counter',
+            constraints:
+                const BoxConstraints(minWidth: 48, minHeight: 48),
             icon: Icon(archived ? Icons.unarchive : Icons.archive,
                 size: 20, color: NotelColors.textSecondary),
             onPressed: () async {
@@ -2681,11 +2724,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
             },
           ),
           IconButton(
+            key: ValueKey('counter_edit_${c.id}'),
+            tooltip: 'Edit counter',
+            constraints:
+                const BoxConstraints(minWidth: 48, minHeight: 48),
             icon: const Icon(Icons.edit,
                 size: 20, color: NotelColors.textSecondary),
             onPressed: () => _showCounterDialog(c),
           ),
           IconButton(
+            key: ValueKey('counter_end_${c.id}'),
+            tooltip: 'End counter',
+            constraints:
+                const BoxConstraints(minWidth: 48, minHeight: 48),
             icon: const Icon(Icons.stop_circle,
                 size: 20, color: NotelColors.textSecondary),
             onPressed: () async {

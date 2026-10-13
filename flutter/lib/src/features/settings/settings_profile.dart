@@ -343,10 +343,17 @@ class EventCounterItem {
   /// Native label (SettingsScreen.kt:1355-1357): whole days between
   /// local midnight today and the target, "since" when counting up
   /// (explicitly or via autoUp once the day has arrived).
+  ///
+  /// Round 37: singular/plural — exactly one day reads "1 day",
+  /// every other count reads "N days". This is THE shared day-label
+  /// formatter: the Settings Event Counters rows render it directly
+  /// and Home's rotator shows the same [calendarDayDiff] /
+  /// [todayDisplay] numbers, so the grammar lives only here.
   String daysLabel({DateTime? now}) {
     final days = calendarDayDiff(now: now).abs();
     final up = countsUp(now: now);
-    return '$days days ${up ? 'since' : 'until'}';
+    final unit = days == 1 ? 'day' : 'days';
+    return '$days $unit ${up ? 'since' : 'until'}';
   }
 }
 
