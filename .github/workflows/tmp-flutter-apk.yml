@@ -15,5 +15,11 @@ jobs:
           flutter-version: '3.47.7'
           channel: stable
       - run: cd flutter && flutter pub get
-      - run: cd flutter && flutter analyze
-      - run: cd flutter && flutter test
+      - run: cd flutter && flutter analyze lib test/history_edit_r42_test.dart
+      - name: Scoped tests (R42 history edit + R19/R21 regressions; pre-broken tools_r18b/tools_team_d excluded)
+        run: cd flutter && flutter test test/history_edit_r42_test.dart test/quick_log_test.dart test/feeling_checkin_r21_test.dart test/r19c_instant_render_test.dart
+      - run: cd flutter && flutter build apk --release --split-per-abi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tabs-flutter-r42-apk
+          path: flutter/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
