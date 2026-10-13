@@ -309,6 +309,23 @@ class TabsBackend {
     return out;
   }
 
+  /// Round 35 — habit check-off write, mirroring native
+  /// `HabitRepository.toggleHabitLog` → `POST /api/habits/log` with
+  /// `LogHabitRequest{habit_id, completed_date, is_completed}`
+  /// (JotApi.kt:427-431, 715-716). True on HTTP 200. Used by the
+  /// Home Today Summary plan rows (native `TodayViewModel.toggleHabit`).
+  Future<bool> logHabit({
+    required String habitId,
+    required String date,
+    required bool completed,
+  }) {
+    return _postJson('/api/habits/log', {
+      'habit_id': habitId,
+      'completed_date': date,
+      'is_completed': completed,
+    });
+  }
+
   /// Round 18 — friends list from `GET /api/friends/list`.
   Future<List<FriendDto>> fetchFriendsList() async {
     final body = await _getJson('/api/friends/list');

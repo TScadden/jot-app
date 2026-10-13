@@ -91,23 +91,36 @@ class BpRecord {
   }
 }
 
-/// Habit DTO — mirrors native `HabitDtoModel` (id, title, logs of date
-/// strings; other fields ignored).
+/// Habit DTO — mirrors native `HabitDtoModel` (id, title, target_time,
+/// logs of date strings; other fields ignored).
 class HabitDto {
   final String id;
   final String title;
   final List<String> logs; // "YYYY-MM-DD" entries
 
-  const HabitDto({required this.id, required this.title, required this.logs});
+  /// Native `HabitDtoModel.target_time` — the plan row's time label.
+  /// Native defaults a missing/null value to "Anytime" (the DTO's own
+  /// default); the Today Summary port (round 35) needs it for the
+  /// plan item's timeDisplay + overdue rule.
+  final String targetTime;
+
+  const HabitDto({
+    required this.id,
+    required this.title,
+    required this.logs,
+    this.targetTime = 'Anytime',
+  });
 
   factory HabitDto.fromJson(Map<String, dynamic> map) {
     final logsRaw = map['logs'];
+    final target = map['target_time']?.toString();
     return HabitDto(
       id: map['id']?.toString() ?? '',
       title: map['title']?.toString() ?? '',
       logs: logsRaw is List
           ? logsRaw.map((e) => e.toString()).toList()
           : const [],
+      targetTime: target ?? 'Anytime',
     );
   }
 }
