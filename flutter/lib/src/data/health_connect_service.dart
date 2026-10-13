@@ -326,6 +326,122 @@ class HealthConnectService {
     }
   }
 
+  // ── Round 48: Key Metrics reads + range reads + CSV export ──────────
+
+  /// Respiratory rate (breaths/min): native lookback rule — best
+  /// record in the 30 days ending on [dateStr]. Null when none.
+  Future<double?> readRespiratoryRate(String dateStr) =>
+      _readDouble('readRespiratoryRate', {'dateStr': dateStr});
+
+  /// Blood oxygen (%): same 30-day lookback + best record; the bridge
+  /// already scales fraction values (≤ 1.0) to percent, native-style.
+  /// Null when none.
+  Future<double?> readOxygenSaturation(String dateStr) =>
+      _readDouble('readOxygenSaturation', {'dateStr': dateStr});
+
+  /// HRV RMSSD (ms) for the day: average of the day's highest-priority
+  /// tier (native `readHeartRateVariability` daily rule). Null when
+  /// none.
+  Future<double?> readHrvRmssd(String dateStr) =>
+      _readDouble('readHrvRmssd', {'dateStr': dateStr});
+
+  /// Per-day sleep totals `[{date, mins, deep}]` over the last [days]
+  /// days (bridge range read, native `readHistoricalSleepWithDeep`).
+  /// Raw values pass through — callers apply the founder zero rule.
+  /// Empty when unreadable.
+  Future<List<({String date, int mins, int deep})>> readSleepHistory(
+      int days) async {
+    try {
+      final raw = await _channel
+          .invokeMethod<List>('readSleepHistory', {'days': days});
+      final out = <({String date, int mins, int deep})>[];
+      for (final item in raw ?? const []) {
+        if (item is Map) {
+          final d = item['date'];
+          final m = item['mins'];
+          final deep = item['deep'];
+          if (d is String && m is num) {
+            out.add((
+              date: d,
+              mins: m.toInt(),
+              deep: deep is num ? deep.toInt() : 0,
+            ));
+          }
+        }
+      }
+      return out;
+    } on PlatformException catch (e) {
+      lastReadErrorCode = e.code;
+      return const [];
+    } on MissingPluginException {
+      lastReadErrorCode = 'NO_CHANNEL';
+      return const [];
+    }
+  }
+
+  /// Per-day HR spike counts `[{date, count}]` over the last [days]
+  /// days (bridge range read, native spike rule). A count of 0 is
+  /// REAL (a sampled day with no spikes) and is kept. Empty when
+  /// unreadable.
+  Future<List<({String date, int count})>> readSpikeCounts(int days) async {
+    try {
+      final raw =
+          await _channel.invokeMethod<List>('readSpikeCounts', {'days': days});
+      final out = <({String date, int count})>[];
+      for (final item in raw ?? const []) {
+        if (item is Map) {
+          final d = item['date'];
+          final c = item['count'];
+          if (d is String && c is num) out.add((date: d, count: c.toInt()));
+        }
+      }
+      return out;
+    } on PlatformException catch (e) {
+      lastReadErrorCode = e.code;
+      return const [];
+    } on MissingPluginException {
+      lastReadErrorCode = 'NO_CHANNEL';
+      return const [];
+    }
+  }
+
+  /// Round 48 — CSV export hand-off (native `exportMetricsCsvAsync`):
+  /// the bridge writes the file to Downloads and opens the share
+  /// sheet. True only when the share sheet was launched.
+  Future<bool> exportCsvFile({
+    required String fileName,
+    required String content,
+  }) async {
+    try {
+      return await _channel.invokeMethod<bool>(
+            'exportCsvFile',
+            {'fileName': fileName, 'content': content},
+          ) ??
+          false;
+    } on PlatformException catch (e) {
+      lastReadErrorCode = e.code;
+      return false;
+    } on MissingPluginException {
+      lastReadErrorCode = 'NO_CHANNEL';
+      return false;
+    }
+  }
+
+  Future<double?> _readDouble(String method, Map<String, Object> args) async {
+    try {
+      final v = await _channel.invokeMethod<dynamic>(method, args);
+      if (v is num) return v.toDouble();
+      if (v is String) return double.tryParse(v);
+      return null;
+    } on PlatformException catch (e) {
+      lastReadErrorCode = e.code;
+      return null;
+    } on MissingPluginException {
+      lastReadErrorCode = 'NO_CHANNEL';
+      return null;
+    }
+  }
+
   Future<int?> _readInt(String method, Map<String, Object> args) async {
     try {
       return await _channel.invokeMethod<int>(method, args);
