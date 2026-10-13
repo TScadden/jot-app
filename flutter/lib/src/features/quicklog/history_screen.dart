@@ -1043,48 +1043,58 @@ class _EntryDetailDialogState extends State<_EntryDetailDialog> {
                 ),
               ),
               const SizedBox(height: 8),
+              // Native LazyRow. A SingleChildScrollView+Row is used
+              // instead of a horizontal ListView: a viewport inside an
+              // AlertDialog breaks the dialog's intrinsic sizing.
               SizedBox(
                 height: 40,
-                child: ListView.separated(
+                child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
-                  itemCount: pickerCats.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 10),
-                  itemBuilder: (context, index) {
-                    final cat = pickerCats[index];
-                    final selected = cat.id == _entry.categoryId;
-                    final color = cat.color;
-                    return GestureDetector(
-                      onTap: _saving ? null : () => _changeCategory(cat),
-                      child: Container(
-                        height: 40,
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 14),
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(10),
-                          color: selected
-                              ? color
-                              : NotelColors.surfaceHigh,
-                          border: Border.all(
-                            color: selected
-                                ? color
-                                : color.withValues(alpha: 0.35),
-                          ),
-                        ),
-                        child: Text(
-                          cat.name.toUpperCase(),
-                          style: TextStyle(
-                            color: selected
-                                ? Colors.white
-                                : NotelColors.textSecondary,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 0.6,
-                          ),
-                        ),
-                      ),
-                    );
-                  },
+                  child: Row(
+                    children: [
+                      for (var i = 0; i < pickerCats.length; i++) ...[
+                        if (i > 0) const SizedBox(width: 10),
+                        Builder(builder: (context) {
+                          final cat = pickerCats[i];
+                          final selected = cat.id == _entry.categoryId;
+                          final color = cat.color;
+                          return GestureDetector(
+                            onTap: _saving
+                                ? null
+                                : () => _changeCategory(cat),
+                            child: Container(
+                              height: 40,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14),
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(10),
+                                color: selected
+                                    ? color
+                                    : NotelColors.surfaceHigh,
+                                border: Border.all(
+                                  color: selected
+                                      ? color
+                                      : color.withValues(alpha: 0.35),
+                                ),
+                              ),
+                              child: Text(
+                                cat.name.toUpperCase(),
+                                style: TextStyle(
+                                  color: selected
+                                      ? Colors.white
+                                      : NotelColors.textSecondary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.6,
+                                ),
+                              ),
+                            ),
+                          );
+                        }),
+                      ],
+                    ],
+                  ),
                 ),
               ),
             ],
