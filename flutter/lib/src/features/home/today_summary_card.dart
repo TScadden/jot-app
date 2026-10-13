@@ -1068,7 +1068,7 @@ class _TrendRow extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: NotelColors.primary,
+                color: NotelColors.primaryText,
               ),
             ),
           ],

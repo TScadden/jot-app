@@ -230,7 +230,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.bold,
-                color: NotelColors.primary,
+                color: NotelColors.primaryText,
               ),
             ),
           ),
@@ -380,7 +380,7 @@ class _MetricSelectorState extends State<_MetricSelector> {
                                 ? FontWeight.bold
                                 : FontWeight.normal,
                             color: isCurrent
-                                ? NotelColors.primary
+                                ? NotelColors.primaryText
                                 : NotelColors.textPrimary,
                           ),
                         ),
@@ -422,7 +422,7 @@ class _MetricSelectorState extends State<_MetricSelector> {
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: NotelColors.primary,
+                  color: NotelColors.primaryText,
                 ),
               ),
               const Icon(
@@ -574,7 +574,7 @@ class _SnapshotChartPainter extends CustomPainter {
           style: TextStyle(
             fontSize: 11,
             fontWeight: isSel ? FontWeight.bold : FontWeight.w500,
-            color: isSel ? NotelColors.primary : NotelColors.textSecondary,
+            color: isSel ? NotelColors.primaryText : NotelColors.textSecondary,
           ),
         ),
         textDirection: TextDirection.ltr,
