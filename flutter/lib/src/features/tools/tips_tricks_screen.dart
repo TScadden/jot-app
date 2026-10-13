@@ -68,7 +68,8 @@ class TipsCacheStore {
   // behaves exactly like the existing IO-failure path below.
   Future<List<String>> loadTopics() async {
     try {
-      final raw = await _read(topicsKey).timeout(const Duration(seconds: 3));
+      final raw =
+          await _read(topicsKey).timeout(const Duration(seconds: 3));
       if (raw == null || raw.trim().isEmpty) return const [];
       return decodeCachedTopics(raw);
     } catch (_) {
