@@ -1555,10 +1555,9 @@ void main() {
     Future<void> pumpUntilDust(WidgetTester tester) async {
       for (var i = 0; i < 10; i++) {
         await tester.pump(const Duration(milliseconds: 100));
-        if (find
-            .byKey(const Key('dust-particles'))
-            .evaluate()
-            .isNotEmpty) return;
+        if (find.byKey(const Key('dust-particles')).evaluate().isNotEmpty) {
+          return;
+        }
       }
     }
 
