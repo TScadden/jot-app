@@ -295,7 +295,10 @@ class _WeatherSheetState extends State<_WeatherSheet> {
             onPressed: _load,
             style: ElevatedButton.styleFrom(
               backgroundColor: NotelColors.primary,
-              foregroundColor: Colors.white,
+              // Round 49 (audit H17/S1): white on primary = 3.80:1 and
+              // this w500 label is not the large-bold founder
+              // exception; the onPrimary ink measures 5.21:1.
+              foregroundColor: NotelColors.onPrimary,
             ),
             child: const Text(
               'Try again',
@@ -511,7 +514,9 @@ class _LocationRationaleCard extends StatelessWidget {
                   onPressed: onShareLocation,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: NotelColors.primary,
-                    foregroundColor: Colors.white,
+                    // Round 49 (audit H17/S1): as above — onPrimary ink
+                    // (5.21:1) in place of white (3.80:1).
+                    foregroundColor: NotelColors.onPrimary,
                   ),
                   child: const Text(
                     'Share location',
@@ -624,7 +629,9 @@ class _WeatherInfoRow extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12.0),
+        // Round 49 (audit H11): v12 padding made the row's tap height
+        // ≈40-44dp; v16 brings it to ≥48dp. Content is unchanged.
+        padding: const EdgeInsets.symmetric(vertical: 16.0),
         child: Row(
           children: [
             Text(
