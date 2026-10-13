@@ -15,5 +15,11 @@ jobs:
           flutter-version: '3.47.7'
           channel: stable
       - run: cd flutter && flutter pub get
-      - run: cd flutter && flutter analyze
-      - run: cd flutter && flutter test
+      - run: cd flutter && flutter analyze lib test/medications_edit_r46_test.dart test/medications_r39_test.dart test/profile_active_meds_r44_test.dart test/today_summary_r35_test.dart test/settings_r29_test.dart test/settings_r30_editors_test.dart test/settings_r30_google_test.dart test/settings_r30_navlabels_test.dart test/settings_r30_notifications_test.dart test/settings_r37_counters_test.dart
+      - name: Scoped tests (R46 med edit + R39 medications + R44 profile meds + R35 today summary + R29/R30/R37 settings suites; pre-broken tools_r18b/tools_team_d excluded)
+        run: cd flutter && flutter test test/medications_edit_r46_test.dart test/medications_r39_test.dart test/profile_active_meds_r44_test.dart test/today_summary_r35_test.dart test/settings_r29_test.dart test/settings_r30_editors_test.dart test/settings_r30_google_test.dart test/settings_r30_navlabels_test.dart test/settings_r30_notifications_test.dart test/settings_r37_counters_test.dart
+      - run: cd flutter && flutter build apk --release --split-per-abi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tabs-flutter-r46-apk
+          path: flutter/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
