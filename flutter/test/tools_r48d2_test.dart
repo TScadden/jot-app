@@ -640,6 +640,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(backend.entryPosts, hasLength(1));
 
+      // Let the first status SnackBar finish and leave the queue:
+      // ScaffoldMessenger shows one at a time, so while it is up the
+      // second tap's status would stay queued past expectSnack's
+      // 800ms window even though the dedupe itself already happened.
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+
       // The fake made the posted entry stand (as the server
       // would); the second tap re-reads it and dedupes.
       await tester.tap(find.byKey(const ValueKey('took_med_at_0')));
