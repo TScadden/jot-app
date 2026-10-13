@@ -243,9 +243,9 @@ void main() {
       expect(row['categoryId'], 3);
       expect(row['chips'], '["Symptoms"]');
 
-      // Detail adopted the new text; closing it shows the list row
-      // updated in place (old body gone, no reload spinner).
-      expect(find.text('Edited note text'), findsOneWidget);
+      // Detail adopted the new text AND the list row behind it
+      // already updated in place (old body gone, no reload spinner).
+      expect(find.text('Edited note text'), findsWidgets);
       await tester.tap(find.text('Close'));
       await tester.pumpAndSettle();
       expect(find.text('Edited note text'), findsOneWidget);
