@@ -157,7 +157,7 @@ class TabsBackend {
       final refreshToken = await _sessionStore.readRefreshToken();
       if (refreshToken == null || refreshToken.trim().isEmpty) {
         // Native parity: no refresh token → reconnect required.
-        return _definitiveFailure();
+        return await _definitiveFailure();
       }
       final result = await _authApi.refreshSession(refreshToken);
       if (result is RefreshSuccess) {
@@ -171,7 +171,7 @@ class TabsBackend {
         return _RefreshSucceeded(result.token);
       }
       if (result is RefreshDefinitiveFailure) {
-        return _definitiveFailure();
+        return await _definitiveFailure();
       }
       return const _RefreshTemporary();
     } catch (_) {
@@ -576,6 +576,22 @@ class TabsBackend {
       'userContext': userContext,
       'knowledgeBase': '',
       'weatherContext': weatherContext,
+    });
+    final result = res?['result'];
+    if (result is! List) return null;
+    return result.map((c) => '$c').toList();
+  }
+
+  /// Round 32 — AI category generation for onboarding's setup step,
+  /// mirroring native `GeminiService.generateCategories`
+  /// (GeminiService.kt:65-95) → `POST /api/ai/generate-categories`
+  /// with `{"userContext": ...}` (JotApi.kt:616-617,
+  /// `GenerateCategoriesRequest`), returning the `result` name list.
+  /// Null on any failure — the caller falls back to native's default
+  /// category names, exactly as native does.
+  Future<List<String>?> generateCategories(String userContext) async {
+    final res = await postAi('/api/ai/generate-categories', {
+      'userContext': userContext,
     });
     final result = res?['result'];
     if (result is! List) return null;
