@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -1568,6 +1569,38 @@ void main() {
         }
       }
     }
+
+    testWidgets('PROBE dust path diagnostics', (tester) async {
+      await pumpMotionCard(tester, client: reminderClient(second: true));
+      final boundaries = find.byType(RepaintBoundary);
+      // ignore: avoid_print
+      print('PROBE boundaries=${boundaries.evaluate().length}');
+      await tester.runAsync(() async {
+        final ro = tester.renderObject(boundaries.first);
+        // ignore: avoid_print
+        print('PROBE ro=${ro.runtimeType} attached=${ro.attached}');
+        if (ro is RenderRepaintBoundary) {
+          final im = await ro.toImage(pixelRatio: 1.0);
+          // ignore: avoid_print
+          print('PROBE toImage=${im.width}x${im.height}');
+          final bd = await im.toByteData();
+          // ignore: avoid_print
+          print('PROBE byteData=${bd?.lengthInBytes}');
+        }
+      });
+      await tester.tap(find.byIcon(Icons.radio_button_unchecked).first);
+      for (var i = 0; i < 6; i++) {
+        await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 250)));
+        await tester.pump();
+        // ignore: avoid_print
+        print('PROBE iter=$i slot='
+            '${find.byKey(const Key('dust-slot')).evaluate().length} '
+            'particles='
+            '${find.byKey(const Key('dust-particles')).evaluate().length} '
+            'salt=${find.text('Salt pills').evaluate().length}');
+      }
+    });
 
     testWidgets('check-off dusts: particle overlay appears, the '
         'item leaves the view, remaining rows stay and the section '
