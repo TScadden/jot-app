@@ -15,11 +15,5 @@ jobs:
           flutter-version: '3.47.7'
           channel: stable
       - run: cd flutter && flutter pub get
-      - run: cd flutter && flutter analyze lib test/tools_r47_test.dart test/test_helpers.dart test/tools_team_a_test.dart test/medications_edit_r46_test.dart test/medications_r39_test.dart test/profile_active_meds_r44_test.dart test/today_summary_r35_test.dart test/settings_r29_test.dart test/settings_r30_editors_test.dart test/settings_r30_google_test.dart test/settings_r30_navlabels_test.dart test/settings_r30_notifications_test.dart test/settings_r37_counters_test.dart
-      - name: Scoped tests (R47 tools edit + R46 med edit + R39 medications + R44 profile meds + R35 today summary + tools team A + R29/R30/R37 settings + R32 onboarding; pre-broken tools_r18b/tools_team_d excluded)
-        run: cd flutter && flutter test test/tools_r47_test.dart test/medications_edit_r46_test.dart test/medications_r39_test.dart test/profile_active_meds_r44_test.dart test/today_summary_r35_test.dart test/tools_team_a_test.dart test/settings_r29_test.dart test/settings_r30_editors_test.dart test/settings_r30_google_test.dart test/settings_r30_navlabels_test.dart test/settings_r30_notifications_test.dart test/settings_r37_counters_test.dart test/onboarding_r32_test.dart
-      - run: cd flutter && flutter build apk --release --split-per-abi
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tabs-flutter-r47b-apk
-          path: flutter/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+      - run: cd flutter && flutter analyze
+      - run: cd flutter && flutter test
