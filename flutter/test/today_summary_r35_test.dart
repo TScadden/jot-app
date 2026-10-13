@@ -1548,24 +1548,24 @@ void main() {
       });
     }
 
-    // Reaches the live dissolve. The snapshot chain
-    // (RepaintBoundary.toImage + toByteData) completes on the real
-    // event loop, which the fake-async test zone blocks — so bridge
-    // through runAsync twice (capture, then sampling), pumping a
-    // frame between, then step fake time until the particle
-    // overlay is up. Stops at first sighting: still mid-flight.
+    // Reaches the live dissolve. The snapshot chain has TWO
+    // real-async hops (RepaintBoundary.toImage, then the slot's
+    // toByteData sampling): each completion lands on the real
+    // event loop, which the fake-async zone blocks, and each
+    // handler continuation then needs a fake-zone pump to run.
+    // So interleave: real window (completion lands) → pump
+    // (continuation runs, next hop starts). Plain pump() calls
+    // don't advance the fake clock, so the capture's 500ms
+    // fake-timeout can't preempt the real capture here. Stops at
+    // first sighting of the particles: still mid-flight.
     Future<void> pumpUntilDust(WidgetTester tester) async {
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 700)));
-      await tester.pump();
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 300)));
-      await tester.pump();
-      for (var i = 0; i < 8; i++) {
+      for (var i = 0; i < 6; i++) {
+        await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 250)));
+        await tester.pump();
         if (find.byKey(const Key('dust-particles')).evaluate().isNotEmpty) {
           return;
         }
-        await tester.pump(const Duration(milliseconds: 100));
       }
     }
 
