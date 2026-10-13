@@ -871,7 +871,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
           filled: true,
           fillColor: NotelColors.surface,
           contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
             borderSide:
@@ -883,7 +883,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
           ),
           suffixIcon: _saving
               ? Padding(
-                  padding: const EdgeInsets.all(15),
+                  padding: const EdgeInsets.all(16),
                   child: SizedBox(
                     width: 18,
                     height: 18,
@@ -946,7 +946,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
       height: 48,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
         separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemCount: _categories.length + 1,
         itemBuilder: (context, index) {
@@ -956,28 +956,38 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
           final catColor = cat.color;
           final deletable = !(cat.id == 7 || cat.isDefault);
           return GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onTap: () => _selectCategory(cat),
             onLongPress:
                 deletable ? () => _confirmDeleteCategory(cat) : null,
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                color: selected ? catColor : NotelColors.surface,
-                border: Border.all(
-                  color: selected
-                      ? catColor
-                      : catColor.withValues(alpha: 0.35),
-                ),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                cat.name,
-                style: TextStyle(
-                  color: selected ? _chipInk : NotelColors.textSecondary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
+            // R49 Q1: the full 48dp row height is the hit area
+            // (was a 36dp chip inside v6 list padding).
+            child: SizedBox(
+              height: 48,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    color: selected ? catColor : NotelColors.surface,
+                    border: Border.all(
+                      color: selected
+                          ? catColor
+                          : catColor.withValues(alpha: 0.35),
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    cat.name,
+                    style: TextStyle(
+                      color: selected
+                          ? _chipInk
+                          : NotelColors.textSecondary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -1014,7 +1024,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
 
   /// Label + chip-shaped skeleton row for recent suggestions (cold
   /// start, first refresh pending). Mirrors the real section's label
-  /// position and 44dp chip row.
+  /// position and 48dp chip row.
   Widget _buildRecentSuggestionsSkeleton() {
     return const Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1027,11 +1037,11 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
         ),
         SkeletonGroup(
           child: SizedBox(
-            height: 44,
+            height: 48,
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               physics: NeverScrollableScrollPhysics(),
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               child: Row(
                 children: [
                   SkeletonBox(width: 120, height: 36, radius: 12),
@@ -1050,30 +1060,38 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
 
   Widget _buildAddCategoryBox() {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: _addCategory,
-      child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          color: NotelColors.surface,
-          border: Border.all(
-              color: NotelColors.primary.withValues(alpha: 0.25)),
-        ),
-        child: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.add, size: 16, color: NotelColors.primary),
-            SizedBox(width: 4),
-            Text(
-              'Add',
-              style: TextStyle(
-                color: NotelColors.textSecondary,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-              ),
+      // R49 Q1: same 48dp hit area as the category chips it sits
+      // beside (visual box unchanged, centered in the row).
+      child: SizedBox(
+        height: 48,
+        child: Center(
+          child: Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              color: NotelColors.surface,
+              border: Border.all(
+                  color: NotelColors.primary.withValues(alpha: 0.25)),
             ),
-          ],
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.add, size: 16, color: NotelColors.primary),
+                SizedBox(width: 4),
+                Text(
+                  'Add',
+                  style: TextStyle(
+                    color: NotelColors.textSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -1095,11 +1113,12 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
           ),
         ),
         SizedBox(
-          height: 44,
+          // R49 Q2: row 44→48 so the chips' hit area reaches 48dp
+          // (was 36dp); visual chip unchanged, centered in the row.
+          height: 48,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             separatorBuilder: (_, _) => const SizedBox(width: 8),
             itemCount: _recentSuggestions.length,
             itemBuilder: (context, index) {
@@ -1108,32 +1127,38 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
                   ? entry.body.substring(0, 25)
                   : entry.body;
               return GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onTap: () => _logFromRecent(entry),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    color: NotelColors.surfaceHigh,
-                    border: Border.all(
-                        color: NotelColors.surfaceHigh
-                            .withValues(alpha: 0.5)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.history,
-                          size: 14,
-                          color: NotelColors.textSecondary),
-                      const SizedBox(width: 6),
-                      Text(
-                        label,
-                        style: const TextStyle(
-                          color: NotelColors.textPrimary,
-                          fontSize: 12,
-                        ),
+                child: SizedBox(
+                  height: 48,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        color: NotelColors.surfaceHigh,
+                        border: Border.all(
+                            color: NotelColors.surfaceHigh
+                                .withValues(alpha: 0.5)),
                       ),
-                    ],
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.history,
+                              size: 14,
+                              color: NotelColors.textSecondary),
+                          const SizedBox(width: 6),
+                          Text(
+                            label,
+                            style: const TextStyle(
+                              color: NotelColors.textPrimary,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               );
@@ -1296,6 +1321,9 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
     return GestureDetector(
       onTap: () => _toggleChip(chip),
       child: Container(
+        // R49 Q4: min height 48 (was ≈41 from v12 padding + 13sp).
+        constraints: const BoxConstraints(minHeight: 48),
+        alignment: Alignment.centerLeft,
         margin: const EdgeInsets.only(right: 10),
         padding:
             const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -1313,7 +1341,9 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            color: selected ? Colors.white : NotelColors.textPrimary,
+            // R49 Q3/S1: selected ink is the in-file _chipInk
+            // precedent (5.21:1 on primary), not white (3.80:1).
+            color: selected ? _chipInk : NotelColors.textPrimary,
             fontSize: 13,
             fontWeight:
                 selected ? FontWeight.bold : FontWeight.normal,
@@ -1332,7 +1362,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
     if (!visible) return const SizedBox.shrink();
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
         color: NotelColors.surface,
@@ -1396,7 +1426,8 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
             _composedText(),
             style: const TextStyle(
               color: NotelColors.textPrimary,
-              fontSize: 16,
+              // R49 HI7: entry-body role is 15sp (History parity).
+              fontSize: 15,
               fontWeight: FontWeight.w500,
             ),
           ),

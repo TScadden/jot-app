@@ -13,6 +13,11 @@ import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
 
+/// Dark ink on a primary fill (native LegacyDarkChipInk) — the in-app
+/// passing precedent for text on Tabs purple: 5.21:1 vs white's 3.80:1
+/// (R49 audit S1/HE5).
+const _chipInk = Color(0xFF0A0A0E);
+
 /// Round 25 — the Heart tab, port of native `FitbitScreen.kt`
 /// (legacy filename; it IS the native Heart screen).
 ///
@@ -220,7 +225,7 @@ class _HeartScreenState extends State<HeartScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: NotelColors.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
           'Heart Rate Insights',
           style: TextStyle(
@@ -291,7 +296,7 @@ class _HeartScreenState extends State<HeartScreen> {
           'Heart',
           style: TextStyle(
             fontWeight: FontWeight.w900,
-            fontSize: 28,
+            fontSize: 22,
             color: NotelColors.textPrimary,
           ),
         ),
@@ -313,27 +318,32 @@ class _HeartScreenState extends State<HeartScreen> {
                   child: InkWell(
                     borderRadius: BorderRadius.circular(20),
                     onTap: _pickDate,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            heartDateLabel(_dateStr, _todayStr),
-                            style: const TextStyle(
-                              color: NotelColors.textPrimary,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
+                    // R49 HE2: hit area ≥48dp tall (was ≈30dp);
+                    // glyphs and pill padding unchanged.
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 48),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              heartDateLabel(_dateStr, _todayStr),
+                              style: const TextStyle(
+                                color: NotelColors.textPrimary,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(
-                            Icons.keyboard_arrow_down,
-                            color: NotelColors.textSecondary,
-                            size: 16,
-                          ),
-                        ],
+                            const SizedBox(width: 4),
+                            const Icon(
+                              Icons.keyboard_arrow_down,
+                              color: NotelColors.textSecondary,
+                              size: 16,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -415,7 +425,7 @@ class _HeartScreenState extends State<HeartScreen> {
                       height: 20,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: Colors.white,
+                        color: _chipInk,
                       ),
                     )
                   : const Padding(
@@ -423,7 +433,7 @@ class _HeartScreenState extends State<HeartScreen> {
                       child: Text(
                         'Link Health Connect',
                         style: TextStyle(
-                          color: Colors.white,
+                          color: _chipInk,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -632,10 +642,19 @@ class _HeartScreenState extends State<HeartScreen> {
                 ),
               ),
               const SizedBox(width: 6),
+              // R49 HE3: 48dp hit area around the 16dp glyph
+              // (was a bare 16dp target).
               GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onTap: _showHrInfo,
-                child: const Icon(Icons.info,
-                    size: 16, color: NotelColors.textSecondary),
+                child: const SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: Center(
+                    child: Icon(Icons.info,
+                        size: 16, color: NotelColors.textSecondary),
+                  ),
+                ),
               ),
             ],
           ),
@@ -964,8 +983,11 @@ class _GlassyCard extends StatelessWidget {
   }
 }
 
-/// Native GlassyButton (LiquidGlass.kt): radius 14, padding h24 v12,
+/// Native GlassyButton (LiquidGlass.kt): padding h24 v12,
 /// 1dp border of the container color @60%.
+/// R49 HE4/HE6: radius aligned to the screen's 16dp card family
+/// (was 14) and a 48dp minimum height (the Review-spikes instance
+/// measured ≈44dp).
 class _GlassyButton extends StatelessWidget {
   final Widget child;
   final Color color;
@@ -978,15 +1000,18 @@ class _GlassyButton extends StatelessWidget {
     return Material(
       color: color,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: color.withValues(alpha: 0.6)),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          child: child,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            child: child,
+          ),
         ),
       ),
     );
