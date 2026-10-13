@@ -54,6 +54,21 @@ export 'package:tabs_lab/src/data/medications.dart';
 /// pending), matching the Vera B3 discipline Habits and Reminders
 /// received in the Round 47 fix round.
 ///
+/// Round 48 fix (Vera F1/F2/F3/F7) — every profile write now
+/// follows the Lists/Notes/BP standard (see [_mutateDoc]):
+/// invalidate the sync-pull cache, re-pull the FRESHEST profile,
+/// re-resolve the target row in the fresh document
+/// ([MedicationDocument.resolveFreshEntry]), splice into the
+/// fresh raw rows, and push the whole blob — a med added
+/// server-side after this screen opened is never reverted by an
+/// archive/add/delete/edit push built from the load-time
+/// snapshot. A target that cannot be re-resolved unambiguously
+/// refuses: visible error, no push, never a claimed success.
+/// The dose-log take path aborts the same way when its entries
+/// pull actually failed (a success-distinguishing fetch), and
+/// its entries carry the dual-reader shape Body Info's impact
+/// engine gates on (see `data/medications.dart`).
+///
 /// Round 48D2 — the screen is COMPLETE (every action native
 /// offers on this screen is wired):
 /// - "Took Med" / "Took All Meds" dose logging: one log entry
@@ -138,22 +153,39 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
     }
   }
 
-  /// Archive/unarchive for real (Round 39): apply the shared op
-  /// to the document — targeting the exact entry instance this
-  /// screen rendered, by identity (Vera Finding 1) — update the
-  /// UI immediately, then push the whole splice-back-encoded blob
-  /// through `POST /api/sync/profile`. On success the cached pull
-  /// is invalidated; on failure a SnackBar says the change could
-  /// not be saved and the screen reloads from the server — the UI
-  /// never claims an unsaved state (Settings' `_pushProfile`
-  /// honesty pattern).
+  /// Archive/unarchive for real (Round 39): the shared op runs
+  /// inside [_mutateDoc] against the FRESHLY pulled document —
+  /// the rendered entry is re-resolved there
+  /// ([MedicationDocument.resolveFreshEntry]), never spliced
+  /// into the load-time snapshot (Vera F1).
   Future<void> _setArchived(MedicationEntry med, bool archive) async {
     if (_writing) return;
+    final hint = _rawIndexHint(med);
     final now = DateTime.now();
-    final updated = archive
-        ? _doc.archiveEntry(med, now: now)
-        : _doc.unarchiveEntry(med, now: now);
-    await _pushDoc(updated);
+    await _mutateDoc((fresh) {
+      final target = fresh.resolveFreshEntry(med, rawIndexHint: hint);
+      if (target == null) return null;
+      return archive
+          ? fresh.archiveEntry(target, now: now)
+          : fresh.unarchiveEntry(target, now: now);
+    });
+  }
+
+  /// The raw index [med] occupies in the CURRENT document, or
+  /// -1 when it is not there — the positional hint
+  /// [MedicationDocument.resolveFreshEntry] uses to re-resolve
+  /// the same rendered row in a fresh document.
+  int _rawIndexHint(MedicationEntry med) {
+    for (var i = 0; i < _doc.length; i++) {
+      if (identical(_doc.entryAt(i), med)) return i;
+    }
+    return -1;
+  }
+
+  void _showSaveError() {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text(
+            'Could not save that change. Check your connection and try again.')));
   }
 
   /// Round 46 — native edit: tap a card, edit name/dose/
@@ -168,25 +200,21 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
       builder: (_) => _MedicationEditDialog(med: med),
     );
     if (result == null || !mounted) return;
-    final updated = _doc.editEntry(
-      med,
-      name: result.name,
-      dose: result.dose,
-      frequency: result.frequency,
-      startDate: result.startDate,
-      endDate: result.endDate,
-      now: DateTime.now(),
-    );
-    if (identical(updated, _doc)) {
-      // The op refused (unresolvable/ambiguous target) — surface
-      // it instead of claiming a save that never happened.
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text(
-              'Could not save that change. Check your connection and try again.')));
-      return;
-    }
-    await _pushDoc(updated);
+    final hint = _rawIndexHint(med);
+    final now = DateTime.now();
+    await _mutateDoc((fresh) {
+      final target = fresh.resolveFreshEntry(med, rawIndexHint: hint);
+      if (target == null) return null;
+      return fresh.editEntry(
+        target,
+        name: result.name,
+        dose: result.dose,
+        frequency: result.frequency,
+        startDate: result.startDate,
+        endDate: result.endDate,
+        now: now,
+      );
+    });
   }
 
   /// Round 48D2 — "Took Med" (single) and "Took All Meds"
@@ -213,7 +241,18 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
       // pull so entries/categories reflect the server's latest
       // (a dose logged from Today Summary moments ago counts).
       _backend.invalidateSyncPull();
-      final entries = await _backend.fetchLogEntryDtos();
+      // Vera F2 (med half): the entries fetch must DISTINGUISH
+      // failure from a real empty log — the plain fetch flattens
+      // both to [], and computing max+1 ids / dedupe from a
+      // failed pull could post id 1 over an existing log or
+      // double-post a dose that already stands. A null here
+      // means the pull actually failed: abort with a visible
+      // error and post NOTHING, before any id/dedupe math.
+      final entries = await _backend.fetchLogEntryDtosOrNull();
+      if (entries == null) {
+        if (mounted) _showDoseError();
+        return;
+      }
       final categories = await _backend.fetchLogCategories();
       final toPost = buildMedTakeLogEntries(
         meds: meds,
@@ -276,15 +315,16 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
       builder: (_) => const _MedicationEditDialog.add(),
     );
     if (result == null || !mounted) return;
-    final updated = _doc.addEntry(
-      name: result.name,
-      dose: result.dose,
-      frequency: result.frequency,
-      startDate: result.startDate,
-      id: generateMedicationUuid(),
-      now: DateTime.now(),
-    );
-    await _pushDoc(updated);
+    final id = generateMedicationUuid();
+    final now = DateTime.now();
+    await _mutateDoc((fresh) => fresh.addEntry(
+          name: result.name,
+          dose: result.dose,
+          frequency: result.frequency,
+          startDate: result.startDate,
+          id: id,
+          now: now,
+        ));
   }
 
   /// Round 48D2 — archived-card permanent delete: native has
@@ -294,35 +334,68 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
   /// splice-back path, with the same honest failure + reload.
   Future<void> _deleteMedication(MedicationEntry med) async {
     if (_writing) return;
-    final updated = _doc.deleteEntry(med);
-    if (identical(updated, _doc)) {
-      // The op refused (unresolvable/ambiguous target) — surface
-      // it instead of claiming a delete that never happened.
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text(
-              'Could not save that change. Check your connection and try again.')));
-      return;
-    }
-    await _pushDoc(updated);
+    final hint = _rawIndexHint(med);
+    await _mutateDoc((fresh) {
+      final target = fresh.resolveFreshEntry(med, rawIndexHint: hint);
+      if (target == null) return null;
+      return fresh.deleteEntry(target);
+    });
   }
 
   /// Shared save path for archive/unarchive (R39), edit (R46),
-  /// and add/delete (R48D2):
-  /// swap the document in immediately, push the whole encoded
-  /// blob through `POST /api/sync/profile`, invalidate
-  /// the cached pull on success; on failure show the SnackBar and
-  /// reload from the server — the UI never claims an unsaved
-  /// state (Settings' `_pushProfile` honesty pattern).
+  /// and add/delete (R48D2) — Round 48 fix (Vera F1), the
+  /// Lists/Notes/BP standard (`lists_screen.dart`'s `_mutate`):
+  /// 1. invalidate the sync-pull cache and re-pull the FRESHEST
+  ///    profile — a failed pull is a visible error + reload, and
+  ///    nothing is pushed;
+  /// 2. [splice] runs against the FRESH document (its target
+  ///    re-resolved there by identity/unique match) and returns
+  ///    the document to push, or null / the fresh document itself
+  ///    when the target cannot be resolved unambiguously — the
+  ///    op then REFUSES: visible error, the fresh data is
+  ///    rendered, and nothing is pushed (Vera F7 — a refused op
+  ///    never reports success);
+  /// 3. swap the spliced document in, push the whole encoded
+  ///    blob through `POST /api/sync/profile`, and invalidate
+  ///    the cached pull on success; on push failure show the
+  ///    SnackBar and reload from the server — the UI never
+  ///    claims an unsaved state.
   ///
-  /// Round 48 — SERIALIZED (see [_writing]): at most one push
-  /// runs at a time, and the flag is held across the failure-path
-  /// reload so the reload can never race a push still in flight.
-  Future<void> _pushDoc(MedicationDocument updated) async {
+  /// SERIALIZED (see [_writing]): at most one mutation runs at
+  /// a time, and the flag is held across the failure-path reload
+  /// so the reload can never race a push still in flight.
+  Future<void> _mutateDoc(
+      MedicationDocument? Function(MedicationDocument fresh) splice) async {
     if (_writing) return;
     _writing = true;
-    setState(() => _doc = updated);
+    if (mounted) setState(() {});
     try {
+      _backend.invalidateSyncPull();
+      final profile = await _backend.fetchProfile();
+      if (profile == null) {
+        if (!mounted) return;
+        _showSaveError();
+        _backend.invalidateSyncPull();
+        await _load();
+        return;
+      }
+      final fresh = MedicationDocument.fromRawRows(
+          TabsBackend.decodeProfileList(profile['medications']));
+      final updated = splice(fresh);
+      if (updated == null || identical(updated, fresh)) {
+        // Refused (target gone or ambiguous in the fresh data):
+        // error + render the fresh data; never push, never
+        // claim success.
+        if (!mounted) return;
+        _showSaveError();
+        setState(() => _doc = fresh);
+        return;
+      }
+      if (mounted) {
+        setState(() => _doc = updated);
+      } else {
+        _doc = updated;
+      }
       final ok = await _backend.postSyncProfile(
           {'medications': jsonEncode(updated.encode())});
       if (ok) {
@@ -330,9 +403,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
         return;
       }
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text(
-              'Could not save that change. Check your connection and try again.')));
+      _showSaveError();
       _backend.invalidateSyncPull();
       await _load();
     } finally {

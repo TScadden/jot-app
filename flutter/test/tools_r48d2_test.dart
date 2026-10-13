@@ -18,10 +18,13 @@ import 'test_helpers.dart';
 /// - "Took Med": `MedicationsViewModel.takeSingleMedication` —
 ///   logs 1 dose; its own entry body ("Took Medication: …") is
 ///   NOT the shape Today's evidence reader matches, so the
-///   Flutter port writes the coherent Today shape
-///   (`ScheduledDoseRepository.recordDoseAction`: body
-///   "Took {name} {dose}", category Medication/8, chips "[]",
-///   manualText "") — see the dose-logging trace in
+///   Flutter port writes the coherent dual-reader shape
+///   (`ScheduledDoseRepository.recordDoseAction` body
+///   "Took {name} {dose}", category Medication/8 — plus, per the
+///   Round 48 Vera F3 fix, chips `'["Medication Tab"]'` and the
+///   "Logged from Medications tab. Took Medication: … (1 dose -
+///   {frequency})" manualText Body Info's impact engine gates
+///   and extracts on) — see the dose-logging trace in
 ///   `data/medications.dart`. Dedupe is recordDoseAction's
 ///   idempotency rule: one standing uncorrected "Took …" entry
 ///   per med per day; a second tap posts nothing.
@@ -129,6 +132,18 @@ class MedsBackend extends TabsBackend {
   @override
   Future<Map<String, dynamic>?> fetchProfile() async => profile;
 
+  /// Round 48 fix (Vera F2): the take path now reads its entries
+  /// through the success-distinguishing pull
+  /// (`fetchLogEntryDtosOrNull`, defined over `fetchSyncPull`),
+  /// so the fake serves a real pull body built from the same
+  /// canned entries/categories the other overrides expose.
+  @override
+  Future<Map<String, dynamic>?> fetchSyncPull() async => {
+        'profile': profile,
+        'entries': [for (final e in entries) e.toSyncJson()],
+        'categories': [for (final c in categories) c.toSyncJson()],
+      };
+
   @override
   Future<List<QuickLogEntry>> fetchLogEntryDtos() async => entries;
 
@@ -166,7 +181,7 @@ List<Map<String, dynamic>> pushedMedRows(MedsBackend backend) {
 }
 
 void main() {
-  group('buildMedTakeLogEntries: payload (Today take shape)', () {
+  group('buildMedTakeLogEntries: payload (dual-reader take shape)', () {
     test('body/category/chips/manualText/timestamp + max+1 id', () {
       final existing = [
         logEntry(id: 41, body: 'Felt dizzy', at: _now),
@@ -186,8 +201,13 @@ void main() {
       expect(e.id, 58);
       expect(e.categoryId, 8);
       expect(e.body, 'Took Ivabradine 7.5mg');
-      expect(e.chips, '[]');
-      expect(e.manualText, '');
+      // Vera F3 dual-reader payload: the Medication Tab chip +
+      // the manualText carrying Body Info's gate phrase, its
+      // med-name marker, and the frequency window segment
+      // (medEntry's default frequency here is 'Daily').
+      expect(e.chips, '["Medication Tab"]');
+      expect(e.manualText,
+          'Logged from Medications tab. Took Medication: Ivabradine 7.5mg (1 dose - Daily)');
       expect(e.timestamp, _now.millisecondsSinceEpoch);
       // The sync payload carries the same fields (updatedAt is
       // stamped by toSyncJson itself).
@@ -195,8 +215,9 @@ void main() {
       expect(sync['id'], 58);
       expect(sync['categoryId'], 8);
       expect(sync['body'], 'Took Ivabradine 7.5mg');
-      expect(sync['chips'], '[]');
-      expect(sync['manualText'], '');
+      expect(sync['chips'], '["Medication Tab"]');
+      expect(sync['manualText'],
+          'Logged from Medications tab. Took Medication: Ivabradine 7.5mg (1 dose - Daily)');
       expect(sync['timestamp'], _now.millisecondsSinceEpoch);
     });
 
@@ -604,8 +625,9 @@ void main() {
       expect(e.id, 42);
       expect(e.categoryId, 8);
       expect(e.body, 'Took Ivabradine 7.5mg');
-      expect(e.chips, '[]');
-      expect(e.manualText, '');
+      expect(e.chips, '["Medication Tab"]');
+      expect(e.manualText,
+          'Logged from Medications tab. Took Medication: Ivabradine 7.5mg (1 dose - Twice daily)');
       expect(backend.profilePosts, isEmpty); // no med-record write
     });
 
