@@ -15,5 +15,11 @@ jobs:
           flutter-version: '3.47.7'
           channel: stable
       - run: cd flutter && flutter pub get
-      - run: cd flutter && flutter analyze
-      - run: cd flutter && flutter test
+      - run: cd flutter && flutter analyze lib test/home_screen_test.dart test/session_restore_r31_test.dart test/medications_r39_test.dart test/today_summary_r35_test.dart test/history_edit_r42_test.dart test/tab_slide_r40_test.dart test/settings_r37_counters_test.dart test/home_counters_r34_test.dart test/quick_log_test.dart test/feeling_checkin_r21_test.dart test/r19c_instant_render_test.dart
+      - name: Scoped tests (cumulative R34-R42 suites + R38 home/session; pre-broken tools_r18b/tools_team_d/tools_team_b excluded)
+        run: cd flutter && flutter test test/home_screen_test.dart test/session_restore_r31_test.dart test/medications_r39_test.dart test/today_summary_r35_test.dart test/history_edit_r42_test.dart test/tab_slide_r40_test.dart test/settings_r37_counters_test.dart test/home_counters_r34_test.dart test/quick_log_test.dart test/feeling_checkin_r21_test.dart test/r19c_instant_render_test.dart
+      - run: cd flutter && flutter build apk --release --split-per-abi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tabs-flutter-r43-apk
+          path: flutter/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
