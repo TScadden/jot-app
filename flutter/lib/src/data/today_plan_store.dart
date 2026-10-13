@@ -22,7 +22,7 @@ import 'package:tabs_lab/src/data/today_summary.dart';
 /// Storage: one JSON blob in flutter_secure_storage (same encrypted
 /// at-rest store as the session), shaped
 /// `{ownerEmail, date, completedReminderIds: [...], medActions:
-/// {"<medKey>|<slot>": "TAKEN"|"SKIPPED"|"SNOOZED"|"PENDING"}}`.
+/// {"medKey|slot": "TAKEN"|"SKIPPED"|"SNOOZED"|"PENDING"}}`.
 ///
 /// Account binding (Round 19c pattern, parity with [HomeDataCache]):
 /// the blob is owned by one account. A load under a different session

@@ -981,12 +981,15 @@ class TodaySummaryLoader {
     try {
       backend.invalidateSyncPull();
       final pull = await backend.fetchSyncPull();
-      if (pull == null) return loadTrends(entries: null, categories: null, now: now);
+      if (pull == null) {
+        return await loadTrends(entries: null, categories: null, now: now);
+      }
       final entries = await backend.fetchLogEntryDtos();
       final categories = await backend.fetchLogCategories();
-      return loadTrends(entries: entries, categories: categories, now: now);
+      return await loadTrends(
+          entries: entries, categories: categories, now: now);
     } catch (_) {
-      return loadTrends(entries: null, categories: null, now: now);
+      return await loadTrends(entries: null, categories: null, now: now);
     }
   }
 
