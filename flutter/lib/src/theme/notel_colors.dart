@@ -7,6 +7,17 @@ abstract final class NotelColors {
   static const surface = Color(0xFF0D1428); // Deep navy — card background
   static const surfaceHigh = Color(0xFF152040); // Elevated surfaces
   static const primary = Color(0xFF7C6EFF); // Tabs purple — primary actions
+
+  /// Lighter tint of the brand hue for small purple text on L2 /
+  /// tinted surfaces only; never a fill. Brand [primary] is unchanged
+  /// and remains the fill / icon / large-accent color (Round 53,
+  /// Mira treatment spec §0).
+  static const primaryText = Color(0xFF9D94FF);
+
+  /// Settings logout pill fill (Round 53, Mira treatment spec SE9;
+  /// tokenize-only — replaces the raw literal in settings_screen.dart
+  /// when that file is next touched).
+  static const logoutRed = Color(0xFF801515);
   static const textPrimary = Color(0xFFF0EEFF); // Near-white
   static const textSecondary = Color(0xFF7A8FAF); // Muted blue-grey
 
