@@ -15,11 +15,5 @@ jobs:
           flutter-version: '3.47.7'
           channel: stable
       - run: cd flutter && flutter pub get
-      - run: cd flutter && flutter analyze lib test/tab_slide_r40_test.dart test/nav_dock_test.dart test/nav_transitions_r22_test.dart
-      - name: Scoped tests (R40 tab slide)
-        run: cd flutter && flutter test test/tab_slide_r40_test.dart test/nav_dock_test.dart test/nav_transitions_r22_test.dart
-      - run: cd flutter && flutter build apk --release --split-per-abi
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tabs-flutter-r40-apk
-          path: flutter/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+      - run: cd flutter && flutter analyze
+      - run: cd flutter && flutter test
