@@ -49,9 +49,7 @@ class VitalsStrip extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
       decoration: BoxDecoration(
         color: NotelColors.legacyDarkScrim,
-        // Round 49 (audit H14): radius unified to the Home majority
-        // card radius 16 (was 12, the strip's native value).
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: NotelColors.legacyDarkHairline, width: 1),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12.0),

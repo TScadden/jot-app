@@ -83,7 +83,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
       margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
       decoration: BoxDecoration(
         color: NotelColors.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: NotelColors.legacyDarkDivider, width: 1),
       ),
       child: Padding(
@@ -230,10 +230,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.bold,
-                // Round 49 (audit H8): primary on this surfaceHigh fill
-                // measures 4.21:1 — below the 4.5 floor. textPrimary on
-                // surfaceHigh is 14.00:1; bold keeps the emphasis.
-                color: NotelColors.textPrimary,
+                color: NotelColors.primary,
               ),
             ),
           ),
@@ -382,11 +379,9 @@ class _MetricSelectorState extends State<_MetricSelector> {
                             fontWeight: isCurrent
                                 ? FontWeight.bold
                                 : FontWeight.normal,
-                            // Round 49 (audit H8): the current item's
-                            // primary on this surfaceHigh menu measured
-                            // 4.21:1; bold textPrimary (14.00:1) still
-                            // marks the current metric.
-                            color: NotelColors.textPrimary,
+                            color: isCurrent
+                                ? NotelColors.primary
+                                : NotelColors.textPrimary,
                           ),
                         ),
                       ),
@@ -427,11 +422,7 @@ class _MetricSelectorState extends State<_MetricSelector> {
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  // Round 49 (audit H8): primary on surfaceHigh measured
-                  // 4.21:1; textPrimary is 14.00:1. The arrow icon below
-                  // keeps the purple accent (icons need 3:1; primary on
-                  // surfaceHigh clears that at 4.21).
-                  color: NotelColors.textPrimary,
+                  color: NotelColors.primary,
                 ),
               ),
               const Icon(

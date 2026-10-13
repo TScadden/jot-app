@@ -790,11 +790,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final lockedCheckIn = isLockedCheckInEntry(entry, _categories);
     final chipLabel = lockedCheckIn ? feelingCheckInTag : cat?.name;
     final chipColor = lockedCheckIn ? NotelColors.primary : accent;
-    // R49 HI5: primary text on a primary-15% tint measures 4.02:1.
-    // The primary case takes the in-file selected-chip treatment —
-    // solid fill + dark ink (5.21:1); other category colors keep the
-    // tint style (their ratios are data-dependent, cf. audit T9).
-    final chipIsPrimary = chipColor == NotelColors.primary;
     return GestureDetector(
       onTap: () => _showEntryDetail(entry),
       child: Container(
@@ -840,22 +835,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   decoration: BoxDecoration(
                                     borderRadius:
                                         BorderRadius.circular(8),
-                                    color: chipIsPrimary
-                                        ? chipColor
-                                        : chipColor.withValues(
-                                            alpha: 0.15),
+                                    color: chipColor.withValues(
+                                        alpha: 0.15),
                                     border: Border.all(
-                                        color: chipIsPrimary
-                                            ? chipColor
-                                            : chipColor.withValues(
-                                                alpha: 0.45)),
+                                        color: chipColor.withValues(
+                                            alpha: 0.45)),
                                   ),
                                   child: Text(
                                     chipLabel,
                                     style: TextStyle(
-                                      color: chipIsPrimary
-                                          ? _chipInk
-                                          : chipColor,
+                                      color: chipColor,
                                       fontSize: 10,
                                       fontWeight: FontWeight.bold,
                                     ),

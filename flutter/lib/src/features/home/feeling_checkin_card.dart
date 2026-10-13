@@ -21,9 +21,7 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///   border 1dp NotelBorder (dark palette: NotelPrimary @ 25%), number
 ///   16sp SemiBold NotelTextSecondary. While PRESSED the button fills
 ///   NotelPrimary, its border turns NotelPrimary, and the number turns
-///   white in native (NotelOnAccent) — Round 49 renders it in the
-///   onPrimary ink instead (white on primary = 3.80:1; ink = 5.21:1).
-///   No ripple (native indication = null).
+///   white (NotelOnAccent). No ripple (native indication = null).
 ///   Semantics: "Energy N of 5", Role.Button.
 /// - Enter animation: slide in from -fullWidth + fade, 400ms,
 ///   LinearOutSlowIn. Exit: slide out to -fullWidth + fade, 350ms,
@@ -298,8 +296,7 @@ class _FeelingCheckInCardState extends State<FeelingCheckInCard>
 /// Native `EnergyNumberButton`: flat 48dp square, radius Radii.chip
 /// (12dp), NotelSurfaceHigh fill with a 1dp NotelBorder hairline
 /// (dark palette border = NotelPrimary @ 25%); while pressed it fills
-/// NotelPrimary (number in the onPrimary ink since Round 49 — native's
-/// white measured 3.80:1). No ripple (indication = null).
+/// NotelPrimary with a white number. No ripple (indication = null).
 class _FeelingNumberButton extends StatefulWidget {
   final int level;
   final VoidCallback? onTap;
@@ -353,13 +350,7 @@ class _FeelingNumberButtonState extends State<_FeelingNumberButton> {
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
-              // Round 49 (audit H9/S1): native's white number on the
-              // pressed primary fill measures 3.80:1. The onPrimary ink
-              // (the category-chip `_chipInk` precedent) measures
-              // 5.21:1. The idle number is unchanged.
-              color: pressed
-                  ? NotelColors.onPrimary
-                  : NotelColors.textSecondary,
+              color: pressed ? Colors.white : NotelColors.textSecondary,
             ),
           ),
         ),

@@ -466,7 +466,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
       margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
       decoration: BoxDecoration(
         color: NotelColors.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: NotelColors.legacyDarkDivider, width: 1),
       ),
       child: Padding(
@@ -1068,10 +1068,7 @@ class _TrendRow extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                // Round 49 (audit H7): primary on this row's surfaceHigh
-                // fill measures 4.21:1 — below the 4.5 floor. textPrimary
-                // on surfaceHigh is 14.00:1; weight keeps the emphasis.
-                color: NotelColors.textPrimary,
+                color: NotelColors.primary,
               ),
             ),
           ],

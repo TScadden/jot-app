@@ -1836,6 +1836,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           title: Text(name,
                               style: const TextStyle(
                                   color: NotelColors.textPrimary,
+                                  // R49 preservation: ListTile titles
+                                  // inherit theme titleMedium, which R49
+                                  // made bold; w500 preserves the
+                                  // pre-round weight of this picker.
+                                  fontWeight: FontWeight.w500,
                                   fontSize: 13)),
                           trailing: isAdded
                               ? const Icon(Icons.check,
