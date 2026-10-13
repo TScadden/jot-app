@@ -76,7 +76,17 @@ import 'package:tabs_lab/src/theme/slide_page_route.dart';
 /// archiving in Settings removes a counter from Home and vice versa.
 /// Cached counters render instantly (account-bound [HomeDataCache],
 /// stale-while-revalidate); zero active counters render no slot.
+/// Round 38 — the temporary "Logged in as {email}" label (Rounds 5/8,
+/// founder verification only) is REMOVED from Home at the founder's
+/// request: the signed-in email is no longer rendered anywhere on
+/// this screen. The [HomeScreen.email] value itself stays — it is
+/// internal plumbing (account-binding for the counters cache and
+/// the email forwarded to the Settings screen pushed from Home),
+/// never visible text here. The email still belongs on Settings.
 class HomeScreen extends StatefulWidget {
+  /// The signed-in account email. INTERNAL ONLY (Round 38): used to
+  /// account-bind the Home counters cache and forwarded to the
+  /// Settings screen pushed from Home. Never rendered on Home.
   final String? email;
   final WeatherApiClient? weatherApi;
 
@@ -643,18 +653,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 loadData: (metric) => _healthRepo.loadSnapshot(metric),
               ),
             ),
-            if (widget.email != null)
-              Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Text(
-                  'Logged in as ${widget.email}',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: NotelColors.textSecondary,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
             // Clearance so the last content never hides behind the
             // floating nav dock (dock ≈ 56dp + 12dp + nav inset).
             const SizedBox(height: 110),

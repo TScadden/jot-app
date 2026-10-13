@@ -646,7 +646,11 @@ void main() {
       await pumpFlow(tester, store, onboardingMap: onboardingMap);
 
       expect(find.byType(HomeScreen), findsOneWidget);
-      expect(find.text('Logged in as $_email'), findsOneWidget);
+      // Round 38 — restore still lands on Home, but the account
+      // email is rendered NOWHERE on it (the "Logged in as …" label
+      // Home used to show as proof-of-login is removed).
+      expect(find.text('Logged in as $_email'), findsNothing);
+      expect(find.textContaining(_email), findsNothing);
       expect(find.byType(WelcomeScreen), findsNothing);
       // Round 32/33 matrix — a keyless legacy session is backfilled
       // onboarding-complete, never dropped into onboarding.
@@ -670,7 +674,9 @@ void main() {
       await pumpFlow(tester, store, onboardingMap: onboardingMap);
 
       expect(find.byType(HomeScreen), findsOneWidget);
-      expect(find.text('Logged in as $_email'), findsOneWidget);
+      // Round 38 — same as above: on Home, email rendered nowhere.
+      expect(find.text('Logged in as $_email'), findsNothing);
+      expect(find.textContaining(_email), findsNothing);
       expect(find.byType(WelcomeScreen), findsNothing);
       await tester.pump(const Duration(milliseconds: 300));
     });

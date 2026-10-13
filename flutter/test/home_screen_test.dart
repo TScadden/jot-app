@@ -33,6 +33,19 @@ MockClient _mockWeatherClient([int? temp]) {
   });
 }
 
+/// Round 38 — the signed-in email must appear NOWHERE in the current
+/// widget tree: neither the exact "Logged in as …" label, nor the
+/// raw email string inside any rendered Text widget.
+void expectNoEmailRendered(WidgetTester tester, String email) {
+  expect(find.text('Logged in as $email'), findsNothing);
+  expect(find.textContaining('Logged in as'), findsNothing);
+  expect(find.textContaining(email), findsNothing);
+  for (final text in tester.widgetList<Text>(find.byType(Text))) {
+    expect(text.data ?? '', isNot(contains(email)));
+    expect(text.data ?? '', isNot(contains('Logged in as')));
+  }
+}
+
 /// Pumps [AppFlow] with a mock backend and fast-forwards past the splash
 /// (entry 650ms + hold 1200ms + exit 650ms).
 Future<void> _pumpAppFlow(
@@ -94,6 +107,31 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
   });
 
+  // Round 38 — direct Home render WITH a signed-in email supplied:
+  // the email (and any "Logged in as …" label) is absent anywhere on
+  // the screen, including after scrolling to the very bottom where
+  // the label used to sit. The email param itself stays as internal
+  // plumbing (cache account-binding / Settings forwarding).
+  testWidgets(
+      'home with a signed-in email renders the email NOWHERE, '
+      'even scrolled to the bottom', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: HomeScreen(
+          email: 'founder@tabs.app',
+          weatherApi: WeatherApiClient(client: _mockWeatherClient())),
+    ));
+    await tester.pump();
+    expect(find.text('Today'), findsOneWidget);
+    expectNoEmailRendered(tester, 'founder@tabs.app');
+    // Scroll to the bottom (the label's old slot was the last item
+    // above the nav-dock clearance) and re-assert.
+    await tester.drag(
+        find.byType(SingleChildScrollView), const Offset(0, -2000));
+    await tester.pump();
+    expectNoEmailRendered(tester, 'founder@tabs.app');
+    await tester.pump(const Duration(milliseconds: 300));
+  });
+
   testWidgets('header shows the live temp once loaded', (tester) async {
     await tester.pumpWidget(MaterialApp(
       home: HomeScreen(
@@ -106,7 +144,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
   });
 
-  testWidgets('successful login navigates home showing the email',
+  testWidgets('successful login navigates home WITHOUT showing the email',
       (tester) async {
     final store = FakeSessionStore();
     await _pumpAppFlow(
@@ -132,7 +170,10 @@ void main() {
         tester, email: 'founder@tabs.app', password: 'correct-horse');
 
     expect(find.byType(HomeScreen), findsOneWidget);
-    expect(find.text('Logged in as founder@tabs.app'), findsOneWidget);
+    // Round 38 — Home renders, but the account email is visible
+    // NOWHERE on it (the "Logged in as …" label is gone). The email
+    // remains internal: session storage below still holds it.
+    expectNoEmailRendered(tester, 'founder@tabs.app');
     // Session persisted to the (fake) secure store; password never stored.
     expect(store.token, 'tok123');
     expect(store.email, 'founder@tabs.app');
