@@ -112,7 +112,16 @@ void main() {
       expect(find.text('LOG ACTIVITY BY HOUR'), findsOneWidget);
       expect(find.text('Today'), findsOneWidget); // day selector
       expect(find.text('Tap to view all time'), findsOneWidget);
-      expect(find.text('1'), findsOneWidget); // 9am bar count
+      // 9am bar count, scoped to the chart: since Round 36 the
+      // day-scoped Category Focus count legitimately renders its own
+      // '1' for today's single Symptoms entry.
+      expect(
+        find.descendant(
+          of: find.byType(ListView),
+          matching: find.text('1'),
+        ),
+        findsOneWidget,
+      );
       expect(find.text('3'), findsNothing);
 
       await tester.tap(find.text('4 Total Entries'));

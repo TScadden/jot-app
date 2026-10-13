@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/skeleton.dart';
 
 /// Round 18 (Team C) — Trends, Flutter port of the native `TrendsScreen.kt`
 /// patterns-over-time layout.
@@ -65,6 +66,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
   bool _loading = true;
   String? _error;
   List<TrendsEntry> _entries = const [];
+  List<TrendsCategory> _categories = const [];
   Map<int, String> _categoryNames = const {};
   Map<int, Color> _categoryColors = const {};
 
@@ -100,6 +102,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
         _loading = false;
         _entries = parseTrendsEntries(pull['entries']);
         final cats = parseTrendsCategories(pull['categories']);
+        _categories = cats;
         _categoryNames = {
           for (final c in cats) c.id: c.name,
         };
@@ -143,7 +146,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
 
   List<TrendsEntry> get _filteredLogs {
     if (_selectedHour == null) return const [];
-    return [
+    final out = [
       for (final e in _entries)
         if (e.timestamp > 0)
           () {
@@ -155,19 +158,25 @@ class _TrendsScreenState extends State<TrendsScreen> {
                 : null;
           }()
     ].whereType<TrendsEntry>().toList();
+    // Native selectHour lists newest first.
+    out.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    return out;
   }
 
   List<TrendsEntry> get _logsForSymptom {
     if (_selectedSymptom == null) return const [];
     final needle = _selectedSymptom!.toLowerCase();
     // Mirrors native TrendsViewModel.selectSymptom: a log matches when
-    // one of its chips equals the symptom OR its body mentions it.
-    return [
+    // one of its chips equals the symptom OR its body mentions it,
+    // listed newest first.
+    final out = [
       for (final e in _entries)
         if (splitChips(e.chips).any((c) => c.toLowerCase() == needle) ||
             e.body.toLowerCase().contains(needle))
           e,
     ];
+    out.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    return out;
   }
 
   List<({String chip, int count})> get _topChips {
@@ -187,10 +196,19 @@ class _TrendsScreenState extends State<TrendsScreen> {
     return out;
   }
 
+  /// Category counts for the CURRENT view, using the same scope as
+  /// the hourly chart: the selected day in day mode, every entry in
+  /// all-time mode. (Native counts the selected day's entries; the
+  /// Round 20b all-time view extends that scope to all days, so the
+  /// Category Focus rows always agree with the chart above them.)
   Map<int, int> get _frequencyByCategory {
     final out = <int, int>{};
     for (final e in _entries) {
-      out[e.categoryId] = (out[e.categoryId] ?? 0) + 1;
+      if (e.timestamp <= 0) continue;
+      final dt = DateTime.fromMillisecondsSinceEpoch(e.timestamp);
+      if (_allTime || _isOnSelectedDay(dt)) {
+        out[e.categoryId] = (out[e.categoryId] ?? 0) + 1;
+      }
     }
     return out;
   }
@@ -232,6 +250,8 @@ class _TrendsScreenState extends State<TrendsScreen> {
             selected: _selectedSymptom,
             onSelect: (chip) => setState(() {
               _selectedSymptom = chip;
+              // Native selectSymptom clears the hour filter.
+              _selectedHour = null;
               _showSymptomsDialog = false;
             }),
             onClose: () =>
@@ -244,8 +264,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
 
   Widget _buildBody() {
     if (_loading) {
-      return const Center(
-          child: CircularProgressIndicator(color: NotelColors.primary));
+      return _buildLoadingSkeleton();
     }
     if (_error != null) {
       return Center(
@@ -429,6 +448,85 @@ class _TrendsScreenState extends State<TrendsScreen> {
     );
   }
 
+  /// Round 36 — initial-load skeleton shaped like the real screen
+  /// (volume card, day selector, hourly chart, category rows). The
+  /// founder's Round 19c rule: anything that genuinely must load uses
+  /// a skeleton shaped like the real content — never a blocking
+  /// spinner. Shown only until the first pull lands.
+  Widget _buildLoadingSkeleton() {
+    return SkeletonGroup(
+      child: SingleChildScrollView(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Log volume card: icon block + label/total/hint lines.
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: NotelColors.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: NotelColors.primary.withValues(alpha: 0.18),
+                ),
+              ),
+              child: const Row(
+                children: [
+                  SkeletonBox(width: 32, height: 32, radius: 8),
+                  SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SkeletonBox(width: 72, height: 13),
+                        SizedBox(height: 6),
+                        SkeletonBox(width: 160, height: 20),
+                        SizedBox(height: 6),
+                        SkeletonBox(width: 120, height: 11),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            // Day selector line.
+            const Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                SkeletonBox(width: 24, height: 24, radius: 12),
+                SkeletonBox(width: 80, height: 16),
+                SkeletonBox(width: 24, height: 24, radius: 12),
+              ],
+            ),
+            const SizedBox(height: 24),
+            // Hourly chart card.
+            const SkeletonBox(width: 150, height: 12),
+            const SizedBox(height: 8),
+            const SkeletonBox(height: 220, radius: 16),
+            const SizedBox(height: 24),
+            // Category Focus rows.
+            const SkeletonBox(width: 120, height: 16),
+            const SizedBox(height: 12),
+            for (var i = 0; i < 3; i++) ...[
+              const Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  SkeletonBox(width: 110, height: 14),
+                  SkeletonBox(width: 20, height: 14),
+                ],
+              ),
+              const SizedBox(height: 6),
+              const SkeletonBox(height: 8, radius: 4),
+              const SizedBox(height: 12),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   /// One eagerly-built block in the trends scroll view, with the
   /// screen's standard horizontal padding and spacing below it.
   Widget _section({required Widget child, double top = 0, double bottom = 24}) {
@@ -495,10 +593,28 @@ class _TrendsScreenState extends State<TrendsScreen> {
 
   List<Widget> _categoryRows() {
     final freq = _frequencyByCategory;
-    final total = _entries.length;
+    // Percentages are shares of the scoped entries (the same set the
+    // counts come from), so the bars agree with the chart's scope.
+    final total = freq.values.fold(0, (a, b) => a + b);
     final rows = <Widget>[];
+    // Native iterates the category list (server order) and shows the
+    // ones with entries; entries pointing at an unknown category id
+    // still get a fallback row after the known ones.
+    final knownIds = <int>{};
+    for (final cat in _categories) {
+      knownIds.add(cat.id);
+      final count = freq[cat.id] ?? 0;
+      if (count <= 0) continue;
+      rows.add(_CategoryProgressRow(
+        name: cat.name,
+        count: count,
+        total: total,
+        color: cat.color,
+      ));
+      rows.add(const SizedBox(height: 12));
+    }
     for (final entry in freq.entries) {
-      if (entry.value <= 0) continue;
+      if (entry.value <= 0 || knownIds.contains(entry.key)) continue;
       rows.add(_CategoryProgressRow(
         name: _categoryNames[entry.key] ?? 'Category ${entry.key}',
         count: entry.value,
@@ -950,7 +1066,11 @@ List<TrendsCategory> parseTrendsCategories(dynamic raw) {
         } catch (_) {}
       }
       out.add(TrendsCategory(
-        id: id is num ? id.toInt() : 0,
+        // Category ids are int8 too — the server sends them as JSON
+        // strings ("1"), and a num-only parse zeroed every one of
+        // them, collapsing all categories onto id 0 (Round 36 fix:
+        // rows rendered "Category N" with the fallback color).
+        id: parseLooseInt(id),
         name: '${c['name'] ?? 'Category'}',
         color: color,
       ));
