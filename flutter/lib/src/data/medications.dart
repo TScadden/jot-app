@@ -1,3 +1,6 @@
+import 'dart:math';
+
+import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
 
 /// Round 39 — the ONE shared medication model: the single synced
@@ -590,6 +593,81 @@ class MedicationDocument {
         ));
   }
 
+  /// Append ONE new active medication (Round 48D2 — native
+  /// `MedicationsViewModel.addMedication`): a fresh row at the
+  /// END of the blob, every existing raw row retained verbatim
+  /// and in order. Native's add semantics: name/dose trimmed by
+  /// the caller, blank frequency already defaulted to
+  /// `"Once daily"`, a blank start date stored as `''` (native's
+  /// null), `endDate` the `"Present"` sentinel, `isPresent=true`,
+  /// `isDeleted=false`, `updatedAt` = [now], and a fresh UUID
+  /// [id] (native `UUID.randomUUID()`; the screen generates it
+  /// via [generateMedicationUuid] — injected here so tests are
+  /// deterministic).
+  MedicationDocument addEntry({
+    required String name,
+    required String dose,
+    required String frequency,
+    required String startDate,
+    required String id,
+    required DateTime now,
+  }) {
+    final entry = MedicationEntry(
+      id: id,
+      name: name,
+      startDate: startDate,
+      endDate: 'Present',
+      isPresent: true,
+      dose: dose,
+      frequency: frequency,
+      updatedAt: now.millisecondsSinceEpoch,
+      isDeleted: false,
+    );
+    return MedicationDocument._(
+      [...rawRows, entry.toBlobRow()],
+      [..._entries, entry],
+    );
+  }
+
+  /// Permanently delete the exact entry instance [target] from
+  /// this document (Round 48D2 — the archived card's delete
+  /// affordance): the row is REMOVED from the document, so the
+  /// splice-back encode pushes the full list WITHOUT it and
+  /// every other row — parseable or not — is preserved verbatim
+  /// and in order.
+  ///
+  /// Why removal, not an `isDeleted` tombstone row in the pushed
+  /// blob: the tombstone is native's DEVICE-LOCAL DAO state
+  /// (`MedicationsViewModel.deleteMedication` stamps
+  /// `isDeleted=true` locally to stop sync resurrection), but
+  /// native's own sync push filters deleted rows OUT of the
+  /// blob it sends (`syncMedicationsToPreferencesAndCloud` maps
+  /// only `!isDeleted` rows), and native Settings' delete
+  /// (`SettingsViewModel.deleteMedication`) drops the row from
+  /// the profile list and pushes the whole remaining list —
+  /// exactly what the Flutter Settings screen's delete does.
+  /// The server-visible outcome everywhere is "the row is
+  /// absent"; Flutter has no local DAO merge to resurrect it,
+  /// so removal IS the shared model's delete semantics here.
+  /// Unresolvable/ambiguous target → `this` unchanged.
+  MedicationDocument deleteEntry(MedicationEntry target) {
+    final parsed = entries;
+    final idx = _indexOfMedTarget(parsed, target);
+    if (idx < 0) return this;
+    final rawIndex = _rawIndexOfParsedIndex(idx);
+    if (rawIndex < 0) return this;
+    return MedicationDocument._(
+      [
+        for (var i = 0; i < rawRows.length; i++)
+          if (i != rawIndex) rawRows[i],
+      ],
+      [
+        for (var i = 0; i < _entries.length; i++)
+          if (i != rawIndex) _entries[i],
+      ],
+    );
+  }
+
   /// Archive the row at raw index [rawIndex] (the index the
   /// screens render and key buttons with). Unparseable or
   /// out-of-range → `this` unchanged.
@@ -628,4 +706,136 @@ bool isDoseValid(MedicationEntry med) {
   return dose.isNotEmpty &&
       dose.toLowerCase() != 'as prescribed' &&
       (med.startedDate?.isNotEmpty ?? false);
+}
+
+/// A fresh UUID v4 for a newly added medication — native
+/// `addMedication` assigns `UUID.randomUUID().toString()`.
+/// Hand-rolled over [Random.secure] (the codebase carries no
+/// uuid package dependency); the version (4) and variant bits
+/// are set per RFC 4122.
+String generateMedicationUuid() {
+  final random = Random.secure();
+  final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+  bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 10xx
+  String hex(int i) => bytes[i].toRadixString(16).padLeft(2, '0');
+  return '${hex(0)}${hex(1)}${hex(2)}${hex(3)}-'
+      '${hex(4)}${hex(5)}-${hex(6)}${hex(7)}-'
+      '${hex(8)}${hex(9)}-${hex(10)}${hex(11)}'
+      '${hex(12)}${hex(13)}${hex(14)}${hex(15)}';
+}
+
+// ── Dose logging (Round 48D2) ────────────────────────────────────
+//
+// TWO native dose-log writers exist, and they disagree:
+//
+// - `MedicationsViewModel.logMedicationDose` (the Medications
+//   tab's own writer): body `"Took Medication: {name} {dose}
+//   (1 dose - {frequency})"`, chips `["Medication Tab"]`,
+//   manualText `"Logged from Medications tab"`, category 8 —
+//   with NO dedupe (every tap inserts another entry) and NO
+//   update to any medication/occurrence record.
+// - `ScheduledDoseRepository.recordDoseAction` (the Today
+//   writer): body `"Took {name} {dose}"`, chips `"[]"`,
+//   manualText `""`, category 8 — IDEMPOTENT by occurrence key
+//   ("repeated taps do not duplicate log entries or
+//   occurrences"), plus a device-local occurrence row.
+//
+// The Medications-tab body is NOT readable as TAKEN by Today's
+// plan: the evidence reader (`medTakenFromEntries`, Round 41 —
+// log entries are the source of truth for TAKEN, winning over
+// the local record) matches `"Took {name}…"` in the Medication
+// category, and `"Took Medication: …"` never matches it. A
+// Medications-tab log in the native tab's own shape would
+// therefore leave Today's dose PENDING — two native writers,
+// one incoherent log. The Flutter port resolves that the only
+// coherent way (the coordinator's Round 48D2 brief pins it):
+// dose logs written HERE use the Today shape — same body, same
+// chips/manualText, same category resolution, same max+1 id
+// discipline, same corrected-skip conventions — so a dose
+// logged on either surface reads as taken on both.
+//
+// Per-day dedupe (the `recordDoseAction` rule): one standing
+// uncorrected `"Took {name}…"` entry for a med on a given day
+// IS the dose's taken evidence; building a take for a med that
+// already has one posts nothing for it. A `"[Corrected to
+// Skipped] Took …"` entry does NOT block a take (native Today:
+// the skip nulls the occurrence's log id, so a later take
+// posts a fresh `"Took …"` entry, and the reader checks taken
+// before skipped). No local med record is written — native's
+// Medications-tab writer updates none, and a TAKEN record in
+// Today's plan store would be inert anyway (Round 41: taken
+// derives from entries only; the local record speaks only for
+// SNOOZED). The AI side-effect cache native's tab writer fills
+// is a device-local Gemini cache with no Flutter equivalent on
+// this screen; it carries no user-visible state.
+
+/// The body of the log entry a "Took Med" tap writes — the
+/// Today/`recordDoseAction` shape (`"Took {name} {dose}"`, or
+/// `"Took {name}"` when the dose is blank; callers gate on
+/// [isDoseValid], so a blank dose is a defensive case only).
+String medTakeEntryBody(MedicationEntry med) {
+  final dose = med.dose.trim();
+  return 'Took ${med.name}${dose.isNotEmpty ? ' $dose' : ''}';
+}
+
+/// Builds the entries ONE dose-log action posts: one entry per
+/// med in [meds] that is not already logged as taken today,
+/// in [meds] order, with fresh ids continuing from the maximum
+/// id across ALL [existingEntries] (the round-19 max+1
+/// discipline Today's take uses). Entries are in the Medication
+/// category — resolved by name, falling back to the seeded id
+/// 8 ([resolveSummaryCategoryId], the same resolver Today
+/// uses) — with chips `'[]'`, manualText `''`, and timestamp
+/// [now]. Returns null when the Medication category cannot be
+/// resolved at all (the caller fails honestly and posts
+/// nothing — never a guessed category). An empty list means
+/// every med was already logged today: a successful no-op,
+/// NOT a failure.
+List<QuickLogEntry>? buildMedTakeLogEntries({
+  required List<MedicationEntry> meds,
+  required List<QuickLogEntry> existingEntries,
+  required List<QuickLogCategory> categories,
+  required DateTime now,
+}) {
+  final medCategoryId = resolveSummaryCategoryId(categories,
+      name: 'Medication', fallbackId: 8);
+  if (medCategoryId == null) return null;
+  final todayStr = dateStrOf(now);
+  // The evidence pool grows as entries are planned, so a batch
+  // (Took All) can never double-post: the reader is name-based
+  // (one "Took {name}…" entry is taken evidence for that name
+  // today), so a second same-name row in the batch is already
+  // covered by the first row's planned entry.
+  final evidence = existingEntries
+      .where((e) =>
+          dateStrOf(DateTime.fromMillisecondsSinceEpoch(e.timestamp)) ==
+          todayStr)
+      .toList();
+  var maxId = 0;
+  for (final e in existingEntries) {
+    if (e.id > maxId) maxId = e.id;
+  }
+  final out = <QuickLogEntry>[];
+  for (final med in meds) {
+    if (medTakenFromEntries(
+      medName: med.name,
+      todayEntries: evidence,
+      medicationCategoryId: medCategoryId,
+    )) {
+      continue;
+    }
+    maxId += 1;
+    final entry = QuickLogEntry(
+      id: maxId,
+      categoryId: medCategoryId,
+      body: medTakeEntryBody(med),
+      chips: '[]',
+      manualText: '',
+      timestamp: now.millisecondsSinceEpoch,
+    );
+    out.add(entry);
+    evidence.add(entry);
+  }
+  return out;
 }

@@ -23,14 +23,20 @@ export 'package:tabs_lab/src/data/medications.dart';
 ///
 /// Rendered (layout per native):
 /// - Intro copy (verbatim native).
-/// - "Quick Actions" hero card with the active count; the "Took All Meds"
-///   and "Add Medication" buttons render disabled (deferred).
+/// - "Quick Actions" hero card with the active count, a working
+///   "Took All Meds" button (enabled exactly when native enables
+///   it: at least one active med and EVERY active med dose-valid)
+///   and a working "Add Medication" button.
 /// - "Active Prescriptions" list: icon badge, name, "dose • frequency"
-///   line, "Started …" chip; the per-card "Took Med" button renders
-///   disabled (dose logging deferred), and each active card carries
-///   a working Archive button.
+///   line, "Started …" chip; each active card carries a working
+///   "Took Med" button (enabled per-card exactly when native
+///   enables it: that med's dose is valid) and a working Archive
+///   button.
 /// - Collapsible "Archived Medications (N)" section; each archived
-///   card carries a working Restore (unarchive) button.
+///   card carries a working Restore (unarchive) button and a
+///   working permanent-delete button (native's archived-card
+///   delete affordance — immediate, no confirmation dialog in
+///   native).
 /// - Empty state (med icon, "No Active Medications") when the blob is
 ///   empty or the fetch fails — honest empty, never invented.
 ///
@@ -43,14 +49,30 @@ export 'package:tabs_lab/src/data/medications.dart';
 /// the Round 39 discipline: identity-targeted document op, full
 /// splice-back push, honest failure with a server reload.
 ///
-/// DEFERRED: add/delete and "Took Med" / "Took All Meds" dose
-/// logging. Adding medications happens in Settings → User Profile;
-/// dose logging is not in the Lab yet.
-///
 /// Round 48 — archive/edit writes are now serialized (one
 /// whole-list push in flight at a time; controls disabled while
 /// pending), matching the Vera B3 discipline Habits and Reminders
 /// received in the Round 47 fix round.
+///
+/// Round 48D2 — the screen is COMPLETE (every action native
+/// offers on this screen is wired):
+/// - "Took Med" / "Took All Meds" dose logging: one log entry
+///   per med through `POST /api/sync/entries`, built by
+///   [buildMedTakeLogEntries] in the shared model — the Today
+///   Summary take shape ("Took {name} {dose}", Medication
+///   category, max+1 ids, per-day dedupe), so a dose logged here
+///   reads as taken in Today Summary and vice versa (see the
+///   dose-logging section of `data/medications.dart` for the
+///   two-native-writers trace). Serialized under the same
+///   `_writing` guard as the profile pushes.
+/// - "Add Medication": the Round 46 dialog in add mode (native
+///   title "Add New Medication", frequency prefilled "Once
+///   daily"), saved via [MedicationDocument.addEntry] — exactly
+///   one row appended, every existing row preserved.
+/// - Archived permanent delete: [MedicationDocument.deleteEntry]
+///   removes exactly that row and pushes the full remaining
+///   list — native Settings' delete outcome, no confirmation,
+///   exactly like native.
 
 class MedicationsScreen extends StatefulWidget {
   /// Injectable for tests.
@@ -74,14 +96,18 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
   MedicationDocument _doc = MedicationDocument.empty;
   bool _showArchived = true;
 
-  /// Round 48 — a whole-list push is in flight. Archive/edit
-  /// writes on this screen were never serialized (the Vera B3
-  /// fix round covered Habits and Reminders only): two quick
-  /// taps could run two whole-list pushes concurrently, and the
-  /// slower push — built from the older document — could land
-  /// last and silently undo the first change server-side. While
-  /// a push is pending, every write control is disabled and
-  /// every write entry point drops its tap.
+  /// Round 48 — a write is in flight. Archive/edit writes on
+  /// this screen were never serialized (the Vera B3 fix round
+  /// covered Habits and Reminders only): two quick taps could
+  /// run two whole-list pushes concurrently, and the slower
+  /// push — built from the older document — could land last
+  /// and silently undo the first change server-side. While a
+  /// write is pending, every write control is disabled and
+  /// every write entry point drops its tap. Round 48D2: the
+  /// dose-log writes (Took Med / Took All) hold the same guard
+  /// — a dose post re-reads the entry list to dedupe, and two
+  /// concurrent takes could both pass the dedupe check and
+  /// double-post.
   bool _writing = false;
 
   @override
@@ -163,7 +189,126 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
     await _pushDoc(updated);
   }
 
-  /// Shared save path for archive/unarchive (R39) and edit (R46):
+  /// Round 48D2 — "Took Med" (single) and "Took All Meds"
+  /// (every dose-valid active med, in list order). One log
+  /// entry per med via [buildMedTakeLogEntries] — the Today
+  /// Summary take shape, so the dose reads as taken there (and
+  /// a dose already logged today, on either surface, is not
+  /// double-posted: the builder returns an empty list, a
+  /// successful no-op). Native's status copy is mirrored:
+  /// "Logged 1 dose of {name} ({dose})" / "Logged 1 dose for
+  /// all {N} medication(s)!". Failures (category unresolvable
+  /// or the entries post rejected) show an error and claim
+  /// nothing — no local state changes on this screen for a
+  /// dose, so there is no phantom state to roll back (native's
+  /// Medications writer likewise updates no med record; see
+  /// the shared model's dose-logging trace).
+  Future<void> _takeMeds(List<MedicationEntry> meds,
+      {required bool all}) async {
+    if (_writing || meds.isEmpty) return;
+    _writing = true;
+    if (mounted) setState(() {});
+    try {
+      // Fresh evidence for the dedupe check: drop the cached
+      // pull so entries/categories reflect the server's latest
+      // (a dose logged from Today Summary moments ago counts).
+      _backend.invalidateSyncPull();
+      final entries = await _backend.fetchLogEntryDtos();
+      final categories = await _backend.fetchLogCategories();
+      final toPost = buildMedTakeLogEntries(
+        meds: meds,
+        existingEntries: entries,
+        categories: categories,
+        now: DateTime.now(),
+      );
+      if (!mounted) return;
+      if (toPost == null) {
+        _showDoseError();
+        return;
+      }
+      if (toPost.isNotEmpty) {
+        final ok = await _backend.postLogEntries(toPost);
+        _backend.invalidateSyncPull();
+        if (!mounted) return;
+        if (!ok) {
+          _showDoseError();
+          return;
+        }
+      }
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
+      if (toPost.isEmpty) {
+        messenger.showSnackBar(SnackBar(
+            content: Text(all
+                ? 'All active doses are already logged today'
+                : 'Already logged today')));
+      } else if (all) {
+        messenger.showSnackBar(SnackBar(
+            content: Text(
+                'Logged 1 dose for all ${meds.length} medication(s)!')));
+      } else {
+        final med = meds.single;
+        messenger.showSnackBar(SnackBar(
+            content: Text('Logged 1 dose of ${med.name} (${med.dose})')));
+      }
+    } catch (_) {
+      if (mounted) _showDoseError();
+    } finally {
+      _writing = false;
+      if (mounted) setState(() {});
+    }
+  }
+
+  void _showDoseError() {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text(
+            'Could not log that dose. Check your connection and try again.')));
+  }
+
+  /// Round 48D2 — "Add Medication": the Round 46 dialog in add
+  /// mode; the save appends exactly one row through
+  /// [MedicationDocument.addEntry] and pushes through the same
+  /// serialized splice-back path as archive/edit.
+  Future<void> _showAddMedicationDialog() async {
+    if (_writing) return;
+    final result = await showDialog<_MedicationEditResult>(
+      context: context,
+      builder: (_) => const _MedicationEditDialog.add(),
+    );
+    if (result == null || !mounted) return;
+    final updated = _doc.addEntry(
+      name: result.name,
+      dose: result.dose,
+      frequency: result.frequency,
+      startDate: result.startDate,
+      id: generateMedicationUuid(),
+      now: DateTime.now(),
+    );
+    await _pushDoc(updated);
+  }
+
+  /// Round 48D2 — archived-card permanent delete: native has
+  /// NO confirmation (the delete icon deletes immediately), so
+  /// neither does this. The document op removes exactly that
+  /// row (identity-targeted); the push is the shared serialized
+  /// splice-back path, with the same honest failure + reload.
+  Future<void> _deleteMedication(MedicationEntry med) async {
+    if (_writing) return;
+    final updated = _doc.deleteEntry(med);
+    if (identical(updated, _doc)) {
+      // The op refused (unresolvable/ambiguous target) — surface
+      // it instead of claiming a delete that never happened.
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'Could not save that change. Check your connection and try again.')));
+      return;
+    }
+    await _pushDoc(updated);
+  }
+
+  /// Shared save path for archive/unarchive (R39), edit (R46),
+  /// and add/delete (R48D2):
   /// swap the document in immediately, push the whole encoded
   /// blob through `POST /api/sync/profile`, invalidate
   /// the cached pull on success; on failure show the SnackBar and
@@ -250,7 +395,8 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                _quickActionsCard(active.length),
+                _quickActionsCard(
+                    [for (final i in active) _doc.entryAt(i)!]),
                 const SizedBox(height: 16),
                 const Text(
                   'Active Prescriptions',
@@ -280,7 +426,14 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
     );
   }
 
-  Widget _quickActionsCard(int activeCount) {
+  Widget _quickActionsCard(List<MedicationEntry> activeMeds) {
+    final activeCount = activeMeds.length;
+    // Native "Took All Meds" enable rule: there is at least one
+    // active med and EVERY active med's dose is valid (a real
+    // dose AND a started date — [isDoseValid]).
+    final allValid =
+        activeMeds.isNotEmpty && activeMeds.every(isDoseValid);
+    final canTakeAll = allValid && !_writing;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -315,30 +468,37 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                   ),
                 ],
               ),
-              // Deferred: dose logging is not in the Lab yet.
               ElevatedButton(
-                onPressed: null,
+                key: const ValueKey('took_all_meds'),
+                onPressed: canTakeAll
+                    ? () => _takeMeds(activeMeds, all: true)
+                    : null,
                 style: ElevatedButton.styleFrom(
+                  backgroundColor: NotelColors.primary,
                   disabledBackgroundColor:
                       NotelColors.surfaceHigh.withValues(alpha: 0.4),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
                       Icons.check,
                       size: 16,
-                      color: NotelColors.textSecondary,
+                      color: canTakeAll
+                          ? Colors.white
+                          : NotelColors.textSecondary,
                     ),
-                    SizedBox(width: 6),
+                    const SizedBox(width: 6),
                     Text(
                       'Took All Meds',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: NotelColors.textSecondary,
+                        color: canTakeAll
+                            ? Colors.white
+                            : NotelColors.textSecondary,
                       ),
                     ),
                   ],
@@ -346,13 +506,25 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
               ),
             ],
           ),
+          if (activeMeds.isNotEmpty && !allValid) ...[
+            const SizedBox(height: 8),
+            const Text(
+              "⚠️ Fill out dose and date started below to unlock 'Took Med' logging.",
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: NotelColors.primary,
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
-          // Deferred: adding happens in Settings → User Profile.
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: null,
+              key: const ValueKey('add_medication'),
+              onPressed: _writing ? null : _showAddMedicationDialog,
               style: ElevatedButton.styleFrom(
+                backgroundColor: NotelColors.surfaceHigh,
                 disabledBackgroundColor: NotelColors.surfaceHigh,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -381,7 +553,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Archiving, restoring, and editing sync to your profile. Add medications in Settings → User Profile; dose logging is not in the Lab yet.',
+            'Dose logs sync to your history, and adding, archiving, restoring, and editing sync to your profile.',
             style: TextStyle(
               fontSize: 11,
               color: NotelColors.textSecondary,
@@ -569,10 +741,16 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
               ),
             ),
             if (!isArchived) ...[
-              // Deferred: per-med dose logging is disabled.
+              // Native enable rule: this med's dose must be valid
+              // ([isDoseValid]); also disabled while a write is in
+              // flight (Round 48 serialization).
               ElevatedButton(
-                onPressed: null,
+                key: ValueKey('took_med_at_$rawIndex'),
+                onPressed: (_writing || !valid)
+                    ? null
+                    : () => _takeMeds([med], all: false),
                 style: ElevatedButton.styleFrom(
+                  backgroundColor: NotelColors.primary,
                   disabledBackgroundColor:
                       NotelColors.surfaceHigh.withValues(alpha: 0.4),
                   shape: RoundedRectangleBorder(
@@ -581,12 +759,14 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                   padding: const EdgeInsets.symmetric(
                       horizontal: 12, vertical: 6),
                 ),
-                child: const Text(
+                child: Text(
                   'Took Med',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
-                    color: NotelColors.textSecondary,
+                    color: (valid && !_writing)
+                        ? Colors.white
+                        : NotelColors.textSecondary,
                   ),
                 ),
               ),
@@ -599,7 +779,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                     _writing ? null : () => _setArchived(med, true),
               ),
             ],
-            if (isArchived)
+            if (isArchived) ...[
               IconButton(
                 key: ValueKey('unarchive_med_at_$rawIndex'),
                 icon: const Icon(Icons.unarchive,
@@ -608,6 +788,17 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                 onPressed:
                     _writing ? null : () => _setArchived(med, false),
               ),
+              // Native archived-card delete: permanent, immediate
+              // (no confirmation dialog in native).
+              IconButton(
+                key: ValueKey('delete_med_at_$rawIndex'),
+                icon: const Icon(Icons.delete_outline,
+                    size: 20, color: NotelColors.textSecondary),
+                tooltip: 'Delete permanently',
+                onPressed:
+                    _writing ? null : () => _deleteMedication(med),
+              ),
+            ],
             ],
             ),
           ),
@@ -678,15 +869,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '• Synced: this screen shows the medications synced from your Tabs profile, the same list as Settings → User Profile. Archiving and restoring work here and sync to your profile; adding medications happens in Settings → User Profile.',
-              style: TextStyle(
-                fontSize: 13,
-                color: NotelColors.textPrimary,
-              ),
-            ),
-            SizedBox(height: 10),
-            Text(
-              '• Active & Archived: medications you no longer take are archived here to keep your list clean while preserving history. Archiving stamps the medication with today as its ended date; restoring makes it active again.',
+              '• Synced: this screen shows the medications synced from your Tabs profile, the same list as Settings → User Profile. Adding, archiving, and restoring work here and sync to your profile.',
               style: TextStyle(
                 fontSize: 13,
                 color: NotelColors.textPrimary,
@@ -702,7 +885,31 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
             ),
             SizedBox(height: 10),
             Text(
-              '• "Took Med" Logging: dose logging is not in the Lab yet.',
+              '• Required Dose Locking: "Took Med" and "Took All Meds" require a valid dose to be filled out.',
+              style: TextStyle(
+                fontSize: 13,
+                color: NotelColors.textPrimary,
+              ),
+            ),
+            SizedBox(height: 10),
+            Text(
+              '• Active & Archived: medications you no longer take are archived here to keep your list clean while preserving history. Archiving stamps the medication with today as its ended date; restoring makes it active again.',
+              style: TextStyle(
+                fontSize: 13,
+                color: NotelColors.textPrimary,
+              ),
+            ),
+            SizedBox(height: 10),
+            Text(
+              '• "Took Med" Logging: Clicking "Took Med" creates a log entry for your history and triggers the Body Info map to show potential side effects.',
+              style: TextStyle(
+                fontSize: 13,
+                color: NotelColors.textPrimary,
+              ),
+            ),
+            SizedBox(height: 10),
+            Text(
+              '• "Took All Meds": Logs 1 dose for each active medication. If a medication is taken multiple times per day (e.g. 3x daily), taking it logs a single dose, not the full day\'s total.',
               style: TextStyle(
                 fontSize: 13,
                 color: NotelColors.textPrimary,
@@ -760,10 +967,20 @@ class _MedicationEditResult {
 /// emptied, exactly like native, so Save (enabled only with a
 /// non-blank name AND dose — native's validation) always writes
 /// a real dose.
+///
+/// Round 48D2 — add mode (the `.add()` constructor, [med] null):
+/// native's other title, "Add New Medication", with native's
+/// add-mode field seeds — name/dose/start empty, frequency
+/// prefilled "Once daily" (native keeps the frequency state at
+/// its "Once daily" default when the Add button is tapped), and
+/// no Ended Date field (native shows it only when editing an
+/// archived med).
 class _MedicationEditDialog extends StatefulWidget {
-  final MedicationEntry med;
+  final MedicationEntry? med;
 
   const _MedicationEditDialog({required this.med});
+
+  const _MedicationEditDialog.add() : med = null;
 
   @override
   State<_MedicationEditDialog> createState() =>
@@ -777,7 +994,9 @@ class _MedicationEditDialogState extends State<_MedicationEditDialog> {
   late final TextEditingController _start;
   late final TextEditingController _end;
 
-  MedicationEntry get _med => widget.med;
+  MedicationEntry? get _med => widget.med;
+
+  bool get _isAdd => widget.med == null;
 
   /// Native validation: Save is enabled only while both the
   /// name and the dose are non-blank.
@@ -787,15 +1006,21 @@ class _MedicationEditDialogState extends State<_MedicationEditDialog> {
   @override
   void initState() {
     super.initState();
-    _name = TextEditingController(text: _med.name);
+    _name = TextEditingController(text: _med?.name ?? '');
     // Native: a stored "As prescribed" dose opens as an empty
     // field (exact match), forcing a real dose before Save.
     _dose = TextEditingController(
-        text: _med.dose == 'As prescribed' ? '' : _med.dose);
-    _frequency = TextEditingController(text: _med.frequency);
-    _start = TextEditingController(text: _med.startDate);
+        text: _med == null
+            ? ''
+            : (_med!.dose == 'As prescribed' ? '' : _med!.dose));
+    // Edit seeds from the stored frequency (display view: an
+    // empty raw frequency shows as "Once daily"); add seeds
+    // with native's "Once daily" default.
+    _frequency =
+        TextEditingController(text: _med?.frequency ?? 'Once daily');
+    _start = TextEditingController(text: _med?.startDate ?? '');
     _end = TextEditingController(
-        text: _med.isArchived ? (_med.endedDate ?? '') : '');
+        text: (_med?.isArchived ?? false) ? (_med!.endedDate ?? '') : '');
     // _canSave depends on the name/dose text — rebuild on change.
     _name.addListener(_onFieldChanged);
     _dose.addListener(_onFieldChanged);
@@ -845,7 +1070,11 @@ class _MedicationEditDialogState extends State<_MedicationEditDialog> {
       // untouched (and serializes as "Present" regardless); only
       // an archived med's end date comes from the field — a
       // cleared field writes '' and the med stays archived.
-      endDate: _med.isArchived ? _end.text.trim() : _med.endDate,
+      // Add mode has no end date at all (the add op writes the
+      // "Present" sentinel itself).
+      endDate: _isAdd
+          ? ''
+          : ((_med!.isArchived) ? _end.text.trim() : _med!.endDate),
     ));
   }
 
@@ -884,9 +1113,9 @@ class _MedicationEditDialogState extends State<_MedicationEditDialog> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(24),
       ),
-      title: const Text(
-        'Edit Medication',
-        style: TextStyle(
+      title: Text(
+        _isAdd ? 'Add New Medication' : 'Edit Medication',
+        style: const TextStyle(
           fontWeight: FontWeight.bold,
           color: NotelColors.textPrimary,
         ),
@@ -944,7 +1173,7 @@ class _MedicationEditDialogState extends State<_MedicationEditDialog> {
                   ),
                 ),
               ],
-              if (_med.isArchived) ...[
+              if (_med?.isArchived ?? false) ...[
                 const SizedBox(height: 12),
                 _dateField(
                   key: const ValueKey('med_edit_end'),
