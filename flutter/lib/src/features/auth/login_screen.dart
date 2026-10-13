@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/google_sign_in_service.dart';
@@ -286,13 +288,18 @@ class _LoginScreenState extends State<LoginScreen> {
           );
           // Round 51 — native parity (LoginScreen.kt:220-221):
           // seed the Google Account connection state Settings'
-          // Connected Apps row reads. Best-effort: a storage
-          // failure here must never fail a successful sign-in.
-          try {
-            final settings = widget.settingsStore ?? SettingsStore();
-            await settings.setGoogleAccountConnected(true);
-            await settings.setGoogleAccountEmail(result.email);
-          } catch (_) {}
+          // Connected Apps row reads. Best-effort and NOT awaited:
+          // a storage failure (or slowness) here must never fail
+          // or delay a successful sign-in — the seed is queued on
+          // the store and lands within milliseconds, long before
+          // the user can reach Settings.
+          final settings = widget.settingsStore ?? SettingsStore();
+          unawaited(() async {
+            try {
+              await settings.setGoogleAccountConnected(true);
+              await settings.setGoogleAccountEmail(result.email);
+            } catch (_) {}
+          }());
           if (!mounted) return;
           setState(() => _isLoading = false);
           widget.onLoginSuccess?.call(result.email);
