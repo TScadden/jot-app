@@ -297,7 +297,7 @@ class CoachParsedContent {
     ('DENIED', CoachProposalStatus.denied),
   ];
   for (final (verb, status) in verbs) {
-    final re = RegExp('\\[$verb_$kind:\\s*([^\\]]+)\\]',
+    final re = RegExp('\\[${verb}_${kind}:\\s*([^\\]]+)\\]',
         caseSensitive: false, dotAll: true);
     final m = re.firstMatch(content);
     if (m != null) {
@@ -409,7 +409,7 @@ CoachParsedContent parseCoachMessageContent(String rawContent) {
     ('APPROVED', CoachProposalStatus.approved),
     ('DENIED', CoachProposalStatus.denied),
   ]) {
-    final re = RegExp('\\[$verb_MEDICATION:\\s*([^\\]]+)\\]',
+    final re = RegExp('\\[${verb}_MEDICATION:\\s*([^\\]]+)\\]',
         caseSensitive: false, dotAll: true);
     final matches = re.allMatches(clean).toList();
     if (matches.isNotEmpty) {
@@ -454,7 +454,7 @@ CoachParsedContent parseCoachMessageContent(String rawContent) {
 String rewriteProposalTag(String content, String kind, String newVerb) {
   return content.replaceAll(
     RegExp('\\[PROPOSE\\_$kind:', caseSensitive: false),
-    '[$newVerb_$kind:',
+    '[${newVerb}_${kind}:',
   );
 }
 
