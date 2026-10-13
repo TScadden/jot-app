@@ -103,7 +103,59 @@ abstract class ReminderNotificationService {
     required DateTime when,
     required bool highImportance,
   });
+
+  /// Round 47 — weekly schedule on one weekday (native user-reminder
+  /// per-day slots). [weekday] uses java Calendar constants
+  /// (SUNDAY=1 … SATURDAY=7) — the same numbering as the reminders
+  /// blob's `dayOfWeek` and, verified against
+  /// flutter_local_notifications 19.5.0 `lib/src/types.dart`, the
+  /// plugin's `Day` enum values (`sunday(1)` … `saturday(7)`), so
+  /// [dayForCalendarDayOfWeek] is an identity-value mapping.
+  Future<void> scheduleWeekly({
+    required int id,
+    required String title,
+    required String body,
+    required String channelId,
+    required String channelName,
+    required int weekday,
+    required int hour,
+    required int minute,
+    required bool highImportance,
+  });
   Future<void> cancel(int id);
+}
+
+/// Round 47 — java Calendar day-of-week constant for a local
+/// [DateTime] (SUNDAY=1 … SATURDAY=7). Dart's `DateTime.weekday`
+/// is Mon=1 … Sun=7, hence the rotate.
+int calendarDayOfWeek(DateTime d) => d.weekday % 7 + 1;
+
+/// Round 47 — the plugin `Day` for a Calendar day-of-week constant.
+/// flutter_local_notifications 19.5.0 declares
+/// `enum Day { sunday(1), monday(2), …, saturday(7) }`, so the enum
+/// ordinal and value both line up 1:1 with the Calendar constants
+/// the reminders blob stores. Out-of-range input clamps to Monday,
+/// mirroring the DayTimeConfig dayName fallback.
+Day dayForCalendarDayOfWeek(int calendarDay) {
+  if (calendarDay < 1 || calendarDay > 7) return Day.monday;
+  return Day.values[calendarDay - 1];
+}
+
+/// Round 47 — next local wall-clock instance of [hour]:[minute] on
+/// the Calendar weekday [calendarDay], strictly after [now] (today
+/// when that weekday is today and the time is still ahead, else the
+/// matching day within the next 7 days).
+DateTime nextWeeklyInstance(
+    DateTime now, int calendarDay, int hour, int minute) {
+  for (var offset = 0; offset <= 7; offset++) {
+    // Calendar-day iteration (not 24h durations) so DST transitions
+    // cannot skip or repeat a candidate date.
+    final t = DateTime(now.year, now.month, now.day + offset, hour, minute);
+    if (calendarDayOfWeek(t) == calendarDay && t.isAfter(now)) return t;
+  }
+  // Unreachable: within 8 consecutive days the weekday recurs with
+  // a time strictly after `now`. Returned only to satisfy the type.
+  return DateTime(now.year, now.month, now.day + 7, hour, minute);
 }
 
 /// Next local wall-clock instance of [hour]:[minute] strictly after
@@ -410,6 +462,45 @@ class LocalReminderNotificationService implements ReminderNotificationService {
         androidScheduleMode: exact
             ? AndroidScheduleMode.exactAllowWhileIdle
             : AndroidScheduleMode.inexactAllowWhileIdle,
+        payload: channelId,
+      );
+    } on NotificationServiceException {
+      rethrow;
+    } catch (_) {
+      throw const NotificationServiceException('SCHEDULE_FAILED');
+    }
+  }
+
+  @override
+  Future<void> scheduleWeekly({
+    required int id,
+    required String title,
+    required String body,
+    required String channelId,
+    required String channelName,
+    required int weekday,
+    required int hour,
+    required int minute,
+    required bool highImportance,
+  }) async {
+    try {
+      await initialize();
+      final exact = await _android?.canScheduleExactNotifications() ?? false;
+      final when = nextWeeklyInstance(DateTime.now(), weekday, hour, minute);
+      // The plugin derives the recurring weekday from the scheduled
+      // date itself when matching dayOfWeekAndTime; `when` is built
+      // to BE the Calendar weekday [weekday] (see
+      // [dayForCalendarDayOfWeek] for the verified 1:1 enum mapping).
+      await _plugin.zonedSchedule(
+        id,
+        title,
+        body,
+        _zoned(when),
+        _details(channelId, channelName, highImportance),
+        androidScheduleMode: exact
+            ? AndroidScheduleMode.exactAllowWhileIdle
+            : AndroidScheduleMode.inexactAllowWhileIdle,
+        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
         payload: channelId,
       );
     } on NotificationServiceException {

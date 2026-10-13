@@ -46,6 +46,7 @@ class FakeReminderNotificationService implements ReminderNotificationService {
   int requestCount = 0;
   final Map<int, String> daily = {};
   final Map<int, DateTime> once = {};
+  final Map<int, String> weekly = {};
   final List<int> cancelled = [];
 
   FakeReminderNotificationService(
@@ -100,9 +101,25 @@ class FakeReminderNotificationService implements ReminderNotificationService {
   }
 
   @override
+  Future<void> scheduleWeekly({
+    required int id,
+    required String title,
+    required String body,
+    required String channelId,
+    required String channelName,
+    required int weekday,
+    required int hour,
+    required int minute,
+    required bool highImportance,
+  }) async {
+    weekly[id] = '$weekday $hour:$minute';
+  }
+
+  @override
   Future<void> cancel(int id) async {
     cancelled.add(id);
     daily.remove(id);
     once.remove(id);
+    weekly.remove(id);
   }
 }

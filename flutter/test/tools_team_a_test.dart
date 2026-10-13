@@ -325,7 +325,7 @@ void main() {
           200,
         ));
 
-    testWidgets('renders titles, summaries, and enabled pills',
+    testWidgets('renders titles, summaries, and enabled switches',
         (tester) async {
       await _pumpScreen(
           tester,
@@ -336,8 +336,13 @@ void main() {
       expect(find.text('Drink water'), findsOneWidget);
       expect(find.text('Every 2h  •  8:00 AM to 9:00 PM'),
           findsOneWidget);
-      expect(find.text('ON'), findsOneWidget);
-      expect(find.text('OFF'), findsOneWidget);
+      // Round 47: the read-only ON/OFF pill became a real Switch.
+      final switches =
+          tester.widgetList<Switch>(find.byType(Switch)).toList();
+      expect(switches, hasLength(2));
+      expect(switches[0].value, isTrue);
+      expect(switches[1].value, isFalse);
+      expect(find.text('New Reminder'), findsOneWidget);
     });
 
     testWidgets('empty blob → honest empty state', (tester) async {

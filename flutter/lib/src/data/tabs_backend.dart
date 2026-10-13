@@ -326,6 +326,43 @@ class TabsBackend {
     });
   }
 
+  /// Round 47 — create a habit, mirroring native habit creation:
+  /// `POST /api/habits` with `{"title": ..., "target_time": "Anytime"}`
+  /// → `{"habit": {...}}`. Returns the created habit, or null on any
+  /// failure (the caller keeps the honest error path and re-fetches).
+  /// Accepts 200 or 201 (resource-created) like the native client's
+  /// 2xx handling; every other status is a failure.
+  Future<HabitDto?> createHabit(String title) async {
+    final response = await _sendAuthed((token) => _client.post(
+          Uri.parse('$_baseUrl/api/habits'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({'title': title, 'target_time': 'Anytime'}),
+        ));
+    if (response == null ||
+        (response.statusCode != 200 && response.statusCode != 201)) {
+      return null;
+    }
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) return null;
+      final habit = decoded['habit'];
+      if (habit is Map<String, dynamic>) return HabitDto.fromJson(habit);
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Round 47 — delete a habit: `DELETE /api/habits/{id}` (native).
+  /// True on HTTP 200. There is NO habit update endpoint — a rename
+  /// would need delete+recreate, which destroys the habit's
+  /// server-side log history, so editing is deliberately not built.
+  Future<bool> deleteHabit(String id) =>
+      _delete('/api/habits/${Uri.encodeComponent(id)}');
+
   /// Round 18 — friends list from `GET /api/friends/list`.
   Future<List<FriendDto>> fetchFriendsList() async {
     final body = await _getJson('/api/friends/list');

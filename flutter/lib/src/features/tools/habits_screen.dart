@@ -3,8 +3,8 @@ import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
-/// Round 18 — Habits tool screen, DISPLAY-ONLY. Faithful port of native
-/// `ui/screen/HabitsScreen.kt` minus the write path:
+/// Round 18 — Habits tool screen (display).
+/// Round 47 — WRITE actions, porting native `HabitsScreen.kt`:
 ///
 /// - Data: `TabsBackend.fetchHabits()` (GET /api/habits), i.e. real data —
 ///   nothing is invented. A failure or missing token yields the honest
@@ -13,9 +13,16 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///   overall-streak banner (only when the streak is > 0), the subtitle +
 ///   progress bar, and the 2-per-row habit cards with the native streak
 ///   badge (✅ / 🔥 N) and the 7-day dot strip ending today.
-/// - DEFERRED (later round): add-habit input, toggling a habit for today,
-///   deleting habits, and the retry-after-write re-fetch. The per-card
-///   delete (✕) affordance from native is omitted; cards are read-only.
+/// - Add: the inline field pinned at the top ("Add new routine
+///   habit...") — title only, blank rejected, trimmed — POSTs
+///   `/api/habits` then re-fetches (native parity).
+/// - Tap a card: toggles TODAY's log via `POST /api/habits/log`
+///   (optimistic; failure reverts + shows an error).
+/// - Delete: small ✕ at the card's top-right, no confirmation →
+///   `DELETE /api/habits/{id}` → re-fetch on success.
+/// - NO habit edit: native has none and no update endpoint exists;
+///   a rename via delete+recreate would destroy the habit's
+///   server-side log history, so editing is deliberately not built.
 ///
 /// Pure helpers ([todayDateString], [isHabitCheckedToday], [habitStreak],
 /// [overallHabitStreak], [habitDayMarks]) mirror the native
@@ -121,7 +128,7 @@ DateTime? _parseDay(String s) {
   }
 }
 
-/// Round 18 — display-only Habits screen.
+/// Round 18 — Habits screen. Round 47 — add / delete / tap-to-log.
 ///
 /// [backend] is injectable so widget tests can drive the screen with a
 /// mock client; production defaults to a real [TabsBackend].
@@ -136,8 +143,10 @@ class HabitsScreen extends StatefulWidget {
 
 class _HabitsScreenState extends State<HabitsScreen> {
   late final TabsBackend _backend;
+  final TextEditingController _addController = TextEditingController();
   bool _loading = true;
   bool _failed = false;
+  bool _adding = false;
   List<HabitDto> _habits = const [];
 
   @override
@@ -145,6 +154,12 @@ class _HabitsScreenState extends State<HabitsScreen> {
     super.initState();
     _backend = widget.backend ?? TabsBackend();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _addController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -168,6 +183,93 @@ class _HabitsScreenState extends State<HabitsScreen> {
         _failed = true;
       });
     }
+  }
+
+  /// Re-fetch without the full-screen spinner (after a write, native
+  /// re-fetches the list the same way).
+  Future<void> _refresh() async {
+    try {
+      final habits = await _backend.fetchHabits();
+      if (!mounted) return;
+      setState(() => _habits = habits);
+    } catch (_) {
+      // Keep the current list; the write itself already reported.
+    }
+  }
+
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// Native add: title only (blank rejected, trimmed) →
+  /// `POST /api/habits` → re-fetch.
+  Future<void> _addHabit() async {
+    final title = _addController.text.trim();
+    if (title.isEmpty || _adding) return;
+    setState(() => _adding = true);
+    final created = await _backend.createHabit(title);
+    if (!mounted) return;
+    setState(() => _adding = false);
+    if (created == null) {
+      _showError(
+          'Could not add that habit. Check your connection and try again.');
+      return;
+    }
+    _addController.clear();
+    _backend.invalidateSyncPull();
+    await _refresh();
+  }
+
+  /// Native delete: `DELETE /api/habits/{id}` → re-fetch on success.
+  Future<void> _deleteHabit(HabitDto habit) async {
+    final ok = await _backend.deleteHabit(habit.id);
+    if (!mounted) return;
+    if (!ok) {
+      _showError(
+          'Could not delete that habit. Check your connection and try again.');
+      return;
+    }
+    _backend.invalidateSyncPull();
+    await _refresh();
+  }
+
+  /// Card tap toggles TODAY's log: optimistic local update via the
+  /// existing `logHabit` write; failure reverts + shows an error.
+  Future<void> _toggleHabit(HabitDto habit) async {
+    final today = todayDateString();
+    final wasChecked = habit.logs.contains(today);
+    final previous = _habits;
+    setState(() {
+      _habits = [
+        for (final h in _habits)
+          if (h.id == habit.id)
+            HabitDto(
+              id: h.id,
+              title: h.title,
+              logs: wasChecked
+                  ? h.logs.where((l) => l != today).toList()
+                  : [...h.logs, today],
+              targetTime: h.targetTime,
+            )
+          else
+            h,
+      ];
+    });
+    final ok = await _backend.logHabit(
+      habitId: habit.id,
+      date: today,
+      completed: !wasChecked,
+    );
+    if (!mounted) return;
+    if (!ok) {
+      setState(() => _habits = previous);
+      _showError(
+          'Could not update that habit. Check your connection and try again.');
+      return;
+    }
+    _backend.invalidateSyncPull();
   }
 
   @override
@@ -277,9 +379,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
 
     final overallStreak = overallHabitStreak(_habits);
     final subtitle = _habits.isEmpty
-        // No add-habit input this round (write deferred): point at the
-        // native Tabs app, where habits are created and synced.
-        ? 'No habits yet. Add your first habit in the Tabs app to get started.'
+        ? 'No habits yet. Add your first habit above to get started.'
         : checkedCount == _habits.length
             ? 'All done today! Amazing work 🎉'
             : 'Keep it up. You\'re on a roll!';
@@ -289,6 +389,8 @@ class _HabitsScreenState extends State<HabitsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _addField(),
+          const SizedBox(height: 16),
           if (overallStreak > 0) ...[
             _streakBanner(overallStreak),
             const SizedBox(height: 12),
@@ -324,6 +426,63 @@ class _HabitsScreenState extends State<HabitsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  /// The inline add field pinned at the top of the screen (native):
+  /// placeholder "Add new routine habit...", the add IconButton
+  /// (spinner while loading) or IME Done submits. Title only.
+  Widget _addField() {
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _addController,
+            style: const TextStyle(
+              color: NotelColors.textPrimary,
+              fontSize: 14,
+            ),
+            decoration: InputDecoration(
+              hintText: 'Add new routine habit...',
+              hintStyle: const TextStyle(
+                color: NotelColors.textSecondary,
+                fontSize: 14,
+              ),
+              filled: true,
+              fillColor: NotelColors.surfaceHigh.withValues(alpha: 0.1),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide.none,
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14, vertical: 12),
+            ),
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _addHabit(),
+          ),
+        ),
+        const SizedBox(width: 8),
+        if (_adding)
+          const SizedBox(
+            width: 40,
+            height: 40,
+            child: Padding(
+              padding: EdgeInsets.all(8),
+              child: CircularProgressIndicator(
+                  color: NotelColors.primary, strokeWidth: 2),
+            ),
+          )
+        else
+          IconButton(
+            icon: const Icon(
+              Icons.add_circle,
+              color: NotelColors.primary,
+              size: 28,
+              semanticLabel: 'Add habit',
+            ),
+            onPressed: _addHabit,
+          ),
+      ],
     );
   }
 
@@ -391,7 +550,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
           ),
           SizedBox(height: 4),
           Text(
-            'Add your first daily routine in the Tabs app!',
+            'Add your first daily routine above!',
             style: TextStyle(
               color: NotelColors.textSecondary,
               fontSize: 13,
@@ -434,7 +593,11 @@ class _HabitsScreenState extends State<HabitsScreen> {
     final checked = isHabitCheckedToday(habit);
     final streak = habitStreak(habit.logs);
     final marks = habitDayMarks(habit.logs);
-    return Container(
+    return GestureDetector(
+      // Card tap toggles today's log (native). The ✕ below is a
+      // separate button and wins its own tap.
+      onTap: () => _toggleHabit(habit),
+      child: Container(
       constraints: const BoxConstraints(minHeight: 100),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -457,8 +620,19 @@ class _HabitsScreenState extends State<HabitsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _streakBadge(checked, streak),
-              // Read-only this round: the native per-card ✕ delete is a
-              // write, so it is omitted (deferred to a later round).
+              // Native per-card ✕ delete (top-right, no confirmation).
+              IconButton(
+                icon: const Icon(
+                  Icons.close,
+                  color: NotelColors.textSecondary,
+                  size: 14,
+                  semanticLabel: 'Delete habit',
+                ),
+                padding: EdgeInsets.zero,
+                constraints:
+                    const BoxConstraints(minWidth: 20, minHeight: 20),
+                onPressed: () => _deleteHabit(habit),
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -474,6 +648,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
           const SizedBox(height: 8),
           _weekDots(marks),
         ],
+      ),
       ),
     );
   }
