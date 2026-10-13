@@ -61,6 +61,23 @@ class _FakeHc extends HealthConnectService {
   Future<bool> isConnected() async => false;
 }
 
+/// In-memory [TipsCacheStore] — the tools_r48c pattern. The default
+/// store reads through the flutter_secure_storage channel, whose
+/// futures never complete under FakeAsync; the screen's 3s timeout
+/// guard (production protection against a wedged channel) then
+/// leaves a Timer still pending at test teardown. Injected IO
+/// completes instantly with an empty cache, so the wrapped future
+/// finishes and the timeout timer is cancelled — no timer pends.
+TipsCacheStore emptyTipsCacheStore() {
+  final mem = <String, String>{};
+  return TipsCacheStore()
+    ..debugSetIO(
+      read: (key) async => mem[key],
+      write: (key, value) async => mem[key] = value,
+      delete: (key) async => mem.remove(key),
+    );
+}
+
 // ── Tips & Tricks parsing ───────────────────────────────────────────────────
 
 void main() {
@@ -119,7 +136,10 @@ void main() {
             jsonEncode({'isUnlimited': true, 'entries': []}), 200)),
         token: 't',
       );
-      await pumpScreen(tester, TipsTricksScreen(backend: backend));
+      await pumpScreen(
+          tester,
+          TipsTricksScreen(
+              backend: backend, cacheStore: emptyTipsCacheStore()));
       expect(find.text('Personalized Insights'), findsOneWidget);
       expect(find.text('Generate Custom Tips'), findsOneWidget);
     });
@@ -159,7 +179,10 @@ void main() {
         }),
         token: 't',
       );
-      await pumpScreen(tester, TipsTricksScreen(backend: backend));
+      await pumpScreen(
+          tester,
+          TipsTricksScreen(
+              backend: backend, cacheStore: emptyTipsCacheStore()));
       await tester.tap(find.text('Generate Custom Tips'));
       await tester.pumpAndSettle();
       expect(find.text('Could not load your data'), findsOneWidget);
@@ -178,7 +201,10 @@ void main() {
         }),
         token: 't',
       );
-      await pumpScreen(tester, TipsTricksScreen(backend: backend));
+      await pumpScreen(
+          tester,
+          TipsTricksScreen(
+              backend: backend, cacheStore: emptyTipsCacheStore()));
       await tester.tap(find.text('Generate Custom Tips'));
       await tester.pumpAndSettle();
       expect(find.textContaining('did not return any topics'), findsOneWidget);
