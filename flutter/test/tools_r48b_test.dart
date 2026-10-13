@@ -445,7 +445,10 @@ void main() {
         deepByDate: const {'2026-10-13': 120},
         spikesByDate: const {'2026-10-13': 0, '2026-10-12': 3},
       );
-      final lines = csv.trim().split('\n');
+      // No trim(): the exact-string contract includes the last line's
+      // trailing center-padding (native centerPad pads every field);
+      // trimming would eat exactly the padding under test.
+      final lines = csv.split('\n');
       expect(lines[0],
           'Date,Average HR (BPM),Sleep Duration,Deep Sleep,Spikes (count)');
       expect(lines[1],
