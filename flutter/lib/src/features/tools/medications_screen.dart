@@ -46,6 +46,11 @@ export 'package:tabs_lab/src/data/medications.dart';
 /// DEFERRED: add/delete and "Took Med" / "Took All Meds" dose
 /// logging. Adding medications happens in Settings → User Profile;
 /// dose logging is not in the Lab yet.
+///
+/// Round 48 — archive/edit writes are now serialized (one
+/// whole-list push in flight at a time; controls disabled while
+/// pending), matching the Vera B3 discipline Habits and Reminders
+/// received in the Round 47 fix round.
 
 class MedicationsScreen extends StatefulWidget {
   /// Injectable for tests.
@@ -68,6 +73,16 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
   /// corrupt it server-side (Vera R39 Findings 1–2).
   MedicationDocument _doc = MedicationDocument.empty;
   bool _showArchived = true;
+
+  /// Round 48 — a whole-list push is in flight. Archive/edit
+  /// writes on this screen were never serialized (the Vera B3
+  /// fix round covered Habits and Reminders only): two quick
+  /// taps could run two whole-list pushes concurrently, and the
+  /// slower push — built from the older document — could land
+  /// last and silently undo the first change server-side. While
+  /// a push is pending, every write control is disabled and
+  /// every write entry point drops its tap.
+  bool _writing = false;
 
   @override
   void initState() {
@@ -107,6 +122,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
   /// never claims an unsaved state (Settings' `_pushProfile`
   /// honesty pattern).
   Future<void> _setArchived(MedicationEntry med, bool archive) async {
+    if (_writing) return;
     final now = DateTime.now();
     final updated = archive
         ? _doc.archiveEntry(med, now: now)
@@ -120,6 +136,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
   /// archive. The op targets the exact entry instance this screen
   /// rendered (identity, Vera Finding 1) — never a name match.
   Future<void> _showEditDialog(MedicationEntry med) async {
+    if (_writing) return;
     final result = await showDialog<_MedicationEditResult>(
       context: context,
       builder: (_) => _MedicationEditDialog(med: med),
@@ -152,20 +169,31 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
   /// the cached pull on success; on failure show the SnackBar and
   /// reload from the server — the UI never claims an unsaved
   /// state (Settings' `_pushProfile` honesty pattern).
+  ///
+  /// Round 48 — SERIALIZED (see [_writing]): at most one push
+  /// runs at a time, and the flag is held across the failure-path
+  /// reload so the reload can never race a push still in flight.
   Future<void> _pushDoc(MedicationDocument updated) async {
+    if (_writing) return;
+    _writing = true;
     setState(() => _doc = updated);
-    final ok = await _backend.postSyncProfile(
-        {'medications': jsonEncode(updated.encode())});
-    if (ok) {
+    try {
+      final ok = await _backend.postSyncProfile(
+          {'medications': jsonEncode(updated.encode())});
+      if (ok) {
+        _backend.invalidateSyncPull();
+        return;
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'Could not save that change. Check your connection and try again.')));
       _backend.invalidateSyncPull();
-      return;
+      await _load();
+    } finally {
+      _writing = false;
+      if (mounted) setState(() {});
     }
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text(
-            'Could not save that change. Check your connection and try again.')));
-    _backend.invalidateSyncPull();
-    await _load();
   }
 
   @override
@@ -417,7 +445,8 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
         child: InkWell(
           key: ValueKey('edit_med_at_$rawIndex'),
           borderRadius: BorderRadius.circular(20),
-          onTap: () => _showEditDialog(med),
+          // Disabled while a write push is in flight (Round 48).
+          onTap: _writing ? null : () => _showEditDialog(med),
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -566,7 +595,8 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                 icon: const Icon(Icons.archive,
                     size: 20, color: NotelColors.textSecondary),
                 tooltip: 'Archive',
-                onPressed: () => _setArchived(med, true),
+                onPressed:
+                    _writing ? null : () => _setArchived(med, true),
               ),
             ],
             if (isArchived)
@@ -575,7 +605,8 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                 icon: const Icon(Icons.unarchive,
                     size: 20, color: NotelColors.textSecondary),
                 tooltip: 'Restore',
-                onPressed: () => _setArchived(med, false),
+                onPressed:
+                    _writing ? null : () => _setArchived(med, false),
               ),
             ],
             ),
