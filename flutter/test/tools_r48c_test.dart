@@ -885,6 +885,9 @@ void main() {
           findsOneWidget);
 
       await tester.enterText(find.byType(TextField), 'my sleep is bad');
+      // One frame so the input rebuilds with Send enabled (its
+      // onPressed is gated on the just-typed text) before the tap.
+      await tester.pump();
       await tester.tap(find.byIcon(Icons.send));
       await tester.pumpAndSettle();
       // The struggle hit the native suggestions endpoint.
@@ -945,6 +948,9 @@ void main() {
       }));
       await pumpScreen(tester, ProjectFocusScreen(backend: backend));
       await tester.enterText(find.byType(TextField), 'stress');
+      // One frame so the input rebuilds with Send enabled (its
+      // onPressed is gated on the just-typed text) before the tap.
+      await tester.pump();
       await tester.tap(find.byIcon(Icons.send));
       await tester.pumpAndSettle();
       expect(

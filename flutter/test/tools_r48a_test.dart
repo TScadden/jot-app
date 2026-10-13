@@ -250,6 +250,9 @@ void main() {
       await tester.tap(find.text('New List'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'Travel');
+      // One frame so the dialog rebuilds with Create enabled (its
+      // onPressed is gated on the just-typed text) before the tap.
+      await tester.pump();
       await tester.tap(find.text('Create'));
       await tester.pumpAndSettle();
       expect(find.text('Travel'), findsOneWidget);
@@ -476,6 +479,9 @@ void main() {
       final server = serverWithNotes()..failPosts = true;
       await pumpScreen(tester, NotesScreen(backend: server.backend()));
       await tester.enterText(find.byType(TextField).at(1), 'unsaved');
+      // One frame so the compose card rebuilds with Add enabled (its
+      // onPressed is gated on the just-typed text) before the tap.
+      await tester.pump();
       await tester.tap(find.byIcon(Icons.add));
       await tester.pumpAndSettle();
       expect(
