@@ -182,8 +182,9 @@ void main() {
       // Denied: no profile push, toggle still off, no schedule armed.
       expect(backend.profilePushes, isEmpty);
       expect(notifs.daily, isEmpty);
-      final sw = tester.widget<Switch>(
-          find.byKey(const ValueKey('habit_reminder_toggle')));
+      final sw = tester.widget<Switch>(find.descendant(
+          of: find.byKey(const ValueKey('habit_reminder_toggle')),
+          matching: find.byType(Switch)));
       expect(sw.value, isFalse);
     });
 
