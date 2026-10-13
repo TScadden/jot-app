@@ -383,8 +383,21 @@ void main() {
       // metrics (Breathing Rate, Blood Oxygen, HRV) show their
       // calculated-at-night note, so Resting HR — in the last row,
       // outside the initial build range — is the tile carrying
-      // "No Data Recorded". Scroll it into view.
-      await tester.drag(find.byType(GridView), const Offset(0, -400));
+      // "No Data Recorded" (native renders exactly this label on
+      // every empty tile). The tiles are ~482px tall at this
+      // surface (376 wide / 0.78 aspect), so a single drag leaves
+      // the last row — and the label at its bottom — still
+      // offstage; drive the grid until the label is on screen,
+      // the scrollUntilVisible pattern the Trends tests below use.
+      await tester.scrollUntilVisible(
+        find.text('No Data Recorded'),
+        300,
+        scrollable: find
+            .descendant(
+                of: find.byType(GridView),
+                matching: find.byType(Scrollable))
+            .first,
+      );
       await tester.pumpAndSettle();
       expect(find.text('No Data Recorded'), findsWidgets);
     });
