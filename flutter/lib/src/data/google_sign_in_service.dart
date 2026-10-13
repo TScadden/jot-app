@@ -124,4 +124,59 @@ class GoogleSignInService {
       throw const GoogleSignInOutcome.failed();
     }
   }
+
+  /// Round 30 — Settings linking variant: same chooser flow, but the
+  /// caller also needs the account EMAIL. Native's Settings flows use
+  /// both values: the account link sends the ID token to
+  /// `POST api/auth/link-google` and stores the email for display
+  /// (SettingsViewModel.connectGoogleAccount), and the Calendar flow
+  /// stores just the email locally (connectGoogleCalendar). Unlike
+  /// the login path above (Juno N2: ID token only), reading `email`
+  /// here is the native Settings contract — it is shown back to the
+  /// user on the Connected Apps page and never logged.
+  Future<GoogleAccountIdentity> signInForIdentity() async {
+    try {
+      if (!_initialized) {
+        await _googleSignIn.initialize(
+          serverClientId: kGoogleServerClientId,
+        );
+        _initialized = true;
+      }
+      await _googleSignIn.signOut();
+      final account = await _googleSignIn.authenticate();
+      final idToken = account.authentication.idToken;
+      final email = account.email.trim();
+      if (idToken == null || idToken.trim().isEmpty || email.isEmpty) {
+        throw const GoogleSignInOutcome.failed();
+      }
+      return GoogleAccountIdentity(idToken: idToken, email: email);
+    } on GoogleSignInOutcome {
+      rethrow;
+    } on GoogleSignInException catch (e) {
+      switch (e.code) {
+        case GoogleSignInExceptionCode.canceled:
+          throw const GoogleSignInOutcome.cancelled();
+        case GoogleSignInExceptionCode.clientConfigurationError:
+        case GoogleSignInExceptionCode.providerConfigurationError:
+        case GoogleSignInExceptionCode.uiUnavailable:
+          throw const GoogleSignInOutcome.unavailable();
+        default:
+          throw const GoogleSignInOutcome.failed();
+      }
+    } on UnsupportedError {
+      throw const GoogleSignInOutcome.unavailable();
+    } catch (_) {
+      throw const GoogleSignInOutcome.failed();
+    }
+  }
+}
+
+/// The verified Google identity a Settings linking flow needs: the
+/// ID token (for the server link call) plus the account email (for
+/// the connected-state display). The token is never logged, printed,
+/// or included in exceptions — same rule as the login path.
+class GoogleAccountIdentity {
+  final String idToken;
+  final String email;
+  const GoogleAccountIdentity({required this.idToken, required this.email});
 }

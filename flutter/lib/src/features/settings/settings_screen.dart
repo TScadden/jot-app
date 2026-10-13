@@ -1563,31 +1563,111 @@ class _SettingsScreenState extends State<SettingsScreen> {
       const SizedBox(height: 24),
       _sectionLabel('INTEGRATED APPS'),
       _card([
-        const Text('Google Calendar',
-            style: TextStyle(
-                color: NotelColors.textPrimary, fontWeight: FontWeight.w500)),
-        const Text(
-            'Let your AI Clinical Advocate schedule events and update calendars.',
-            style:
-                TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
-        const SizedBox(height: 8),
-        const Text(
-            'Google Calendar linking uses the native Google sign-in flow and is not available in the Flutter Lab yet.',
-            style:
-                TextStyle(color: NotelColors.textSecondary, fontSize: 11)),
-        const SizedBox(height: 16),
-        const Text('Google Account',
-            style: TextStyle(
-                color: NotelColors.textPrimary, fontWeight: FontWeight.w500)),
-        const Text(
-            'Link your Google account to sign in with Google or email & password.',
-            style:
-                TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
-        const SizedBox(height: 8),
-        const Text(
-            'Linking or disconnecting a Google account is not available in the Flutter Lab yet.',
-            style:
-                TextStyle(color: NotelColors.textSecondary, fontSize: 11)),
+        // Google Calendar (native :2293-2360): native's connect is a
+        // Google sign-in chooser whose returned account email is
+        // stored LOCALLY (SettingsViewModel.connectGoogleCalendar,
+        // SettingsViewModel.kt:204-209) — native requests NO Calendar
+        // API scope and makes NO server call for this row; the flag
+        // only gates the AI coach's calendar features
+        // (CoachViewModel.kt:1354, :1463). Mirrored exactly: no new
+        // OAuth scope is requested here.
+        if (_gCalConnected) ...[
+          const Text('Google Calendar Active',
+              style: TextStyle(
+                  color: NotelColors.textPrimary,
+                  fontWeight: FontWeight.w500)),
+          Text('Connected as $_gCalEmail',
+              style: const TextStyle(
+                  color: NotelColors.textSecondary, fontSize: 12)),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              key: const ValueKey('disconnect_calendar_button'),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: NotelColors.surfaceHigh,
+                  foregroundColor: NotelColors.textPrimary),
+              onPressed: _disconnectGoogleCalendar,
+              child: const Text('Disconnect Google Calendar',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ] else ...[
+          const Text('Google Calendar',
+              style: TextStyle(
+                  color: NotelColors.textPrimary,
+                  fontWeight: FontWeight.w500)),
+          const Text(
+              'Let your AI Clinical Advocate schedule events and update calendars.',
+              style:
+                  TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              key: const ValueKey('connect_calendar_button'),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: NotelColors.surfaceHigh,
+                  foregroundColor: NotelColors.textPrimary),
+              onPressed: _connectGoogleCalendar,
+              icon: Image.asset('assets/images/ic_google_logo.png',
+                  width: 20, height: 20),
+              label: const Text('Connect Google Calendar',
+                  style: TextStyle(fontWeight: FontWeight.w600)),
+            ),
+          ),
+        ],
+        const SizedBox(height: 20),
+        // Google Account (native :2362-2710 + SettingsViewModel
+        // .connectGoogleAccount :218-241): sign-in chooser, then the
+        // ID token goes to POST /api/auth/link-google; local state
+        // flips ONLY on the server's success (fail closed).
+        if (_gAccountConnected) ...[
+          const Text('Google Account Connected',
+              style: TextStyle(
+                  color: NotelColors.textPrimary,
+                  fontWeight: FontWeight.w500)),
+          Text('Connected as $_gAccountEmail',
+              style: const TextStyle(
+                  color: NotelColors.textSecondary, fontSize: 12)),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              key: const ValueKey('disconnect_google_button'),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: NotelColors.surfaceHigh,
+                  foregroundColor: NotelColors.textPrimary),
+              onPressed: _showDisconnectGoogleDialog,
+              child: const Text('Disconnect Google Account',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ] else ...[
+          const Text('Google Account',
+              style: TextStyle(
+                  color: NotelColors.textPrimary,
+                  fontWeight: FontWeight.w500)),
+          const Text(
+              'Link your Google account to sign in with Google or email & password.',
+              style:
+                  TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              key: const ValueKey('connect_google_button'),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: NotelColors.surfaceHigh,
+                  foregroundColor: NotelColors.textPrimary),
+              onPressed: _connectGoogleAccount,
+              icon: Image.asset('assets/images/ic_google_logo.png',
+                  width: 20, height: 20),
+              label: const Text('Connect Google Account',
+                  style: TextStyle(fontWeight: FontWeight.w600)),
+            ),
+          ),
+        ],
       ]),
       const SizedBox(height: 24),
       _sectionLabel('ADVANCED DATA SOURCES'),
@@ -1605,6 +1685,140 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
       ]),
     ];
+  }
+
+  // ── Connected Apps flows (Round 30) ──────────────────────────────
+
+  /// Native Calendar connect (SettingsScreen.kt:144-160 +
+  /// SettingsViewModel.kt:204-209): chooser returns an account; only
+  /// its email is stored, locally. A dismissed chooser is a quiet
+  /// no-op (native parity); real failures surface as a snackbar.
+  Future<void> _connectGoogleCalendar() async {
+    try {
+      final identity = await _google.signInForIdentity();
+      await _store.setGoogleCalendarConnected(true);
+      await _store.setGoogleCalendarEmail(identity.email);
+      if (!mounted) return;
+      setState(() {
+        _gCalConnected = true;
+        _gCalEmail = identity.email;
+      });
+    } on GoogleSignInOutcome catch (e) {
+      if (e.kind == GoogleSignInOutcomeKind.cancelled) return;
+      _snack(e.message);
+    } catch (_) {
+      _snack('Google sign-in failed. Please try again.');
+    }
+  }
+
+  Future<void> _disconnectGoogleCalendar() async {
+    // Native disconnectGoogleCalendar: local state only.
+    await _store.setGoogleCalendarConnected(false);
+    await _store.setGoogleCalendarEmail('');
+    if (!mounted) return;
+    setState(() {
+      _gCalConnected = false;
+      _gCalEmail = '';
+    });
+  }
+
+  /// Native Account link (SettingsScreen.kt:168-198 +
+  /// SettingsViewModel.kt:218-241): chooser → POST /api/auth/
+  /// link-google → local state flips ONLY on server success.
+  Future<void> _connectGoogleAccount() async {
+    final GoogleAccountIdentity identity;
+    try {
+      identity = await _google.signInForIdentity();
+    } on GoogleSignInOutcome catch (e) {
+      if (e.kind == GoogleSignInOutcomeKind.cancelled) return;
+      _snack(e.message);
+      return;
+    } catch (_) {
+      _snack('Google sign-in failed. Please try again.');
+      return;
+    }
+    final res = await _backend.linkGoogle(identity.idToken);
+    if (res != null && res['success'] == true) {
+      await _store.setGoogleAccountConnected(true);
+      await _store.setGoogleAccountEmail(identity.email);
+      if (!mounted) return;
+      setState(() {
+        _gAccountConnected = true;
+        _gAccountEmail = identity.email;
+      });
+      final msg = res['message']?.toString();
+      if (msg != null && msg.isNotEmpty) _snack(msg);
+    } else {
+      // Fail closed (native): local state stays disconnected.
+      _snack('Could not verify Google account. Check your connection and try again.');
+    }
+  }
+
+  /// Native disconnect dialog (SettingsScreen.kt, showOnlyConfirm
+  /// variant): the server is authoritative and refuses disconnecting
+  /// the last usable sign-in method; its error stays in the dialog.
+  Future<void> _showDisconnectGoogleDialog() async {
+    String? error;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: NotelColors.surface,
+          title: const Text('Disconnect Google Account',
+              style: TextStyle(
+                  color: NotelColors.textPrimary,
+                  fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                  'Are you sure you want to disconnect this Google account? Tabs will refuse if you do not have another usable sign in method.',
+                  style: TextStyle(
+                      color: NotelColors.textSecondary, fontSize: 13)),
+              if (error != null) ...[
+                const SizedBox(height: 10),
+                Text(error!,
+                    style: const TextStyle(
+                        color: NotelColors.error, fontSize: 12)),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel',
+                  style: TextStyle(color: NotelColors.textSecondary)),
+            ),
+            TextButton(
+              key: const ValueKey('confirm_disconnect_google'),
+              onPressed: () async {
+                final res = await _backend.disconnectGoogle();
+                if (res != null && res['error'] == null) {
+                  await _store.setGoogleAccountConnected(false);
+                  await _store.setGoogleAccountEmail('');
+                  if (!mounted) return;
+                  setState(() {
+                    _gAccountConnected = false;
+                    _gAccountEmail = '';
+                  });
+                  if (ctx.mounted) Navigator.of(ctx).pop();
+                  _snack('Google account disconnected successfully.');
+                } else {
+                  // Native preserves local state when the server
+                  // could not confirm the disconnect.
+                  setLocal(() => error = res?['error']?.toString() ??
+                      'Could not disconnect Google account. Check your connection and try again.');
+                }
+              },
+              child: const Text('Disconnect',
+                  style: TextStyle(
+                      color: NotelColors.primary,
+                      fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // ── AI & CLINICAL ADVOCATE (native :1545-2237) ───────────────────
