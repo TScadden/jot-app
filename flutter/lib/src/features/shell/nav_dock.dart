@@ -203,37 +203,47 @@ class _NavDockState extends State<NavDock>
               child: SizedBox(
                 height: double.infinity,
                 child: Center(
-                  child: Container(
-                    key: const ValueKey('dock_quicklog_ring'),
-                    width: 52,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(
-                        color: widget.selected == DockTab.quickLog
-                            ? NotelColors.textPrimary
-                            : Colors.transparent,
-                        width: 2,
+                  // R49 N1: the ring wrapper (52×48) joins the hit
+                  // area, bringing the center button's tap height to
+                  // 48dp (was the 44dp visual button alone). The
+                  // visual button keeps its 48×44 geometry and the
+                  // inner InkWell keeps its ripple; both fire the
+                  // same callback and the gesture arena delivers one.
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => widget.onSelect(DockTab.quickLog),
+                    child: Container(
+                      key: const ValueKey('dock_quicklog_ring'),
+                      width: 52,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: widget.selected == DockTab.quickLog
+                              ? NotelColors.textPrimary
+                              : Colors.transparent,
+                          width: 2,
+                        ),
                       ),
-                    ),
-                    alignment: Alignment.center,
-                    child: Material(
-                      color: NotelColors.primary,
-                      borderRadius: BorderRadius.circular(16),
-                      elevation:
-                          widget.selected == DockTab.quickLog ? 8 : 4,
-                      child: InkWell(
+                      alignment: Alignment.center,
+                      child: Material(
+                        color: NotelColors.primary,
                         borderRadius: BorderRadius.circular(16),
-                        onTap: () => widget.onSelect(DockTab.quickLog),
-                        child: const SizedBox(
-                          width: 48,
-                          height: 44,
-                          child: Center(
-                            child: Icon(
-                              Icons.edit,
-                              size: 22,
-                              color: Colors.white,
-                              semanticLabel: 'Quick log',
+                        elevation:
+                            widget.selected == DockTab.quickLog ? 8 : 4,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(16),
+                          onTap: () => widget.onSelect(DockTab.quickLog),
+                          child: const SizedBox(
+                            width: 48,
+                            height: 44,
+                            child: Center(
+                              child: Icon(
+                                Icons.edit,
+                                size: 22,
+                                color: Colors.white,
+                                semanticLabel: 'Quick log',
+                              ),
                             ),
                           ),
                         ),

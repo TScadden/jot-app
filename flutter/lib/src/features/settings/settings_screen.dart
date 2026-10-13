@@ -19,6 +19,11 @@ import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
 
+/// Dark ink on a primary fill (native LegacyDarkChipInk) — the in-app
+/// passing precedent for text on Tabs purple: 5.21:1 vs white's 3.80:1
+/// (R49 audit S1).
+const _chipInk = Color(0xFF0A0A0E);
+
 /// Round 29 — the Flutter Settings tab: a port of native
 /// `SettingsScreen.kt` (5933 lines, SettingsMenu MAIN / MEMBERSHIP /
 /// USER_PROFILE / CUSTOMIZE / CONNECTED_APPS / AI_AND_KNOWLEDGE /
@@ -420,6 +425,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: Text(_title,
             style: const TextStyle(
                 color: NotelColors.textPrimary,
+                // R49 SE7/S3: explicit root-title size (was inherited
+                // from the M3 default text theme).
+                fontSize: 22,
                 fontWeight: FontWeight.bold)),
       ),
       body: ListView(
@@ -454,8 +462,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final selected = _page == page;
       return Expanded(
         child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
           onTap: () => setState(() => _page = page),
           child: Container(
+            // R49 SE3: segment hit height ≥48dp (was ≈38dp).
+            constraints: const BoxConstraints(minHeight: 48),
+            alignment: Alignment.center,
             padding: const EdgeInsets.symmetric(vertical: 10),
             decoration: BoxDecoration(
               color: selected ? NotelColors.surface : Colors.transparent,
@@ -534,6 +546,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Text(title,
                   style: const TextStyle(
                       color: NotelColors.textPrimary,
+                      // R49 SE7: explicit row-title size, unified at
+                      // 16 with the profile card titles (was inherited).
+                      fontSize: 16,
                       fontWeight: FontWeight.w500)),
               const SizedBox(height: 2),
               Text(subtitle,
@@ -720,22 +735,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   fontWeight: FontWeight.w600,
                   fontSize: 13)),
           const SizedBox(height: 6),
+          // R49 SE1: 48dp hit areas for the footer text links (were
+          // ≈17dp of bare text); the 12sp labels are unchanged.
           GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onTap: () => _openUrl('https://api.jottracker.com/terms.html'),
-            child: const Text('Terms of Use',
-                style: TextStyle(
-                    color: NotelColors.primary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500)),
+            child: Container(
+              height: 48,
+              alignment: Alignment.center,
+              child: const Text('Terms of Use',
+                  style: TextStyle(
+                      color: NotelColors.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500)),
+            ),
           ),
           const SizedBox(height: 2),
           GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onTap: () => _openUrl('https://api.jottracker.com/privacy.html'),
-            child: const Text('Privacy Policy',
-                style: TextStyle(
-                    color: NotelColors.primary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500)),
+            child: Container(
+              height: 48,
+              alignment: Alignment.center,
+              child: const Text('Privacy Policy',
+                  style: TextStyle(
+                      color: NotelColors.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500)),
+            ),
           ),
           const SizedBox(height: 4),
           TextButton(
@@ -743,7 +770,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: _showResetAccountDialog,
             child: Text('Reset Account Status',
                 style: TextStyle(
-                    color: NotelColors.error.withValues(alpha: 0.5),
+                    // R49 SE2: full-opacity error = 6.95:1 on the
+                    // background (was α0.5 = 2.49:1).
+                    color: NotelColors.error,
                     fontSize: 10)),
           ),
         ],
@@ -767,7 +796,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   style: const TextStyle(
                       color: NotelColors.textPrimary,
                       fontWeight: FontWeight.w500,
-                      fontSize: 15)),
+                      // R49 SE7: row-title role unified at 16.
+                      fontSize: 16)),
             ),
             const Icon(Icons.keyboard_arrow_right,
                 color: NotelColors.textSecondary),
@@ -792,7 +822,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     style: const TextStyle(
                         color: NotelColors.textPrimary,
                         fontWeight: FontWeight.bold,
-                        fontSize: 18)),
+                        // R49 SE7: card-title role = 16 bold.
+                        fontSize: 16)),
                 const SizedBox(height: 4),
                 Text(d.membershipSubtitle,
                     style: TextStyle(
@@ -805,7 +836,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           Container(
             padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                // R49 SE8: vertical padding on the 8dp grid (was 6).
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: d.isUnlimited
                   ? NotelColors.success.withValues(alpha: 0.15)
@@ -853,6 +885,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       Center(
         child: OutlinedButton.icon(
           key: const ValueKey('refresh_membership'),
+          // R49 SE6/S2: 48dp button height (stock M3 default is 40).
+          style:
+              OutlinedButton.styleFrom(minimumSize: const Size(64, 48)),
           onPressed: _loaded ? _reloadFromServer : null,
           icon: const Icon(Icons.sync, size: 16, color: NotelColors.primary),
           label: const Text('Refresh Subscription Status',
@@ -876,7 +911,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             key: const ValueKey('membership_cta'),
             style: ElevatedButton.styleFrom(
                 backgroundColor: NotelColors.primary,
-                foregroundColor: Colors.white),
+                // R49 SE6/S1+S2: dark-ink foreground (5.21:1 on
+                // primary; white was 3.80:1) and 48dp height.
+                foregroundColor: _chipInk,
+                minimumSize: const Size(64, 48)),
             onPressed: _showPurchaseUnavailable,
             icon: const Icon(Icons.star, size: 18),
             // Native CTA label comes from the live Play trial period;
@@ -895,13 +933,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const SizedBox(height: 12),
         Center(
           child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onTap: () => _openUrl(
                 'https://play.google.com/store/account/subscriptions?sku=${_selectedPlan == 'monthly' ? 'jot_membership_monthly' : 'jot_membership_yearly'}&package=com.notel.notel.playground.flutter'),
-            child: const Text(
-                'Manage or cancel anytime in Google Play Subscriptions',
-                textAlign: TextAlign.center,
-                style:
-                    TextStyle(color: NotelColors.primary, fontSize: 11)),
+            // R49 SE4: 48dp hit area (was ≈15dp of bare text);
+            // the 11sp label itself is unchanged.
+            child: Container(
+              height: 48,
+              alignment: Alignment.center,
+              child: const Text(
+                  'Manage or cancel anytime in Google Play Subscriptions',
+                  textAlign: TextAlign.center,
+                  style:
+                      TextStyle(color: NotelColors.primary, fontSize: 11)),
+            ),
           ),
         ),
       ] else ...[
@@ -979,7 +1024,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Text(chip,
                   style: TextStyle(
                       color: chipColor,
-                      fontSize: 9,
+                      // R49 SE8: minimum text size is 10 (was 9).
+                      fontSize: 10,
                       fontWeight: FontWeight.bold)),
             ),
           ],
@@ -1043,6 +1089,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const Text('Nickname',
                       style: TextStyle(
                           color: NotelColors.textPrimary,
+                          // R49 SE7: explicit card-title size (was
+                          // inherited), unified at 16.
+                          fontSize: 16,
                           fontWeight: FontWeight.w500)),
                   Row(
                     children: [
@@ -1071,6 +1120,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             TextButton(
               key: const ValueKey('nickname_edit'),
+              // R49 SE6/S2: 48dp button height (stock default is 40).
+              style:
+                  TextButton.styleFrom(minimumSize: const Size(64, 48)),
               onPressed: _showNicknameDialog,
               child: const Text('Edit',
                   style: TextStyle(
@@ -1092,6 +1144,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Text('Personal Health Profile',
                       style: TextStyle(
                           color: NotelColors.textPrimary,
+                          // R49 SE7: explicit card-title size (was
+                          // inherited), unified at 16.
+                          fontSize: 16,
                           fontWeight: FontWeight.w500)),
                   Text('Fetched from Fitbit or manually updated',
                       style: TextStyle(
@@ -1125,7 +1180,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             key: const ValueKey('edit_profile_button'),
             style: ElevatedButton.styleFrom(
                 backgroundColor: NotelColors.surfaceHigh,
-                foregroundColor: NotelColors.textPrimary),
+                foregroundColor: NotelColors.textPrimary,
+                // R49 SE6/S2: 48dp height (stock default is 40).
+                minimumSize: const Size(64, 48)),
             onPressed: _showEditProfileDialog,
             child: const Text('Edit Profile',
                 style: TextStyle(fontWeight: FontWeight.bold)),
@@ -1138,7 +1195,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             key: const ValueKey('auto_fill_button'),
             style: ElevatedButton.styleFrom(
                 backgroundColor: NotelColors.surfaceHigh,
-                foregroundColor: NotelColors.textPrimary),
+                foregroundColor: NotelColors.textPrimary,
+                // R49 SE6/S2: 48dp height (stock default is 40).
+                minimumSize: const Size(64, 48)),
             onPressed: _autoFillFromHealthConnect,
             icon: const Icon(Icons.sync, color: NotelColors.primary),
             label: const Text('Auto-Fill from Connected Apps'),
@@ -1169,7 +1228,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _card([
         const Text('Medications',
             style: TextStyle(
-                color: NotelColors.textPrimary, fontWeight: FontWeight.w500)),
+                color: NotelColors.textPrimary,
+                // R49 SE7: same card-title role as the profile cards
+                // above — explicit 16 (was inherited).
+                fontSize: 16,
+                fontWeight: FontWeight.w500)),
         const Text('Track your current medications',
             style:
                 TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
@@ -2658,7 +2721,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           key: const ValueKey('add_counter'),
           style: ElevatedButton.styleFrom(
               backgroundColor: NotelColors.surfaceHigh,
-              foregroundColor: NotelColors.textPrimary),
+              foregroundColor: NotelColors.textPrimary,
+              // R49 SE6/S2: 48dp height, matching this page's own
+              // 48dp counter-row buttons (stock default is 40).
+              minimumSize: const Size(64, 48)),
           onPressed: () => _showCounterDialog(null),
           icon: const Icon(Icons.add, color: NotelColors.primary),
           label: const Text('Add New Counter'),
