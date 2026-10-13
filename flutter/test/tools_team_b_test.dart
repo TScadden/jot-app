@@ -294,10 +294,20 @@ void main() {
         ),
       );
       expect(find.text('Body Info & Impact Map'), findsOneWidget);
-      expect(find.text('POTS'), findsOneWidget);
-      expect(find.text('MCAS'), findsOneWidget);
-      expect(find.text('2 Active'), findsOneWidget);
+      // The visualizer subtitle (top of screen) proves the blob's
+      // conditions parsed and counted before any scrolling.
       expect(find.text('2 conditions tracked'), findsOneWidget);
+      // Round 48 moved the conditions list below the impact
+      // sections; in the lazy ListView the cards sit outside the
+      // initial build range at the default test surface — scroll
+      // them into view like a real user would.
+      await tester.scrollUntilVisible(find.text('POTS'), 300);
+      await tester.pumpAndSettle();
+      expect(find.text('POTS'), findsOneWidget);
+      expect(find.text('2 Active'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('MCAS'), 300);
+      await tester.pumpAndSettle();
+      expect(find.text('MCAS'), findsOneWidget);
     });
 
     testWidgets('empty conditions → "All Body Zones Normal"',
@@ -382,11 +392,14 @@ void main() {
       expect(find.text('Escitalopram'), findsOneWidget);
       // "As prescribed" is not a real dose → dose line shows not set.
       expect(find.text('Dose not set  •  Daily'), findsOneWidget);
-      expect(find.text('Archived Medications (1)'), findsOneWidget);
       // Archived section sits below the fold in the test viewport —
-      // scroll it into view like a real user would.
+      // scroll it into view like a real user would. (Round 48's
+      // taller cards pushed even its header out of the lazy
+      // ListView's initial build range, so it is asserted after the
+      // scroll, with the archived med it heads.)
       await tester.drag(find.byType(ListView), const Offset(0, -2000));
       await tester.pumpAndSettle();
+      expect(find.text('Archived Medications (1)'), findsOneWidget);
       expect(find.text('Carvedilol'), findsOneWidget);
       expect(find.text('Ended Aug 20, 2026'), findsOneWidget);
     });

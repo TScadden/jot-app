@@ -353,6 +353,13 @@ void main() {
       expect(find.text('78'), findsOneWidget);
       expect(find.text('BPM'), findsWidgets);
       expect(find.text('154'), findsOneWidget); // 70kg → lbs
+      // The tile grid is lazy. With HC disconnected the night
+      // metrics (Breathing Rate, Blood Oxygen, HRV) show their
+      // calculated-at-night note, so Resting HR — in the last row,
+      // outside the initial build range — is the tile carrying
+      // "No Data Recorded". Scroll it into view.
+      await tester.drag(find.byType(GridView), const Offset(0, -400));
+      await tester.pumpAndSettle();
       expect(find.text('No Data Recorded'), findsWidgets);
     });
 
