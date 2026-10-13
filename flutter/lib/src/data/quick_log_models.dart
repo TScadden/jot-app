@@ -34,6 +34,26 @@ class QuickLogEntry {
     required this.timestamp,
   });
 
+  /// Round 42 — copy with edited fields. Edits ALWAYS keep [id]
+  /// (the sync endpoint upserts on `(user_id, local_id)`; a new id
+  /// would duplicate the entry, a colliding id would overwrite a
+  /// different one) and [timestamp] (an edit is not a re-log).
+  QuickLogEntry copyWith({
+    int? categoryId,
+    String? body,
+    String? chips,
+    String? manualText,
+  }) {
+    return QuickLogEntry(
+      id: id,
+      categoryId: categoryId ?? this.categoryId,
+      body: body ?? this.body,
+      chips: chips ?? this.chips,
+      manualText: manualText ?? this.manualText,
+      timestamp: timestamp,
+    );
+  }
+
   factory QuickLogEntry.fromJson(Map<String, dynamic> json) {
     int asInt(dynamic v) =>
         v is num ? v.toInt() : int.tryParse('$v') ?? 0;
