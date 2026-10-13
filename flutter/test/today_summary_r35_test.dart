@@ -1548,6 +1548,20 @@ void main() {
       });
     }
 
+    // Pumps fake time in small steps until the dust overlay is
+    // live (the tap handler's persist + snapshot chain takes a few
+    // frames to reach the dissolve), stopping at first sighting so
+    // the dissolve is still mid-flight.
+    Future<void> pumpUntilDust(WidgetTester tester) async {
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+        if (find
+            .byKey(const Key('dust-particles'))
+            .evaluate()
+            .isNotEmpty) return;
+      }
+    }
+
     testWidgets('check-off dusts: particle overlay appears, the '
         'item leaves the view, remaining rows stay and the section '
         'stays expanded', (tester) async {
@@ -1556,10 +1570,7 @@ void main() {
       expect(find.text('Salt pills'), findsOneWidget);
       expect(find.text('Water bottle'), findsOneWidget);
       await tester.tap(find.byIcon(Icons.radio_button_unchecked).first);
-      // A few frames in, the dissolve is live: the particle overlay
-      // is up and the surviving row is untouched.
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 120));
+      await pumpUntilDust(tester);
       expect(find.byKey(const Key('dust-particles')), findsOneWidget);
       expect(find.text('Water bottle'), findsOneWidget);
       await tester.pumpAndSettle();
@@ -1575,8 +1586,7 @@ void main() {
         'section after the dissolve finishes', (tester) async {
       await pumpMotionCard(tester, client: reminderClient());
       await tester.tap(find.byIcon(Icons.radio_button_unchecked));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 120));
+      await pumpUntilDust(tester);
       // Mid-dissolve the section is still open — collapse waits for
       // the dust to finish.
       expect(find.byKey(const Key('dust-particles')), findsOneWidget);
@@ -1646,8 +1656,7 @@ void main() {
       await pumpMotionCard(tester,
           client: reminderClient(second: true), planMem: planMem);
       await tester.tap(find.byIcon(Icons.radio_button_unchecked).first);
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 150));
+      await pumpUntilDust(tester);
       expect(find.byKey(const Key('dust-particles')), findsOneWidget);
       // Second row's toggle is live while the first still dusts.
       await tester.tap(find.byIcon(Icons.radio_button_unchecked));
