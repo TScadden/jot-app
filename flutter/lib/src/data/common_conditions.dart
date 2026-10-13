@@ -1,10 +1,16 @@
-/// Round 32 — the native conditions catalog, verbatim.
+/// The native conditions catalog, verbatim — the SINGLE source for
+/// every conditions list in the app (Round 33 consolidation: the
+/// Round 30 Settings copy in
+/// `features/settings/common_conditions_catalog.dart` held the
+/// identical native-derived entries and was deleted; Settings now
+/// imports this list too).
 ///
 /// Extracted from native `CommonConditionsList.kt`: `rawList`
 /// deduplicated and sorted case-insensitively, exactly as native's
 /// `list = rawList.distinct().sortedWith(String.CASE_INSENSITIVE_ORDER)`
-/// (CommonConditionsList.kt:251). The onboarding Conditions step and
-/// its search filter run over this list, mirroring native.
+/// (CommonConditionsList.kt:251). The onboarding Conditions step,
+/// its search filter, and the Settings User Profile Add Condition
+/// dialog run over this list, mirroring native.
 const List<String> commonConditions = <String>[
   'Achilles Tendonitis',
   'Acid Reflux / GERD',

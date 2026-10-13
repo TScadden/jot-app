@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:tabs_lab/src/data/common_conditions.dart';
 import 'package:tabs_lab/src/data/google_sign_in_service.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
@@ -12,7 +13,6 @@ import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/connections/connections_screen.dart';
 import 'package:tabs_lab/src/features/settings/account_actions.dart';
-import 'package:tabs_lab/src/features/settings/common_conditions_catalog.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
@@ -1647,8 +1647,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         builder: (ctx, setLocal) {
           final added = _conditionNames;
           final filtered = query.isEmpty
-              ? kCommonConditionsCatalog
-              : kCommonConditionsCatalog
+              ? commonConditions
+              : commonConditions
                   .where((c) =>
                       c.toLowerCase().contains(query.toLowerCase()))
                   .toList();

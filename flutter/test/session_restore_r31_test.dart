@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:tabs_lab/main.dart';
 import 'package:tabs_lab/src/data/auth_api.dart';
+import 'package:tabs_lab/src/data/onboarding_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
@@ -28,6 +29,28 @@ FakeSessionStore _seededStore() => FakeSessionStore()
   ..token = _oldAccess
   ..refreshToken = _oldRefresh
   ..email = _email;
+
+/// Round 33 — in-memory [OnboardingStore] for AppFlow widget tests
+/// (same withStorage pattern as onboarding_r32_test.dart).
+///
+/// Why this exists: Round 32 layered the onboarding gate INSIDE
+/// _restoreSession, and AppFlow's default OnboardingStore is backed
+/// by flutter_secure_storage — a platform channel whose futures
+/// never complete under FakeAsync. The pre-Round-33 fixtures here
+/// injected only the session store, so the gate's first await
+/// stalled the restore forever and every restored session sat on
+/// Welcome (verified by diagnostic: hasAnyState() never completed,
+/// MainShell 0 / Welcome 1 / OnboardingFlow 0). The production gate
+/// logic was NOT misrouting: with a real store injected, a keyless
+/// legacy session lands home per the Round 32 backfill design.
+/// An EMPTY map is exactly a pre-Round-32 stored session: a valid
+/// session with no onboarding keys at all.
+OnboardingStore _fakeOnboardingStore(Map<String, String> map) =>
+    OnboardingStore.withStorage(
+      read: (k) async => map[k],
+      write: (k, v) async => map[k] = v,
+      delete: (k) async => map.remove(k),
+    );
 
 /// Round 31 fix pass — a seeded store whose EMAIL read throws
 /// (Vera NIT 2): the token read still succeeds, so restore must
@@ -593,13 +616,18 @@ void main() {
         });
 
     Future<void> pumpFlow(WidgetTester tester, FakeSessionStore store,
-        {http.Client? authHttp}) async {
+        {http.Client? authHttp, Map<String, String>? onboardingMap}) async {
       await tester.pumpWidget(MaterialApp(
         home: AppFlow(
           authApi: AuthApiClient(
               client: authHttp ??
                   MockClient((_) async => http.Response('{}', 200))),
           sessionStore: store,
+          // Round 33 — inject the onboarding store (see
+          // _fakeOnboardingStore). Default: an empty map, i.e. a
+          // pre-Round-32 legacy session with no onboarding keys.
+          onboardingStore:
+              _fakeOnboardingStore(onboardingMap ?? <String, String>{}),
           weatherApi: WeatherApiClient(client: weather()),
         ),
       ));
@@ -612,7 +640,34 @@ void main() {
     testWidgets('cold start with a stored session lands in Main, '
         'no login required', (tester) async {
       final store = _seededStore();
-      await pumpFlow(tester, store);
+      // Explicitly a pre-Round-32 legacy session: the onboarding
+      // map starts EMPTY (no onboarding keys at all).
+      final onboardingMap = <String, String>{};
+      await pumpFlow(tester, store, onboardingMap: onboardingMap);
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.text('Logged in as $_email'), findsOneWidget);
+      expect(find.byType(WelcomeScreen), findsNothing);
+      // Round 32/33 matrix — a keyless legacy session is backfilled
+      // onboarding-complete, never dropped into onboarding.
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(onboardingMap['onboarding_complete'], 'true');
+      expect(onboardingMap['has_consented'], 'true');
+      expect(onboardingMap['intro_consultation_seen'], 'true');
+      await tester.pump(const Duration(milliseconds: 300));
+    });
+
+    // Round 33 matrix — cold start with a valid stored session AND
+    // completed onboarding state goes straight to Main (no resume).
+    testWidgets('cold start with completed onboarding state lands '
+        'in Main', (tester) async {
+      final store = _seededStore();
+      final onboardingMap = <String, String>{
+        'has_consented': 'true',
+        'intro_consultation_seen': 'true',
+        'onboarding_complete': 'true',
+      };
+      await pumpFlow(tester, store, onboardingMap: onboardingMap);
 
       expect(find.byType(HomeScreen), findsOneWidget);
       expect(find.text('Logged in as $_email'), findsOneWidget);
