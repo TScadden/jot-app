@@ -181,7 +181,7 @@ void main() {
       final client = AuthApiClient(
         client: MockClient((request) async {
           seenUrl = request.url;
-          seenBody = request.body;
+          seenBody = request is http.Request ? request.body : null;
           return http.Response(
             jsonEncode({
               'token': 'tok',
