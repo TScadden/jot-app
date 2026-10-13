@@ -523,7 +523,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ),
           Expanded(
             child: ListView.separated(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
               separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemCount: 4,
               itemBuilder: (_, _) => Container(
@@ -553,24 +553,32 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Widget _buildLoadError() {
+    // R53 S11: Pattern A error state (was Pattern B).
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.symmetric(horizontal: 32),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              _loadError!,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: NotelColors.textSecondary),
-            ),
+            const Icon(Icons.cloud_off_outlined,
+                size: 56, color: NotelColors.textSecondary),
             const SizedBox(height: 16),
-            TextButton(
+            Text(_loadError!,
+                style: const TextStyle(
+                    fontSize: 14,
+                    height: 1.5,
+                    color: NotelColors.textSecondary),
+                textAlign: TextAlign.center),
+            const SizedBox(height: 24),
+            ElevatedButton(
               onPressed: _load,
-              child: const Text('Retry',
-                  style: TextStyle(
-                      color: NotelColors.primary,
-                      fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: NotelColors.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
+              child: const Text('Try again'),
             ),
           ],
         ),
@@ -769,7 +777,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       );
     }
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
       separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemCount: filtered.length,
       itemBuilder: (context, index) =>
@@ -885,16 +893,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             : const SizedBox.shrink(),
                       ),
                       SizedBox(
-                        // R49 HI2: 48dp target (was 28×28); glyph
-                        // stays 16dp.
+                        // R49 HI2: 48dp target (was 28×28). R53: glyph
+                        // 16->18, full-opacity textSecondary.
                         width: 48,
                         height: 48,
                         child: IconButton(
                           padding: EdgeInsets.zero,
                           onPressed: () => _deleteEntry(entry),
-                          icon: const Icon(Icons.delete, size: 16),
-                          color: NotelColors.textSecondary
-                              .withValues(alpha: 0.45),
+                          icon: const Icon(Icons.delete, size: 18),
+                          color: NotelColors.textSecondary,
                         ),
                       ),
                     ],
