@@ -13,6 +13,7 @@ import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/today_plan_store.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
+import 'package:tabs_lab/src/data/widget_sync.dart';
 import 'package:tabs_lab/src/features/auth/login_screen.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
 import 'package:tabs_lab/src/features/onboarding/onboarding_flow.dart';
@@ -325,6 +326,12 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
     // clear is independently best-effort, like the two above.
     unawaited(TodaySummaryCache.instance.clear());
     unawaited(TodayPlanStore.instance.clear());
+    // Round 50 — session expiry clears the caches above, so the
+    // home-screen widget is cleared in the same path: it falls to
+    // its signed-out face and never keeps the expired account's
+    // numbers. (HomeDataCache.clear() also clears it; this explicit
+    // call keeps the expiry sequence self-contained.)
+    unawaited(WidgetSync.clear());
     if (!mounted) return;
     _onLogout();
   }

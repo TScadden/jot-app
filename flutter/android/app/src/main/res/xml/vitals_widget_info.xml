@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Round 50 — one wide 4x1 home-screen widget, refreshed by the
+     app on every Home load and by the system every 30 minutes. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="250dp"
+    android:minHeight="56dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="1"
+    android:updatePeriodMillis="1800000"
+    android:initialLayout="@layout/vitals_widget"
+    android:previewLayout="@layout/vitals_widget"
+    android:previewImage="@drawable/widget_preview"
+    android:description="@string/vitals_widget_description"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen" />

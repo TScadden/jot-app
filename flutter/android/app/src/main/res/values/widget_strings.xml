@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="vitals_widget_description">Tabs vitals at a glance: heart rate, streak, logs and sleep</string>
+</resources>

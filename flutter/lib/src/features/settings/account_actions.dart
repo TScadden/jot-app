@@ -6,6 +6,7 @@ import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/today_plan_store.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
+import 'package:tabs_lab/src/data/widget_sync.dart';
 
 /// Round 29 — logout / delete-account flows, mirroring native
 /// `SettingsViewModel.logout` (SettingsViewModel.kt:1148-1240) and
@@ -64,6 +65,14 @@ class AccountActions {
     } catch (_) {}
     try {
       await TodayPlanStore.instance.clear();
+    } catch (_) {}
+    // Round 50 — the home-screen widget is an account-bound surface
+    // too: logout / account delete must drop it to its signed-out
+    // face in the same sequence, so no previous-account numbers
+    // stay visible on the launcher. WidgetSync never throws; the
+    // try/catch keeps the fault-isolated pattern regardless.
+    try {
+      await WidgetSync.clear();
     } catch (_) {}
   }
 

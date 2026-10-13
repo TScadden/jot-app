@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
+import 'package:tabs_lab/src/data/widget_sync.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 
 /// Round 16 — stale-while-revalidate cache for the home screen's numbers
@@ -202,6 +204,12 @@ class HomeDataCache {
     try {
       await _delete(storageKey);
     } catch (_) {}
+    // Round 50 — every cache clear is also a widget clear: logout,
+    // account delete, session expiry, and owner-mismatch all funnel
+    // through here, and the home-screen widget must never keep a
+    // signed-out (or previous) account's numbers. Fire-and-forget;
+    // WidgetSync never throws.
+    unawaited(WidgetSync.clear());
   }
 
   /// Stores a completed vitals load (the repository never throws, so
@@ -268,6 +276,16 @@ class HomeDataCache {
     } catch (_) {
       // Memory cache stays; disk just won't have this refresh.
     }
+    // Round 50 — persist() is the choke point every fresh Home load
+    // lands through (HomeScreen's vitals/streak and counters loads
+    // both end here), so the home-screen widget is pushed the SAME
+    // snapshot Home renders from, every refresh. A completed load
+    // reaching persist() only ever happens inside a signed-in Home
+    // session (Home mounts post-login only), so the payload is
+    // signed-in; the signed-out widget state is owned exclusively
+    // by clear(). Fire-and-forget; WidgetSync never throws and
+    // never blocks Home.
+    unawaited(WidgetSync.pushSnapshot(snapshot, signedIn: true));
   }
 
   /// Cold-start warm: reads the disk blob into memory, applying the

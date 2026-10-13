@@ -47,6 +47,12 @@ dependencies:
   flutter_timezone: ^4.1.1
   timezone: ^0.10.1
   flutter_secure_storage: ^11.2.0
+  # Round 50 — home-screen widget bridge (Android AppWidget data
+  # sync; the widget itself is native RemoteViews under android/).
+  # 0.9.x line: current stable compatible with the project SDK /
+  # Flutter 3.47 toolchain (resolves 0.9.4; requires Flutter
+  # >=3.38.1, Dart >=3.10).
+  home_widget: ^0.9.0
   geolocator: ^14.1.1
   url_launcher: ^6.3.1
 

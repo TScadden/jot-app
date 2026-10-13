@@ -9,6 +9,7 @@ import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
+import 'package:tabs_lab/src/data/widget_sync.dart';
 import 'package:tabs_lab/src/features/connections/connections_screen.dart';
 import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
@@ -202,6 +203,21 @@ class _HomeScreenState extends State<HomeScreen> {
     // day counts recompute from the target dates at render time, so
     // a cached counter never shows a stale count.
     if (cached.countersLoaded) _counters = cached.counters;
+    // Round 50 — push the cached snapshot to the home-screen widget
+    // on load, so the widget matches what the strip shows even
+    // before the background refresh completes. Signed-in when this
+    // Home is account-bound (session email or a cache owner) or the
+    // cache actually holds a completed load; a completely empty,
+    // unbound cache pushes the signed-out payload instead, so a
+    // previous account's numbers never linger. The refresh below
+    // re-pushes through HomeDataCache.persist() when it lands.
+    unawaited(WidgetSync.pushSnapshot(
+      cached,
+      signedIn: widget.email != null ||
+          cached.ownerEmail != null ||
+          cached.vitalsLoaded ||
+          cached.streakLoaded,
+    ));
     _resolveCountUpGate();
     _loadWeather();
     _loadHealthData();
