@@ -1001,12 +1001,12 @@ class _ReminderSheetState extends State<_ReminderSheet> {
       fixedHour: _fixed.hour,
       fixedMinute: _fixed.minute,
       intervalHours: preserveInterval
-          ? initial!.intervalHours
+          ? initial.intervalHours
           : _intervalUnit == 'hours'
               ? _intervalValue
               : 0,
       intervalMinutes: preserveInterval
-          ? initial!.intervalMinutes
+          ? initial.intervalMinutes
           : _intervalUnit == 'minutes'
               ? _intervalValue
               : 0,

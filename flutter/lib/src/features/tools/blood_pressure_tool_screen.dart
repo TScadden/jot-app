@@ -425,7 +425,7 @@ int? _bpDateTimeMs(int year, int month, int day,
 }
 
 int? _bpMatchDate(RegExp re, String value,
-    int Function(List<int> groups) build) {
+    int? Function(List<int> groups) build) {
   final m = re.firstMatch(value);
   if (m == null) return null;
   final groups = [for (var i = 1; i <= m.groupCount; i++) int.parse(m.group(i)!)];

@@ -51,10 +51,9 @@ void _bigSurface(WidgetTester tester) {
 // ── Sleep fakes ─────────────────────────────────────────────────────
 
 class _SleepHc extends HealthConnectService {
-  _SleepHc({this.minutes = const {}, this.stages, this.hangStages = false});
+  _SleepHc({this.minutes = const {}, this.hangStages = false});
 
   final Map<String, int?> minutes;
-  final SleepStages? stages;
   final bool hangStages;
 
   @override
@@ -66,7 +65,7 @@ class _SleepHc extends HealthConnectService {
   @override
   Future<SleepStages?> readSleepStages(String dateStr) {
     if (hangStages) return Completer<SleepStages?>().future;
-    return Future.value(stages);
+    return Future.value(null);
   }
 }
 

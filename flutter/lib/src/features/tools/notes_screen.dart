@@ -165,7 +165,7 @@ List<NoteEntry> parseUserNotes(List<Map<String, dynamic>> decoded) {
 /// stored, so a later full-blob push never drops data. Tolerates a
 /// JSON string (including double-encoded), an already-decoded list,
 /// a single map, and garbage (→ empty). Never throws.
-List<dynamic> decodeUserListsRaw(dynamic raw) {
+List<dynamic> decodeUserNotesRaw(dynamic raw) {
   dynamic decoded = raw;
   var guard = 0;
   while (decoded is String && decoded.trim().isNotEmpty && guard < 3) {
@@ -182,7 +182,7 @@ List<dynamic> decodeUserListsRaw(dynamic raw) {
 }
 
 /// Parses notes directly from RAW `userLists` rows (see
-/// [decodeUserListsRaw]), keeping each note's raw identity for
+/// [decodeUserNotesRaw]), keeping each note's raw identity for
 /// edit/delete splices. Newest first. Never throws.
 List<NoteEntry> parseUserNotesFromRaw(List<dynamic> rows) {
   final out = <NoteEntry>[];
@@ -402,7 +402,7 @@ class _NotesScreenState extends State<NotesScreen> {
       // Real notes live in the "__user_notes__" pseudo-list(s) of the
       // userLists blob — never in sync-pull log entries.
       setState(() {
-        _rows = decodeUserListsRaw(profile['userLists']);
+        _rows = decodeUserNotesRaw(profile['userLists']);
         _loading = false;
       });
     } catch (_) {
@@ -436,7 +436,7 @@ class _NotesScreenState extends State<NotesScreen> {
         await _load();
         return false;
       }
-      final fresh = decodeUserListsRaw(profile['userLists']);
+      final fresh = decodeUserNotesRaw(profile['userLists']);
       final next = splice(fresh);
       if (next == null) {
         _showSaveError();
