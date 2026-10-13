@@ -207,9 +207,12 @@ class MainActivity : FlutterFragmentActivity() {
                     failureMessage = "Couldn't read this file. Please try a different CSV."
                 }
                 runOnUiThread {
+                    // Snapshot: failureCode is mutated in this (capturing)
+                    // scope, so a smart cast on it cannot hold here.
+                    val code = failureCode
                     try {
-                        if (failureCode != null) {
-                            r.error(failureCode, failureMessage, null)
+                        if (code != null) {
+                            r.error(code, failureMessage, null)
                         } else {
                             r.success(text)
                         }
