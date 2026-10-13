@@ -169,8 +169,9 @@ void main() {
       final notifs = FakeReminderNotificationService(
           enabled: false, grantOnRequest: false);
       await pumpToNotifications(tester, backend, notifs);
-      await tester.tap(
-          find.byKey(const ValueKey('habit_reminder_toggle')));
+      await tester.tap(find.descendant(
+          of: find.byKey(const ValueKey('habit_reminder_toggle')),
+          matching: find.byType(Switch)));
       await tester.pumpAndSettle();
       // The disclosure dialog appears BEFORE any system request.
       expect(find.text('Allow notifications?'), findsOneWidget);
@@ -192,8 +193,9 @@ void main() {
       final notifs = FakeReminderNotificationService(
           enabled: false, grantOnRequest: true);
       await pumpToNotifications(tester, backend, notifs);
-      await tester.tap(
-          find.byKey(const ValueKey('habit_reminder_toggle')));
+      await tester.tap(find.descendant(
+          of: find.byKey(const ValueKey('habit_reminder_toggle')),
+          matching: find.byType(Switch)));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('notif_allow_button')));
       await tester.pumpAndSettle();
@@ -207,8 +209,9 @@ void main() {
       final backend = r29.FakeSettingsBackend()..pullBody = r29.pull();
       final notifs = FakeReminderNotificationService(enabled: true);
       await pumpToNotifications(tester, backend, notifs);
-      await tester.tap(
-          find.byKey(const ValueKey('habit_reminder_toggle')));
+      await tester.tap(find.descendant(
+          of: find.byKey(const ValueKey('habit_reminder_toggle')),
+          matching: find.byType(Switch)));
       await tester.pumpAndSettle();
       expect(find.text('Allow notifications?'), findsNothing);
       expect(notifs.requestCount, 0);
@@ -242,8 +245,9 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Notifications'));
       await tester.pumpAndSettle();
-      await tester.tap(
-          find.byKey(const ValueKey('checkin_reminder_toggle')));
+      await tester.tap(find.descendant(
+          of: find.byKey(const ValueKey('checkin_reminder_toggle')),
+          matching: find.byType(Switch)));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('notif_allow_button')));
       await tester.pumpAndSettle();

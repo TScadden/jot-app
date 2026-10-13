@@ -404,10 +404,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(backend.profilePushes,
           contains(equals({'habitReminderEnabled': true})));
-      // Footer copy covers alerts as well as reminders (Juno N1).
+      // Footer copy (Round 30): reminders now schedule and fire;
+      // the HR alerts stay preference-only and the copy says so
+      // (Juno N1 — footer covers alerts as well as reminders).
       expect(
           find.textContaining(
-              'so these reminders and alerts will not fire from the Lab.'),
+              'the alerts do not fire from the Flutter app yet'),
           findsOneWidget);
     });
 
