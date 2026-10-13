@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -792,7 +793,7 @@ class _DustParticle {
 /// on device). Fully transparent cells (the row's rounded corners)
 /// are skipped. Deterministic seed — the founder's rows should
 /// dust the same way every time, and tests stay stable.
-List<_DustParticle> _buildDustParticles(ui.Image image, ui.ByteData rgba) {
+List<_DustParticle> _buildDustParticles(ui.Image image, ByteData rgba) {
   final w = image.width;
   final h = image.height;
   if (w <= 0 || h <= 0) return const [];
