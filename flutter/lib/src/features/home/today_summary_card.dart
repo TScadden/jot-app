@@ -547,7 +547,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           const Divider(
-                            color: Color(0x14FFFFFF), // White @ 8%
+                            color: NotelColors.divider,
                             height: 1,
                           ),
                           const SizedBox(height: 12),
@@ -584,7 +584,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                             ...planRows,
                           const SizedBox(height: 14),
                           const Divider(
-                            color: Color(0x14FFFFFF), // White @ 8%
+                            color: NotelColors.divider,
                             height: 1,
                           ),
                           const SizedBox(height: 12),
@@ -612,7 +612,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                                 tooltip: 'Refresh Trends',
                                 icon: const Icon(
                                   Icons.refresh,
-                                  size: 14,
+                                  size: 16,
                                   color: NotelColors.textSecondary,
                                 ),
                               ),
