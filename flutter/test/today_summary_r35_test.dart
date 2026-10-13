@@ -1548,16 +1548,24 @@ void main() {
       });
     }
 
-    // Pumps fake time in small steps until the dust overlay is
-    // live (the tap handler's persist + snapshot chain takes a few
-    // frames to reach the dissolve), stopping at first sighting so
-    // the dissolve is still mid-flight.
+    // Reaches the live dissolve. The snapshot chain
+    // (RepaintBoundary.toImage + toByteData) completes on the real
+    // event loop, which the fake-async test zone blocks — so bridge
+    // through runAsync twice (capture, then sampling), pumping a
+    // frame between, then step fake time until the particle
+    // overlay is up. Stops at first sighting: still mid-flight.
     Future<void> pumpUntilDust(WidgetTester tester) async {
-      for (var i = 0; i < 10; i++) {
-        await tester.pump(const Duration(milliseconds: 100));
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 700)));
+      await tester.pump();
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 300)));
+      await tester.pump();
+      for (var i = 0; i < 8; i++) {
         if (find.byKey(const Key('dust-particles')).evaluate().isNotEmpty) {
           return;
         }
+        await tester.pump(const Duration(milliseconds: 100));
       }
     }
 

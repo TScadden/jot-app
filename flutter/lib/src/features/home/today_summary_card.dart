@@ -943,7 +943,12 @@ class _DustRowSlotState extends State<_DustRowSlot>
       curve: Curves.easeInOut,
       onEnd: finalizeNow,
       child: particles == null
-          ? const SizedBox.shrink()
+          // Still sampling the snapshot: the row itself stays on
+          // screen (as its captured image) so the footprint never
+          // flashes empty before the dust starts.
+          ? SizedBox.expand(
+              child: RawImage(image: widget.image, fit: BoxFit.fill),
+            )
           : SizedBox.expand(
               child: CustomPaint(
                 key: const Key('dust-particles'),
