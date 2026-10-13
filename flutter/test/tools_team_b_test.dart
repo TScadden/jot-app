@@ -417,8 +417,8 @@ void main() {
       expect(find.text('No Active Medications'), findsOneWidget);
     });
 
-    test('ProfileMedication parsing honors isPresent/isArchived', () {
-      final present = ProfileMedication.fromJson({
+    test('MedicationEntry parsing honors isPresent/isArchived', () {
+      final present = MedicationEntry.fromBlobRow({
         'name': 'Ivabradine',
         'dose': '7.5mg',
         'isPresent': true,
@@ -427,7 +427,7 @@ void main() {
       expect(present!.isArchived, isFalse);
       expect(present.frequency, 'Once daily'); // default
 
-      final ended = ProfileMedication.fromJson({
+      final ended = MedicationEntry.fromBlobRow({
         'name': 'Old Med',
         'isPresent': false,
         'endDate': 'Jan 1, 2026',
@@ -435,29 +435,29 @@ void main() {
       expect(ended, isNotNull);
       expect(ended!.isArchived, isTrue);
 
-      expect(ProfileMedication.fromJson({'name': '  '}), isNull);
+      expect(MedicationEntry.fromBlobRow({'name': '  '}), isNull);
     });
 
     test('isDoseValid mirrors the native rule', () {
-      const valid = ProfileMedication(
+      final valid = MedicationEntry(
         name: 'A',
         dose: '60mg',
         frequency: 'Daily',
-        startedDate: 'Sep 1, 2026',
-        isArchived: false,
+        startDate: 'Sep 1, 2026',
+        isPresent: true,
       );
-      const asPrescribed = ProfileMedication(
+      final asPrescribed = MedicationEntry(
         name: 'B',
         dose: 'As prescribed',
         frequency: 'Daily',
-        startedDate: 'Sep 1, 2026',
-        isArchived: false,
+        startDate: 'Sep 1, 2026',
+        isPresent: true,
       );
-      const noStart = ProfileMedication(
+      final noStart = MedicationEntry(
         name: 'C',
         dose: '60mg',
         frequency: 'Daily',
-        isArchived: false,
+        isPresent: true,
       );
       expect(isDoseValid(valid), isTrue);
       expect(isDoseValid(asPrescribed), isFalse);

@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:tabs_lab/src/data/common_conditions.dart';
 import 'package:tabs_lab/src/data/google_sign_in_service.dart';
+import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
@@ -1149,10 +1150,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   TextStyle(color: NotelColors.textSecondary, fontSize: 13))
         else
           ...d.medications.map((m) {
-            final isPresent = m['isPresent'] == true;
-            final range = isPresent
+            // Round 39 — classification and the range line go
+            // through the shared MedicationEntry model (the ONE
+            // synced source of truth shared with the Tools
+            // Medications tab): archived ⟺ not present, and the
+            // Ended treatment IS the archived presentation
+            // (native SettingsScreen.kt:3062-3064 — no "Archived"
+            // tag here). Unparseable rows fall back to the raw
+            // map so no data is silently hidden.
+            final entry = MedicationEntry.fromBlobRow(m);
+            final range = entry == null
                 ? 'Started: ${m['startDate'] ?? ''} • Present'
-                : 'Started: ${m['startDate'] ?? ''} • Ended: ${m['endDate'] ?? ''}';
+                : entry.isArchived
+                    ? 'Started: ${entry.startDate} • Ended: ${entry.endDate}'
+                    : 'Started: ${entry.startDate} • Present';
+            // The op key the shared archive ops match on: the
+            // row's id when it has one, else its name.
+            final opKey = entry == null
+                ? '${m['id'] ?? ''}'
+                : (entry.id.isNotEmpty ? entry.id : entry.name);
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
@@ -1173,6 +1189,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ],
                     ),
                   ),
+                  if (entry != null && !entry.isArchived)
+                    IconButton(
+                      key: ValueKey('archive_medication_${m['id'] ?? ''}'),
+                      icon: const Icon(Icons.archive,
+                          size: 20, color: NotelColors.textSecondary),
+                      tooltip: 'Archive',
+                      onPressed: () => _archiveMedication(opKey),
+                    ),
+                  if (entry != null && entry.isArchived)
+                    IconButton(
+                      key: ValueKey('unarchive_medication_${m['id'] ?? ''}'),
+                      icon: const Icon(Icons.unarchive,
+                          size: 20, color: NotelColors.textSecondary),
+                      tooltip: 'Restore',
+                      onPressed: () => _unarchiveMedication(opKey),
+                    ),
                   IconButton(
                     key: ValueKey('delete_medication_${m['id'] ?? ''}'),
                     icon: const Icon(Icons.delete,
@@ -1536,6 +1568,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // from the profile list and push the whole list.
     await _saveMedications(
         _data.medications.where((m) => '${m['id'] ?? ''}' != id).toList());
+  }
+
+  /// Round 39 — archive via the shared model (the same op the
+  /// Tools Medications tab runs): archiving stamps the end date
+  /// with today and flips `isPresent` off, native semantics. The
+  /// full list is re-encoded and saved through the existing
+  /// [_saveMedications], so push/failure behavior is unchanged.
+  /// [id] is the op key: the row's id, or its name when the row
+  /// has no id (the shared ops match the same way).
+  Future<void> _archiveMedication(String id) async {
+    final entries = parseMedicationBlob(_data.medications);
+    final updated = archiveMedicationInList(entries, id, now: DateTime.now());
+    await _saveMedications(encodeMedicationBlob(updated));
+  }
+
+  /// Round 39 — unarchive via the shared model: restores
+  /// `isPresent` and clears the end date back to the `"Present"`
+  /// sentinel, native semantics. Saved through [_saveMedications]
+  /// like archive, so push/failure behavior is unchanged.
+  Future<void> _unarchiveMedication(String id) async {
+    final entries = parseMedicationBlob(_data.medications);
+    final updated =
+        unarchiveMedicationInList(entries, id, now: DateTime.now());
+    await _saveMedications(encodeMedicationBlob(updated));
   }
 
   Future<void> _showAddMedicationDialog() async {
