@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
@@ -107,6 +108,18 @@ String extractFoodJsonBlock(String raw) {
   return trimmed;
 }
 
+/// Normalizes an AI level string to exactly "High" / "Medium" /
+/// "Low". Round 48 fix: the raw string used to pass through, so a
+/// lowercase "high" from the AI rendered with the green (Low) badge
+/// color while saying "high" — the badge switch is case-sensitive.
+/// Anything unrecognized falls back to "Low" (native's default).
+String normalizeFoodLevel(dynamic raw) {
+  final s = raw?.toString().trim().toLowerCase() ?? '';
+  if (s == 'high') return 'High';
+  if (s == 'medium') return 'Medium';
+  return 'Low';
+}
+
 /// Parse the AI's raw text into [FoodCheckResult]s.
 ///
 /// Defaults per native: a missing topic falls back to level "Low" and
@@ -131,7 +144,7 @@ List<FoodCheckResult> parseFoodAiResponse(String raw) {
       final levelObj = topicValue is Map ? topicValue : null;
       levels.add(FoodTopicLevel(
         topicName: topic,
-        level: levelObj?['level']?.toString() ?? 'Low',
+        level: normalizeFoodLevel(levelObj?['level']),
         reasoning: levelObj?['reasoning']?.toString() ??
             'No details available.',
       ));
@@ -140,6 +153,95 @@ List<FoodCheckResult> parseFoodAiResponse(String raw) {
   }
   if (out.isEmpty) throw const FormatException('Empty food AI result');
   return out;
+}
+
+// ── Encyclopedia persistence (native FoodViewModel preferences) ─────
+//
+// Native persists the checked-food encyclopedia in preferences
+// (`foodCheckerHistory`) in this exact JSON shape:
+//   {"spinach": {"foodName": "spinach", "levels": [
+//      {"topicName": "Histamine", "level": "High", "reasoning": "…"}]}}
+// Round 18 kept it session-memory only, so every app restart lost
+// the history and re-billed the AI for already-checked foods. Round
+// 48 persists it in secure storage (the app's standard local store),
+// in the native shape. Last-query results are NOT restored on open —
+// native clears them in its init, and this screen starts empty too.
+
+/// Encodes the encyclopedia to the native persisted JSON shape.
+String encodeFoodEncyclopedia(Map<String, FoodCheckResult> encyclopedia) {
+  final mainObj = <String, dynamic>{};
+  encyclopedia.forEach((foodKey, result) {
+    mainObj[foodKey] = {
+      'foodName': result.foodName,
+      'levels': [
+        for (final lvl in result.levels)
+          {
+            'topicName': lvl.topicName,
+            'level': lvl.level,
+            'reasoning': lvl.reasoning,
+          },
+      ],
+    };
+  });
+  return jsonEncode(mainObj);
+}
+
+/// Decodes the persisted encyclopedia (port of native
+/// `parseEncyclopediaJson`). Blank / "{}" / malformed → empty map.
+/// Never throws.
+Map<String, FoodCheckResult> decodeFoodEncyclopedia(String? json) {
+  if (json == null || json.trim().isEmpty || json.trim() == '{}') {
+    return {};
+  }
+  try {
+    final decoded = jsonDecode(json);
+    if (decoded is! Map) return {};
+    final out = <String, FoodCheckResult>{};
+    decoded.forEach((key, value) {
+      if (value is! Map) return;
+      final levelsRaw = value['levels'];
+      if (levelsRaw is! List) return;
+      final levels = <FoodTopicLevel>[];
+      for (final lvl in levelsRaw) {
+        if (lvl is! Map) continue;
+        levels.add(FoodTopicLevel(
+          topicName: '${lvl['topicName'] ?? ''}',
+          level: normalizeFoodLevel(lvl['level']),
+          reasoning: '${lvl['reasoning'] ?? ''}',
+        ));
+      }
+      final foodKey = key.toString().trim().toLowerCase();
+      if (foodKey.isNotEmpty && levels.isNotEmpty) {
+        out[foodKey] = FoodCheckResult(foodName: foodKey, levels: levels);
+      }
+    });
+    return out;
+  } catch (_) {
+    return {};
+  }
+}
+
+/// Storage seam for the food encyclopedia (injectable for tests).
+abstract class FoodHistoryStore {
+  Future<String?> loadEncyclopediaJson();
+  Future<void> saveEncyclopediaJson(String json);
+}
+
+/// Secure-storage-backed [FoodHistoryStore] (Android Keystore
+/// EncryptedSharedPreferences, the app's standard local store).
+class SecureFoodHistoryStore implements FoodHistoryStore {
+  static const String storageKey = 'food_checker_history';
+  final FlutterSecureStorage _storage;
+
+  const SecureFoodHistoryStore([FlutterSecureStorage? storage])
+      : _storage = storage ?? const FlutterSecureStorage();
+
+  @override
+  Future<String?> loadEncyclopediaJson() => _storage.read(key: storageKey);
+
+  @override
+  Future<void> saveEncyclopediaJson(String json) =>
+      _storage.write(key: storageKey, value: json);
 }
 
 /// The request body the native screen sends to `POST api/ai/advice`:
@@ -166,16 +268,21 @@ Map<String, dynamic> buildFoodAiRequestBody(List<String> items) {
 ///
 /// AI sensitivity checker ported from `FoodScreen.kt` + `FoodViewModel.kt`:
 /// type food(s) → the VM's prompt is sent to `POST api/ai/advice` →
-/// parsed results render as expandable cards. Results that were already
-/// checked this session answer instantly from a memory-only cache (the
-/// native screen persisted this in preferences; this round keeps it
-/// session-memory per the round brief). AI failures surface as a visible
-/// error banner — results are never invented.
+/// parsed results render as expandable cards. Already-checked foods
+/// answer instantly from the encyclopedia cache — persisted across
+/// sessions since round 48, like native's preferences store. AI
+/// failures surface as a visible error banner — results are never
+/// invented. Recent searches are the encyclopedia keys sorted
+/// alphabetically, native's exact rule (not recency order).
 class FoodToolScreen extends StatefulWidget {
   final VoidCallback? onBack;
   final TabsBackend? backend;
 
-  const FoodToolScreen({super.key, this.onBack, this.backend});
+  /// Injectable for tests; defaults to secure storage.
+  final FoodHistoryStore? historyStore;
+
+  const FoodToolScreen(
+      {super.key, this.onBack, this.backend, this.historyStore});
 
   @override
   State<FoodToolScreen> createState() => _FoodToolScreenState();
@@ -183,6 +290,8 @@ class FoodToolScreen extends StatefulWidget {
 
 class _FoodToolScreenState extends State<FoodToolScreen> {
   TabsBackend get _backend => widget.backend ?? TabsBackend();
+  FoodHistoryStore get _historyStore =>
+      widget.historyStore ?? const SecureFoodHistoryStore();
 
   final TextEditingController _input = TextEditingController();
 
@@ -190,9 +299,40 @@ class _FoodToolScreenState extends State<FoodToolScreen> {
   String? _error;
   List<FoodCheckResult> _results = const [];
   final Map<String, FoodCheckResult> _encyclopedia = {};
-  final List<String> _recentOrder = [];
   final Map<String, bool> _expanded = {};
   bool _checkInFlight = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadEncyclopedia();
+  }
+
+  /// Restores the persisted encyclopedia. Guarded with a timeout: a
+  /// wedged storage channel must never block the screen — the checker
+  /// still works with an empty cache.
+  Future<void> _loadEncyclopedia() async {
+    try {
+      final json = await _historyStore
+          .loadEncyclopediaJson()
+          .timeout(const Duration(seconds: 3));
+      final restored = decodeFoodEncyclopedia(json);
+      if (!mounted || restored.isEmpty) return;
+      setState(() => _encyclopedia.addAll(restored));
+    } catch (_) {
+      // Cache stays empty — honest, the checker still works.
+    }
+  }
+
+  Future<void> _persistEncyclopedia() async {
+    try {
+      await _historyStore
+          .saveEncyclopediaJson(encodeFoodEncyclopedia(_encyclopedia));
+    } catch (_) {
+      // Persistence is best-effort; the in-memory cache still serves
+      // this session (native logs and continues the same way).
+    }
+  }
 
   @override
   void dispose() {
@@ -254,6 +394,7 @@ class _FoodToolScreenState extends State<FoodToolScreen> {
         for (final r in newResults) {
           _encyclopedia[r.foodName] = r;
         }
+        await _persistEncyclopedia();
       }
       // Assemble results in the user's query order.
       final finalResults = <FoodCheckResult>[];
@@ -267,10 +408,6 @@ class _FoodToolScreenState extends State<FoodToolScreen> {
         for (final r in finalResults) {
           _expanded[r.foodName] = true;
         }
-        for (final item in items) {
-          _recentOrder.remove(item);
-          _recentOrder.insert(0, item);
-        }
       });
     } finally {
       if (mounted) {
@@ -282,7 +419,9 @@ class _FoodToolScreenState extends State<FoodToolScreen> {
     }
   }
 
-  List<String> get _recentSearches => _recentOrder.take(20).toList();
+  /// Native `recentSearches`: encyclopedia keys, sorted, first 20.
+  List<String> get _recentSearches =>
+      (_encyclopedia.keys.toList()..sort()).take(20).toList();
 
   String _capitalize(String s) =>
       s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
