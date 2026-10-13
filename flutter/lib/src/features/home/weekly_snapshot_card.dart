@@ -244,7 +244,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
             tooltip: 'Dismiss Tooltip',
             icon: const Icon(
               Icons.close,
-              size: 14,
+              size: 18,
               color: NotelColors.textSecondary,
             ),
           ),
@@ -256,7 +256,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
   /// Tooltip value formatting, verbatim from native `SnapshotDataContent`.
   String _formatValue(WeeklySnapshotMetricData data, DailySnapshotPoint pt) {
     if (pt.secondaryValue != null) {
-      return '${pt.value?.toInt() ?? '--'}/${pt.secondaryValue!.toInt()} ${data.metric.unit}';
+      return '${pt.value?.toInt() ?? '--'} / ${pt.secondaryValue!.toInt()} ${data.metric.unit}';
     }
     if (pt.value != null) {
       if (data.metric.unit == 'h') {
