@@ -24,6 +24,13 @@ import 'test_helpers.dart';
 String day(DateTime d) => dateStrOf(d);
 
 DateTime get _now => DateTime.now();
+
+/// Fixture entry timestamps: safely inside "today" but a few minutes
+/// in the past — a fixture stamped at handler time would land a few
+/// milliseconds AFTER the loader's captured `now` and read as a
+/// future entry (the symptom window excludes those, like native).
+int get _pastMs =>
+    DateTime.now().subtract(const Duration(minutes: 5)).millisecondsSinceEpoch;
 String get _today => day(_now);
 String daysAgo(int n) => day(_now.subtract(Duration(days: n)));
 
@@ -738,8 +745,8 @@ void main() {
                 'body': 'Migraine',
                 'chips': '[]',
                 'manualText': '',
-                'timestamp': '${_now.millisecondsSinceEpoch}',
-                'updatedAt': '${_now.millisecondsSinceEpoch}',
+                'timestamp': '$_pastMs',
+                'updatedAt': '$_pastMs',
               },
             ],
         'categories': [
@@ -969,8 +976,8 @@ void main() {
                 'body': 'Took Ivabradine 7.5 mg',
                 'chips': '[]',
                 'manualText': '',
-                'timestamp': '${_now.millisecondsSinceEpoch}',
-                'updatedAt': '${_now.millisecondsSinceEpoch}',
+                'timestamp': '$_pastMs',
+                'updatedAt': '$_pastMs',
               },
             ])),
             200,
@@ -1201,8 +1208,8 @@ void main() {
                   'body': 'Migraine',
                   'chips': '[]',
                   'manualText': '',
-                  'timestamp': '${_now.millisecondsSinceEpoch}',
-                  'updatedAt': '${_now.millisecondsSinceEpoch}',
+                  'timestamp': '$_pastMs',
+                  'updatedAt': '$_pastMs',
                 },
               ],
               'categories': [
@@ -1294,8 +1301,8 @@ void main() {
                         'body': 'Took Ivabradine 7.5 mg',
                         'chips': '[]',
                         'manualText': '',
-                        'timestamp': '${_now.millisecondsSinceEpoch}',
-                        'updatedAt': '${_now.millisecondsSinceEpoch}',
+                        'timestamp': '$_pastMs',
+                        'updatedAt': '$_pastMs',
                       },
                     ]
                   : <dynamic>[],
@@ -1332,7 +1339,13 @@ void main() {
       expect(find.text('1 item remaining'), findsOneWidget);
       // Simulate the user logging the dose on another screen, then
       // returning Home (Home remounts on tab switch in MainShell).
+      // pumpWidget alone would REUSE the card's State (same widget
+      // type in the same slot), so unmount fully first — the tab
+      // switch in MainShell replaces the whole body the same way.
       tookLogged = true;
+      await tester
+          .pumpWidget(const MaterialApp(home: Scaffold(body: SizedBox())));
+      await tester.pumpAndSettle();
       await pumpCard(tester, client: client);
       expect(find.text('Everything planned for today is complete'),
           findsOneWidget);

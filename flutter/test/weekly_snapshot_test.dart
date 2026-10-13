@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/weekly_snapshot.dart';
 import 'package:tabs_lab/src/features/home/today_summary_card.dart';
@@ -6,6 +7,29 @@ import 'package:tabs_lab/src/features/home/weekly_snapshot_card.dart';
 
 void main() {
   group('TodaySummaryCard', () {
+    // Round 35 reconciliation: the card is wired to real data now
+    // (it was an inert shell when these tests were written), so its
+    // default services touch platform channels. Null-returning
+    // handlers give the honest "nothing stored / not connected"
+    // answers every other suite gets from injected fakes, and let
+    // the loads complete under the widget-test fake-async zone
+    // (the real secure-storage plugin performs genuine IO whose
+    // completion pumpAndSettle never flushes). All assertions below
+    // are unchanged from the original contract.
+    setUp(() {
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(
+        const MethodChannel('plugins.it_nomads.com/flutter_secure_storage'),
+        (call) async => null,
+      );
+      messenger.setMockMethodCallHandler(
+        const MethodChannel(
+            'com.notel.notel.playground.flutter/health_connect'),
+        (call) async => null,
+      );
+    });
+
     testWidgets('renders title, subtitle, and chevron; collapsed by default',
         (tester) async {
       await tester.pumpWidget(

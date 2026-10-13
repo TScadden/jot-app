@@ -39,6 +39,13 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// - No optimistic flips: rows render from loaded data only, and an
 ///   action reloads quietly in the background (no spinner, no
 ///   count-up replay — there are no animated numbers in this card).
+/// - Plan and trends load in two phases (native's flows are likewise
+///   independent): the plan never waits on Health Connect. One
+///   micro-divergence from native: the trends area shows its empty
+///   text while the first comparison load is in flight instead of
+///   native's Loading spinner — the load is one bridge round-trip,
+///   the card starts collapsed, and live comparisons replace the
+///   text the moment they land.
 class TodaySummaryCard extends StatefulWidget {
   /// Injectable for tests; production defaults are real instances.
   final TabsBackend? backend;
@@ -108,19 +115,37 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
     }
   }
 
+  /// Two-phase load, mirroring native's independent flows: the plan
+  /// (subtitle + rows) lands as soon as the sync pull resolves, then
+  /// the trends phase swaps in the live Health Connect comparisons
+  /// whenever they land. Neither phase blocks the other, and a
+  /// failed phase leaves the other phase's values untouched.
   Future<void> _load({bool includeTrends = true}) async {
-    final data = await _loader.load();
+    final data = await _loader.loadPlan();
     if (!mounted) return;
     setState(() {
-      _data = includeTrends
-          ? data
-          : TodaySummaryData(
-              plan: data.plan,
-              trends: _data?.trends ?? data.trends,
-              fromCache: data.fromCache,
-              pullSucceeded: data.pullSucceeded,
-            );
+      _data = TodaySummaryData(
+        plan: data.plan,
+        trends: _data?.trends ?? data.trends,
+        fromCache: data.fromCache,
+        pullSucceeded: data.pullSucceeded,
+      );
     });
+    if (includeTrends) {
+      final trends = await _loader.loadLiveTrends();
+      if (!mounted) return;
+      setState(() {
+        final current = _data;
+        if (current != null) {
+          _data = TodaySummaryData(
+            plan: current.plan,
+            trends: trends.isNotEmpty ? trends : current.trends,
+            fromCache: current.fromCache,
+            pullSucceeded: current.pullSucceeded,
+          );
+        }
+      });
+    }
   }
 
   Future<void> _refreshTrends() async {
@@ -336,21 +361,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                             ],
                           ),
                           const SizedBox(height: 6),
-                          if (data == null && _trendsRefreshing)
-                            const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 12.0),
-                              child: Center(
-                                child: SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: NotelColors.primary,
-                                  ),
-                                ),
-                              ),
-                            )
-                          else if (data == null || data.trends.isEmpty)
+                          if (data == null || data.trends.isEmpty)
                             const Padding(
                               padding: EdgeInsets.symmetric(vertical: 4.0),
                               child: Text(

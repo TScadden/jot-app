@@ -851,10 +851,24 @@ class TodaySummaryLoader {
     }
   }
 
-  /// Full load: plan from the sync pull (+ local plan state), trends
-  /// from Health Connect + entries. On pull failure, falls back to
-  /// the cache (plan) while still attempting live HC trends.
-  Future<TodaySummaryData> load({DateTime? now}) async {
+  /// The most recent plan this loader computed — the trends phase
+  /// re-saves the cache with plan + fresh trends together.
+  TodayPlanData? _lastPlan;
+
+  /// Plan-phase load: subtitle + plan items from the sync pull (+
+  /// local plan state), WITHOUT touching Health Connect. Native's
+  /// plan and trends are independent flows (the plan combine never
+  /// waits on `loadHealthComparisons`), and the split matters: the
+  /// subtitle and plan render the moment the pull lands instead of
+  /// waiting on a dozen bridge reads.
+  ///
+  /// Trends in the result are the last-known ones from the cache
+  /// (or empty on first run); the card follows with [loadLiveTrends]
+  /// to swap in the live comparisons.
+  ///
+  /// On pull failure the plan falls back to the account/date-bound
+  /// cache — never an error, never a blank section.
+  Future<TodaySummaryData> loadPlan({DateTime? now}) async {
     final at = now ?? DateTime.now();
     final todayStr = dateStrOf(at);
     final email = await _email();
@@ -877,32 +891,75 @@ class TodaySummaryLoader {
           medicationCategoryId: medCategoryId,
           now: at,
         );
-        final trends = await loadTrends(
-          entries: entries,
-          categories: categories,
-          now: at,
-        );
+        _lastPlan = plan;
+        final cached =
+            await cache.load(email: email, todayStr: todayStr);
+        final knownTrends = cached?.trends ?? const <TrendComparison>[];
         unawaited(cache.save(
-            email: email, todayStr: todayStr, plan: plan, trends: trends));
+            email: email,
+            todayStr: todayStr,
+            plan: plan,
+            trends: knownTrends));
         return TodaySummaryData(
-            plan: plan, trends: trends, pullSucceeded: true);
+            plan: plan, trends: knownTrends, pullSucceeded: true);
       }
     } catch (_) {
       // Fall through to the cache path — a summary load failure must
       // never surface as an error or a blank section.
     }
-    // Pull failed (offline / no session): last-known plan from cache,
-    // live HC trends where possible (native reads HC locally too).
     final cached = await cache.load(email: email, todayStr: todayStr);
-    final trends = await loadTrends(entries: null, categories: null, now: at);
     if (cached != null) {
+      _lastPlan = cached.plan;
       return TodaySummaryData(
-        plan: cached.plan,
-        trends: trends.isNotEmpty ? trends : cached.trends,
-        fromCache: true,
-      );
+          plan: cached.plan, trends: cached.trends, fromCache: true);
     }
-    return TodaySummaryData(plan: TodayPlanData.empty, trends: trends);
+    return const TodaySummaryData(
+        plan: TodayPlanData.empty, trends: <TrendComparison>[]);
+  }
+
+  /// Trends phase: live comparisons from Health Connect + the pulled
+  /// entries (reached through this loader's backend, whose in-memory
+  /// pull cache makes the re-read cheap). Persists plan + trends to
+  /// the last-known cache when a plan is known. Never throws.
+  Future<List<TrendComparison>> loadLiveTrends({DateTime? now}) async {
+    final at = now ?? DateTime.now();
+    final todayStr = dateStrOf(at);
+    List<TrendComparison> trends;
+    try {
+      final pull = await backend.fetchSyncPull();
+      if (pull == null) {
+        trends = await loadTrends(entries: null, categories: null, now: at);
+      } else {
+        final entries = await backend.fetchLogEntryDtos();
+        final categories = await backend.fetchLogCategories();
+        trends =
+            await loadTrends(entries: entries, categories: categories, now: at);
+      }
+    } catch (_) {
+      trends = const [];
+    }
+    final plan = _lastPlan;
+    if (plan != null && trends.isNotEmpty) {
+      final email = await _email();
+      unawaited(cache.save(
+          email: email, todayStr: todayStr, plan: plan, trends: trends));
+    }
+    return trends;
+  }
+
+  /// Full load (plan phase + trends phase) — the one-shot API the
+  /// loader's own tests exercise; the card uses the two phases
+  /// separately so the plan never waits on Health Connect.
+  Future<TodaySummaryData> load({DateTime? now}) async {
+    final at = now ?? DateTime.now();
+    final planData = await loadPlan(now: at);
+    final trends = await loadLiveTrends(now: at);
+    return TodaySummaryData(
+      plan: planData.plan,
+      trends: trends.isNotEmpty ? trends : planData.trends,
+      fromCache: planData.fromCache,
+      pullSucceeded: planData.pullSucceeded,
+    );
   }
 
   List<SummaryMedication> _parseMeds(Map<String, dynamic> profile) {
@@ -941,12 +998,20 @@ class TodaySummaryLoader {
       // Native reads 8 days of sleep history anchored on today
       // (sessions attributed to their end date, as the bridge does).
       // Calendar-day arithmetic — a 24h Duration subtraction can
-      // drift a date across a DST boundary.
-      for (var i = 0; i <= 8; i++) {
-        final d = dateStrOf(DateTime(at.year, at.month, at.day - i));
-        final mins = await hc.readSleepMinutes(d);
+      // drift a date across a DST boundary. The per-day reads run
+      // concurrently, and this phase never gates the plan (the card
+      // loads the plan first, exactly like native's separate flows).
+      final dates = [
+        for (var i = 0; i <= 8; i++)
+          dateStrOf(DateTime(at.year, at.month, at.day - i)),
+      ];
+      final results = await Future.wait([
+        for (final d in dates) hc.readSleepMinutes(d),
+      ]);
+      for (var i = 0; i < dates.length; i++) {
+        final mins = results[i];
         // Biometric 0 = failed read — excluded, never averaged.
-        if (mins != null && mins > 0) sleepByDate[d] = mins;
+        if (mins != null && mins > 0) sleepByDate[dates[i]] = mins;
       }
     } catch (_) {
       // Section fails safe — other comparisons still build.
