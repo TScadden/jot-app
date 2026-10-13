@@ -1170,7 +1170,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const Text('Medications',
             style: TextStyle(
                 color: NotelColors.textPrimary, fontWeight: FontWeight.w500)),
-        const Text('Track your current and historical medications',
+        const Text('Track your current medications',
             style:
                 TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
         const SizedBox(height: 8),
