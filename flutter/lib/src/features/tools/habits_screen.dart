@@ -190,12 +190,28 @@ class _HabitsScreenState extends State<HabitsScreen> {
   /// re-fetches the list the same way). Fix-round hardening: a
   /// refetch failure after a successful write now SURFACES an error
   /// instead of silently leaving a stale list on screen.
+  ///
+  /// Round 48 (Vera R47 ledger): the refresh goes through the
+  /// nullable fetch ([TabsBackend.fetchHabitsOrNull]). The old
+  /// path called `fetchHabits()`, which returns `[]` on ANY
+  /// failure — so a failed refresh silently BLANKED the list to
+  /// the empty state until the next load, and this error message
+  /// was unreachable (the backend never throws). Now a failed
+  /// refresh (null) surfaces the error and PRESERVES the list
+  /// already on screen; only a successful fetch replaces it.
   Future<void> _refresh() async {
     try {
-      final habits = await _backend.fetchHabits();
+      final habits = await _backend.fetchHabitsOrNull();
       if (!mounted) return;
+      if (habits == null) {
+        _showError(
+            'Saved, but the habit list could not be refreshed. Check your connection and try again.');
+        return;
+      }
       setState(() => _habits = habits);
     } catch (_) {
+      // Defensive: a throwing backend override is a failed refresh
+      // too — same message, list preserved.
       _showError(
           'Saved, but the habit list could not be refreshed. Check your connection and try again.');
     }
@@ -672,6 +688,18 @@ class _HabitsScreenState extends State<HabitsScreen> {
               fontSize: 13,
               fontWeight: FontWeight.bold,
               height: 16 / 13,
+            ),
+          ),
+          // Native shows the habit's target time under the title
+          // (`habit.target_time ?: "Anytime"` — the DTO already
+          // defaults a missing value to "Anytime"). Round 48:
+          // the Flutter card parsed this field but never rendered
+          // it; restored for native parity.
+          Text(
+            habit.targetTime,
+            style: const TextStyle(
+              color: NotelColors.textSecondary,
+              fontSize: 10,
             ),
           ),
           const SizedBox(height: 8),
