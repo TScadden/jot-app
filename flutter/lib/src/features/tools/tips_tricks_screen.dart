@@ -62,9 +62,13 @@ class TipsCacheStore {
     if (delete != null) _delete = delete;
   }
 
+  // Every IO op is timeout-guarded, mirroring Food's encyclopedia
+  // restore: a wedged storage channel (an unmocked MethodChannel in
+  // tests never answers) must never block the screen — a timeout
+  // behaves exactly like the existing IO-failure path below.
   Future<List<String>> loadTopics() async {
     try {
-      final raw = await _read(topicsKey);
+      final raw = await _read(topicsKey).timeout(const Duration(seconds: 3));
       if (raw == null || raw.trim().isEmpty) return const [];
       return decodeCachedTopics(raw);
     } catch (_) {
@@ -74,7 +78,8 @@ class TipsCacheStore {
 
   Future<void> saveTopics(List<String> topics) async {
     try {
-      await _write(topicsKey, jsonEncode(topics));
+      await _write(topicsKey, jsonEncode(topics))
+          .timeout(const Duration(seconds: 3));
     } catch (_) {
       // Cache persistence never breaks the UI.
     }
@@ -82,7 +87,8 @@ class TipsCacheStore {
 
   Future<Map<String, List<String>>> loadAnswers() async {
     try {
-      final raw = await _read(answersKey);
+      final raw =
+          await _read(answersKey).timeout(const Duration(seconds: 3));
       if (raw == null || raw.trim().isEmpty) return const {};
       return decodeCachedAnswers(raw);
     } catch (_) {
@@ -92,7 +98,8 @@ class TipsCacheStore {
 
   Future<void> saveAnswers(Map<String, List<String>> answers) async {
     try {
-      await _write(answersKey, jsonEncode(answers));
+      await _write(answersKey, jsonEncode(answers))
+          .timeout(const Duration(seconds: 3));
     } catch (_) {
       // Cache persistence never breaks the UI.
     }
@@ -100,7 +107,7 @@ class TipsCacheStore {
 
   Future<void> clearAnswers() async {
     try {
-      await _delete(answersKey);
+      await _delete(answersKey).timeout(const Duration(seconds: 3));
     } catch (_) {
       // Cache persistence never breaks the UI.
     }
