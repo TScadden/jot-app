@@ -653,8 +653,10 @@ void main() {
       final preview = buildBpCsvPreview(parsed, existing);
       expect(preview.newReadings, hasLength(1));
       expect(preview.duplicateCount, 1);
+      // Native plural() appends "s" for every count != 1, so a zero
+      // invalid count renders "0 invalids" (production matches native).
       expect(bpCsvResultMessage(preview),
-          '1 reading imported, 1 row skipped (1 duplicate, 0 invalid)');
+          '1 reading imported, 1 row skipped (1 duplicate, 0 invalids)');
     });
   });
 
@@ -785,7 +787,7 @@ void main() {
       expect(find.text('Import Complete'), findsOneWidget);
       expect(
           find.text(
-              '1 reading imported, 1 row skipped (1 duplicate, 0 invalid)'),
+              '1 reading imported, 1 row skipped (1 duplicate, 0 invalids)'),
           findsOneWidget);
       await tester.tap(find.text('Done'));
       await tester.pumpAndSettle();
