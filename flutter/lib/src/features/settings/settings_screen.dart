@@ -53,6 +53,14 @@ import 'package:tabs_lab/src/theme/slide_page_route.dart';
 /// stays a flagged design task (native has a full light palette; the
 /// Lab ships only the dark palette and does not improvise one).
 ///
+/// Round 51 — Connected Apps state fix: the Health Connect row
+/// binds the live bridge status (it was a static not-connected
+/// card), the Google rows' stored flags load on an isolated path
+/// and re-load every time the page opens, and Google sign-in
+/// seeds the account flag (login_screen.dart) exactly like native
+/// — see [_loadConnectionState]. All Round 30 write flows
+/// (link/disconnect/connect) are unchanged.
+///
 /// Honest unavailable states (native presentation kept, flagged in
 /// the round report): Play purchase flow, file/text-note knowledge
 /// ingestion + progress-report PDF (native on-device Room/Gemini
@@ -123,6 +131,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final AccountActions _actions;
   late final ReminderNotificationService _notifs;
   late final GoogleSignInService _google;
+  late final HealthConnectService _hc;
 
   late _Page _page;
   SettingsProfileData _data = const SettingsProfileData();
@@ -149,6 +158,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _gAccountConnected = false;
   String _gAccountEmail = '';
 
+  // Round 51 — Health Connect status for the Connected Apps row,
+  // read from the SAME HealthConnectService.getStatus() Home's
+  // Round 23 status logic uses. Null until the first check lands;
+  // the last-known value stays on screen while a re-check runs
+  // (no stale flash, no empty flash). A bridge failure falls back
+  // to notConnected with the exception code kept for display,
+  // exactly like Home (_hcStatusErrorCode there).
+  HealthConnectStatus? _hcStatus;
+  String? _hcErrorCode;
+
   String _selectedPlan = 'monthly';
   bool _syncing = false;
   bool _recovering = false;
@@ -170,6 +189,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         AccountActions(backend: _backend, settingsStore: _store);
     _notifs = widget.notificationService ?? LocalReminderNotificationService();
     _google = widget.googleSignInService ?? GoogleSignInService();
+    _hc = widget.healthConnectService ?? HealthConnectService();
     _load();
   }
 
@@ -188,10 +208,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _store.getUserContextHidden(),
       _store.getCheckInReminderEnabled(),
       _store.getLastSyncTimeMs(),
-      _store.getGoogleCalendarConnected(),
-      _store.getGoogleCalendarEmail(),
-      _store.getGoogleAccountConnected(),
-      _store.getGoogleAccountEmail(),
     ]);
     if (!mounted) return;
     final data = SettingsProfileData.fromPull(
@@ -203,21 +219,106 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _contextHidden = results[3] as bool;
       _checkInEnabled = results[4] as bool;
       _lastSyncMs = results[5] as int;
-      _gCalConnected = results[6] as bool;
-      _gCalEmail = results[7] as String;
-      _gAccountConnected = results[8] as bool;
-      _gAccountEmail = results[9] as String;
       _loaded = true;
       if (!_contextSeeded) {
         _contextController.text = data.userContext;
         _contextSeeded = true;
       }
     });
+    // Round 51 — Connected Apps state loads on its OWN path, never
+    // inside the Future.wait above: that wait fails atomically, so
+    // one throwing read (the real backend's pull starts with an
+    // unguarded secure-storage token read) silently discarded the
+    // stored Google flags and the rows fell back to their
+    // not-connected defaults even when the stored state was set.
+    await _loadConnectionState();
     // Native re-arms its reminder schedules at app start (NotelApp
     // onCreate + BootReceiver); the Settings load is the Flutter
     // equivalent checkpoint. Failures land in _notifError and render
     // on the Notifications page — never silent.
     await _syncReminders();
+  }
+
+  /// Round 51 — (re)reads every Connected Apps row's state from the
+  /// SAME real sources the working surfaces use:
+  /// - Health Connect: [HealthConnectService.getStatus] — the live
+  ///   bridge check Home's Round 23 status logic and the Data
+  ///   Connections screen both use (native parity:
+  ///   SettingsViewModel.checkHealthConnectStatus →
+  ///   hasAllPermissions, re-run when the screen/permission flow
+  ///   returns). Bridge failures fall back to notConnected WITH
+  ///   the visible [CODE], exactly like Home — never silent
+  ///   (LESSONS.md: every channel call gets try/catch + a code).
+  /// - Google Calendar / Google Account: the SettingsStore flags —
+  ///   native's DataStore-only state (NotelPreferences.kt:155-158),
+  ///   written by the Round 30 connect/link/disconnect flows and,
+  ///   for the account, seeded by Google sign-in itself (native
+  ///   LoginScreen.kt:220-221; Flutter parity in login_screen.dart
+  ///   Round 51). There is deliberately NO parallel store and NO
+  ///   sync-pull field: the server pull carries no Google state
+  ///   (verified against jot-server src/routes/sync.js — its user
+  ///   query selects nickname/tag/is_unlimited/is_admin only).
+  ///
+  /// Called from [_load], again every time the Connected Apps page
+  /// is opened, and again when the Data Connections screen pushed
+  /// from this page returns — so a connection made elsewhere shows
+  /// reality without restarting the screen. Each source is read in
+  /// isolation: one failing read keeps the last-known values for
+  /// the others instead of resetting the whole page to defaults.
+  Future<void> _loadConnectionState() async {
+    try {
+      final cal = await _store.getGoogleCalendarConnected();
+      final calEmail = await _store.getGoogleCalendarEmail();
+      final acc = await _store.getGoogleAccountConnected();
+      final accEmail = await _store.getGoogleAccountEmail();
+      if (!mounted) return;
+      setState(() {
+        _gCalConnected = cal;
+        _gCalEmail = calEmail;
+        _gAccountConnected = acc;
+        _gAccountEmail = accEmail;
+      });
+    } catch (_) {
+      // Keep the last-known flag values — never reset to defaults
+      // on a storage surprise.
+    }
+    try {
+      final status = await _hc.getStatus();
+      if (!mounted) return;
+      setState(() {
+        _hcStatus = status;
+        _hcErrorCode = null;
+      });
+    } on HealthConnectException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _hcStatus = HealthConnectStatus.notConnected;
+        _hcErrorCode = e.code;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _hcStatus = HealthConnectStatus.notConnected;
+        _hcErrorCode = 'UNKNOWN';
+      });
+    }
+  }
+
+  /// Round 51 — opens the shared Data Connections screen (the one
+  /// destination Home's watch icon and HC banner use too) and
+  /// re-reads connection state when it returns, so a connect /
+  /// disconnect / permission change made there is reflected on
+  /// this page immediately.
+  Future<void> _openConnections() async {
+    await Navigator.of(context).push(
+      SlidePageRoute(
+        reducedMotion: animationsDisabled(context),
+        builder: (_) =>
+            ConnectionsScreen(healthConnectService: _hc),
+      ),
+    );
+    if (!mounted) return;
+    await _loadConnectionState();
   }
 
   /// Reconciles the on-device notification schedules with the
@@ -755,7 +856,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       {Color iconColor = NotelColors.textSecondary, Key? key}) {
     return InkWell(
       key: key,
-      onTap: () => setState(() => _page = page),
+      onTap: () {
+        setState(() => _page = page);
+        // Round 51 — opening Connected Apps re-reads its rows'
+        // state, so connections made elsewhere (Google sign-in,
+        // the Data Connections screen, another Settings visit's
+        // flows) show reality without a restart. Last-known values
+        // stay rendered while the re-check runs.
+        if (page == _Page.connectedApps) {
+          unawaited(_loadConnectionState());
+        }
+      },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         child: Row(
@@ -2096,34 +2207,113 @@ class _SettingsScreenState extends State<SettingsScreen> {
   List<Widget> _connectedAppsPage() {
     return [
       _sectionLabel('LOCAL CONNECTIONS'),
+      // Round 51 — this row used to be STATIC: it rendered the
+      // not-connected card unconditionally and never read Health
+      // Connect state at all, so it showed "Connect Health Data"
+      // while Home (same bridge, real getStatus()) showed live
+      // data. It now binds _hcStatus, native presentation
+      // (SettingsScreen.kt:2251-2281): connected → the Active
+      // card with NO connect CTA; partially connected → the
+      // grant-remaining presentation the Data Connections screen
+      // uses; not connected / unavailable / still loading → the
+      // connect card + CTA, which opens the shared Data
+      // Connections flow. A bridge failure adds the visible
+      // [CODE] line (Home parity).
       _card([
-        const Text('Google Health Connect',
-            style: TextStyle(
-                color: NotelColors.textPrimary, fontWeight: FontWeight.w500)),
-        const Text('Connect to grab data from Garmin, Oura, Fitbit and more.',
-            style:
-                TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            key: const ValueKey('open_connections'),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: NotelColors.primary,
-                foregroundColor: Colors.white),
-            onPressed: () {
-              Navigator.of(context).push(
-                SlidePageRoute(
-                  reducedMotion: animationsDisabled(context),
-                  builder: (_) => ConnectionsScreen(
-                      healthConnectService: widget.healthConnectService),
+        if (_hcStatus == HealthConnectStatus.connected) ...[
+          const Row(
+            children: [
+              Icon(Icons.favorite, color: NotelColors.primary, size: 28),
+              SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Health Connect Active',
+                        style: TextStyle(
+                            color: NotelColors.textPrimary,
+                            fontWeight: FontWeight.w500)),
+                    Text('Live synchronization active',
+                        style: TextStyle(
+                            color: NotelColors.textSecondary,
+                            fontSize: 12)),
+                  ],
                 ),
-              );
-            },
-            child: const Text('Connect Health Data',
-                style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
           ),
-        ),
+          const SizedBox(height: 16),
+          const Text('• Connected to local device sensors',
+              style:
+                  TextStyle(color: NotelColors.textSecondary, fontSize: 13)),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              key: const ValueKey('open_connections'),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: NotelColors.surfaceHigh,
+                  foregroundColor: NotelColors.textPrimary),
+              onPressed: _openConnections,
+              child: const Text('Manage Health Connect',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ] else if (_hcStatus ==
+            HealthConnectStatus.partiallyConnected) ...[
+          const Text('Google Health Connect',
+              style: TextStyle(
+                  color: NotelColors.textPrimary,
+                  fontWeight: FontWeight.w500)),
+          const Text('Partially connected',
+              style: TextStyle(
+                  color: NotelColors.warning, fontSize: 12)),
+          const SizedBox(height: 4),
+          const Text(
+              'Some health permissions are still missing. Grant the remaining permissions to sync everything.',
+              style:
+                  TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              key: const ValueKey('open_connections'),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: NotelColors.primary,
+                  foregroundColor: Colors.white),
+              onPressed: _openConnections,
+              child: const Text('Grant New Permissions',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ] else ...[
+          const Text('Google Health Connect',
+              style: TextStyle(
+                  color: NotelColors.textPrimary,
+                  fontWeight: FontWeight.w500)),
+          const Text('Connect to grab data from Garmin, Oura, Fitbit and more.',
+              style:
+                  TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              key: const ValueKey('open_connections'),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: NotelColors.primary,
+                  foregroundColor: Colors.white),
+              onPressed: _openConnections,
+              child: const Text('Connect Health Data',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ],
+        if (_hcErrorCode != null) ...[
+          const SizedBox(height: 8),
+          Text('Health Connect status check failed [$_hcErrorCode].',
+              style:
+                  const TextStyle(color: NotelColors.error, fontSize: 12)),
+        ],
       ]),
       const SizedBox(height: 24),
       _sectionLabel('INTEGRATED APPS'),
