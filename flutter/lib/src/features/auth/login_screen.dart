@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/google_sign_in_service.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
+import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -62,6 +63,20 @@ import 'package:url_launcher/url_launcher.dart';
 /// [onLoginSuccess] in both modes, exactly like native
 /// (`loginWithGoogleAccount` marks onboarding complete).
 ///
+/// Round 51 — Google sign-in also seeds the SettingsStore Google
+/// Account connected flag + email, exactly like native
+/// (`LoginScreen.kt` `loginWithGoogleAccount`: after
+/// saveSessionAtomically, `setGoogleAccountConnected(true)` +
+/// `setGoogleAccountEmail(email)`). The server links the Google
+/// identity on this very call (`POST api/auth/google` sets
+/// `users.google_connected`), and Settings' Connected Apps row
+/// reads that local flag — without the seed, the row showed
+/// "Connect Google Account" to users who sign in with Google.
+/// The sync pull carries no Google state, so the flag seeded at
+/// sign-in (and by the Settings link flow) is the only source —
+/// native's design. Email/password login does NOT seed it
+/// (native parity).
+///
 /// [initialRegisterMode] mirrors the native `mode` query arg: `true`
 /// starts on "Create Your Account", `false` on "Welcome Back".
 /// [onBack] pops to the welcome screen (native back button).
@@ -86,6 +101,10 @@ class LoginScreen extends StatefulWidget {
   /// service (Round 24).
   final GoogleSignInService? googleSignInService;
 
+  /// Injectable for tests (Round 51 Google-account flag seeding);
+  /// defaults to the real on-device settings store.
+  final SettingsStore? settingsStore;
+
   const LoginScreen({
     super.key,
     this.initialRegisterMode = true,
@@ -95,6 +114,7 @@ class LoginScreen extends StatefulWidget {
     this.authApi,
     this.sessionStore,
     this.googleSignInService,
+    this.settingsStore,
   });
 
   @override
@@ -264,6 +284,15 @@ class _LoginScreenState extends State<LoginScreen> {
             refreshToken: refreshToken,
             email: result.email,
           );
+          // Round 51 — native parity (LoginScreen.kt:220-221):
+          // seed the Google Account connection state Settings'
+          // Connected Apps row reads. Best-effort: a storage
+          // failure here must never fail a successful sign-in.
+          try {
+            final settings = widget.settingsStore ?? SettingsStore();
+            await settings.setGoogleAccountConnected(true);
+            await settings.setGoogleAccountEmail(result.email);
+          } catch (_) {}
           if (!mounted) return;
           setState(() => _isLoading = false);
           widget.onLoginSuccess?.call(result.email);
