@@ -526,7 +526,8 @@ void main() {
       expect(normalizeFoodLevel('HIGH'), 'High');
       expect(normalizeFoodLevel(' Medium '), 'Medium');
       expect(normalizeFoodLevel('Low'), 'Low');
-      expect(normalizeFoodLevel('banana'), 'Low');
+      expect(normalizeFoodLevel('banana'),
+          'banana'); // unknown non-empty passes through (Juno F4 fix)
       expect(normalizeFoodLevel(null), 'Low');
     });
 

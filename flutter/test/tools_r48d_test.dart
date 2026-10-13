@@ -146,6 +146,9 @@ class _BlockingMedsBackend extends TabsBackend {
     pushes.add(fields);
     final g = gate;
     if (g != null) await g.future;
+    // Model a persisting server (Vera F1 fix: writers re-pull before each
+    // push, so the fake must apply landed pushes to its profile).
+    profile = {...?profile, ...fields};
     return true;
   }
 }

@@ -548,8 +548,11 @@ void main() {
           contains('[PROPOSE_LIST:ListName|Item1|Item2|Item3|...]'));
       expect(ctx, contains('[PROPOSE_REMINDER:Reminder Title|HH:MM]'));
       expect(ctx, contains('[PROPOSE_MEDICATION:'));
-      expect(ctx,
-          contains('[PROPOSE_CALENDAR_EVENT:Event Title|YYYY-MM-DD'));
+      // Juno F1 fix: no calendar connection in this build, so the context
+      // carries native's not-connected instruction instead of eliciting
+      // calendar proposals it could never fulfil.
+      expect(ctx, contains('Do NOT output a [PROPOSE_CALENDAR_EVENT:'));
+      expect(ctx, isNot(contains('[PROPOSE_CALENDAR_EVENT:Event Title')));
       expect(ctx, contains('2026-10-13'));
       expect(ctx, contains('Tuesday, October 13, 2026 15:04'));
       final bare = coachEnrichedUserContext(null,
