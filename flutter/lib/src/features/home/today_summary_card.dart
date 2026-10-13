@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
+import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -127,6 +128,14 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
     try {
       final ro = _rowKeyFor(itemId).currentContext?.findRenderObject();
       if (ro is! RenderRepaintBoundary || !ro.attached) return null;
+      // The tap lands mid-frame: the boundary is usually still
+      // marked needs-paint, and toImage asserts against capturing
+      // an unpainted layer. Wait out the current frame — the busy
+      // state the handler sets next doesn't change the row's
+      // appearance, so the snapshot still shows the row exactly
+      // as the user saw it when they tapped.
+      await SchedulerBinding.instance.endOfFrame;
+      if (!ro.attached) return null;
       final height = ro.size.height;
       final image = await ro.toImage(pixelRatio: 1.0);
       return (image: image, height: height);
