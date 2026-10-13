@@ -8,6 +8,8 @@ import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/data/today_plan_store.dart';
+import 'package:tabs_lab/src/data/today_summary.dart';
 import 'package:tabs_lab/src/features/settings/account_actions.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
@@ -63,8 +65,12 @@ class ThrowingSessionStore extends FakeSessionStore {
   }
 }
 
-/// Seeds all three REAL account-bound cache singletons with this
+/// Seeds the REAL account-bound cache singletons with this
 /// account's data (the same wiring the logout test originally used).
+/// The Round 35 Today Summary stores joined the logout wipe in
+/// Vera's R35 re-review (HIGH 2), so they are wired to the same
+/// fake disk — otherwise their clears would await the real secure-
+/// storage channel, whose futures never complete under FakeAsync.
 void seedRealCaches() {
   final cacheDisk = <String, String>{};
   void wireCache(dynamic cache) => cache.debugSetStore(
@@ -75,6 +81,8 @@ void seedRealCaches() {
   wireCache(HomeDataCache.instance);
   wireCache(QuickLogCache.instance);
   wireCache(HeartDataCache.instance);
+  wireCache(TodaySummaryCache.instance);
+  wireCache(TodayPlanStore.instance);
   HomeDataCache.instance.debugReset();
   HomeDataCache.instance.applyVitals(
       const TodayVitals(heartRate: 80), ownerEmail: 'a@example.com');

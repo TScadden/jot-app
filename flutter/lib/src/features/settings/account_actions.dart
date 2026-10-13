@@ -4,6 +4,8 @@ import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/data/today_plan_store.dart';
+import 'package:tabs_lab/src/data/today_summary.dart';
 
 /// Round 29 — logout / delete-account flows, mirroring native
 /// `SettingsViewModel.logout` (SettingsViewModel.kt:1148-1240) and
@@ -22,9 +24,12 @@ import 'package:tabs_lab/src/data/tabs_backend.dart';
 ///   stay intact and the error is shown. Same order here.
 ///
 /// Clearing (Juno standing note, Round 19c account-binding pattern):
-/// the stored session AND all three account-bound on-device caches —
-/// [HomeDataCache], [QuickLogCache], [HeartDataCache] — plus the
-/// Settings store and the backend's in-memory sync-pull cache, so no
+/// the stored session AND every account-bound on-device cache —
+/// [HomeDataCache], [QuickLogCache], [HeartDataCache], and the
+/// Round 35 Today Summary stores [TodaySummaryCache] +
+/// [TodayPlanStore] (Vera R35 re-review HIGH 2: their logout hooks
+/// previously had no production caller) — plus the Settings store
+/// and the backend's in-memory sync-pull cache, so no
 /// previous-account data can render for the next account.
 class AccountActions {
   final TabsBackend _backend;
@@ -54,9 +59,15 @@ class AccountActions {
     try {
       await HeartDataCache.instance.clear();
     } catch (_) {}
+    try {
+      await TodaySummaryCache.instance.clear();
+    } catch (_) {}
+    try {
+      await TodayPlanStore.instance.clear();
+    } catch (_) {}
   }
 
-  /// Test hook: clears the three real cache singletons.
+  /// Test hook: clears the real cache singletons.
   static Future<void> clearDefaultCaches() => _clearDefaultCaches();
 
   /// Fault-isolated wipe (R29b Vera fix): every step is independently

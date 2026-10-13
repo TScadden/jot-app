@@ -1,16 +1,24 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:tabs_lab/main.dart';
+import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
+import 'package:tabs_lab/src/data/onboarding_store.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/today_plan_store.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
+import 'package:tabs_lab/src/data/weather_api.dart';
+import 'package:tabs_lab/src/features/home/home_screen.dart';
 import 'package:tabs_lab/src/features/home/today_summary_card.dart';
+import 'package:tabs_lab/src/features/onboarding/welcome_screen.dart';
+import 'package:tabs_lab/src/features/settings/account_actions.dart';
 
 import 'test_helpers.dart';
 
@@ -1349,6 +1357,339 @@ void main() {
       await pumpCard(tester, client: client);
       expect(find.text('Everything planned for today is complete'),
           findsOneWidget);
+    });
+  });
+
+  group('Vera R35 re-review — account binding fixes', () {
+    TodayPlanData veraPlan(String medName) => buildTodayPlan(
+          medications: [
+            SummaryMedication(key: 'k', name: medName, dose: '1'),
+          ],
+          reminders: const [],
+          habits: const [],
+          localState: const TodayPlanLocalState(),
+          entries: const [],
+          medicationCategoryId: null,
+          now: _now,
+        );
+
+    List<TrendComparison> veraTrends() => buildTrendComparisons(
+          sleepMinutesByDate: const {},
+          restingHrByDate: const {},
+          symptomLogCount: 2,
+          todayStr: _today,
+        );
+
+    /// Points the REAL store singletons back at genuine secure
+    /// storage after a test that faked them (the logout-hook tests
+    /// below exercise the production singletons on purpose).
+    void restoreSingletonStorage() {
+      const storage = FlutterSecureStorage();
+      TodaySummaryCache.instance.debugSetStore(
+        read: (k) => storage.read(key: k),
+        write: (k, v) => storage.write(key: k, value: v),
+        delete: (k) => storage.delete(key: k),
+      );
+      TodaySummaryCache.instance.debugReset();
+      TodayPlanStore.instance.debugSetStore(
+        read: (k) => storage.read(key: k),
+        write: (k, v) => storage.write(key: k, value: v),
+        delete: (k) => storage.delete(key: k),
+      );
+    }
+
+    // ── BLOCKING 1: null-email loads/writes vs an owned blob ──────
+
+    test('cache: null-email load never serves a known account\'s '
+        'blob (memory + disk paths) and never wipes it', () async {
+      final mem = MemoryStore();
+      final cache = cacheWith(mem);
+      await cache.save(
+          email: 'a@x.com',
+          todayStr: _today,
+          plan: veraPlan('CachedMed'),
+          trends: veraTrends());
+      // Memory path: the warmed instance itself must refuse.
+      expect(await cache.load(email: null, todayStr: _today), isNull);
+      // Disk path: a cold instance over the same disk.
+      final cold = cacheWith(mem);
+      expect(await cold.load(email: null, todayStr: _today), isNull);
+      // No wipe and no memory poisoning: the owner's own load still
+      // returns everything.
+      expect(mem.map.containsKey(TodaySummaryCache.storageKey), isTrue);
+      final own = await cold.load(email: 'a@x.com', todayStr: _today);
+      expect(own?.plan.items.single.title, 'CachedMed');
+      expect(own?.trends.single.metricName, 'Symptom Logs');
+    });
+
+    test('cache: null-email save cannot re-stamp or overwrite a '
+        'known account\'s blob', () async {
+      final mem = MemoryStore();
+      final seeder = cacheWith(mem);
+      await seeder.save(
+          email: 'a@x.com',
+          todayStr: _today,
+          plan: veraPlan('CachedMed'),
+          trends: veraTrends());
+      // Owner known from MEMORY (same instance, null email now).
+      await seeder.save(
+          email: null,
+          todayStr: _today,
+          plan: veraPlan('OtherMed'),
+          trends: const []);
+      // Owner known only from the DISK stamp (cold instance).
+      final cold = cacheWith(mem);
+      await cold.save(
+          email: null,
+          todayStr: _today,
+          plan: veraPlan('OtherMed'),
+          trends: const []);
+      final blob = jsonDecode(mem.map[TodaySummaryCache.storageKey]!)
+          as Map<String, dynamic>;
+      expect(blob['ownerEmail'], 'a@x.com');
+      final own =
+          await cacheWith(mem).load(email: 'a@x.com', todayStr: _today);
+      expect(own?.plan.items.single.title, 'CachedMed');
+    });
+
+    test('plan store: null-email load returns empty and never wipes',
+        () async {
+      final mem = MemoryStore();
+      final store = planStoreWith(mem);
+      await store.setReminderCompleted(
+          email: 'a@x.com', todayStr: _today, reminderId: 7, completed: true);
+      await store.setMedAction(
+          email: 'a@x.com',
+          todayStr: _today,
+          medKey: 'k',
+          slot: 'Daily',
+          status: DoseStatus.taken);
+      final anon = await store.load(email: null, todayStr: _today);
+      expect(anon.completedReminderIds, isEmpty);
+      expect(anon.medActions, isEmpty);
+      expect(mem.map.containsKey(TodayPlanStore.storageKey), isTrue);
+      final own = await store.load(email: 'a@x.com', todayStr: _today);
+      expect(own.completedReminderIds, {7});
+      expect(own.medActions['k|Daily'], DoseStatus.taken);
+    });
+
+    test('plan store: null-email write cannot re-stamp or overwrite '
+        'a known account\'s blob', () async {
+      final mem = MemoryStore();
+      final store = planStoreWith(mem);
+      await store.setReminderCompleted(
+          email: 'a@x.com', todayStr: _today, reminderId: 7, completed: true);
+      await store.setReminderCompleted(
+          email: null, todayStr: _today, reminderId: 99, completed: true);
+      final blob = jsonDecode(mem.map[TodayPlanStore.storageKey]!)
+          as Map<String, dynamic>;
+      expect(blob['ownerEmail'], 'a@x.com');
+      expect(blob['completedReminderIds'], [7]);
+      final own = await store.load(email: 'a@x.com', todayStr: _today);
+      expect(own.completedReminderIds, {7});
+    });
+
+    test('loader: offline fallback with an unreadable (null) session '
+        'email shows an empty summary — no cached meds or trends',
+        () async {
+      final cacheMem = MemoryStore();
+      final cache = cacheWith(cacheMem);
+      await cache.save(
+          email: 'a@x.com',
+          todayStr: _today,
+          plan: veraPlan('CachedMed'),
+          trends: veraTrends());
+      final failing =
+          MockClient((_) async => http.Response('{"error":"down"}', 500));
+      // Token present but the email read yields null — the exact
+      // transient state Vera's BLOCKING 1 is about.
+      final session = FakeSessionStore()..token = 'tok';
+      final loader = TodaySummaryLoader(
+        backend: TabsBackend(client: failing, sessionStore: session),
+        hc: FakeSummaryHc(),
+        planStore: planStoreWith(MemoryStore()),
+        cache: cache,
+        sessionStore: session,
+      );
+      final data = await loader.load(now: _now);
+      expect(data.fromCache, isFalse);
+      expect(data.plan.summaryText, 'No plans recorded today');
+      expect(data.plan.items, isEmpty);
+      expect(data.trends, isEmpty);
+    });
+
+    // ── HIGH 2: owner-mismatch enforcement + logout hooks ─────────
+
+    test('clearIfOwnerMismatch: foreign owner wiped, same owner '
+        'kept (summary cache, memory + cold-disk paths)', () async {
+      final mem = MemoryStore();
+      final cache = cacheWith(mem);
+      await cache.save(
+          email: 'a@x.com',
+          todayStr: _today,
+          plan: veraPlan('CachedMed'),
+          trends: veraTrends());
+      // Unreadable email enforces nothing.
+      expect(await cache.clearIfOwnerMismatch(null), isFalse);
+      expect(mem.map.containsKey(TodaySummaryCache.storageKey), isTrue);
+      // Same owner: everything kept (a re-login must not destroy
+      // the last-known summary the offline fallback depends on).
+      expect(await cache.clearIfOwnerMismatch('a@x.com'), isFalse);
+      expect(
+          await cache.load(email: 'a@x.com', todayStr: _today), isNotNull);
+      // Foreign owner: wiped.
+      expect(await cache.clearIfOwnerMismatch('b@x.com'), isTrue);
+      expect(mem.map.containsKey(TodaySummaryCache.storageKey), isFalse);
+      expect(await cache.load(email: 'a@x.com', todayStr: _today), isNull);
+      // Cold-memory path: the blob's disk stamp decides.
+      final mem2 = MemoryStore();
+      await cacheWith(mem2).save(
+          email: 'a@x.com',
+          todayStr: _today,
+          plan: veraPlan('CachedMed'),
+          trends: const []);
+      final coldCache = cacheWith(mem2);
+      expect(await coldCache.clearIfOwnerMismatch('b@x.com'), isTrue);
+      expect(mem2.map.containsKey(TodaySummaryCache.storageKey), isFalse);
+    });
+
+    test('clearIfOwnerMismatch: foreign owner wiped, same owner '
+        'kept (plan store)', () async {
+      final mem = MemoryStore();
+      final store = planStoreWith(mem);
+      await store.setReminderCompleted(
+          email: 'a@x.com', todayStr: _today, reminderId: 7, completed: true);
+      expect(await store.clearIfOwnerMismatch(null), isFalse);
+      expect(await store.clearIfOwnerMismatch('a@x.com'), isFalse);
+      expect(
+          (await store.load(email: 'a@x.com', todayStr: _today))
+              .completedReminderIds,
+          {7});
+      expect(await store.clearIfOwnerMismatch('b@x.com'), isTrue);
+      expect(mem.map.containsKey(TodayPlanStore.storageKey), isFalse);
+    });
+
+    test('logout wipe (AccountActions.clearDefaultCaches) empties '
+        'both Today Summary stores', () async {
+      final cacheMem = MemoryStore();
+      final planMem = MemoryStore();
+      TodaySummaryCache.instance.debugSetStore(
+          read: cacheMem.read, write: cacheMem.write, delete: cacheMem.delete);
+      TodayPlanStore.instance.debugSetStore(
+          read: planMem.read, write: planMem.write, delete: planMem.delete);
+      addTearDown(restoreSingletonStorage);
+      await TodaySummaryCache.instance.save(
+          email: 'a@x.com',
+          todayStr: _today,
+          plan: veraPlan('CachedMed'),
+          trends: veraTrends());
+      await TodayPlanStore.instance.setReminderCompleted(
+          email: 'a@x.com', todayStr: _today, reminderId: 7, completed: true);
+      await AccountActions.clearDefaultCaches();
+      expect(cacheMem.map.containsKey(TodaySummaryCache.storageKey),
+          isFalse);
+      expect(planMem.map.containsKey(TodayPlanStore.storageKey), isFalse);
+      expect(
+          await TodaySummaryCache.instance
+              .load(email: 'a@x.com', todayStr: _today),
+          isNull);
+      expect(
+          (await TodayPlanStore.instance
+                  .load(email: 'a@x.com', todayStr: _today))
+              .completedReminderIds,
+          isEmpty);
+    });
+
+    test('logout wipe is fault-isolated: a throwing plan-store '
+        'delete does not block the summary cache clear', () async {
+      final cacheMem = MemoryStore();
+      final planMem = MemoryStore();
+      TodaySummaryCache.instance.debugSetStore(
+          read: cacheMem.read, write: cacheMem.write, delete: cacheMem.delete);
+      TodayPlanStore.instance.debugSetStore(
+        read: planMem.read,
+        write: planMem.write,
+        delete: (_) async => throw StateError('storage gone'),
+      );
+      addTearDown(restoreSingletonStorage);
+      await TodaySummaryCache.instance.save(
+          email: 'a@x.com',
+          todayStr: _today,
+          plan: veraPlan('CachedMed'),
+          trends: veraTrends());
+      await TodayPlanStore.instance.setReminderCompleted(
+          email: 'a@x.com', todayStr: _today, reminderId: 7, completed: true);
+      // Must complete without throwing, and the healthy store's
+      // clear must still land.
+      await AccountActions.clearDefaultCaches();
+      expect(cacheMem.map.containsKey(TodaySummaryCache.storageKey),
+          isFalse);
+    });
+
+    testWidgets('session expiry (AppFlow) empties both Today Summary '
+        'stores; the previous account\'s summary never renders',
+        (tester) async {
+      final cacheMem = MemoryStore();
+      final planMem = MemoryStore();
+      TodaySummaryCache.instance.debugSetStore(
+          read: cacheMem.read, write: cacheMem.write, delete: cacheMem.delete);
+      TodayPlanStore.instance.debugSetStore(
+          read: planMem.read, write: planMem.write, delete: planMem.delete);
+      addTearDown(restoreSingletonStorage);
+      addTearDown(() => TabsBackend.onSessionExpired = null);
+      // The previous account's summary + plan state sit on device.
+      await TodaySummaryCache.instance.save(
+          email: 'a@x.com',
+          todayStr: _today,
+          plan: veraPlan('CachedMed'),
+          trends: veraTrends());
+      await TodayPlanStore.instance.setReminderCompleted(
+          email: 'a@x.com', todayStr: _today, reminderId: 7, completed: true);
+
+      final onboardingMap = <String, String>{};
+      final store = FakeSessionStore()
+        ..token = 'fake-access'
+        ..refreshToken = 'fake-refresh'
+        ..email = 'a@x.com';
+      await tester.pumpWidget(MaterialApp(
+        home: AppFlow(
+          authApi: AuthApiClient(
+              client:
+                  MockClient((_) async => http.Response('{}', 200))),
+          sessionStore: store,
+          onboardingStore: OnboardingStore.withStorage(
+            read: (k) async => onboardingMap[k],
+            write: (k, v) async => onboardingMap[k] = v,
+            delete: (k) async => onboardingMap.remove(k),
+          ),
+          weatherApi: WeatherApiClient(
+              client: MockClient((_) async => http.Response(
+                  '{"current":{"temperature_2m":61.0,'
+                  '"weather_code":2,"is_day":1}}',
+                  200))),
+        ),
+      ));
+      // Past the splash (entry 650 + hold 1200 + exit 650).
+      await tester.pump(const Duration(milliseconds: 1850));
+      await tester.pump(const Duration(milliseconds: 650));
+      await tester.pump();
+      expect(find.byType(HomeScreen), findsOneWidget);
+      // The seeded subtitle belongs to the cached blob; the card's
+      // own session-email read cannot produce it in this harness,
+      // and the account-bound snapshot rule refuses it regardless.
+      expect(find.text('1 item remaining'), findsNothing);
+
+      // The backend wrapper clears the session store BEFORE firing
+      // this callback in production; mirror that order here.
+      await store.clear();
+      TabsBackend.onSessionExpired?.call();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.byType(WelcomeScreen), findsOneWidget);
+      expect(cacheMem.map.containsKey(TodaySummaryCache.storageKey),
+          isFalse);
+      expect(planMem.map.containsKey(TodayPlanStore.storageKey), isFalse);
     });
   });
 }

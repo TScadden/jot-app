@@ -715,13 +715,21 @@ class TodaySummaryCache {
   }
 
   /// Stores a completed load in memory and persists it. Never throws.
+  ///
+  /// A save under an unreadable (null) session email is dropped
+  /// entirely when the cache already belongs to a known account:
+  /// writing would re-stamp the blob `ownerEmail: null`, erasing its
+  /// ownership record (Vera R35 re-review BLOCKING 1 — the same rule
+  /// [load] and [snapshot] enforce on the read side).
   Future<void> save({
     required String? email,
     required String todayStr,
     required TodayPlanData plan,
     required List<TrendComparison> trends,
   }) async {
-    _ownerEmail = _normalizeEmail(email);
+    final normalized = _normalizeEmail(email);
+    if (normalized == null && await _hasKnownOwner()) return;
+    _ownerEmail = normalized;
     _date = todayStr;
     _plan = plan;
     _trends = trends;
@@ -741,8 +749,13 @@ class TodaySummaryCache {
   }
 
   /// Loads the persisted copy for [email]/[todayStr]; warms memory on
-  /// success. Null on missing/corrupt/foreign/stale — foreign and
-  /// unowned blobs are wiped so they cannot resurface.
+  /// success. Null on missing/corrupt/foreign/stale. A blob owned by
+  /// a DIFFERENT known account is wiped so it cannot resurface; but
+  /// when [email] itself is unreadable (null) and the blob HAS an
+  /// owner, the load returns null WITHOUT serving, warming, or
+  /// wiping — the owner may be this same account behind a transient
+  /// session-read failure (Vera R35 re-review BLOCKING 1, parity
+  /// with [snapshot]).
   Future<({TodayPlanData plan, List<TrendComparison> trends})?> load({
     required String? email,
     required String todayStr,
@@ -762,6 +775,7 @@ class TodaySummaryCache {
         await _wipeDisk();
         return null;
       }
+      if (expected == null && blobOwner != null) return null;
       if (decoded['date'] != todayStr) return null;
       final planRaw = decoded['plan'];
       if (planRaw is! Map<String, dynamic>) return null;
@@ -793,10 +807,70 @@ class TodaySummaryCache {
     } catch (_) {}
   }
 
+  /// True when this cache already belongs to a known account — in
+  /// memory, or (cold start, memory not yet warmed) stamped on the
+  /// disk blob. Best-effort: a read failure reads as "no known
+  /// owner", matching the load path's degrade-to-empty rule.
+  Future<bool> _hasKnownOwner() async {
+    if (_ownerEmail != null) return true;
+    try {
+      final raw = await _read(storageKey);
+      if (raw == null || raw.isEmpty) return false;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return false;
+      final owner = decoded['ownerEmail'];
+      return owner is String && _normalizeEmail(owner) != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Wipes memory + disk (logout hook). Never throws.
   Future<void> clear() async {
     debugReset();
     await _wipeDisk();
+  }
+
+  /// Login/register-success ownership enforcement (R19c pattern,
+  /// parity with [HomeDataCache.clearIfOwnerMismatch]): when the
+  /// cached summary belongs to a different account than [email], it
+  /// is wiped and the new account is bound in its place. A matching
+  /// owner keeps everything — a same-account re-login must not
+  /// destroy the last-known summary the offline fallback depends
+  /// on. An unreadable (null) [email] enforces nothing. Never
+  /// throws; returns true when a wipe happened.
+  Future<bool> clearIfOwnerMismatch(String? email) async {
+    final expected = _normalizeEmail(email);
+    if (expected == null) return false;
+    if (_ownerEmail == expected) return false;
+    if (_ownerEmail != null || _plan != null) {
+      await clear();
+      _ownerEmail = expected;
+      return true;
+    }
+    // Memory is cold: the disk blob may still be a previous
+    // account's (cold start straight into a different account's
+    // login), so ownership is decided by the blob's stamp.
+    var wiped = false;
+    try {
+      final raw = await _read(storageKey);
+      if (raw != null && raw.isNotEmpty) {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map<String, dynamic>) {
+          final owner = decoded['ownerEmail'];
+          final blobOwner =
+              owner is String ? _normalizeEmail(owner) : null;
+          if (blobOwner != expected) {
+            // Foreign — or unowned-but-populated, which the R19c
+            // pattern treats as untrusted once an account is known.
+            await _wipeDisk();
+            wiped = true;
+          }
+        }
+      }
+    } catch (_) {}
+    _ownerEmail = expected;
+    return wiped;
   }
 }
 

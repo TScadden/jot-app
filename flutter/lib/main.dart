@@ -10,6 +10,8 @@ import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/onboarding_store.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/data/today_plan_store.dart';
+import 'package:tabs_lab/src/data/today_summary.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/auth/login_screen.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
@@ -317,6 +319,12 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
   void _onSessionExpired() {
     unawaited(HomeDataCache.instance.clear());
     unawaited(QuickLogCache.instance.clear());
+    // Vera R35 re-review HIGH 2: the Today Summary stores are
+    // account-bound too — a session expiry must leave none of the
+    // expired account's summary on device (R29b standard). Each
+    // clear is independently best-effort, like the two above.
+    unawaited(TodaySummaryCache.instance.clear());
+    unawaited(TodayPlanStore.instance.clear());
     if (!mounted) return;
     _onLogout();
   }
@@ -338,6 +346,12 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
   void _onLoginSuccess(String email) {
     unawaited(QuickLogCache.instance.clearIfOwnerMismatch(email));
     unawaited(HomeDataCache.instance.clearIfOwnerMismatch(email));
+    // Vera R35 re-review HIGH 2: the Round 35 Today Summary stores
+    // join the same owner-mismatch enforcement — a previous
+    // account's cached summary / plan state must be gone before
+    // the shell mounts for the new account.
+    unawaited(TodaySummaryCache.instance.clearIfOwnerMismatch(email));
+    unawaited(TodayPlanStore.instance.clearIfOwnerMismatch(email));
     // Round 32 — native parity: email login and Google sign-in (both
     // modes) mark onboarding complete (LoginViewModel.login /
     // loginWithGoogleAccount call setOnboardingComplete(true)), and
@@ -369,6 +383,10 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
   void _onRegisterSuccess(String email) {
     unawaited(QuickLogCache.instance.clearIfOwnerMismatch(email));
     unawaited(HomeDataCache.instance.clearIfOwnerMismatch(email));
+    // Vera R35 re-review HIGH 2: same owner-mismatch enforcement
+    // as login (see _onLoginSuccess).
+    unawaited(TodaySummaryCache.instance.clearIfOwnerMismatch(email));
+    unawaited(TodayPlanStore.instance.clearIfOwnerMismatch(email));
     unawaited(_stampFreshAccountOnboarding());
     setState(() {
       _loggedInEmail = email;

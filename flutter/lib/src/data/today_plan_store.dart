@@ -73,7 +73,10 @@ class TodayPlanStore {
   /// Loads today's local plan state for [email]. Returns an empty
   /// state when the blob is missing, corrupt, owned by another
   /// account, or dated another day (the latter two also wipe the
-  /// blob so stale state never resurfaces).
+  /// blob so stale state never resurfaces). An unreadable (null)
+  /// [email] against an OWNED blob also returns empty, but wipes
+  /// nothing — the owner may be this same account behind a
+  /// transient session-read failure (Vera R35 re-review BLOCKING 1).
   Future<TodayPlanLocalState> load({
     required String? email,
     required String todayStr,
@@ -90,6 +93,13 @@ class TodayPlanStore {
       final expected = _normalizeEmail(email);
       if (expected != null && blobOwner != expected) {
         await _wipe();
+        return const TodayPlanLocalState();
+      }
+      if (expected == null && blobOwner != null) {
+        // Vera R35 re-review BLOCKING 1 (parity with
+        // TodaySummaryCache.load): serve nothing, wipe nothing —
+        // the date check below would otherwise delete a legitimate
+        // same-account blob on a transient email-read failure.
         return const TodayPlanLocalState();
       }
       if (decoded['date'] != todayStr) {
@@ -162,6 +172,13 @@ class TodayPlanStore {
 
   Future<void> _save(
       String? email, String todayStr, TodayPlanLocalState state) async {
+    // Vera R35 re-review BLOCKING 1: a write under an unreadable
+    // (null) session email must never re-stamp or overwrite a blob
+    // owned by a known account — stamping `ownerEmail: null` would
+    // erase the ownership record and take the owner's state with it.
+    if (_normalizeEmail(email) == null && await _diskHasKnownOwner()) {
+      return;
+    }
     try {
       await _write(
         storageKey,
@@ -188,8 +205,49 @@ class TodayPlanStore {
     } catch (_) {}
   }
 
+  /// True when the disk blob is stamped with a known account.
+  /// Best-effort: a read failure reads as "no known owner".
+  Future<bool> _diskHasKnownOwner() async {
+    try {
+      final raw = await _read(storageKey);
+      if (raw == null || raw.isEmpty) return false;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return false;
+      final owner = decoded['ownerEmail'];
+      return owner is String && _normalizeEmail(owner) != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Wipes the blob (logout / account-deletion hook). Never throws.
   Future<void> clear() => _wipe();
+
+  /// Login/register-success ownership enforcement (R19c pattern,
+  /// parity with [HomeDataCache.clearIfOwnerMismatch]): a blob
+  /// owned by a different account than [email] — or an unowned blob,
+  /// which the pattern treats as untrusted once a current account
+  /// is known — is wiped. A matching owner keeps its state: a
+  /// same-account re-login must not destroy today's completions.
+  /// An unreadable (null) [email] enforces nothing. Never throws;
+  /// returns true when a wipe happened.
+  Future<bool> clearIfOwnerMismatch(String? email) async {
+    final expected = _normalizeEmail(email);
+    if (expected == null) return false;
+    try {
+      final raw = await _read(storageKey);
+      if (raw == null || raw.isEmpty) return false;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return false;
+      final owner = decoded['ownerEmail'];
+      final blobOwner = owner is String ? _normalizeEmail(owner) : null;
+      if (blobOwner == expected) return false;
+      await _wipe();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 }
 
 /// Immutable snapshot of the device-local plan state for one day.
