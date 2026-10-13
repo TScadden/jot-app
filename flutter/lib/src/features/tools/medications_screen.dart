@@ -34,7 +34,16 @@ export 'package:tabs_lab/src/data/medications.dart';
 /// - Empty state (med icon, "No Active Medications") when the blob is
 ///   empty or the fetch fails — honest empty, never invented.
 ///
-/// DEFERRED: add/edit/delete and "Took Med" / "Took All Meds" dose
+/// Round 46 — tap any medication card (native's invocation) to
+/// edit it: the native Add/Edit dialog's field set — name, dose,
+/// frequency, date started, and (archived meds only, exactly
+/// like native) ended date. Dates go through the stock date
+/// picker and are written as `MMM d, yyyy` strings, native's
+/// format (its field examples and archive stamp). Saves follow
+/// the Round 39 discipline: identity-targeted document op, full
+/// splice-back push, honest failure with a server reload.
+///
+/// DEFERRED: add/delete and "Took Med" / "Took All Meds" dose
 /// logging. Adding medications happens in Settings → User Profile;
 /// dose logging is not in the Lab yet.
 
@@ -102,6 +111,48 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
     final updated = archive
         ? _doc.archiveEntry(med, now: now)
         : _doc.unarchiveEntry(med, now: now);
+    await _pushDoc(updated);
+  }
+
+  /// Round 46 — native edit: tap a card, edit name/dose/
+  /// frequency/start (and end, archived meds only) in the dialog,
+  /// then save through the same document op + full push as
+  /// archive. The op targets the exact entry instance this screen
+  /// rendered (identity, Vera Finding 1) — never a name match.
+  Future<void> _showEditDialog(MedicationEntry med) async {
+    final result = await showDialog<_MedicationEditResult>(
+      context: context,
+      builder: (_) => _MedicationEditDialog(med: med),
+    );
+    if (result == null || !mounted) return;
+    final updated = _doc.editEntry(
+      med,
+      name: result.name,
+      dose: result.dose,
+      frequency: result.frequency,
+      startDate: result.startDate,
+      endDate: result.endDate,
+      now: DateTime.now(),
+    );
+    if (identical(updated, _doc)) {
+      // The op refused (unresolvable/ambiguous target) — surface
+      // it instead of claiming a save that never happened.
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'Could not save that change. Check your connection and try again.')));
+      return;
+    }
+    await _pushDoc(updated);
+  }
+
+  /// Shared save path for archive/unarchive (R39) and edit (R46):
+  /// swap the document in immediately, push the whole encoded
+  /// blob through `POST /api/sync/profile`, invalidate
+  /// the cached pull on success; on failure show the SnackBar and
+  /// reload from the server — the UI never claims an unsaved
+  /// state (Settings' `_pushProfile` honesty pattern).
+  Future<void> _pushDoc(MedicationDocument updated) async {
     setState(() => _doc = updated);
     final ok = await _backend.postSyncProfile(
         {'medications': jsonEncode(updated.encode())});
@@ -302,7 +353,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Archiving and restoring sync to your profile. Add medications in Settings → User Profile; dose logging is not in the Lab yet.',
+            'Archiving, restoring, and editing sync to your profile. Add medications in Settings → User Profile; dose logging is not in the Lab yet.',
             style: TextStyle(
               fontSize: 11,
               color: NotelColors.textSecondary,
@@ -357,17 +408,27 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: NotelColors.surface
-              .withValues(alpha: isArchived ? 0.45 : 0.8),
+      // Native invocation (R46): the WHOLE card is tappable and
+      // opens the edit dialog — the Archive/Restore buttons keep
+      // their own taps. The key carries the raw index so tests
+      // (and duplicate rows) can tell cards apart.
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          key: ValueKey('edit_med_at_$rawIndex'),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.08),
-          ),
-        ),
-        child: Row(
+          onTap: () => _showEditDialog(med),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: NotelColors.surface
+                  .withValues(alpha: isArchived ? 0.45 : 0.8),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.08),
+              ),
+            ),
+            child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Container(
@@ -389,15 +450,30 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    med.name,
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                      color: isArchived
-                          ? NotelColors.textSecondary
-                          : NotelColors.textPrimary,
-                    ),
+                  // Native name row: name + a small edit pencil
+                  // (the card itself is the tap target, R46).
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          med.name,
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                            color: isArchived
+                                ? NotelColors.textSecondary
+                                : NotelColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Icon(
+                        Icons.edit,
+                        size: 14,
+                        color:
+                            NotelColors.textSecondary.withValues(alpha: 0.5),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 2),
                   if (isArchived && med.endedDate != null)
@@ -501,7 +577,9 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                 tooltip: 'Restore',
                 onPressed: () => _setArchived(med, false),
               ),
-          ],
+            ],
+            ),
+          ),
         ),
       ),
     );
@@ -585,6 +663,14 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
             ),
             SizedBox(height: 10),
             Text(
+              '• Tap to Edit: tap any medication card to edit its name, dose, frequency, and start or end dates.',
+              style: TextStyle(
+                fontSize: 13,
+                color: NotelColors.textPrimary,
+              ),
+            ),
+            SizedBox(height: 10),
+            Text(
               '• "Took Med" Logging: dose logging is not in the Lab yet.',
               style: TextStyle(
                 fontSize: 13,
@@ -606,6 +692,258 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The values the edit dialog returns on Save — already
+/// normalized the way native's save handler normalizes them
+/// (name/dose trimmed, blank frequency defaulted, dates as
+/// `MMM d, yyyy` strings or `''`).
+class _MedicationEditResult {
+  final String name;
+  final String dose;
+  final String frequency;
+  final String startDate;
+  final String endDate;
+
+  const _MedicationEditResult({
+    required this.name,
+    required this.dose,
+    required this.frequency,
+    required this.startDate,
+    required this.endDate,
+  });
+}
+
+/// Round 46 — the native Add/Edit dialog, edit mode: title
+/// "Edit Medication", fields Medication Name *, Dose *,
+/// Frequency *, Date Started *, and Ended Date ONLY for an
+/// archived med (native shows it under exactly that condition;
+/// an active med's end date is not editable — it stays the
+/// `"Present"` sentinel). Native's fields are free text; here
+/// the dates use the stock date picker (themed by the R28 dark
+/// theme) seeded from the stored string via
+/// [parseMedicationDate], and a pick writes `MMM d, yyyy` —
+/// native's write format. A stored `"As prescribed"` dose opens
+/// emptied, exactly like native, so Save (enabled only with a
+/// non-blank name AND dose — native's validation) always writes
+/// a real dose.
+class _MedicationEditDialog extends StatefulWidget {
+  final MedicationEntry med;
+
+  const _MedicationEditDialog({required this.med});
+
+  @override
+  State<_MedicationEditDialog> createState() =>
+      _MedicationEditDialogState();
+}
+
+class _MedicationEditDialogState extends State<_MedicationEditDialog> {
+  late final TextEditingController _name;
+  late final TextEditingController _dose;
+  late final TextEditingController _frequency;
+  late final TextEditingController _start;
+  late final TextEditingController _end;
+
+  MedicationEntry get _med => widget.med;
+
+  /// Native validation: Save is enabled only while both the
+  /// name and the dose are non-blank.
+  bool get _canSave =>
+      _name.text.trim().isNotEmpty && _dose.text.trim().isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(text: _med.name);
+    // Native: a stored "As prescribed" dose opens as an empty
+    // field (exact match), forcing a real dose before Save.
+    _dose = TextEditingController(
+        text: _med.dose == 'As prescribed' ? '' : _med.dose);
+    _frequency = TextEditingController(text: _med.frequency);
+    _start = TextEditingController(text: _med.startDate);
+    _end = TextEditingController(
+        text: _med.isArchived ? (_med.endedDate ?? '') : '');
+    // _canSave depends on the name/dose text — rebuild on change.
+    _name.addListener(_onFieldChanged);
+    _dose.addListener(_onFieldChanged);
+    _start.addListener(_onFieldChanged);
+  }
+
+  void _onFieldChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _dose.dispose();
+    _frequency.dispose();
+    _start.dispose();
+    _end.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate(TextEditingController controller) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final first = DateTime(1990);
+    var initial = parseMedicationDate(controller.text) ?? today;
+    if (initial.isAfter(today)) initial = today;
+    if (initial.isBefore(first)) initial = first;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: first,
+      lastDate: today,
+    );
+    if (picked == null || !mounted) return;
+    setState(() => controller.text = formatMedArchiveDate(picked));
+  }
+
+  void _save() {
+    final frequency = _frequency.text.trim();
+    Navigator.of(context).pop(_MedicationEditResult(
+      name: _name.text.trim(),
+      dose: _dose.text.trim(),
+      // Native: a blank frequency saves as "Once daily".
+      frequency: frequency.isEmpty ? 'Once daily' : frequency,
+      startDate: _start.text.trim(),
+      // Native: an active med's end date is passed through
+      // untouched (and serializes as "Present" regardless); only
+      // an archived med's end date comes from the field — a
+      // cleared field writes '' and the med stays archived.
+      endDate: _med.isArchived ? _end.text.trim() : _med.endDate,
+    ));
+  }
+
+  Widget _dateField({
+    required Key key,
+    required TextEditingController controller,
+    required String label,
+  }) {
+    return TextField(
+      key: key,
+      controller: controller,
+      readOnly: true,
+      onTap: () => _pickDate(controller),
+      style: const TextStyle(color: NotelColors.textPrimary),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: NotelColors.textSecondary),
+        suffixIcon: controller.text.isEmpty
+            ? const Icon(Icons.calendar_month,
+                color: NotelColors.textSecondary)
+            : IconButton(
+                icon: const Icon(Icons.clear,
+                    color: NotelColors.textSecondary),
+                tooltip: 'Clear date',
+                onPressed: () =>
+                    setState(() => controller.text = ''),
+              ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: NotelColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+      ),
+      title: const Text(
+        'Edit Medication',
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+          color: NotelColors.textPrimary,
+        ),
+      ),
+      content: SingleChildScrollView(
+        child: SizedBox(
+          width: 360,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                key: const ValueKey('med_edit_name'),
+                controller: _name,
+                style: const TextStyle(color: NotelColors.textPrimary),
+                decoration: const InputDecoration(
+                  labelText: 'Medication Name *',
+                  labelStyle: TextStyle(color: NotelColors.textSecondary),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                key: const ValueKey('med_edit_dose'),
+                controller: _dose,
+                style: const TextStyle(color: NotelColors.textPrimary),
+                decoration: const InputDecoration(
+                  labelText: 'Dose * (e.g. 50mg, 60mg, 0.5ml)',
+                  labelStyle: TextStyle(color: NotelColors.textSecondary),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                key: const ValueKey('med_edit_frequency'),
+                controller: _frequency,
+                style: const TextStyle(color: NotelColors.textPrimary),
+                decoration: const InputDecoration(
+                  labelText: 'Frequency * (e.g. Twice daily, Once weekly)',
+                  labelStyle: TextStyle(color: NotelColors.textSecondary),
+                ),
+              ),
+              const SizedBox(height: 12),
+              _dateField(
+                key: const ValueKey('med_edit_start'),
+                controller: _start,
+                label: 'Date Started * (e.g. Apr 14, 2026)',
+              ),
+              if (_start.text.trim().isEmpty) ...[
+                const SizedBox(height: 4),
+                const Text(
+                  "⚠️ Date Started is required to use 'Took Med'",
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: NotelColors.primary,
+                  ),
+                ),
+              ],
+              if (_med.isArchived) ...[
+                const SizedBox(height: 12),
+                _dateField(
+                  key: const ValueKey('med_edit_end'),
+                  controller: _end,
+                  label: 'Ended Date (e.g. Jul 24, 2026)',
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text(
+            'Cancel',
+            style: TextStyle(color: NotelColors.textSecondary),
+          ),
+        ),
+        ElevatedButton(
+          onPressed: _canSave ? _save : null,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: NotelColors.primary,
+          ),
+          child: const Text(
+            'Save Medication',
+            style: TextStyle(color: Colors.white),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -245,6 +245,43 @@ List<MedicationEntry> archivedMedicationEntries(
         List<MedicationEntry> entries) =>
     entries.where((e) => !e.isDeleted && e.isArchived).toList();
 
+/// Tolerant parse of a stored medication date string — native's
+/// edit dialog uses FREE-TEXT date fields, so real blob rows vary:
+/// "Oct 13, 2026", "October 6,2026", "April 2026". Returns null
+/// when the string carries no recognizable month name + year; a
+/// month+year string resolves to the 1st of the month. Used to
+/// seed the Round 46 edit dialog's date picker; a pick is always
+/// written back via [formatMedArchiveDate] (`MMM d, yyyy` — the
+/// native field examples and archive stamp format).
+DateTime? parseMedicationDate(String raw) {
+  final s = raw.trim();
+  if (s.isEmpty) return null;
+  final m = RegExp(r'^([A-Za-z]+)\.?\s+(?:(\d{1,2})\s*,?\s*)?(\d{4})$')
+      .firstMatch(s);
+  if (m == null) return null;
+  const months = <String, int>{
+    'jan': 1, 'january': 1,
+    'feb': 2, 'february': 2,
+    'mar': 3, 'march': 3,
+    'apr': 4, 'april': 4,
+    'may': 5,
+    'jun': 6, 'june': 6,
+    'jul': 7, 'july': 7,
+    'aug': 8, 'august': 8,
+    'sep': 9, 'sept': 9, 'september': 9,
+    'oct': 10, 'october': 10,
+    'nov': 11, 'november': 11,
+    'dec': 12, 'december': 12,
+  };
+  final month = months[m.group(1)!.toLowerCase()];
+  if (month == null) return null;
+  final year = int.tryParse(m.group(3)!);
+  if (year == null) return null;
+  final day = m.group(2) == null ? 1 : int.tryParse(m.group(2)!);
+  if (day == null || day < 1 || day > 31) return null;
+  return DateTime(year, month, day);
+}
+
 /// `SimpleDateFormat("MMM d, yyyy")` — e.g. "Oct 13, 2026" —
 /// with a hand-rolled month table (house pattern, heart_data.dart).
 String formatMedArchiveDate(DateTime d) {
@@ -300,6 +337,42 @@ List<MedicationEntry> archiveMedicationInList(
   out[idx] = list[idx].copyWith(
     isPresent: false,
     endDate: formatMedArchiveDate(now),
+    updatedAt: now.millisecondsSinceEpoch,
+  );
+  return out;
+}
+
+/// Native edit (`MedicationsViewModel.updateMedication`), as a
+/// pure op on the entry list (Round 46): [target] gets the
+/// dialog's name/dose/frequency/start/end values and an
+/// `updatedAt` bump to [now]. Archive state is NOT touched —
+/// native keeps `isArchived` as a separate flag: an active med
+/// stays active (and serializes `endDate: "Present"` regardless),
+/// an archived med stays archived with its (possibly edited or
+/// cleared) end date. Values arrive pre-normalized by the dialog
+/// exactly as native's save handler produces them: name/dose
+/// trimmed, blank frequency already defaulted to `"Once daily"`,
+/// dates as `MMM d, yyyy` strings (or `''`). Unresolvable/
+/// ambiguous target → list unchanged.
+List<MedicationEntry> editMedicationInList(
+  List<MedicationEntry> list,
+  MedicationEntry target, {
+  required String name,
+  required String dose,
+  required String frequency,
+  required String startDate,
+  required String endDate,
+  required DateTime now,
+}) {
+  final idx = _indexOfMedTarget(list, target);
+  if (idx < 0) return list;
+  final out = List<MedicationEntry>.of(list);
+  out[idx] = list[idx].copyWith(
+    name: name,
+    dose: dose,
+    frequency: frequency,
+    startDate: startDate,
+    endDate: endDate,
     updatedAt: now.millisecondsSinceEpoch,
   );
   return out;
@@ -483,6 +556,37 @@ class MedicationDocument {
           endDate: 'Present',
           updatedAt: now.millisecondsSinceEpoch,
           archivedStamp: false,
+        ));
+  }
+
+  /// Edit the exact entry instance [target] from this document
+  /// (identity match, with the unique-id fallback of
+  /// [_indexOfMedTarget] applied over the aligned entries).
+  /// Native edit semantics (see [editMedicationInList]): the
+  /// dialog's field values replace the row's, `updatedAt` bumps,
+  /// archive state is preserved. Unresolvable/ambiguous → `this`.
+  MedicationDocument editEntry(
+    MedicationEntry target, {
+    required String name,
+    required String dose,
+    required String frequency,
+    required String startDate,
+    required String endDate,
+    required DateTime now,
+  }) {
+    final parsed = entries;
+    final idx = _indexOfMedTarget(parsed, target);
+    if (idx < 0) return this;
+    final rawIndex = _rawIndexOfParsedIndex(idx);
+    return _withEntry(
+        rawIndex,
+        _entries[rawIndex]!.copyWith(
+          name: name,
+          dose: dose,
+          frequency: frequency,
+          startDate: startDate,
+          endDate: endDate,
+          updatedAt: now.millisecondsSinceEpoch,
         ));
   }
 
