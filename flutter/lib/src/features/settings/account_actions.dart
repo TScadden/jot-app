@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:tabs_lab/src/data/heart_data_cache.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
@@ -69,11 +71,13 @@ class AccountActions {
     // Round 50 — the home-screen widget is an account-bound surface
     // too: logout / account delete must drop it to its signed-out
     // face in the same sequence, so no previous-account numbers
-    // stay visible on the launcher. WidgetSync never throws; the
-    // try/catch keeps the fault-isolated pattern regardless.
-    try {
-      await WidgetSync.clear();
-    } catch (_) {}
+    // stay visible on the launcher. Deliberately UNAWAITED: the
+    // widget is a silent side-channel and its platform bridge must
+    // never wedge the wipe (a stuck channel call would otherwise
+    // hang logout itself — the LESSONS stuck-request failure mode).
+    // WidgetSync.clear() is started here, in sequence, and swallows
+    // its own failures.
+    unawaited(WidgetSync.clear());
   }
 
   /// Test hook: clears the real cache singletons.
