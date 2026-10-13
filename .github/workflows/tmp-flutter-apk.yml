@@ -15,34 +15,5 @@ jobs:
           flutter-version: '3.47.7'
           channel: stable
       - run: cd flutter && flutter pub get
-      - run: >-
-          cd flutter && flutter analyze lib
-          test/tools_r48a_test.dart test/tools_r48b_test.dart
-          test/tools_r48c_test.dart test/tools_r48d_test.dart
-          test/tools_r48d2_test.dart test/tools_r48fix_a_test.dart
-          test/tools_r48fix_b_test.dart test/tools_r48fix_c_test.dart
-          test/tools_screen_test.dart
-          test/tools_team_a_test.dart test/tools_team_b_test.dart
-          test/tools_team_c_test.dart test/medications_r39_test.dart
-          test/medications_edit_r46_test.dart
-          test/profile_active_meds_r44_test.dart
-          test/today_summary_r35_test.dart test/settings_r29_test.dart
-          test/settings_r30_editors_test.dart
-      - run: >-
-          cd flutter && flutter test
-          test/tools_r48a_test.dart test/tools_r48b_test.dart
-          test/tools_r48c_test.dart test/tools_r48d_test.dart
-          test/tools_r48d2_test.dart test/tools_r48fix_a_test.dart
-          test/tools_r48fix_b_test.dart test/tools_r48fix_c_test.dart
-          test/tools_screen_test.dart
-          test/tools_team_a_test.dart test/tools_team_b_test.dart
-          test/tools_team_c_test.dart test/medications_r39_test.dart
-          test/medications_edit_r46_test.dart
-          test/profile_active_meds_r44_test.dart
-          test/today_summary_r35_test.dart test/settings_r29_test.dart
-          test/settings_r30_editors_test.dart
-      - run: cd flutter && flutter build apk --release --split-per-abi
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tabs-flutter-r48
-          path: flutter/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+      - run: cd flutter && flutter analyze
+      - run: cd flutter && flutter test
