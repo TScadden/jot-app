@@ -664,8 +664,16 @@ void main() {
   });
 
   group('Settings User Profile archive', () {
+    // Round 44 SUPERSEDES the R39 profile presentation asserted
+    // here originally: the User Profile list shows ACTIVE meds
+    // only, so archiving the sole med now removes the row from
+    // the list (existing empty state shows) instead of flipping
+    // it to an "Ended: …" line with a Restore button. The archive
+    // OP itself (stamp + POST body + cache invalidation) is
+    // unchanged — see profile_active_meds_r44_test.dart for the
+    // full R44 suite.
     testWidgets(
-        'tap archive → row line becomes Ended with today\'s stamp and the POST body matches',
+        'tap archive → row leaves the profile list and the POST body carries today\'s stamp',
         (tester) async {
       final backend = r29.FakeSettingsBackend()
         ..pullBody = r29.pull(profile: {
@@ -694,8 +702,16 @@ void main() {
       await tester.pumpAndSettle();
 
       final stamp = formatMedArchiveDate(DateTime.now());
-      expect(find.text('Started: Sep 2026 • Ended: $stamp'), findsOneWidget);
+      // R44: the archived row is gone from the profile list —
+      // no "Ended: …" line, no Restore button; with no active
+      // meds left the existing empty state shows.
+      expect(find.text('Started: Sep 2026 • Ended: $stamp'), findsNothing);
+      expect(find.text('Ivabradine'), findsNothing);
       expect(find.byKey(const ValueKey('unarchive_medication_at_0')),
+          findsNothing);
+      expect(
+          find.text(
+              'No medications added yet. Tap the + button to add one manually.'),
           findsOneWidget);
       // Vera Finding 3: the successful push invalidated the pull
       // cache (the fake records invalidations), so the next pull

@@ -1014,6 +1014,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   List<Widget> _userProfilePage() {
     final d = _data;
+    // Round 44 — the User Profile medications list is a DISPLAY
+    // filter over the full document: [MedicationDocument] retains
+    // every raw row, and only its active indices render below
+    // (shared model: parseable, not deleted, not archived —
+    // archived ⟺ not present / defensive stamp). Archived and
+    // deleted rows stay in `_data.medications`, so every save
+    // from this screen still pushes the full list (see the
+    // Medications card comment).
+    final medDoc = MedicationDocument.fromRawRows(d.medications);
+    final activeMedIndices = medDoc.activeIndices;
     final heightIn = d.heightCm == null ? null : (d.heightCm! / 2.54).round();
     final ft = heightIn == null ? null : heightIn ~/ 12;
     final inch = heightIn == null ? null : heightIn % 12;
@@ -1143,6 +1153,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // there too. Every change pushes the full list as the profile
       // `medications` JSON string, the exact SyncProfileRequest field
       // native's SyncManager sends (JotApi.kt:248).
+      //
+      // Round 44 (founder rule, supersedes the R39 profile
+      // presentation): this list shows ACTIVE medications ONLY —
+      // archived meds do not appear here at all (no "Ended: …"
+      // rows, no Restore buttons; restore lives on the Tools →
+      // Medications tab, unchanged). The filter is display-only:
+      // it iterates [activeMedIndices] over the full document, so
+      // `_data.medications` keeps every raw row and every save
+      // from this screen (add/delete over the raw list, archive
+      // via MedicationDocument splice-back) still pushes the full
+      // list with hidden archived/deleted rows preserved.
+      // When no med is active — even if archived meds exist —
+      // the existing empty state below shows (no new copy).
       _card([
         const Text('Medications',
             style: TextStyle(
@@ -1151,29 +1174,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             style:
                 TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
         const SizedBox(height: 8),
-        if (d.medications.isEmpty)
+        if (activeMedIndices.isEmpty)
           const Text(
               'No medications added yet. Tap the + button to add one manually.',
               style:
                   TextStyle(color: NotelColors.textSecondary, fontSize: 13))
         else
-          ...d.medications.indexed.map((indexedRow) {
-            final rawIndex = indexedRow.$1;
-            final m = indexedRow.$2;
-            // Round 39 — classification and the range line go
-            // through the shared MedicationEntry model (the ONE
-            // synced source of truth shared with the Tools
-            // Medications tab): archived ⟺ not present, and the
-            // Ended treatment IS the archived presentation
-            // (native SettingsScreen.kt:3062-3064 — no "Archived"
-            // tag here). Unparseable rows fall back to the raw
-            // map so no data is silently hidden.
-            final entry = MedicationEntry.fromBlobRow(m);
-            final range = entry == null
-                ? 'Started: ${m['startDate'] ?? ''} • Present'
-                : entry.isArchived
-                    ? 'Started: ${entry.startDate} • Ended: ${entry.endDate}'
-                    : 'Started: ${entry.startDate} • Present';
+          ...activeMedIndices.map((rawIndex) {
+            final m = d.medications[rawIndex];
+            // Round 39 — classification goes through the shared
+            // MedicationEntry model (the ONE synced source of
+            // truth shared with the Tools Medications tab); only
+            // active rows reach this map, so the range line is
+            // always the Present form.
+            final entry = medDoc.entryAt(rawIndex)!;
+            final range = 'Started: ${entry.startDate} • Present';
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
@@ -1194,26 +1209,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ],
                     ),
                   ),
-                  // Vera R39 Finding 1: archive buttons key on the
-                  // row's index in the full list and the handlers
-                  // target that exact row — unique per rendered
-                  // row even for id-less duplicate names.
-                  if (entry != null && !entry.isArchived)
-                    IconButton(
-                      key: ValueKey('archive_medication_at_$rawIndex'),
-                      icon: const Icon(Icons.archive,
-                          size: 20, color: NotelColors.textSecondary),
-                      tooltip: 'Archive',
-                      onPressed: () => _archiveMedication(rawIndex),
-                    ),
-                  if (entry != null && entry.isArchived)
-                    IconButton(
-                      key: ValueKey('unarchive_medication_at_$rawIndex'),
-                      icon: const Icon(Icons.unarchive,
-                          size: 20, color: NotelColors.textSecondary),
-                      tooltip: 'Restore',
-                      onPressed: () => _unarchiveMedication(rawIndex),
-                    ),
+                  // Vera R39 Finding 1: the archive button keys on
+                  // the row's index in the FULL list (rawIndex, not
+                  // its position among the visible active rows) and
+                  // the handler targets that exact row — unique per
+                  // rendered row even for id-less duplicate names.
+                  // Archiving an active med here removes it from
+                  // this list (Round 44 rule).
+                  IconButton(
+                    key: ValueKey('archive_medication_at_$rawIndex'),
+                    icon: const Icon(Icons.archive,
+                        size: 20, color: NotelColors.textSecondary),
+                    tooltip: 'Archive',
+                    onPressed: () => _archiveMedication(rawIndex),
+                  ),
                   IconButton(
                     key: ValueKey('delete_medication_${m['id'] ?? ''}'),
                     icon: const Icon(Icons.delete,
@@ -1597,15 +1606,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _saveMedications(updated.encode());
   }
 
-  /// Round 39 — unarchive via the shared model: restores
-  /// `isPresent` and clears the end date back to the `"Present"`
-  /// sentinel, native semantics. Same identity/retention rules
-  /// as [_archiveMedication]; saved through [_saveMedications].
-  Future<void> _unarchiveMedication(int rawIndex) async {
-    final doc = MedicationDocument.fromRawRows(_data.medications);
-    final updated = doc.unarchiveAt(rawIndex, now: DateTime.now());
-    await _saveMedications(updated.encode());
-  }
+  // Round 44: no unarchive/restore on this screen — archived
+  // rows never render here (founder rule), so the R39
+  // `_unarchiveMedication` handler was removed as dead code.
+  // Restore stays available on the Tools → Medications tab.
 
   Future<void> _showAddMedicationDialog() async {
     final nameC = TextEditingController();
