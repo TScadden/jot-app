@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:tabs_lab/src/data/quick_log_models.dart';
+import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
 
 /// Round 39 — the ONE shared medication model: the single synced
@@ -685,6 +686,62 @@ class MedicationDocument {
     return unarchiveEntry(entry, now: now);
   }
 
+  /// Round 48 fix (Vera F1) — re-resolves [target], an entry
+  /// rendered from an EARLIER document (typically this screen's
+  /// load-time snapshot), against THIS (freshly pulled) document.
+  /// A write must never splice into the stale snapshot: a med
+  /// added server-side after the screen opened would be silently
+  /// reverted by the next push built from it. Resolution order,
+  /// mirroring the Lists `_resolveListRow` discipline:
+  /// 1. identity — the exact instance (same-document callers);
+  /// 2. the raw-index hint — trusted only when the fresh row at
+  ///    that index still carries the target's name (and, when both
+  ///    rows carry ids, the same id): this is what lets the
+  ///    SECOND of two id-less duplicate names resolve exactly;
+  /// 3. a UNIQUE non-empty id match;
+  /// 4. for id-less targets, a unique name+start+dose composite,
+  ///    then a unique name match.
+  /// Anything else (gone, or ambiguous at every level) returns
+  /// null — the caller refuses the write with a visible error
+  /// rather than guess (Vera F7: a refused op never reports
+  /// success and never pushes).
+  MedicationEntry? resolveFreshEntry(MedicationEntry target,
+      {int? rawIndexHint}) {
+    for (final e in entries) {
+      if (identical(e, target)) return e;
+    }
+    if (rawIndexHint != null) {
+      final candidate = entryAt(rawIndexHint);
+      if (candidate != null && candidate.name == target.name) {
+        if (target.id.isEmpty ||
+            candidate.id.isEmpty ||
+            candidate.id == target.id) {
+          return candidate;
+        }
+      }
+    }
+    if (target.id.isNotEmpty) {
+      MedicationEntry? found;
+      for (final e in entries) {
+        if (e.id == target.id) {
+          if (found != null) return null; // ambiguous — refuse
+          found = e;
+        }
+      }
+      return found;
+    }
+    final composite = entries
+        .where((e) =>
+            e.name == target.name &&
+            e.startDate == target.startDate &&
+            e.dose == target.dose)
+        .toList();
+    if (composite.length == 1) return composite.single;
+    if (composite.length > 1) return null;
+    final byName = entries.where((e) => e.name == target.name).toList();
+    return byName.length == 1 ? byName.single : null;
+  }
+
   /// Maps an index into [entries] (parseable-only) back to its
   /// raw row index.
   int _rawIndexOfParsedIndex(int parsedIndex) {
@@ -750,10 +807,51 @@ String generateMedicationUuid() {
 // therefore leave Today's dose PENDING — two native writers,
 // one incoherent log. The Flutter port resolves that the only
 // coherent way (the coordinator's Round 48D2 brief pins it):
-// dose logs written HERE use the Today shape — same body, same
-// chips/manualText, same category resolution, same max+1 id
-// discipline, same corrected-skip conventions — so a dose
-// logged on either surface reads as taken on both.
+// dose logs written HERE use the Today BODY shape — same body,
+// same category resolution, same max+1 id discipline, same
+// corrected-skip conventions — so a dose logged on either
+// surface reads as taken on both.
+//
+// Round 48 fix (Vera F3) — the entry must ALSO satisfy Body
+// Info's impact engine, the second reader. Round 48D2's shape
+// (chips `'[]'`, manualText `''`) satisfied Today only: it
+// carried NONE of the Medications-tab markers the engine gates
+// its medication-dose card on (native `BodyImpactEngine.kt:145`:
+// source "Medications Tab" / "logged from medications tab"
+// text; the Flutter port at `body_info_screen.dart`:
+// `isMedTabEntry` — chips containing "Medication Tab", or the
+// entry text containing "logged from medications tab"), so a
+// tab-logged dose produced NO Body Info card at all. FINAL
+// SHAPE (all three fields deliberate, traced against both
+// Flutter readers):
+// - body `"Took {name} {dose}"` — UNCHANGED. Today's reader
+//   checks body + category only, so this is the TAKEN evidence.
+// - chips `'["Medication Tab"]'` — native's tab-writer chip;
+//   `isMedTabEntry` matches it directly, opening the engine's
+//   medication-dose (and peptide) gate.
+// - manualText `"Logged from Medications tab. Took Medication:
+//   {name} {dose} (1 dose - {frequency})"` — the field Today's
+//   reader ignores entirely, carrying what Body Info's
+//   extraction genuinely needs and the Today body cannot:
+//   (a) the gate phrase "logged from medications tab" as a
+//   second, chip-independent marker (native's own manualText
+//   for tab logs); (b) the FREQUENCY: the engine derives the
+//   active window from frequency text in the entry ("twice
+//   daily"→12h, "3x daily"→8h, "once daily"→24h, else 12h) —
+//   native's tab body carries it in its `(1 dose - {frequency})`
+//   segment, the Today body has no frequency at all, so without
+//   this segment every dose defaulted to a 12h window; and
+//   (c) the NAME in extractable position: the engine's med-name
+//   extraction takes the text after "Took Medication:" up to
+//   "(" — embedding native's full tab marker here makes that
+//   extraction yield exactly `"{name} {dose}"` (the same value
+//   native's own body yields), so the card's "Systemic
+//   ({name} {dose})" title and its per-med side-effect lookup
+//   (substring match on the name) behave identically to a
+//   native tab log. Body Info concatenates body + manualText
+//   for both its gate text and its display text, which is why
+//   this one field reaches every check; Today never reads
+//   manualText, so nothing here can disturb TAKEN.
 //
 // Per-day dedupe (the `recordDoseAction` rule): one standing
 // uncorrected `"Took {name}…"` entry for a med on a given day
@@ -779,6 +877,55 @@ String medTakeEntryBody(MedicationEntry med) {
   return 'Took ${med.name}${dose.isNotEmpty ? ' $dose' : ''}';
 }
 
+/// The chips of a med-take entry — native's Medications-tab
+/// chip (Vera F3; see the dose-logging trace above).
+const String medTakeEntryChips = '["Medication Tab"]';
+
+/// The manualText of a med-take entry (Vera F3; see the
+/// dose-logging trace above): native's tab-log marker plus its
+/// full `"Took Medication: {name} {dose} (1 dose - {frequency})"`
+/// segment, so Body Info's gate, frequency-window, and med-name
+/// extraction all resolve exactly as for a native tab log. The
+/// frequency is the med's display frequency (a blank raw
+/// frequency reads "Once daily", the card's own rendering).
+String medTakeManualText(MedicationEntry med) {
+  final dose = med.dose.trim();
+  final nameDose = '${med.name}${dose.isNotEmpty ? ' $dose' : ''}';
+  return 'Logged from Medications tab. '
+      'Took Medication: $nameDose (1 dose - ${med.frequency})';
+}
+
+/// Round 48 fix (Vera F2, med half) — a success-distinguishing
+/// variant of [TabsBackend.fetchLogEntryDtos], mirroring
+/// [TabsBackend.fetchHabitsOrNull]: the plain fetch returns an
+/// empty list on ANY failure, indistinguishable from a real
+/// empty log, so a caller computing max+1 ids or a dedupe check
+/// from it can post id 1 over an existing log or double-post.
+/// Returns null when the sync pull itself failed (null body) or
+/// carries no usable `entries` list; the parsed list — possibly
+/// genuinely empty — only when the server actually answered.
+/// The Medications take path aborts (zero posts, visible error)
+/// on null, before any id or dedupe computation.
+extension MedTakeEntryFetch on TabsBackend {
+  Future<List<QuickLogEntry>?> fetchLogEntryDtosOrNull() async {
+    final body = await fetchSyncPull();
+    if (body == null) return null;
+    final entries = body['entries'];
+    if (entries is! List) return null;
+    final out = <QuickLogEntry>[];
+    for (final e in entries) {
+      if (e is Map<String, dynamic>) {
+        try {
+          out.add(QuickLogEntry.fromJson(e));
+        } catch (_) {
+          // Skip malformed rows — never fail the whole list.
+        }
+      }
+    }
+    return out;
+  }
+}
+
 /// Builds the entries ONE dose-log action posts: one entry per
 /// med in [meds] that is not already logged as taken today,
 /// in [meds] order, with fresh ids continuing from the maximum
@@ -786,8 +933,9 @@ String medTakeEntryBody(MedicationEntry med) {
 /// discipline Today's take uses). Entries are in the Medication
 /// category — resolved by name, falling back to the seeded id
 /// 8 ([resolveSummaryCategoryId], the same resolver Today
-/// uses) — with chips `'[]'`, manualText `''`, and timestamp
-/// [now]. Returns null when the Medication category cannot be
+/// uses) — with the dual-reader payload ([medTakeEntryChips] /
+/// [medTakeManualText]; see the dose-logging trace above) and
+/// timestamp [now]. Returns null when the Medication category cannot be
 /// resolved at all (the caller fails honestly and posts
 /// nothing — never a guessed category). An empty list means
 /// every med was already logged today: a successful no-op,
@@ -830,8 +978,8 @@ List<QuickLogEntry>? buildMedTakeLogEntries({
       id: maxId,
       categoryId: medCategoryId,
       body: medTakeEntryBody(med),
-      chips: '[]',
-      manualText: '',
+      chips: medTakeEntryChips,
+      manualText: medTakeManualText(med),
       timestamp: now.millisecondsSinceEpoch,
     );
     out.add(entry);
