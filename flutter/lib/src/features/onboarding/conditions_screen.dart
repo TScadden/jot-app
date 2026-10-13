@@ -418,7 +418,7 @@ class _OnboardingConditionsScreenState
           Expanded(
             child: ListView.separated(
               itemCount: _filtered.length,
-              separatorBuilder: (_, __) => Divider(
+              separatorBuilder: (_, _) => Divider(
                 color: NotelColors.surfaceHigh.withValues(alpha: 0.5),
                 height: 1,
               ),

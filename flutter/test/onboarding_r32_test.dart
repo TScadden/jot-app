@@ -176,10 +176,12 @@ void main() {
   group('AuthApiClient.register', () {
     test('posts the native AuthRequest shape to /api/auth/register',
         () async {
-      http.Request? seen;
+      Uri? seenUrl;
+      String? seenBody;
       final client = AuthApiClient(
         client: MockClient((request) async {
-          seen = request as http.Request;
+          seenUrl = request.url;
+          seenBody = request is http.Request ? request.body : null;
           return http.Response(
             jsonEncode({
               'token': 'tok',
@@ -197,8 +199,8 @@ void main() {
         ageConfirmed: true,
       );
       expect(result, isA<LoginSuccess>());
-      expect(seen!.url.path, '/api/auth/register');
-      final body = jsonDecode(seen!.body) as Map<String, dynamic>;
+      expect(seenUrl!.path, '/api/auth/register');
+      final body = jsonDecode(seenBody!) as Map<String, dynamic>;
       expect(body['email'], 'new@tabs.app');
       expect(body['ageConfirmed'], isTrue);
       // The password travels in the request only — never in results.

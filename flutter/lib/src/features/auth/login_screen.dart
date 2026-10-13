@@ -200,17 +200,17 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       if (!mounted) return;
       switch (result) {
-        case LoginSuccess(:final token, :final refreshToken):
+        case LoginSuccess success:
           final store = widget.sessionStore ?? SessionStore();
           await store.saveSession(
-            token: <redacted>,
-            refreshToken: refreshToken,
-            email: result.email,
+            token: success.token,
+            refreshToken: success.refreshToken,
+            email: success.email,
           );
           if (!mounted) return;
           setState(() => _isLoading = false);
           (widget.onRegisterSuccess ?? widget.onLoginSuccess)
-              ?.call(result.email);
+              ?.call(success.email);
         case LoginFailure(:final message):
           setState(() {
             _isLoading = false;

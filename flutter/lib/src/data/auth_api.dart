@@ -190,7 +190,7 @@ class AuthApiClient {
       final token = body['token']?.toString() ?? '';
       if (token.isNotBlank) {
         return LoginSuccess(
-          token: <redacted>,
+          token: body['token']?.toString() ?? '',
           refreshToken: body['refreshToken']?.toString() ?? '',
           userId: body['userId']?.toString(),
           email: body['email']?.toString() ?? email,
