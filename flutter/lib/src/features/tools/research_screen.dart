@@ -3,7 +3,10 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/features/settings/settings_screen.dart';
+import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/slide_page_route.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Medical disclaimer — always visible at the top (native ResearchScreen.kt,
@@ -126,6 +129,12 @@ List<ResearchEntry> entriesForCondition(
 ///
 /// [bundle] is injectable so widget tests can drive the screen with a
 /// fake asset bundle; production defaults to [rootBundle].
+///
+/// Round 48 — the no-conditions card gains native's
+/// "Go to Profile → Conditions" button (native `ResearchScreen`
+/// navigates to Profile). In this app the conditions editor lives
+/// in Settings → User Profile, so the button pushes Settings; on
+/// return the conditions are reloaded so newly added ones apply.
 class ResearchToolScreen extends StatefulWidget {
   final VoidCallback? onBack;
   final TabsBackend? backend;
@@ -287,6 +296,22 @@ class _ResearchToolScreenState extends State<ResearchToolScreen> {
     );
   }
 
+  /// Native's `onNavigateToProfile`: opens the profile surface
+  /// that owns the conditions editor (Settings → User Profile in
+  /// this app). On return, conditions reload so additions apply
+  /// immediately.
+  Future<void> _goToConditions() async {
+    await Navigator.of(context).push(
+      SlidePageRoute<void>(
+        reducedMotion: animationsDisabled(context),
+        builder: (_) => SettingsScreen(backend: _backend),
+      ),
+    );
+    if (!mounted) return;
+    _backend.invalidateSyncPull();
+    await _load();
+  }
+
   Widget _noConditionsCard() {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -295,21 +320,32 @@ class _ResearchToolScreenState extends State<ResearchToolScreen> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: NotelColors.divider),
       ),
-      child: const Column(
+      child: Column(
         children: [
-          Icon(Icons.person_add, size: 40, color: NotelColors.primary),
-          SizedBox(height: 12),
-          Text('No conditions saved yet',
+          const Icon(Icons.person_add,
+              size: 40, color: NotelColors.primary),
+          const SizedBox(height: 12),
+          const Text('No conditions saved yet',
               style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: NotelColors.textPrimary)),
-          SizedBox(height: 6),
-          Text(
+          const SizedBox(height: 6),
+          const Text(
             'Research is personalized to your conditions. Add them in Profile → Conditions to see relevant entries.',
             textAlign: TextAlign.center,
             style: TextStyle(
                 fontSize: 13, height: 1.4, color: NotelColors.textSecondary),
+          ),
+          const SizedBox(height: 14),
+          ElevatedButton(
+            onPressed: _goToConditions,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: NotelColors.primary,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Go to Profile → Conditions',
+                style: TextStyle(fontWeight: FontWeight.w600)),
           ),
         ],
       ),
