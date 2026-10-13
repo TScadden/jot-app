@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -5,6 +6,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/reminder_alarm_sync.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -56,6 +58,63 @@ class _ReminderServer {
       TabsBackend.decodeProfileList(pushes.last['reminders']);
 }
 
+/// Fix round (Vera B3) — reminder server whose profile push can
+/// be held open on [gate] so a test can attempt a second write
+/// while the first push is still in flight.
+class _BlockingReminderServer {
+  List<Map<String, dynamic>> rows;
+  Completer<void>? gate;
+  final List<Map<String, dynamic>> pushes = [];
+
+  _BlockingReminderServer(this.rows);
+
+  MockClient client() => MockClient((request) async {
+        if (request.url.path == '/api/sync/pull') {
+          return http.Response(
+            jsonEncode({
+              'profile': {'reminders': jsonEncode(rows)},
+            }),
+            200,
+          );
+        }
+        if (request.url.path == '/api/sync/profile') {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          pushes.add(body);
+          final g = gate;
+          if (g != null) await g.future;
+          rows = TabsBackend.decodeProfileList(body['reminders']);
+          return http.Response('{}', 200);
+        }
+        return http.Response('{}', 404);
+      });
+}
+
+/// Fix-round hardening — a habits backend whose SECOND fetch
+/// throws, so a test can prove a post-write refetch failure is
+/// surfaced instead of silently leaving a stale list.
+class _FlakyRefreshBackend extends TabsBackend {
+  int fetches = 0;
+
+  _FlakyRefreshBackend()
+      : super(
+          client: MockClient((_) async => http.Response('{}', 200)),
+          sessionStore: FakeSessionStore()..token = 'tok',
+        );
+
+  @override
+  Future<List<HabitDto>> fetchHabits() async {
+    fetches++;
+    if (fetches > 1) throw StateError('refetch failed');
+    return const [
+      HabitDto(id: 'h1', title: 'Drink water', logs: []),
+    ];
+  }
+
+  @override
+  Future<HabitDto?> createHabit(String title) async =>
+      HabitDto(id: 'h2', title: title, logs: const []);
+}
+
 /// In-memory stand-in for the habits endpoints.
 class _HabitServer {
   List<Map<String, dynamic>> habits;
@@ -63,6 +122,10 @@ class _HabitServer {
   final List<http.Request> deletes = [];
   final List<http.Request> logs = [];
   bool failLog = false;
+
+  /// Fix round (Vera B3) — when set, a log POST parks on this
+  /// completer so a test can attempt a second write mid-flight.
+  Completer<void>? logGate;
   int _nextId = 100;
 
   _HabitServer(this.habits);
@@ -92,6 +155,8 @@ class _HabitServer {
         }
         if (request.method == 'POST' && path == '/api/habits/log') {
           logs.add(request);
+          final g = logGate;
+          if (g != null) await g.future;
           if (failLog) return http.Response('{"error":"x"}', 500);
           return http.Response('{}', 200);
         }
@@ -312,15 +377,20 @@ void main() {
     });
   });
 
-  group('r47 alarm sync slot scheme', () {
+  group('r47 alarm sync slot scheme (fix-round block ids)', () {
     ReminderModel model(Map<String, dynamic> row) =>
         ReminderModel.fromJson(row);
 
-    test('FIXED no-days: cancel 0..47 then daily at slot id*1000', () async {
+    // Fix-round scheme: pluginId = 100000 + id * 1500 + slot.
+    int base(int id) => 100000 + id * 1500;
+    List<int> block(int id) => [for (var s = 0; s < 1500; s++) base(id) + s];
+
+    test('FIXED no-days: cancel whole block, then daily at block slot 0',
+        () async {
       final fake = FakeReminderNotificationService();
       await syncReminderAlarms(fake, model(_medsRow()));
-      expect(fake.cancelled, [for (var s = 0; s <= 47; s++) 3000 + s]);
-      expect(fake.daily, {3000: '9:0'});
+      expect(fake.cancelled, block(3));
+      expect(fake.daily, {base(3): '9:0'});
       expect(fake.weekly, isEmpty);
     });
 
@@ -334,7 +404,7 @@ void main() {
         ]);
       await syncReminderAlarms(fake, model(row));
       expect(fake.daily, isEmpty);
-      expect(fake.weekly, {3002: '2 7:15', 3001: '1 10:0'});
+      expect(fake.weekly, {base(3) + 2: '2 7:15', base(3) + 1: '1 10:0'});
     });
 
     test('INTERVAL: one daily slot per computed time, ordinal slots',
@@ -343,9 +413,9 @@ void main() {
       await syncReminderAlarms(fake, model(_waterRow()..['isEnabled'] = true));
       // 8:00 → 21:00 every 2h = 8,10,12,14,16,18,20 → 7 slots.
       expect(fake.daily.keys.toList(),
-          [7000, 7001, 7002, 7003, 7004, 7005, 7006]);
-      expect(fake.daily[7000], '8:0');
-      expect(fake.daily[7006], '20:0');
+          [for (var s = 0; s < 7; s++) base(7) + s]);
+      expect(fake.daily[base(7)], '8:0');
+      expect(fake.daily[base(7) + 6], '20:0');
     });
 
     test('INTERVAL zero interval schedules nothing (cancel only)',
@@ -357,7 +427,7 @@ void main() {
         ..['intervalMinutes'] = 0;
       await syncReminderAlarms(fake, model(row));
       expect(fake.daily, isEmpty);
-      expect(fake.cancelled, hasLength(48));
+      expect(fake.cancelled, hasLength(1500));
     });
 
     test('disabled: cancel only. Deleted: cancelReminderAlarms only',
@@ -366,11 +436,11 @@ void main() {
       await syncReminderAlarms(fake, model(_waterRow())); // disabled
       expect(fake.daily, isEmpty);
       expect(fake.weekly, isEmpty);
-      expect(fake.cancelled, [for (var s = 0; s <= 47; s++) 7000 + s]);
+      expect(fake.cancelled, block(7));
 
       final fake2 = FakeReminderNotificationService();
       await cancelReminderAlarms(fake2, 7);
-      expect(fake2.cancelled, [for (var s = 0; s <= 47; s++) 7000 + s]);
+      expect(fake2.cancelled, block(7));
       expect(fake2.daily, isEmpty);
     });
   });
@@ -391,6 +461,10 @@ void main() {
       expect(find.text('Take meds'), findsOneWidget);
 
       await tester.tap(find.text('New Reminder'));
+      await tester.pumpAndSettle();
+      // Juno F1 gate: rationale dialog first, Allow fires the
+      // system request, then the sheet opens.
+      await tester.tap(find.text('Allow'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'Stretch');
       await tester.pump(); // let the title listener enable Save
@@ -416,6 +490,8 @@ void main() {
       final server = _ReminderServer([]);
       await _pump(tester, screen(server));
       await tester.tap(find.text('New Reminder'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Allow'));
       await tester.pumpAndSettle();
       final save = tester.widget<FilledButton>(find.widgetWithText(
           FilledButton, 'Save'));
@@ -465,8 +541,8 @@ void main() {
 
       expect(server.lastPushedRows, equals([_waterRow()]));
       expect(find.text('Take meds'), findsNothing);
-      // Delete cancels that reminder's slots.
-      expect(notifs.cancelled, containsAll([3000, 3047]));
+      // Delete cancels that reminder's whole fix-round block.
+      expect(notifs.cancelled, containsAll([104500, 105999]));
     });
 
     testWidgets('push failure: error shown, list reloads unchanged',
@@ -633,6 +709,448 @@ void main() {
           habitStreak([today]),
           1);
       expect(overallHabitStreak(const []), 0);
+    });
+  });
+
+  group('r47 fix round B1: plugin id block scheme', () {
+    ReminderModel model(Map<String, dynamic> row) =>
+        ReminderModel.fromJson(row);
+    int base(int id) => 100000 + id * 1500;
+    bool isReserved(int id) =>
+        id == 1003 || id == 1004 || id == 770001 || (id >= 700000 && id <= 799998);
+
+    test('scheme math: id 1 and max safe id 399 blocks', () {
+      expect(reminderSlotId(1, 0), 101500);
+      expect(reminderSlotId(1, 1499), 102999);
+      expect(reminderSlotId(399, 0), 698500);
+      expect(reminderSlotId(399, 1499), 699999);
+      expect(isReminderIdSchedulable(1), isTrue);
+      expect(isReminderIdSchedulable(399), isTrue);
+      expect(isReminderIdSchedulable(400), isFalse);
+      expect(isReminderIdSchedulable(0), isFalse);
+      expect(isReminderIdSchedulable(770), isFalse);
+    });
+
+    test('id 1 custom-days (Tue/Wed) + INTERVAL never touch reserved ids',
+        () async {
+      final daysRow = _medsRow()
+        ..['id'] = 1
+        ..['daysOfWeekConfig'] = jsonEncode([
+          {'dayOfWeek': 3, 'dayName': 'Tue', 'isEnabled': true, 'hour': 8, 'minute': 30},
+          {'dayOfWeek': 4, 'dayName': 'Wed', 'isEnabled': true, 'hour': 9, 'minute': 45},
+          {'dayOfWeek': 2, 'dayName': 'Mon', 'isEnabled': false, 'hour': 9, 'minute': 0},
+        ]);
+      final fake = FakeReminderNotificationService();
+      await syncReminderAlarms(fake, model(daysRow));
+      // Slots are the Calendar constants inside id 1's block.
+      expect(fake.weekly, {101503: '3 8:30', 101504: '4 9:45'});
+      expect(fake.cancelled, hasLength(1500));
+      for (final id in [...fake.cancelled, ...fake.weekly.keys]) {
+        expect(isReserved(id), isFalse, reason: 'id $id is reserved');
+        expect(id, inInclusiveRange(101500, 102999));
+      }
+
+      final intervalRow = _waterRow()
+        ..['id'] = 1
+        ..['isEnabled'] = true;
+      final fake2 = FakeReminderNotificationService();
+      await syncReminderAlarms(fake2, model(intervalRow));
+      expect(fake2.daily.keys.toList(),
+          [for (var s = 0; s < 7; s++) 101500 + s]);
+      for (final id in [...fake2.cancelled, ...fake2.daily.keys]) {
+        expect(isReserved(id), isFalse, reason: 'id $id is reserved');
+      }
+      await cancelReminderAlarms(fake2, 1);
+      expect(fake2.daily, isEmpty);
+      expect(fake2.cancelled.every((id) => !isReserved(id)), isTrue);
+    });
+
+    test('out-of-range ids: nothing scheduled or cancelled, enabled throws',
+        () async {
+      for (final badId in [0, 400, 770]) {
+        final fake = FakeReminderNotificationService();
+        final row = _medsRow()..['id'] = badId;
+        await expectLater(
+          syncReminderAlarms(fake, model(row)),
+          throwsA(isA<NotificationServiceException>()),
+        );
+        expect(fake.daily, isEmpty);
+        expect(fake.weekly, isEmpty);
+        expect(fake.cancelled, isEmpty);
+        await cancelReminderAlarms(fake, badId);
+        expect(fake.cancelled, isEmpty);
+      }
+      // A disabled out-of-range row is cancel-only by definition:
+      // silent, and still touches nothing.
+      final fake = FakeReminderNotificationService();
+      final disabled = _waterRow()..['id'] = 400; // isEnabled false
+      await syncReminderAlarms(fake, model(disabled));
+      expect(fake.cancelled, isEmpty);
+      // Reconcile isolates the bad row and reports failure.
+      final ok = await reconcileReminderAlarms(
+          fake, [model(_medsRow()), model(_medsRow()..['id'] = 400)]);
+      expect(ok, isFalse);
+      expect(fake.daily, {base(3): '9:0'});
+    });
+
+    testWidgets('reconcile on load leaves Settings notification ids untouched',
+        (tester) async {
+      final fake = FakeReminderNotificationService();
+      // Pre-seed the fake with the Settings schedules (habit 1003,
+      // project 1004, check-in 770001, one event counter in the
+      // 700000 range) as ReminderSync would have left them.
+      fake.daily[1003] = '19:0';
+      fake.daily[1004] = '20:0';
+      fake.daily[770001] = '4:0';
+      fake.once[700123] = DateTime(2027, 1, 1, 9);
+      final server = _ReminderServer([_medsRow()..['id'] = 1]);
+      await _pump(
+          tester,
+          RemindersScreen(
+            backend: _backendWith(server.client(), token: 'tok'),
+            notificationService: fake,
+          ));
+      await tester.pumpAndSettle();
+      expect(fake.daily[1003], '19:0');
+      expect(fake.daily[1004], '20:0');
+      expect(fake.daily[770001], '4:0');
+      expect(fake.once[700123], DateTime(2027, 1, 1, 9));
+      expect(fake.cancelled,
+          isNot(contains(anyOf(1003, 1004, 770001, 700123))));
+      // The id-1 reminder itself was reconciled into its own block.
+      expect(fake.daily[101500], '9:0');
+    });
+  });
+
+  group('r47 fix round B2: INTERVAL slots bounded by the block', () {
+    Map<String, dynamic> intervalRow() => {
+          'id': 5,
+          'title': 'Water break',
+          'type': 'INTERVAL',
+          'fixedHour': 12,
+          'fixedMinute': 0,
+          'intervalHours': 0,
+          'intervalMinutes': 15,
+          'startHour': 8,
+          'startMinute': 0,
+          'endHour': 21,
+          'endMinute': 0,
+          'isEnabled': true,
+          'daysOfWeekConfig': '',
+        };
+
+    test('53-slot interval (15 min across 8:00-21:00) fits the block',
+        () async {
+      final m = ReminderModel.fromJson(intervalRow());
+      expect(intervalSlotMinutes(m), hasLength(53));
+      final fake = FakeReminderNotificationService();
+      await syncReminderAlarms(fake, m);
+      expect(fake.daily, hasLength(53));
+      expect(fake.daily.keys.first, 107500);
+      expect(fake.daily.keys.last, 107500 + 52);
+    });
+
+    test('generation is capped at the 1500-slot block', () {
+      final m = ReminderModel.fromJson(intervalRow()
+        ..['intervalMinutes'] = 1
+        ..['startHour'] = 0
+        ..['startMinute'] = 0
+        ..['endHour'] = 23
+        ..['endMinute'] = 59);
+      final times = intervalSlotMinutes(m);
+      expect(times, hasLength(1440)); // full day at 1-minute steps
+      expect(times.length, lessThanOrEqualTo(1500));
+    });
+
+    testWidgets('>48-slot INTERVAL: zero ghost ids after edit-away and delete',
+        (tester) async {
+      final server = _ReminderServer([intervalRow()]);
+      final fake = FakeReminderNotificationService();
+      await _pump(
+          tester,
+          RemindersScreen(
+            backend: _backendWith(server.client(), token: 'tok'),
+            notificationService: fake,
+          ));
+      await tester.pumpAndSettle();
+      expect(fake.daily, hasLength(53)); // load reconcile scheduled it
+
+      // Edit away: switch the type to FIXED and save.
+      await tester.tap(find.text('Water break'));
+      await tester.pumpAndSettle();
+      expect(find.text('Edit Reminder'), findsOneWidget);
+      await tester.tap(find.text('Set Time'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+      // Only the FIXED slot (block slot 0, the row's 12:00) remains.
+      expect(fake.daily, {107500: '12:0'});
+      expect(fake.weekly, isEmpty);
+
+      // Delete: the whole block is cancelled, nothing survives.
+      await tester.tap(find.byIcon(Icons.close).first);
+      await tester.pumpAndSettle();
+      expect(server.lastPushedRows, isEmpty);
+      expect(fake.daily, isEmpty);
+      expect(fake.weekly, isEmpty);
+      expect(fake.once, isEmpty);
+    });
+  });
+
+  group('r47 fix round B4: shared blob id delete reschedules the survivor',
+      () {
+    testWidgets('two rows share id 3; deleting one reschedules the other',
+        (tester) async {
+      final first = _medsRow(); // id 3, FIXED 9:00, "Take meds"
+      final second = _medsRow()
+        ..['title'] = 'Second dose'
+        ..['fixedHour'] = 10;
+      final server = _ReminderServer([first, second]);
+      final fake = FakeReminderNotificationService();
+      await _pump(
+          tester,
+          RemindersScreen(
+            backend: _backendWith(server.client(), token: 'tok'),
+            notificationService: fake,
+          ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.close).first);
+      await tester.pumpAndSettle();
+
+      expect(server.lastPushedRows, hasLength(1));
+      expect(server.lastPushedRows.single['title'], 'Second dose');
+      // The delete cancelled the shared block; the post-delete FULL
+      // reconcile rescheduled the survivor's 10:00 slot.
+      expect(fake.daily, {104500: '10:0'});
+    });
+  });
+
+  group('r47 fix round B3: writes are serialized', () {
+    testWidgets('reminders: a second toggle during a pending push is dropped',
+        (tester) async {
+      final server = _BlockingReminderServer([_medsRow(), _waterRow()]);
+      final gate = Completer<void>();
+      server.gate = gate;
+      await _pump(
+          tester,
+          RemindersScreen(
+            backend: _backendWith(server.client(), token: 'tok'),
+            notificationService: FakeReminderNotificationService(),
+          ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(Switch).first);
+      await tester.pump();
+      await tester.pump();
+      expect(server.pushes, hasLength(1));
+      // Every write control is disabled while the push is pending.
+      for (final sw in tester.widgetList<Switch>(find.byType(Switch))) {
+        expect(sw.onChanged, isNull);
+      }
+      // Attempted second writes produce NO second push.
+      await tester.tap(find.byType(Switch).last);
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.close).last);
+      await tester.pump();
+      expect(server.pushes, hasLength(1));
+
+      gate.complete();
+      server.gate = null;
+      await tester.pumpAndSettle();
+      expect(server.pushes, hasLength(1));
+      expect(server.rows[0]['isEnabled'], isFalse);
+      expect(server.rows[1], equals(_waterRow()));
+
+      // The serializer released: a fresh toggle pushes again.
+      await tester.tap(find.byType(Switch).first);
+      await tester.pumpAndSettle();
+      expect(server.pushes, hasLength(2));
+      expect(server.rows[0]['isEnabled'], isTrue);
+    });
+
+    testWidgets('habits: a second toggle during a pending log is dropped',
+        (tester) async {
+      final server = _HabitServer([
+        {'id': 'h1', 'title': 'Drink water', 'logs': <String>[]},
+        {'id': 'h2', 'title': 'Walk', 'logs': <String>[]},
+      ]);
+      final gate = Completer<void>();
+      server.logGate = gate;
+      await _pump(
+          tester,
+          HabitsScreen(
+              backend: _backendWith(server.client(), token: 'tok')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Drink water'));
+      await tester.pump();
+      await tester.pump();
+      expect(server.logs, hasLength(1));
+      expect(find.text('1/2 DONE'), findsOneWidget); // optimistic
+
+      await tester.tap(find.text('Walk'));
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.close).last);
+      await tester.pump();
+      expect(server.logs, hasLength(1)); // no out-of-order second write
+      expect(server.deletes, isEmpty);
+
+      gate.complete();
+      server.logGate = null;
+      await tester.pumpAndSettle();
+      expect(server.logs, hasLength(1));
+
+      // Released: the next toggle goes through.
+      await tester.tap(find.text('Walk'));
+      await tester.pumpAndSettle();
+      expect(server.logs, hasLength(2));
+    });
+  });
+
+  group('r47 fix round Juno F1: create permission gate order', () {
+    Widget screen(_ReminderServer server, FakeReminderNotificationService fake) {
+      return RemindersScreen(
+        backend: _backendWith(server.client(), token: 'tok'),
+        notificationService: fake,
+      );
+    }
+
+    testWidgets('rationale renders BEFORE any system request; granted opens sheet',
+        (tester) async {
+      final fake = FakeReminderNotificationService(); // exact = true
+      final server = _ReminderServer([_medsRow()]);
+      await _pump(tester, screen(server, fake));
+      // Ignore any calls the load reconcile made; gate calls are
+      // what this test tracks from the FAB tap on.
+      fake.calls.clear();
+
+      await tester.tap(find.text('New Reminder'));
+      await tester.pumpAndSettle();
+      expect(find.text('Enable Notifications'), findsOneWidget);
+      expect(
+          find.text(
+              'Tabs needs notification permission to send your reminders. Tap Allow to continue.'),
+          findsOneWidget);
+      // Exact check ran; the system request has NOT fired yet.
+      expect(fake.calls, ['canScheduleExact']);
+      expect(fake.requestCount, 0);
+      expect(find.text('Save'), findsNothing); // sheet not open yet
+
+      await tester.tap(find.text('Allow'));
+      await tester.pumpAndSettle();
+      expect(fake.calls,
+          ['canScheduleExact', 'requestNotificationsPermission']);
+      expect(find.text('Save'), findsOneWidget); // sheet opened
+    });
+
+    testWidgets('exact-alarm dialog runs FIRST, before the rationale',
+        (tester) async {
+      final fake = FakeReminderNotificationService()..exact = false;
+      final server = _ReminderServer([_medsRow()]);
+      await _pump(tester, screen(server, fake));
+      fake.calls.clear();
+
+      await tester.tap(find.text('New Reminder'));
+      await tester.pumpAndSettle();
+      expect(find.text('Exact alarms are off'), findsOneWidget);
+      expect(find.text('Enable Notifications'), findsNothing);
+      expect(fake.calls, ['canScheduleExact']);
+
+      await tester.tap(find.text('Not now'));
+      await tester.pumpAndSettle();
+      expect(find.text('Enable Notifications'), findsOneWidget);
+      expect(fake.requestCount, 0);
+
+      await tester.tap(find.text('Allow'));
+      await tester.pumpAndSettle();
+      expect(find.text('Save'), findsOneWidget);
+    });
+
+    testWidgets('denied at the system dialog: sheet never opens',
+        (tester) async {
+      final fake = FakeReminderNotificationService()
+        ..grantOnRequest = false;
+      final server = _ReminderServer([_medsRow()]);
+      await _pump(tester, screen(server, fake));
+
+      await tester.tap(find.text('New Reminder'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Allow'));
+      await tester.pumpAndSettle();
+
+      expect(fake.requestCount, 1);
+      expect(find.text('Save'), findsNothing);
+      expect(server.pushes, isEmpty);
+      // Existing reminders remain viewable.
+      expect(find.text('Take meds'), findsOneWidget);
+    });
+
+    testWidgets('Not now at the rationale: no system request, no sheet',
+        (tester) async {
+      final fake = FakeReminderNotificationService();
+      final server = _ReminderServer([_medsRow()]);
+      await _pump(tester, screen(server, fake));
+
+      await tester.tap(find.text('New Reminder'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Not now'));
+      await tester.pumpAndSettle();
+
+      expect(fake.requestCount, 0);
+      expect(find.text('Save'), findsNothing);
+      expect(server.pushes, isEmpty);
+    });
+
+    testWidgets('edit on card tap does NOT run the gate', (tester) async {
+      final fake = FakeReminderNotificationService()
+        ..grantOnRequest = false;
+      final server = _ReminderServer([_medsRow()]);
+      await _pump(tester, screen(server, fake));
+      fake.calls.clear();
+
+      await tester.tap(find.text('Take meds'));
+      await tester.pumpAndSettle();
+      expect(find.text('Edit Reminder'), findsOneWidget);
+      expect(fake.calls, isEmpty);
+      expect(fake.requestCount, 0);
+    });
+  });
+
+  group('r47 fix round hardening (optional, Vera notes)', () {
+    test('createHabit: a 2xx without a habit object is still success',
+        () async {
+      final noHabit = _backendWith(
+        MockClient((_) async => http.Response('{}', 200)),
+        token: 'tok',
+      );
+      final habit = await noHabit.createHabit('Stretch');
+      expect(habit, isNotNull);
+      expect(habit!.title, 'Stretch');
+
+      final garbageBody = _backendWith(
+        MockClient((_) async => http.Response('ok', 201)),
+        token: 'tok',
+      );
+      expect(await garbageBody.createHabit('Stretch'), isNotNull);
+    });
+
+    testWidgets('habits: a post-create refetch failure surfaces an error',
+        (tester) async {
+      final backend = _FlakyRefreshBackend();
+      await _pump(tester, HabitsScreen(backend: backend));
+      expect(find.text('Drink water'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), 'Meditate');
+      await tester.tap(find.byIcon(Icons.add_circle));
+      await tester.pumpAndSettle();
+
+      expect(
+          find.text(
+              'Saved, but the habit list could not be refreshed. Check your connection and try again.'),
+          findsOneWidget);
+      // The stale list is still shown — with the error on top of it.
+      expect(find.text('Drink water'), findsOneWidget);
     });
   });
 }

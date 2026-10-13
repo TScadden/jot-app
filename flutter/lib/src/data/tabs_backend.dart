@@ -332,6 +332,12 @@ class TabsBackend {
   /// failure (the caller keeps the honest error path and re-fetches).
   /// Accepts 200 or 201 (resource-created) like the native client's
   /// 2xx handling; every other status is a failure.
+  ///
+  /// Fix-round hardening: a 2xx response whose body lacks a usable
+  /// `habit` object is still a SUCCESS — the POST itself landed, so
+  /// reporting failure would invite a retry that creates a
+  /// duplicate. A placeholder carrying the requested title is
+  /// returned and the caller's re-fetch confirms the real row.
   Future<HabitDto?> createHabit(String title) async {
     final response = await _sendAuthed((token) => _client.post(
           Uri.parse('$_baseUrl/api/habits'),
@@ -347,13 +353,14 @@ class TabsBackend {
     }
     try {
       final decoded = jsonDecode(response.body);
-      if (decoded is! Map<String, dynamic>) return null;
-      final habit = decoded['habit'];
-      if (habit is Map<String, dynamic>) return HabitDto.fromJson(habit);
-      return null;
+      if (decoded is Map<String, dynamic>) {
+        final habit = decoded['habit'];
+        if (habit is Map<String, dynamic>) return HabitDto.fromJson(habit);
+      }
     } catch (_) {
-      return null;
+      // A 2xx with an unparseable body still means the POST landed.
     }
+    return HabitDto(id: '', title: title, logs: const []);
   }
 
   /// Round 47 — delete a habit: `DELETE /api/habits/{id}` (native).

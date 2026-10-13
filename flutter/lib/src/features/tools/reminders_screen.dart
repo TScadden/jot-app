@@ -25,10 +25,18 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///   updates that row in place, keeping its `id`.
 /// - Delete: trailing ✕ per card, immediate, no confirmation
 ///   (native parity). Toggle: a real Switch flips `isEnabled`.
-/// - Alarms: after every successful push the reminder's local
-///   notifications are resynced via `reminder_alarm_sync.dart`
-///   (native AlarmManager slot scheme); a notification failure
-///   never fails the save — it surfaces as a non-blocking note.
+/// - Alarms: after every successful push the device runs a FULL
+///   alarm reconcile across all current reminders via
+///   `reminder_alarm_sync.dart` (fix-round ID block scheme; a
+///   delete first cancels the deleted reminder's whole block, then
+///   the reconcile reschedules any surviving row that shared its
+///   id — Vera B4); a notification failure never fails the save —
+///   it surfaces as a non-blocking note.
+/// - Writes are SERIALIZED (Vera B3): one push in flight at a
+///   time; while a push is pending every write control (FAB, card
+///   tap, Switch, ✕, sheet save path) is disabled or its tap is
+///   dropped, and the failure-path reload runs inside the same
+///   serialized section so it can never race an in-flight push.
 /// - On push failure: error SnackBar + reload from the server; the
 ///   UI never claims an unsaved state.
 
@@ -386,6 +394,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
   bool _loading = true;
   bool _failed = false;
   bool _loadFailed = false; // profile itself was null (auth/network)
+  bool _writing = false; // a whole-list push is in flight (Vera B3)
   ReminderDocument _doc = ReminderDocument.empty;
 
   @override
@@ -429,20 +438,17 @@ class _RemindersScreenState extends State<RemindersScreen> {
     }
   }
 
-  /// Load-time safety net (native pull-reschedule parity): resync
-  /// every reminder's alarms from the pulled list. Failures are
-  /// swallowed per reminder — a scheduling problem must never break
-  /// the screen; the next successful write resyncs again.
-  Future<void> _reconcileAlarms() async {
-    for (final i in _doc.visibleIndices) {
-      final m = _doc.modelAt(i);
-      if (m == null) continue;
-      try {
-        await syncReminderAlarms(_notifs, m);
-      } catch (_) {
-        // Non-blocking by design (see doc comment).
-      }
-    }
+  /// Load-time safety net (native pull-reschedule parity): FULL
+  /// reconcile — resync every reminder's alarms from the pulled
+  /// list. Failures are isolated per reminder (see
+  /// [reconcileReminderAlarms]) — a scheduling problem must never
+  /// break the screen; the next successful write reconciles again.
+  /// Returns whether every reminder synced cleanly.
+  Future<bool> _reconcileAlarms() {
+    return reconcileReminderAlarms(_notifs, [
+      for (final i in _doc.visibleIndices)
+        if (_doc.modelAt(i) != null) _doc.modelAt(i)!,
+    ]);
   }
 
   void _showSaveError() {
@@ -459,61 +465,85 @@ class _RemindersScreenState extends State<RemindersScreen> {
             'Saved. The alarm could not be scheduled — check notification permissions.')));
   }
 
-  /// Applies [newDoc] optimistically, pushes the WHOLE list, and
-  /// runs [alarmSync] after a successful push. On push failure:
-  /// error SnackBar + reload from the server (no phantom state).
+  /// Applies [newDoc] optimistically, pushes the WHOLE list, and —
+  /// after a successful push — runs the alarm side: for a delete,
+  /// [cancelledReminderId]'s whole block is cancelled first, then a
+  /// FULL reconcile across all current reminders reschedules every
+  /// survivor (including one that shared the deleted row's id,
+  /// Vera B4). On push failure: error SnackBar + reload from the
+  /// server (no phantom state).
+  ///
+  /// SERIALIZED (Vera B3): at most one call runs at a time. While
+  /// [_writing] is set, the write controls are disabled and every
+  /// entry point drops its tap; the flag is held across the
+  /// failure-path reload, so the reload can never race a push that
+  /// is still in flight.
   Future<void> _applyAndPush(
     ReminderDocument newDoc, {
-    required Future<void> Function() alarmSync,
+    int? cancelledReminderId,
   }) async {
-    setState(() => _doc = newDoc);
-    final ok = await _backend.postSyncProfile(
-        {'reminders': jsonEncode(newDoc.encode())});
-    if (ok) {
-      _backend.invalidateSyncPull();
-      try {
-        await alarmSync();
-      } catch (_) {
+    if (_writing) return;
+    _writing = true;
+    if (mounted) setState(() => _doc = newDoc);
+    try {
+      final ok = await _backend.postSyncProfile(
+          {'reminders': jsonEncode(newDoc.encode())});
+      if (ok) {
+        _backend.invalidateSyncPull();
+        var alarmsOk = true;
+        if (cancelledReminderId != null) {
+          try {
+            await cancelReminderAlarms(_notifs, cancelledReminderId);
+          } catch (_) {
+            alarmsOk = false;
+          }
+        }
         // A notification failure NEVER fails the save.
-        _showAlarmNote();
+        if (!await _reconcileAlarms()) alarmsOk = false;
+        if (!alarmsOk) _showAlarmNote();
+        return;
       }
-      return;
+      _showSaveError();
+      _backend.invalidateSyncPull();
+      await _load(reconcile: false);
+    } finally {
+      _writing = false;
+      if (mounted) setState(() {});
     }
-    _showSaveError();
-    _backend.invalidateSyncPull();
-    await _load(reconcile: false);
   }
 
   Future<void> _toggleReminder(int rawIndex, bool enabled) async {
+    if (_writing) return;
     final newDoc = _doc.toggledAt(rawIndex, enabled);
     if (identical(newDoc, _doc)) return;
-    await _applyAndPush(newDoc, alarmSync: () async {
-      final m = newDoc.modelAt(rawIndex);
-      if (m != null) await syncReminderAlarms(_notifs, m);
-    });
+    await _applyAndPush(newDoc);
   }
 
   Future<void> _deleteReminder(int rawIndex) async {
+    if (_writing) return;
     final id = _doc.modelAt(rawIndex)?.id ??
         reminderRowId(_doc.rawRows[rawIndex]);
     final newDoc = _doc.removedAt(rawIndex);
     if (identical(newDoc, _doc)) return;
-    await _applyAndPush(newDoc, alarmSync: () async {
-      if (id != null) await cancelReminderAlarms(_notifs, id);
-    });
+    await _applyAndPush(newDoc, cancelledReminderId: id);
   }
 
-  /// Permission gate (native FAB order: exact-alarm, then
-  /// POST_NOTIFICATIONS) followed by the editor sheet. The gate is
-  /// advisory: dismissing the exact-alarms dialog still opens the
-  /// sheet, and scheduling falls back to inexact alarms per the
-  /// notification service.
-  Future<void> _openEditor({ReminderModel? initial, int? rawIndex}) async {
-    try {
-      await _notifs.requestNotificationsPermission();
-    } catch (_) {
-      _showAlarmNote();
-    }
+  /// CREATE-only permission gate (Juno F1), in native's exact
+  /// order:
+  /// 1. Exact-alarm gate FIRST: when exact alarms are unavailable,
+  ///    an advisory dialog offers system settings (dismissing it
+  ///    still continues the gate; scheduling falls back to inexact
+  ///    alarms per the notification service).
+  /// 2. Notification rationale dialog ("Enable Notifications"):
+  ///    the system POST_NOTIFICATIONS request fires ONLY from its
+  ///    Allow button — never bare, never before the rationale.
+  /// 3. The editor sheet opens ONLY when notification permission
+  ///    is granted. When it is denied (Not now, or denied at the
+  ///    system dialog), no sheet opens: a reminder must never show
+  ///    ON while it can never fire, silently. Existing reminders
+  ///    stay viewable and toggleable either way.
+  /// Returns whether the sheet may open.
+  Future<bool> _runCreatePermissionGate() async {
     try {
       final exact = await _notifs.canScheduleExact();
       if (!exact && mounted) {
@@ -539,14 +569,53 @@ class _RemindersScreenState extends State<RemindersScreen> {
           try {
             await _notifs.requestExactAlarmsPermission();
           } catch (_) {
-            // Advisory gate — the sheet still opens below.
+            // Advisory gate — the rationale step still runs below.
           }
         }
       }
     } catch (_) {
-      // Advisory gate — the sheet still opens below.
+      // Advisory gate — the rationale step still runs below.
     }
-    if (!mounted) return;
+    if (!mounted) return false;
+    final allow = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Enable Notifications'),
+        content: const Text(
+            'Tabs needs notification permission to send your reminders. Tap Allow to continue.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Not now'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Allow'),
+          ),
+        ],
+      ),
+    );
+    if (allow != true || !mounted) return false;
+    try {
+      return await _notifs.requestNotificationsPermission();
+    } catch (_) {
+      _showAlarmNote();
+      return false;
+    }
+  }
+
+  /// Opens the editor sheet. CREATE (the FAB) runs the permission
+  /// gate first (see [_runCreatePermissionGate]); EDIT (card tap)
+  /// does NOT run the gate — native has no edit UI, and editing an
+  /// existing reminder must not be blocked by a create-time gate
+  /// (Juno minor). Taps are dropped while a write is in flight
+  /// (Vera B3).
+  Future<void> _openEditor({ReminderModel? initial, int? rawIndex}) async {
+    if (_writing) return;
+    if (rawIndex == null) {
+      final granted = await _runCreatePermissionGate();
+      if (!granted || !mounted) return;
+    }
     final row = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
@@ -557,20 +626,14 @@ class _RemindersScreenState extends State<RemindersScreen> {
     if (rawIndex == null) {
       final newRow = {...row, 'id': nextReminderId(_doc.rawRows)};
       final newDoc = _doc.appended(newRow);
-      await _applyAndPush(newDoc, alarmSync: () async {
-        final m = newDoc.modelAt(newDoc.rawRows.length - 1);
-        if (m != null) await syncReminderAlarms(_notifs, m);
-      });
+      await _applyAndPush(newDoc);
     } else {
       final existingId = _doc.modelAt(rawIndex)?.id ??
           reminderRowId(_doc.rawRows[rawIndex]) ??
           0;
       final merged = {..._doc.rawRows[rawIndex], ...row, 'id': existingId};
       final newDoc = _doc.replacedAt(rawIndex, merged);
-      await _applyAndPush(newDoc, alarmSync: () async {
-        final m = newDoc.modelAt(rawIndex);
-        if (m != null) await syncReminderAlarms(_notifs, m);
-      });
+      await _applyAndPush(newDoc);
     }
   }
 
@@ -600,7 +663,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: NotelColors.primary,
-        onPressed: () => _openEditor(),
+        onPressed: _writing ? null : () => _openEditor(),
         icon: const Icon(Icons.add, color: Colors.white),
         label: const Text(
           'New Reminder',
@@ -703,7 +766,9 @@ class _RemindersScreenState extends State<RemindersScreen> {
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        onTap: () => _openEditor(initial: r, rawIndex: rawIndex),
+        onTap: _writing
+            ? null
+            : () => _openEditor(initial: r, rawIndex: rawIndex),
         child: Container(
           padding: const EdgeInsets.symmetric(
               horizontal: 16, vertical: 14),
@@ -760,7 +825,8 @@ class _RemindersScreenState extends State<RemindersScreen> {
               Switch(
                 value: r.isEnabled,
                 activeThumbColor: NotelColors.primary,
-                onChanged: (v) => _toggleReminder(rawIndex, v),
+                onChanged:
+                    _writing ? null : (v) => _toggleReminder(rawIndex, v),
               ),
               IconButton(
                 icon: const Icon(
@@ -769,7 +835,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
                   size: 18,
                   semanticLabel: 'Delete reminder',
                 ),
-                onPressed: () => _deleteReminder(rawIndex),
+                onPressed: _writing ? null : () => _deleteReminder(rawIndex),
               ),
             ],
           ),

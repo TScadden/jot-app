@@ -147,6 +147,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
   bool _loading = true;
   bool _failed = false;
   bool _adding = false;
+  bool _writing = false; // any habit write in flight (fix round, Vera B3)
   List<HabitDto> _habits = const [];
 
   @override
@@ -186,14 +187,17 @@ class _HabitsScreenState extends State<HabitsScreen> {
   }
 
   /// Re-fetch without the full-screen spinner (after a write, native
-  /// re-fetches the list the same way).
+  /// re-fetches the list the same way). Fix-round hardening: a
+  /// refetch failure after a successful write now SURFACES an error
+  /// instead of silently leaving a stale list on screen.
   Future<void> _refresh() async {
     try {
       final habits = await _backend.fetchHabits();
       if (!mounted) return;
       setState(() => _habits = habits);
     } catch (_) {
-      // Keep the current list; the write itself already reported.
+      _showError(
+          'Saved, but the habit list could not be refreshed. Check your connection and try again.');
     }
   }
 
@@ -204,72 +208,96 @@ class _HabitsScreenState extends State<HabitsScreen> {
   }
 
   /// Native add: title only (blank rejected, trimmed) →
-  /// `POST /api/habits` → re-fetch.
+  /// `POST /api/habits` → re-fetch. Serialized with every other
+  /// habit write (Vera B3): taps are dropped while [_writing].
   Future<void> _addHabit() async {
     final title = _addController.text.trim();
-    if (title.isEmpty || _adding) return;
+    if (title.isEmpty || _writing) return;
+    _writing = true;
     setState(() => _adding = true);
-    final created = await _backend.createHabit(title);
-    if (!mounted) return;
-    setState(() => _adding = false);
-    if (created == null) {
-      _showError(
-          'Could not add that habit. Check your connection and try again.');
-      return;
+    try {
+      final created = await _backend.createHabit(title);
+      if (!mounted) return;
+      if (created == null) {
+        _showError(
+            'Could not add that habit. Check your connection and try again.');
+        return;
+      }
+      _addController.clear();
+      _backend.invalidateSyncPull();
+      await _refresh();
+    } finally {
+      _writing = false;
+      if (mounted) setState(() => _adding = false);
     }
-    _addController.clear();
-    _backend.invalidateSyncPull();
-    await _refresh();
   }
 
   /// Native delete: `DELETE /api/habits/{id}` → re-fetch on success.
+  /// Serialized with every other habit write (Vera B3).
   Future<void> _deleteHabit(HabitDto habit) async {
-    final ok = await _backend.deleteHabit(habit.id);
-    if (!mounted) return;
-    if (!ok) {
-      _showError(
-          'Could not delete that habit. Check your connection and try again.');
-      return;
+    if (_writing) return;
+    _writing = true;
+    try {
+      final ok = await _backend.deleteHabit(habit.id);
+      if (!mounted) return;
+      if (!ok) {
+        _showError(
+            'Could not delete that habit. Check your connection and try again.');
+        return;
+      }
+      _backend.invalidateSyncPull();
+      await _refresh();
+    } finally {
+      _writing = false;
+      if (mounted) setState(() {});
     }
-    _backend.invalidateSyncPull();
-    await _refresh();
   }
 
   /// Card tap toggles TODAY's log: optimistic local update via the
   /// existing `logHabit` write; failure reverts + shows an error.
+  /// Serialized with every other habit write (Vera B3): a second
+  /// toggle attempted while this log write is pending is dropped,
+  /// never queued into an out-of-order second write.
   Future<void> _toggleHabit(HabitDto habit) async {
-    final today = todayDateString();
-    final wasChecked = habit.logs.contains(today);
-    final previous = _habits;
-    setState(() {
-      _habits = [
-        for (final h in _habits)
-          if (h.id == habit.id)
-            HabitDto(
-              id: h.id,
-              title: h.title,
-              logs: wasChecked
-                  ? h.logs.where((l) => l != today).toList()
-                  : [...h.logs, today],
-              targetTime: h.targetTime,
-            )
-          else
-            h,
-      ];
-    });
-    final ok = await _backend.logHabit(
-      habitId: habit.id,
-      date: today,
-      completed: !wasChecked,
-    );
-    if (!mounted) return;
-    if (!ok) {
-      setState(() => _habits = previous);
-      _showError(
-          'Could not update that habit. Check your connection and try again.');
-      return;
+    if (_writing) return;
+    _writing = true;
+    try {
+      final today = todayDateString();
+      final wasChecked = habit.logs.contains(today);
+      final previous = _habits;
+      setState(() {
+        _habits = [
+          for (final h in _habits)
+            if (h.id == habit.id)
+              HabitDto(
+                id: h.id,
+                title: h.title,
+                logs: wasChecked
+                    ? h.logs.where((l) => l != today).toList()
+                    : [...h.logs, today],
+                targetTime: h.targetTime,
+              )
+            else
+              h,
+        ];
+      });
+      final ok = await _backend.logHabit(
+        habitId: habit.id,
+        date: today,
+        completed: !wasChecked,
+      );
+      if (!mounted) return;
+      if (!ok) {
+        setState(() => _habits = previous);
+        _showError(
+            'Could not update that habit. Check your connection and try again.');
+        return;
+      }
+      _backend.invalidateSyncPull();
+    } finally {
+      _writing = false;
+      if (mounted) setState(() {});
     }
-    _backend.invalidateSyncPull();
   }
 
   @override
@@ -480,7 +508,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
               size: 28,
               semanticLabel: 'Add habit',
             ),
-            onPressed: _addHabit,
+            onPressed: _writing ? null : _addHabit,
           ),
       ],
     );
@@ -595,8 +623,9 @@ class _HabitsScreenState extends State<HabitsScreen> {
     final marks = habitDayMarks(habit.logs);
     return GestureDetector(
       // Card tap toggles today's log (native). The ✕ below is a
-      // separate button and wins its own tap.
-      onTap: () => _toggleHabit(habit),
+      // separate button and wins its own tap. While a write is in
+      // flight the tap is disabled entirely (Vera B3).
+      onTap: _writing ? null : () => _toggleHabit(habit),
       child: Container(
       constraints: const BoxConstraints(minHeight: 100),
       padding: const EdgeInsets.all(14),
@@ -631,7 +660,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
                 padding: EdgeInsets.zero,
                 constraints:
                     const BoxConstraints(minWidth: 20, minHeight: 20),
-                onPressed: () => _deleteHabit(habit),
+                onPressed: _writing ? null : () => _deleteHabit(habit),
               ),
             ],
           ),

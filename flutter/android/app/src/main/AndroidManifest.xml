@@ -2,9 +2,13 @@
     <!-- Round 5: required for the real login API call (HTTPS only). -->
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Round 30: local reminder notifications (flutter_local_notifications).
-         POST_NOTIFICATIONS is requested only from the Settings toggle
-         flow, after an in-app explanation dialog (never at startup,
-         never from a background path). SCHEDULE_EXACT_ALARM is the
+         POST_NOTIFICATIONS is requested only after an in-app rationale
+         dialog: from the Settings toggle flow, after its in-app
+         explanation dialog (Round 30), and from the Reminders create
+         flow (Round 47 fix round), where the exact-alarm gate runs
+         first and the system request fires only from the rationale
+         dialog's Allow button (never at startup, never from a
+         background path). SCHEDULE_EXACT_ALARM is the
          requestable exact-alarm permission (granted by the user in
          system settings); RECEIVE_BOOT_COMPLETED lets the plugin
          restore scheduled reminders after a reboot. -->

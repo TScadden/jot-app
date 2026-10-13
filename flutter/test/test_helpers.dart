@@ -44,6 +44,12 @@ class FakeReminderNotificationService implements ReminderNotificationService {
   bool grantOnRequest;
   bool exact = true;
   int requestCount = 0;
+
+  /// Fix round (Juno F1) — ordered record of the permission-gate
+  /// calls (`canScheduleExact`, `requestNotificationsPermission`,
+  /// `requestExactAlarmsPermission`, `areNotificationsEnabled`) so
+  /// tests can assert the gate's call order.
+  final List<String> calls = [];
   final Map<int, String> daily = {};
   final Map<int, DateTime> once = {};
   final Map<int, String> weekly = {};
@@ -56,20 +62,28 @@ class FakeReminderNotificationService implements ReminderNotificationService {
   Future<void> initialize() async {}
 
   @override
-  Future<bool> areNotificationsEnabled() async => enabled;
+  Future<bool> areNotificationsEnabled() async {
+    calls.add('areNotificationsEnabled');
+    return enabled;
+  }
 
   @override
   Future<bool> requestNotificationsPermission() async {
+    calls.add('requestNotificationsPermission');
     requestCount++;
     enabled = grantOnRequest;
     return enabled;
   }
 
   @override
-  Future<bool> canScheduleExact() async => exact;
+  Future<bool> canScheduleExact() async {
+    calls.add('canScheduleExact');
+    return exact;
+  }
 
   @override
   Future<void> requestExactAlarmsPermission() async {
+    calls.add('requestExactAlarmsPermission');
     exact = true;
   }
 
