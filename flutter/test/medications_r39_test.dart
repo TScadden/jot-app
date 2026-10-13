@@ -212,6 +212,129 @@ void main() {
     });
   });
 
+  group('isArchived splice-back (Vera fix pass 2)', () {
+    Map<String, dynamic> stampedRow({
+      required String id,
+      required String name,
+      dynamic isPresent = true,
+      String endDate = 'Present',
+    }) =>
+        {
+          ...medRow(
+              id: id, name: name, isPresent: isPresent, endDate: endDate),
+          'isArchived': true,
+        };
+
+    test(
+        'unarchive of a stamp-only archived row persists: encoded row re-parses as NOT archived',
+        () {
+      // The Vera case: archived ONLY via the defensive stamp —
+      // isPresent already reads true.
+      final doc = MedicationDocument.fromRawRows([
+        stampedRow(id: 's', name: 'Stamp Only Med'),
+      ]);
+      expect(doc.entryAt(0)!.isArchived, isTrue);
+      expect(doc.entryAt(0)!.isPresent, isTrue);
+      expect(doc.entryAt(0)!.isPlanVisible, isFalse);
+
+      final encoded = doc
+          .unarchiveAt(0, now: DateTime(2026, 10, 13))
+          .encode()
+          .single;
+      // Pinned representation: the key the raw row carried stays,
+      // overwritten with the cleared stamp state (explicit false).
+      expect(encoded['isArchived'], isFalse);
+      expect(encoded['isPresent'], isTrue);
+      final reparsed = MedicationEntry.fromBlobRow(encoded)!;
+      expect(reparsed.isArchived, isFalse);
+      expect(reparsed.isPresent, isTrue);
+      expect(reparsed.isPlanVisible, isTrue);
+    });
+
+    test(
+        'archiving a DIFFERENT row preserves the untouched stamped row as archived',
+        () {
+      final doc = MedicationDocument.fromRawRows([
+        stampedRow(id: 's', name: 'Stamp Only Med'),
+        medRow(id: 't', name: 'Target Med'),
+      ]);
+      final encoded =
+          doc.archiveAt(1, now: DateTime(2026, 10, 13)).encode();
+      // Untouched stamped row: stamp preserved, still archived
+      // on re-parse. (Its isPresent is normalized to false by
+      // toBlobRow, as for any archived entry — the archived
+      // classification is what must survive.)
+      expect(encoded[0]['isArchived'], isTrue);
+      final untouched = MedicationEntry.fromBlobRow(encoded[0])!;
+      expect(untouched.isArchived, isTrue);
+      // The archived target re-parses as archived via isPresent.
+      final target = MedicationEntry.fromBlobRow(encoded[1])!;
+      expect(target.isArchived, isTrue);
+      expect(target.isPresent, isFalse);
+    });
+
+    test(
+        'normal native row (no isArchived key) archived then unarchived gains no isArchived key at any point',
+        () {
+      final doc = MedicationDocument.fromRawRows([
+        medRow(id: 'n', name: 'Normal Med'),
+      ]);
+      expect(doc.encode().single.containsKey('isArchived'), isFalse);
+
+      final archivedDoc = doc.archiveAt(0, now: DateTime(2026, 10, 13));
+      final archivedRow = archivedDoc.encode().single;
+      expect(archivedRow.containsKey('isArchived'), isFalse);
+      expect(MedicationEntry.fromBlobRow(archivedRow)!.isArchived, isTrue);
+
+      final restoredRow = archivedDoc
+          .unarchiveAt(0, now: DateTime(2026, 10, 14))
+          .encode()
+          .single;
+      expect(restoredRow.containsKey('isArchived'), isFalse);
+      final reparsed = MedicationEntry.fromBlobRow(restoredRow)!;
+      expect(reparsed.isArchived, isFalse);
+      expect(reparsed.isPresent, isTrue);
+    });
+
+    test(
+        'round-trip matrix: stamp x isPresent — a no-op document pass preserves the archived classification',
+        () {
+      final combos = <(bool, bool)>[
+        (true, true),
+        (true, false),
+        (false, true),
+        (false, false),
+      ];
+      for (final (stamp, present) in combos) {
+        final row = <String, dynamic>{
+          ...medRow(
+            id: 'm',
+            name: 'Matrix Med',
+            isPresent: present,
+            endDate: present ? 'Present' : 'Aug 20, 2026',
+          ),
+          'isArchived': stamp,
+        };
+        final doc = MedicationDocument.fromRawRows([row]);
+        final before = doc.entryAt(0)!;
+        expect(before.hasArchivedStamp, stamp,
+            reason: 'stamp=$stamp present=$present');
+        final encoded = doc.encode().single;
+        // The raw row carried the key, so the encoded value is
+        // exactly the entry's stamp state.
+        expect(encoded['isArchived'], stamp,
+            reason: 'stamp=$stamp present=$present');
+        final reparsed = MedicationEntry.fromBlobRow(encoded)!;
+        // Only the archived classification is pinned here: a
+        // stamp-archived entry (stamp=true, present=true) is
+        // normalized by toBlobRow to isPresent=false, exactly
+        // like any archived entry.
+        expect(reparsed.isArchived, before.isArchived,
+            reason: 'stamp=$stamp present=$present');
+      }
+    });
+  });
+
   group('unarchive op (native semantics)', () {
     test('restores Present, clears the end date, returns to active', () {
       final at = DateTime(2026, 10, 13);

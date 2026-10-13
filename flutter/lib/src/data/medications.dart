@@ -63,7 +63,11 @@ class MedicationEntry {
   /// Defensive explicit-archive stamp: a blob row that (against
   /// the native DTO) carries `isArchived == true` counts as
   /// archived even when `isPresent` reads true (R35 precedent).
-  /// Never serialized — the native DTO has no such key.
+  /// Never serialized by [toBlobRow] — the native DTO has no such
+  /// key. [MedicationDocument.encode] is the one exception: when a
+  /// raw row already carried the key, it re-applies this stamp
+  /// state over the raw value so an op's stamp change persists
+  /// (R39 fix pass 2).
   final bool _hasArchivedStamp;
 
   MedicationEntry({
@@ -95,6 +99,12 @@ class MedicationEntry {
   /// that is not `"Present"` means archived), so this getter is
   /// the one interpretation every surface shares.
   bool get isArchived => _hasArchivedStamp || !isPresent;
+
+  /// The entry's post-op defensive-stamp state, exposed for
+  /// [MedicationDocument.encode]: `true` while the explicit
+  /// `isArchived` stamp is held, `false` once an unarchive op has
+  /// cleared it (or when the row never carried one).
+  bool get hasArchivedStamp => _hasArchivedStamp;
 
   /// Tools-card view: the start date, or null when unset.
   String? get startedDate {
@@ -329,6 +339,24 @@ List<MedicationEntry> unarchiveMedicationInList(
 ///   [MedicationEntry.toBlobRow] (the entry wins on the 9 DTO
 ///   keys; any extra non-DTO raw keys survive).
 ///
+/// `isArchived` splice-back rule (Vera R39 fix pass 2): the
+/// overlay above cannot carry the defensive stamp —
+/// [MedicationEntry.toBlobRow] correctly never emits `isArchived`
+/// (the native DTO has no such key), so a raw row carrying
+/// `isArchived: true` would splice that `true` back into the
+/// pushed blob even after an unarchive op cleared the stamp on
+/// the entry, and the row would re-parse as archived forever.
+/// So, for a parseable row, the stamp is controlled explicitly:
+/// - raw row carried an `isArchived` key → the encoded row's
+///   `isArchived` is the entry's post-op stamp state
+///   ([MedicationEntry.hasArchivedStamp]: preserved `true` for an
+///   untouched/archived entry, explicit `false` — not key
+///   removal — for a cleared/unarchived one), so the encoded row
+///   re-parses to the entry's archived classification;
+/// - raw row did NOT carry an `isArchived` key → the encoded row
+///   does not gain one (byte-stability for normal native rows;
+///   the key is never invented).
+///
 /// Ops target rows by identity/position, never by name/id
 /// first-match (Finding 1): [archiveEntry] takes the exact entry
 /// instance from THIS document, and [archiveAt]/[unarchiveAt]
@@ -390,14 +418,29 @@ class MedicationDocument {
 
   /// Splice-back encoding (the class doc's rule): one output row
   /// per raw row, in order — unparseable rows verbatim, parseable
-  /// rows overlaid with their entry's DTO serialization.
+  /// rows overlaid with their entry's DTO serialization, with the
+  /// entry's stamp state controlling a pre-existing raw
+  /// `isArchived` key.
   List<Map<String, dynamic>> encode() => [
         for (var i = 0; i < rawRows.length; i++)
           if (_entries[i] == null)
             Map<String, dynamic>.of(rawRows[i])
           else
-            {...rawRows[i], ..._entries[i]!.toBlobRow()},
+            _encodeParsedRow(i),
       ];
+
+  Map<String, dynamic> _encodeParsedRow(int rawIndex) {
+    final raw = rawRows[rawIndex];
+    final entry = _entries[rawIndex]!;
+    final encoded = <String, dynamic>{...raw, ...entry.toBlobRow()};
+    // Stamp control (class doc): only when the raw row already
+    // carried the key — overwrite it with the entry's post-op
+    // stamp state instead of letting the raw value splice back.
+    if (raw.containsKey('isArchived')) {
+      encoded['isArchived'] = entry.hasArchivedStamp;
+    }
+    return encoded;
+  }
 
   MedicationDocument _withEntry(int rawIndex, MedicationEntry entry) =>
       MedicationDocument._(rawRows, [
