@@ -1076,6 +1076,11 @@ void main() {
             backend: backendWith(focusClient(log, profile: profile))),
       );
       await tester.scrollUntilVisible(find.text('Cancel Experiment'), 200);
+      // scrollUntilVisible stops with the button's center just past
+      // the surface edge (CI: tap at y=600.6 on a 600px surface would
+      // not hit test); ensureVisible brings it fully on screen.
+      await tester.ensureVisible(find.text('Cancel Experiment'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Cancel Experiment'));
       await tester.pumpAndSettle();
       expect(
