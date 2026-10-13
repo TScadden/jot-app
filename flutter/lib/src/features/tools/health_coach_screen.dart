@@ -2,10 +2,16 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
+import 'package:tabs_lab/src/data/reminder_alarm_sync.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/tools/reminders_screen.dart'
-    show buildReminderRow, nextReminderId;
+    show
+        buildReminderRow,
+        nextReminderId,
+        parseReminderModels,
+        runReminderCreatePermissionGate;
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
@@ -43,10 +49,16 @@ import 'package:tabs_lab/src/theme/slide_page_route.dart';
 /// `POST api/ai/process-document` extraction; the Flutter app has no
 /// file-picker plugin), and APPROVING calendar proposals (native
 /// writes to the device calendar via CalendarContract; no calendar
-/// bridge exists in the Flutter app). Calendar cards render and can
-/// be denied; their approve button explains the limitation instead
-/// of pretending to write. Google Calendar event CONTEXT (native
-/// reads upcoming events into the prompt) is likewise unavailable.
+/// bridge exists in the Flutter app). Round 48 fix round (Juno F1):
+/// the prompt now carries native's NOT-connected calendar
+/// instruction — this build has no Google Calendar connection, so
+/// the AI is told to guide the user to connect it and NOT to emit
+/// calendar tags — and calendar cards that arrive from synced
+/// native-created sessions still parse and render, with the
+/// limitation stated ON the card, a disabled approve control, and
+/// a working deny/dismiss. Google Calendar event CONTEXT (native
+/// reads upcoming events into the prompt) is likewise unavailable,
+/// so no schedule rule depending on event data is sent either.
 ///
 /// Membership-gated like native: a non-unlimited account sees an
 /// honest locked state (no paywall built). AI failures show a
@@ -65,6 +77,44 @@ const String coachDisclaimer =
     'Tabs is not a medical device. It does not diagnose, treat, cure, '
     'or prevent any condition. AI insights are informational only. '
     'Consult a healthcare professional.';
+
+/// Round 48 fix round (Juno F1) — the limitation stated ON pending
+/// calendar proposal cards: calendar changes require the native
+/// Tabs app, and this app cannot perform them.
+const String coachCalendarCardLimitation =
+    'Calendar changes require the native Tabs app. '
+    'This app cannot add or delete calendar events.';
+
+/// Round 48 fix round (Juno F1) — snackbar shown if a calendar
+/// approval is attempted through the resolution path: it names
+/// the NATIVE Tabs app (this build is itself Tabs on Android, so
+/// the old "Open Tabs on Android…" copy named the wrong thing).
+const String coachCalendarUnavailableMessage =
+    'Calendar changes require the native Tabs app. '
+    'Open the native Tabs app to add or delete calendar events.';
+
+/// Round 48 fix round (Juno F2) — honest reason shown when a
+/// Coach reminder approval stops at the permission gate. The
+/// proposal stays pending and nothing is written.
+const String coachReminderPermissionDeniedMessage =
+    'Notification permission was not granted, so this reminder '
+    'was not set. The proposal is still pending.';
+
+/// Round 48 fix round (Vera F2) — honest reason shown when a
+/// Coach note approval cannot re-pull the existing entries: the
+/// approval aborts before any id is computed, so no entry is
+/// posted (a blind post would use id 1 and overwrite a real one).
+const String coachNotePullFailedMessage =
+    'Could not load your existing history, so that note was not '
+    'saved. Check your connection and try again.';
+
+/// Round 48 fix round (Juno F3) — the distinct failure for a file
+/// approval with no "📄 Uploaded file:" source message in this
+/// session: the file was never attached in this app, so retrying
+/// the save cannot help.
+const String coachFileNotAttachedMessage =
+    'That file was not attached in this app, so there is nothing '
+    'to save from here.';
 
 /// A UUID v4 string (native uses `UUID.randomUUID()` for session,
 /// message, medication, and document ids).
@@ -455,11 +505,19 @@ String formatCoachDateOnly(DateTime now) =>
 
 /// The enriched user context native `CoachViewModel.sendMessage`
 /// sends: the profile's base context plus the action-proposal
-/// instructions (lists, reminders, medications, calendar proposals,
-/// and the current-date resolution rules). Calendar event CONTEXT
-/// (native reads the device calendar) is unavailable in Flutter —
-/// the proposal formats are included so proposals can still be
-/// made and denied; approving one is honestly blocked in the UI.
+/// instructions (lists, reminders, medications). Calendar handling
+/// follows native's branch for a NOT-connected account (Round 48
+/// fix round, Juno F1 — BLOCKING): native sends its calendar
+/// proposal formats and event-reading rules ONLY when Google
+/// Calendar is connected, together with the event data it reads
+/// from the device. This build has no calendar connection and
+/// receives no event data, so — exactly like native's
+/// not-connected branch — the AI is guided to send the user to
+/// Settings -> Connected Apps to connect Google Calendar first
+/// and is explicitly told NOT to output calendar proposal or
+/// deletion tags. No schedule rule that depends on the absent
+/// event data is included. (Tags arriving from synced
+/// native-created sessions still parse and render in the UI.)
 String coachEnrichedUserContext(String? baseUserContext,
     {required DateTime now}) {
   final todayStr = formatCoachNow(now);
@@ -467,25 +525,7 @@ String coachEnrichedUserContext(String? baseUserContext,
   final calendarInstructions = '''
 CURRENT TIME: The user's current local date and time is $todayStr. Today's date is $todayDateOnly.
 
-IMPORTANT DATE RESOLUTION RULES:
-- "today" = $todayDateOnly
-- "tomorrow" = the day after $todayDateOnly
-- "next [weekday]" = the next occurrence of that weekday after today
-- If the user says "add an event for today" or "schedule something today", use $todayDateOnly as the date — do NOT ask what day they want.
-- If the user says "add an event" without specifying a day, infer the date from context or use today ($todayDateOnly) as default.
-
-CALENDAR EVENTS: You can propose scheduling events, setting appointments, calendar updates, or deletions.
-Format for Proposing Event: [PROPOSE_CALENDAR_EVENT:Event Title|YYYY-MM-DD|hh:mm AM/PM|Description]
-Use 12-hour format with AM/PM for the time (e.g. 02:30 PM). Suggest a reasonable date, time, and description based on context if not fully specified.
-If the user wants changes, simply generate a new revised [PROPOSE_CALENDAR_EVENT:...] tag.
-
-Format for Deleting Event: [PROPOSE_DELETE_CALENDAR_EVENT:Event Title|YYYY-MM-DD]
-If the user wants to cancel or delete an event, propose it using this tag.
-
-CRITICAL RULES FOR READING & SCHEDULING EVENTS:
-1. When discussing or listing calendar events, DO NOT ALTER THEIR TITLES OR APPEND APP-SPECIFIC PHRASES. Use their exact names.
-2. Use normal 12-hour time format with AM/PM (e.g., "02:30 PM") in your conversational responses.
-3. When asked "what do I have today", include ALL events on $todayDateOnly regardless of whether they are past or future — the user wants the full day's schedule.''';
+CALENDAR EVENTS: Since Google Calendar is NOT connected yet, if the user asks you to schedule a calendar event or appointment, politely guide them to connect their Google Calendar first in Settings -> Connected Apps. Do NOT output a [PROPOSE_CALENDAR_EVENT:...] tag. Do NOT output a [PROPOSE_DELETE_CALENDAR_EVENT:...] tag.''';
 
   final actionInstructions = '''
 SYSTEM RULES FOR PROPOSING ACTIONS:
@@ -510,6 +550,60 @@ Only include ONE action tag per response. (Note: For multiple medications, combi
 
   final base = (baseUserContext ?? '').trim();
   return base.isEmpty ? actionInstructions : '$base\n\n$actionInstructions';
+}
+
+/// Round 48 fix round (Vera F6) — decodes a profile blob into its
+/// RAW JSON rows, preserving every row exactly as stored: non-Map
+/// rows (plain strings, numbers) stay as they are, and Map rows
+/// keep every key, known or not. This is the lists_screen /
+/// notes_screen raw pattern (`decodeUserListsRaw` /
+/// `decodeUserNotesRaw`): Coach blob appends splice into THESE
+/// rows and re-encode, so untouched rows survive verbatim instead
+/// of being dropped or coerced by
+/// `TabsBackend.decodeProfileList` (which drops non-Map rows and
+/// rewrites string rows as `{'name': …}`). Tolerates a JSON
+/// string (including double-encoded), an already-decoded list, a
+/// single map, and garbage (→ empty). Never throws.
+List<dynamic> decodeCoachProfileBlobRaw(dynamic raw) {
+  dynamic decoded = raw;
+  var guard = 0;
+  while (decoded is String && decoded.trim().isNotEmpty && guard < 3) {
+    guard++;
+    try {
+      decoded = jsonDecode(decoded);
+    } catch (_) {
+      return const [];
+    }
+  }
+  if (decoded is List) return List<dynamic>.of(decoded);
+  if (decoded is Map) return [decoded];
+  return const [];
+}
+
+/// The string-keyed map view of one raw blob row, or null when the
+/// row is not a map at all (such rows are preserved verbatim on
+/// writes but carry no fields to read).
+Map<String, dynamic>? coachRawRowMap(dynamic row) {
+  if (row is! Map) return null;
+  return <String, dynamic>{
+    for (final e in row.entries) '${e.key}': e.value,
+  };
+}
+
+/// The outcome of one proposal approval write: success, or a
+/// failure carrying the SPECIFIC honest reason to show when one
+/// is known (permission denied at the gate, a failed re-pull
+/// before id math, a file that was never attached in this app).
+/// A null [error] falls back to the generic save-failure message.
+class CoachApprovalOutcome {
+  final bool ok;
+  final String? error;
+
+  const CoachApprovalOutcome.success()
+      : ok = true,
+        error = null;
+
+  const CoachApprovalOutcome.failure([this.error]) : ok = false;
 }
 
 /// The typed-shortcut decision native `sendMessage` makes when the
@@ -599,7 +693,14 @@ String? pendingProposalKind(CoachParsedContent parsed) {
 class HealthCoachScreen extends StatefulWidget {
   final TabsBackend? backend;
 
-  const HealthCoachScreen({super.key, this.backend});
+  /// Injectable notification-service seam (the same one the
+  /// Reminders screen uses), forwarded to the chat screen so a
+  /// Coach-approved reminder runs the create permission gate and
+  /// the alarm reconcile against it. Null in production.
+  final ReminderNotificationService? notificationService;
+
+  const HealthCoachScreen(
+      {super.key, this.backend, this.notificationService});
 
   @override
   State<HealthCoachScreen> createState() => _HealthCoachScreenState();
@@ -659,6 +760,7 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
         reducedMotion: animationsDisabled(context),
         builder: (_) => CoachChatScreen(
           backend: _backend,
+          notificationService: widget.notificationService,
           sessionId: session?.id,
           sessionTitle: session?.title ?? 'New Chat',
           sessionCreatedAt: session?.createdAt ?? 0,
@@ -947,6 +1049,14 @@ class _LockedCoachView extends StatelessWidget {
 
 class CoachChatScreen extends StatefulWidget {
   final TabsBackend? backend;
+
+  /// Injectable notification-service seam (the same one the
+  /// Reminders screen uses): a Coach-approved reminder runs the
+  /// shared create permission gate and the alarm reconcile
+  /// against this service. Null in production (the local
+  /// notifications service is used).
+  final ReminderNotificationService? notificationService;
+
   final String? sessionId;
   final String sessionTitle;
   final int sessionCreatedAt;
@@ -958,6 +1068,7 @@ class CoachChatScreen extends StatefulWidget {
   const CoachChatScreen({
     super.key,
     this.backend,
+    this.notificationService,
     this.sessionId,
     this.sessionTitle = 'New Chat',
     this.sessionCreatedAt = 0,
@@ -974,6 +1085,8 @@ class CoachChatScreen extends StatefulWidget {
 class _CoachChatScreenState extends State<CoachChatScreen> {
   TabsBackend get _backend => widget.backend ?? TabsBackend();
 
+  late final ReminderNotificationService _notifs;
+
   late final String _sessionId;
   late String _title;
   late int _createdAt;
@@ -988,6 +1101,8 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
   @override
   void initState() {
     super.initState();
+    _notifs =
+        widget.notificationService ?? LocalReminderNotificationService();
     _sessionId = widget.sessionId ?? newUuid();
     _title = widget.sessionTitle;
     _createdAt = widget.sessionCreatedAt;
@@ -1249,11 +1364,13 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
     final parsed = message.parsed;
 
     if (approve && (kind == 'calendar' || kind == 'calendarDelete')) {
-      // No device-calendar bridge exists in the Flutter app, so a
-      // calendar write cannot be performed or faked. The proposal
+      // No device-calendar bridge exists in this build, so a
+      // calendar write cannot be performed or faked. The card
+      // itself already states this limitation and disables its
+      // approve control (Juno F1); this guard is the backstop for
+      // any other entry into the resolution path. The proposal
       // stays pending (denying still works).
-      _snack('Calendar changes are not available in this app yet. '
-          'Open Tabs on Android to add events to your calendar.');
+      _snack(coachCalendarUnavailableMessage);
       return;
     }
 
@@ -1261,17 +1378,21 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
     try {
       String? confirmation;
       if (approve) {
-        final ok = switch (kind) {
+        final outcome = switch (kind) {
           'note' => await _approveNote(parsed.noteText!),
           'file' => await _approveFile(parsed.fileName!),
           'list' => await _approveList(parsed),
           'reminder' => await _approveReminder(parsed),
           'medication' => await _approveMedications(parsed.medications),
-          _ => false,
+          _ => const CoachApprovalOutcome.failure(),
         };
-        if (!ok) {
-          _snack('Could not save that. Check your connection and '
-              'try again.');
+        if (!outcome.ok) {
+          // A specific honest reason wins (permission denied,
+          // failed re-pull, file never attached here); only a
+          // genuine save failure gets the generic message.
+          _snack(outcome.error ??
+              'Could not save that. Check your connection and '
+                  'try again.');
           return;
         }
         confirmation = switch (kind) {
@@ -1355,7 +1476,14 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
   /// Native `handleCoachNote`: classify into a category
   /// (fallback 7), then save as a log entry via the entries upsert
   /// with a fresh id (max(existing) + 1).
-  Future<bool> _approveNote(String noteText) async {
+  ///
+  /// Round 48 fix round (Vera F2, coach half): the re-pull is
+  /// NULL-CHECKED before any id math. On a failed pull the old
+  /// code fell through with maxId 0 and posted
+  /// `QuickLogEntry(id: 1, …)` — an id-keyed upsert that would
+  /// overwrite the user's real entry 1. A failed pull now aborts
+  /// honestly: visible specific error, zero posts.
+  Future<CoachApprovalOutcome> _approveNote(String noteText) async {
     try {
       final categories = <String, String>{
         for (final c in widget.pullCategories)
@@ -1366,18 +1494,22 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
           await _backend.classifyCoachNote(noteText, categories) ?? 7;
       _backend.invalidateSyncPull();
       final pull = await _backend.fetchSyncPull();
-      final entries = pull?['entries'];
+      if (pull == null) {
+        return const CoachApprovalOutcome.failure(
+            coachNotePullFailedMessage);
+      }
+      final entries = pull['entries'];
       var maxId = 0;
       if (entries is List) {
         for (final e in entries) {
-          if (e is Map<String, dynamic>) {
+          if (e is Map) {
             final id = _asIntOr(e['id'], 0);
             if (id > maxId) maxId = id;
           }
         }
       }
       final now = DateTime.now().millisecondsSinceEpoch;
-      return await _backend.postLogEntries([
+      final saved = await _backend.postLogEntries([
         QuickLogEntry(
           id: maxId + 1,
           categoryId: categoryId,
@@ -1387,8 +1519,11 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
           timestamp: now,
         ),
       ]);
+      return saved
+          ? const CoachApprovalOutcome.success()
+          : const CoachApprovalOutcome.failure();
     } catch (_) {
-      return false;
+      return const CoachApprovalOutcome.failure();
     }
   }
 
@@ -1396,7 +1531,14 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
   /// document from the "📄 Uploaded file: `<name>`\n\n`<text>`" user
   /// message in this session and push it via
   /// `POST /api/sync/documents`.
-  Future<bool> _approveFile(String fileName) async {
+  ///
+  /// Round 48 fix round (Juno F3): when NO such source message
+  /// exists, the failure is not a save failure — the file was
+  /// never attached in this app — so it carries its own accurate
+  /// message instead of the generic connection copy (retrying
+  /// could never help). Genuine save failures keep the generic
+  /// message.
+  Future<CoachApprovalOutcome> _approveFile(String fileName) async {
     try {
       final prefix = '📄 Uploaded file: $fileName';
       CoachChatMessage? uploadMsg;
@@ -1406,11 +1548,14 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
           break;
         }
       }
-      if (uploadMsg == null) return false;
+      if (uploadMsg == null) {
+        return const CoachApprovalOutcome.failure(
+            coachFileNotAttachedMessage);
+      }
       final sep = uploadMsg.content.indexOf('\n\n');
       final extracted =
           sep >= 0 ? uploadMsg.content.substring(sep + 2) : '';
-      return await _backend.syncDocuments([
+      final saved = await _backend.syncDocuments([
         {
           'id': newUuid(),
           'name': fileName,
@@ -1419,35 +1564,72 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
           'createdAt': DateTime.now().millisecondsSinceEpoch,
         },
       ]);
+      return saved
+          ? const CoachApprovalOutcome.success()
+          : const CoachApprovalOutcome.failure();
     } catch (_) {
-      return false;
+      return const CoachApprovalOutcome.failure();
     }
   }
 
   /// Native `approveProposedList`: append `{name, items}` to the
   /// profile's FULL userLists blob (freshest pull → append → push
   /// all rows, including the `__user_notes__` pseudo-list).
-  Future<bool> _approveList(CoachParsedContent parsed) async {
+  ///
+  /// Round 48 fix round (Vera F6): the append splices the blob's
+  /// RAW rows ([decodeCoachProfileBlobRaw]) — non-Map rows and
+  /// unknown keys survive verbatim instead of being dropped or
+  /// coerced by `decodeProfileList`.
+  Future<CoachApprovalOutcome> _approveList(
+      CoachParsedContent parsed) async {
     try {
       _backend.invalidateSyncPull();
       final profile = await _backend.fetchProfile();
-      if (profile == null) return false;
-      final rows = TabsBackend.decodeProfileList(profile['userLists'])
-          .map((r) => Map<String, dynamic>.of(r))
-          .toList();
+      if (profile == null) {
+        return const CoachApprovalOutcome.failure();
+      }
+      final rows = decodeCoachProfileBlobRaw(profile['userLists']);
       rows.add({'name': parsed.listName, 'items': parsed.listItems});
-      return await _backend
+      final saved = await _backend
           .postSyncProfile({'userLists': jsonEncode(rows)});
+      return saved
+          ? const CoachApprovalOutcome.success()
+          : const CoachApprovalOutcome.failure();
     } catch (_) {
-      return false;
+      return const CoachApprovalOutcome.failure();
     }
   }
 
   /// Native `approveProposedReminder`: append a FIXED reminder row
   /// (HH:MM parsed, 9:00 default like native) to the profile's FULL
   /// reminders blob (freshest pull → append → push all rows).
-  Future<bool> _approveReminder(CoachParsedContent parsed) async {
+  ///
+  /// Round 48 fix round (Juno F2 — BLOCKING): approval runs the
+  /// Reminders create flow's permission gate
+  /// ([runReminderCreatePermissionGate]: exact-alarm advisory
+  /// FIRST → rationale dialog → system request ONLY from Allow)
+  /// BEFORE anything is written. Denial at any step leaves the
+  /// proposal pending, writes nothing, appends no confirmation,
+  /// and shows the honest reason. After a successful write the
+  /// FULL alarm reconcile runs, so the reminder is actually
+  /// scheduled — the old path wrote an enabled row nobody ever
+  /// scheduled while telling the user it was set.
+  ///
+  /// Round 48 fix round (Vera F6): the append splices the blob's
+  /// RAW rows; the map view of those rows is used only to compute
+  /// the next id and to build the alarm-reconcile models (the
+  /// ReminderDocument retention pattern, over raw rows).
+  Future<CoachApprovalOutcome> _approveReminder(
+      CoachParsedContent parsed) async {
     try {
+      final granted = await runReminderCreatePermissionGate(
+        context: context,
+        notifs: _notifs,
+      );
+      if (!granted) {
+        return const CoachApprovalOutcome.failure(
+            coachReminderPermissionDeniedMessage);
+      }
       final parts = (parsed.reminderTime ?? '').split(':');
       final hour = parts.isNotEmpty
           ? int.tryParse(parts[0].trim()) ?? 9
@@ -1457,12 +1639,16 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
           : 0;
       _backend.invalidateSyncPull();
       final profile = await _backend.fetchProfile();
-      if (profile == null) return false;
-      final rows = TabsBackend.decodeProfileList(profile['reminders'])
-          .map((r) => Map<String, dynamic>.of(r))
-          .toList();
-      rows.add(buildReminderRow(
-        id: nextReminderId(rows),
+      if (profile == null) {
+        return const CoachApprovalOutcome.failure();
+      }
+      final rows = decodeCoachProfileBlobRaw(profile['reminders']);
+      final mapRows = <Map<String, dynamic>>[
+        for (final row in rows)
+          if (coachRawRowMap(row) != null) coachRawRowMap(row)!,
+      ];
+      final newRow = buildReminderRow(
+        id: nextReminderId(mapRows),
         title: parsed.reminderTitle!,
         type: 'FIXED',
         fixedHour: hour,
@@ -1476,11 +1662,30 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
         isEnabled: true,
         customDays: false,
         dayConfigs: const [],
-      ));
-      return await _backend
+      );
+      rows.add(newRow);
+      final saved = await _backend
           .postSyncProfile({'reminders': jsonEncode(rows)});
+      if (!saved) return const CoachApprovalOutcome.failure();
+      // The row is saved; now schedule it. A scheduling failure
+      // never un-saves the row (the Reminders screen's rule) — it
+      // surfaces as a non-blocking note instead.
+      try {
+        final alarmsOk = await reconcileReminderAlarms(
+          _notifs,
+          parseReminderModels([...mapRows, newRow]),
+        );
+        if (!alarmsOk) {
+          _snack('Reminder saved. The alarm could not be scheduled '
+              '— check notification permissions.');
+        }
+      } catch (_) {
+        _snack('Reminder saved. The alarm could not be scheduled '
+            '— check notification permissions.');
+      }
+      return const CoachApprovalOutcome.success();
     } catch (_) {
-      return false;
+      return const CoachApprovalOutcome.failure();
     }
   }
 
@@ -1488,16 +1693,24 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
   /// to the profile's FULL medications blob, deduplicating by name
   /// like native (existing rows win; untouched rows round-trip
   /// verbatim).
-  Future<bool> _approveMedications(List<CoachMedProposal> meds) async {
+  ///
+  /// Round 48 fix round (Vera F6): the append splices the blob's
+  /// RAW rows — non-Map rows and unknown keys survive verbatim
+  /// (the MedicationDocument retention rule, over raw rows);
+  /// existing names are read from the map rows only.
+  Future<CoachApprovalOutcome> _approveMedications(
+      List<CoachMedProposal> meds) async {
     try {
       _backend.invalidateSyncPull();
       final profile = await _backend.fetchProfile();
-      if (profile == null) return false;
-      final rows = TabsBackend.decodeProfileList(profile['medications'])
-          .map((r) => Map<String, dynamic>.of(r))
-          .toList();
-      final existingNames = {
-        for (final r in rows) '${r['name'] ?? ''}'.trim().toLowerCase(),
+      if (profile == null) {
+        return const CoachApprovalOutcome.failure();
+      }
+      final rows = decodeCoachProfileBlobRaw(profile['medications']);
+      final existingNames = <String>{
+        for (final row in rows)
+          if (coachRawRowMap(row) != null)
+            '${coachRawRowMap(row)!['name'] ?? ''}'.trim().toLowerCase(),
       };
       final now = DateTime.now().millisecondsSinceEpoch;
       for (final med in meds) {
@@ -1516,10 +1729,13 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
           'isDeleted': false,
         });
       }
-      return await _backend
+      final saved = await _backend
           .postSyncProfile({'medications': jsonEncode(rows)});
+      return saved
+          ? const CoachApprovalOutcome.success()
+          : const CoachApprovalOutcome.failure();
     } catch (_) {
-      return false;
+      return const CoachApprovalOutcome.failure();
     }
   }
 
@@ -1870,15 +2086,20 @@ class _ChatBubble extends StatelessWidget {
       }
     }
 
-    // Calendar event — native card copy. Approve is honestly blocked
-    // (no device-calendar bridge in this app); deny works.
+    // Calendar event — native card copy, except the approval
+    // affordance (Juno F1): the limitation is stated ON the card
+    // and the approve control is disabled and labelled
+    // accordingly — calendar changes require the native Tabs app.
+    // Dismiss works fully.
     if (parsed.calendarTitle != null) {
       switch (parsed.calendarStatus) {
         case CoachProposalStatus.pending:
           addCard(_ProposalCard(
             emoji: '📅',
             title: 'Proposed Calendar Event',
-            approveLabel: 'Approve & Add',
+            approveLabel: 'Native App Required',
+            approveEnabled: false,
+            notice: coachCalendarCardLimitation,
             denyLabel: 'Dismiss',
             busy: actionBusy,
             onApprove: () => onProposal('calendar', true),
@@ -1932,7 +2153,9 @@ class _ChatBubble extends StatelessWidget {
       }
     }
 
-    // Calendar deletion — native card copy.
+    // Calendar deletion — native card copy, except the approval
+    // affordance (Juno F1): limitation ON the card, approve
+    // disabled and labelled accordingly; Dismiss works fully.
     if (parsed.calendarDeleteTitle != null) {
       switch (parsed.calendarDeleteStatus) {
         case CoachProposalStatus.pending:
@@ -1940,7 +2163,9 @@ class _ChatBubble extends StatelessWidget {
             emoji: '📅',
             title: 'Proposed Calendar Deletion',
             titleColor: NotelColors.error,
-            approveLabel: 'Approve & Delete',
+            approveLabel: 'Native App Required',
+            approveEnabled: false,
+            notice: coachCalendarCardLimitation,
             denyLabel: 'Dismiss',
             busy: actionBusy,
             onApprove: () => onProposal('calendarDelete', true),
@@ -2064,6 +2289,16 @@ class _ProposalCard extends StatelessWidget {
   final VoidCallback onApprove;
   final VoidCallback onDeny;
 
+  /// Optional limitation stated ON the card itself, above the
+  /// action row (Juno F1: the calendar cards must not reveal
+  /// their limitation only after a tap).
+  final String? notice;
+
+  /// Whether the approve control is enabled. False renders it
+  /// disabled (and [approveLabel] should say why) regardless of
+  /// [busy]; deny/dismiss is never affected.
+  final bool approveEnabled;
+
   const _ProposalCard({
     required this.emoji,
     required this.title,
@@ -2074,6 +2309,8 @@ class _ProposalCard extends StatelessWidget {
     required this.busy,
     required this.onApprove,
     required this.onDeny,
+    this.notice,
+    this.approveEnabled = true,
   });
 
   @override
@@ -2104,6 +2341,17 @@ class _ProposalCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           ...children,
+          if (notice != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              notice!,
+              style: const TextStyle(
+                  fontSize: 12,
+                  height: 1.35,
+                  fontWeight: FontWeight.w600,
+                  color: NotelColors.textSecondary),
+            ),
+          ],
           const SizedBox(height: 12),
           Row(
             children: [
@@ -2125,7 +2373,7 @@ class _ProposalCard extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: ElevatedButton(
-                  onPressed: busy ? null : onApprove,
+                  onPressed: (busy || !approveEnabled) ? null : onApprove,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: NotelColors.primary,
                     foregroundColor: Colors.white,
