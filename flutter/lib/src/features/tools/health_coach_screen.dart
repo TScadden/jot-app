@@ -1110,7 +1110,10 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
     _messages = List.of(widget.initialMessages);
     if (widget.sessionId == null) {
       // Native's new-session greeting (inserted into the session on
-      // creation, i.e. at the first send).
+      // creation, i.e. at the first send). It only SEEDS the visible
+      // history when the caller provided none — provided
+      // initialMessages are the history and must render (the
+      // pre-Round-48 constructor contract).
       _welcomeMessage = CoachChatMessage(
         id: newUuid(),
         sessionId: _sessionId,
@@ -1118,7 +1121,9 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
         content: coachWelcomeMessage,
         timestamp: DateTime.now().millisecondsSinceEpoch,
       );
-      _messages = [_welcomeMessage!];
+      if (_messages.isEmpty) {
+        _messages = [_welcomeMessage!];
+      }
     }
   }
 
@@ -1226,8 +1231,15 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
     if (!_sessionPersisted) {
       _createdAt = now;
       final sessionOk = await _persistSession(now);
-      final msgsOk = await _persistMessages(
-          [_welcomeMessage!, userMsg]);
+      // Persist the full visible history (the seeded welcome for a
+      // fresh session; the caller-provided messages when the chat was
+      // opened with history) plus the new user message — never just
+      // [welcome, userMsg], which would drop provided history from
+      // the stored session. The loading bubble is excluded.
+      final msgsOk = await _persistMessages([
+        for (final m in _messages)
+          if (!m.id.startsWith('loading-')) m,
+      ]);
       persistFailed = !(sessionOk && msgsOk);
       if (sessionOk && msgsOk) {
         _sessionPersisted = true;
