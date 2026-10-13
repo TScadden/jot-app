@@ -1,7 +1,10 @@
 package com.notel.notel.playground.flutter
 
+import android.content.ContentValues
 import android.content.Intent
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
 import android.os.SystemClock
 import android.speech.RecognizerIntent
 import androidx.activity.result.ActivityResultLauncher
@@ -242,6 +245,24 @@ class MainActivity : FlutterFragmentActivity() {
                     // HealthConnectManager.readLatestWeight/readLatestHeight).
                     "readLatestWeightKg" -> readLatestWeightKg(result)
                     "readLatestHeightCm" -> readLatestHeightCm(result)
+                    // Round 48: Key Metrics reads (native
+                    // HealthConnectManager.readRespiratoryRate /
+                    // readOxygenSaturation / readHeartRateVariability),
+                    // range reads for the Sleep picker + CSV export
+                    // (readHistoricalSleepWithDeep /
+                    // readHistoricalHeartRateWithSpikes), and the CSV
+                    // export file hand-off (native exportMetricsCsvAsync:
+                    // Downloads copy + share sheet).
+                    "readRespiratoryRate" -> readRespiratoryRate(call.argument<String>("dateStr"), result)
+                    "readOxygenSaturation" -> readOxygenSaturation(call.argument<String>("dateStr"), result)
+                    "readHrvRmssd" -> readHrvRmssd(call.argument<String>("dateStr"), result)
+                    "readSleepHistory" -> readSleepHistory(call.argument<Int>("days"), result)
+                    "readSpikeCounts" -> readSpikeCounts(call.argument<Int>("days"), result)
+                    "exportCsvFile" -> exportCsvFile(
+                        call.argument<String>("fileName"),
+                        call.argument<String>("content"),
+                        result
+                    )
                     else -> result.notImplemented()
                 }
             }
@@ -933,6 +954,291 @@ class MainActivity : FlutterFragmentActivity() {
             } catch (_: Exception) {
                 result.error("STEPS_READ_FAILED", "Could not read steps.", null)
             }
+        }
+    }
+
+    // ── Round 48: Key Metrics + range reads + CSV export ─────────────────
+    // Ports of native `HealthConnectManager.readRespiratoryRate`
+    // (:872), `readOxygenSaturation` (:888), `readHeartRateVariability`
+    // (:823), `readHistoricalSleepWithDeep` (:926) and the spike half of
+    // `readHistoricalHeartRateWithSpikes` (:463), plus native
+    // `FitbitViewModel.exportMetricsCsvAsync`'s file hand-off. Same
+    // rules as the Round 13 reads: best-record = non-mock, highest
+    // package priority, latest by time; failures return a visible error
+    // code; "no data" is a successful null/empty — never fabricated.
+
+    /// Respiratory rate: records in [startOfDay − 30 days, endOfDay],
+    /// best record wins (native looks back 30 days for the "last daily
+    /// reading"). Null when none.
+    private fun readRespiratoryRate(dateStr: String?, result: MethodChannel.Result) {
+        val client = hcClientOrError(result) ?: return
+        lifecycleScope.launch {
+            try {
+                val (startOfDay, endOfDay) = dayRange(dateStr)
+                val response = client.readRecords(
+                    ReadRecordsRequest(
+                        recordType = RespiratoryRateRecord::class,
+                        timeRangeFilter = TimeRangeFilter.between(
+                            startOfDay.minus(30, ChronoUnit.DAYS), endOfDay
+                        )
+                    )
+                )
+                val best = bestRecord(response.records) { it.time }
+                result.success(best?.rate)
+            } catch (_: Exception) {
+                result.error("RESPIRATORY_READ_FAILED", "Could not read respiratory rate.", null)
+            }
+        }
+    }
+
+    /// Oxygen saturation: same 30-day lookback + best record as native.
+    /// A raw value ≤ 1.0 is a fraction and is scaled to percent (native
+    /// rule). Null when none.
+    private fun readOxygenSaturation(dateStr: String?, result: MethodChannel.Result) {
+        val client = hcClientOrError(result) ?: return
+        lifecycleScope.launch {
+            try {
+                val (startOfDay, endOfDay) = dayRange(dateStr)
+                val response = client.readRecords(
+                    ReadRecordsRequest(
+                        recordType = OxygenSaturationRecord::class,
+                        timeRangeFilter = TimeRangeFilter.between(
+                            startOfDay.minus(30, ChronoUnit.DAYS), endOfDay
+                        )
+                    )
+                )
+                val best = bestRecord(response.records) { it.time }
+                val raw = best?.percentage?.value
+                result.success(if (raw != null && raw <= 1.0) raw * 100.0 else raw)
+            } catch (_: Exception) {
+                result.error("OXYGEN_READ_FAILED", "Could not read oxygen saturation.", null)
+            }
+        }
+    }
+
+    /// HRV (RMSSD) for one day: paginated read, mock records dropped,
+    /// only the highest package-priority tier for the day counts, and
+    /// the value is that tier's average — native
+    /// `readHeartRateVariability(days = 1, targetDateStr = date)`
+    /// daily-average rule. Null when no record.
+    private fun readHrvRmssd(dateStr: String?, result: MethodChannel.Result) {
+        val client = hcClientOrError(result) ?: return
+        lifecycleScope.launch {
+            try {
+                val (start, end) = dayRange(dateStr)
+                val records = mutableListOf<HeartRateVariabilityRmssdRecord>()
+                var pageToken: String? = null
+                do {
+                    val response = client.readRecords(
+                        ReadRecordsRequest(
+                            recordType = HeartRateVariabilityRmssdRecord::class,
+                            timeRangeFilter = TimeRangeFilter.between(start, end),
+                            pageToken = pageToken
+                        )
+                    )
+                    records.addAll(response.records)
+                    pageToken = response.pageToken
+                } while (pageToken != null)
+                val candidates = nonMock(records)
+                if (candidates.isEmpty()) {
+                    result.success(null)
+                    return@launch
+                }
+                val maxPriority = candidates.maxOf {
+                    packagePriority(it.metadata.dataOrigin.packageName)
+                }
+                val tier = candidates.filter {
+                    packagePriority(it.metadata.dataOrigin.packageName) == maxPriority
+                }
+                result.success(tier.map { it.heartRateVariabilityMillis }.average())
+            } catch (_: Exception) {
+                result.error("HRV_READ_FAILED", "Could not read heart rate variability.", null)
+            }
+        }
+    }
+
+    /// Per-day sleep totals over [tomorrowStart − days, tomorrowStart):
+    /// sessions grouped by their end (wake-up) date, per date the best
+    /// session (highest package priority, then longest) wins;
+    /// minutesAsleep = duration − merged awake-stage minutes, deep =
+    /// merged deep-stage minutes. Dart shape:
+    /// [{date: "YYYY-MM-DD", mins, deep}] sorted ascending. Mirrors
+    /// native `readHistoricalSleepWithDeep`.
+    private fun readSleepHistory(days: Int?, result: MethodChannel.Result) {
+        val client = hcClientOrError(result) ?: return
+        val n = (days ?: 30).coerceIn(1, 3650)
+        lifecycleScope.launch {
+            try {
+                val zone = ZoneId.systemDefault()
+                val end = ZonedDateTime.now(zone).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
+                val start = end.minus(n.toLong(), ChronoUnit.DAYS)
+                val records = mutableListOf<SleepSessionRecord>()
+                var pageToken: String? = null
+                do {
+                    val response = client.readRecords(
+                        ReadRecordsRequest(
+                            recordType = SleepSessionRecord::class,
+                            timeRangeFilter = TimeRangeFilter.between(start, end),
+                            pageToken = pageToken
+                        )
+                    )
+                    records.addAll(response.records)
+                    pageToken = response.pageToken
+                } while (pageToken != null)
+
+                fun dateOf(instant: Instant): String =
+                    ZonedDateTime.ofInstant(instant, zone).toLocalDate().toString()
+
+                val bestByDate = mutableMapOf<String, SleepSessionRecord>()
+                for (session in nonMock(records)) {
+                    val date = dateOf(session.endTime)
+                    val existing = bestByDate[date]
+                    if (existing == null) {
+                        bestByDate[date] = session
+                    } else {
+                        val pNew = packagePriority(session.metadata.dataOrigin.packageName)
+                        val pOld = packagePriority(existing.metadata.dataOrigin.packageName)
+                        val dNew = Duration.between(session.startTime, session.endTime)
+                        val dOld = Duration.between(existing.startTime, existing.endTime)
+                        if (pNew > pOld || (pNew == pOld && dNew > dOld)) {
+                            bestByDate[date] = session
+                        }
+                    }
+                }
+
+                val out = bestByDate.entries.sortedBy { it.key }.map { (date, session) ->
+                    fun stageMinutes(vararg types: Int): Int {
+                        val intervals = session.stages
+                            .filter { it.stage in types }
+                            .map { it.startTime to it.endTime }
+                        return mergeIntervals(intervals)
+                            .sumOf { Duration.between(it.first, it.second).toMinutes().toInt() }
+                    }
+                    val awake = stageMinutes(
+                        SleepSessionRecord.STAGE_TYPE_AWAKE,
+                        SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED,
+                        SleepSessionRecord.STAGE_TYPE_OUT_OF_BED
+                    )
+                    val deep = stageMinutes(SleepSessionRecord.STAGE_TYPE_DEEP)
+                    val duration = ChronoUnit.MINUTES.between(session.startTime, session.endTime).toInt()
+                    mapOf(
+                        "date" to date,
+                        "mins" to (duration - awake).coerceAtLeast(0),
+                        "deep" to deep
+                    )
+                }
+                result.success(out)
+            } catch (_: Exception) {
+                result.error("SLEEP_HISTORY_READ_FAILED", "Could not read sleep history.", null)
+            }
+        }
+    }
+
+    /// Per-day HR spike counts over [tomorrowStart − days,
+    /// tomorrowStart), read in 30-day chunks like native
+    /// `readHistoricalHeartRateWithSpikes`. A spike event starts at the
+    /// first sample ≥ 100 bpm and absorbs subsequent ≥ 100 samples
+    /// within 5 minutes of the previous one (native
+    /// `computeDailyHeartRateSummary`). Zero-bpm samples are dropped
+    /// first (founder rule: 0 is a failed read). Only days with at
+    /// least one usable sample appear; a day's count may be 0 (real).
+    /// Dart shape: [{date: "YYYY-MM-DD", count}] sorted ascending.
+    private fun readSpikeCounts(days: Int?, result: MethodChannel.Result) {
+        val client = hcClientOrError(result) ?: return
+        val n = (days ?: 30).coerceIn(1, 365)
+        lifecycleScope.launch {
+            try {
+                val zone = ZoneId.systemDefault()
+                val end = ZonedDateTime.now(zone).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
+                val start = end.minus(n.toLong(), ChronoUnit.DAYS)
+                val counts = mutableMapOf<String, Int>()
+                var chunkStart = start
+                while (chunkStart.isBefore(end)) {
+                    val chunkEnd = minOf(chunkStart.plus(30, ChronoUnit.DAYS), end)
+                    val byDay = mutableMapOf<String, MutableList<Pair<Long, Int>>>()
+                    var pageToken: String? = null
+                    do {
+                        val response = client.readRecords(
+                            ReadRecordsRequest(
+                                recordType = HeartRateRecord::class,
+                                timeRangeFilter = TimeRangeFilter.between(chunkStart, chunkEnd),
+                                pageToken = pageToken
+                            )
+                        )
+                        for (record in nonMock(response.records)) {
+                            for (sample in record.samples) {
+                                val bpm = sample.beatsPerMinute.toInt()
+                                if (bpm <= 0) continue
+                                val date = ZonedDateTime.ofInstant(sample.time, zone)
+                                    .toLocalDate().toString()
+                                byDay.getOrPut(date) { mutableListOf() }
+                                    .add(sample.time.toEpochMilli() to bpm)
+                            }
+                        }
+                        pageToken = response.pageToken
+                    } while (pageToken != null)
+                    for ((date, samples) in byDay) {
+                        val sorted = samples.sortedBy { it.first }
+                        var count = 0
+                        var inEvent = false
+                        var eventEndMs = 0L
+                        for ((t, bpm) in sorted) {
+                            if (bpm >= 100) {
+                                if (!inEvent || t > eventEndMs) {
+                                    count++
+                                    inEvent = true
+                                }
+                                eventEndMs = t + 300000L
+                            }
+                        }
+                        counts[date] = count
+                    }
+                    chunkStart = chunkEnd
+                }
+                result.success(
+                    counts.entries.sortedBy { it.key }
+                        .map { mapOf("date" to it.key, "count" to it.value) }
+                )
+            } catch (_: Exception) {
+                result.error("SPIKE_COUNTS_READ_FAILED", "Could not read heart rate spikes.", null)
+            }
+        }
+    }
+
+    /// Native `exportMetricsCsvAsync` file hand-off: writes the CSV to
+    /// the cache dir, copies it into Downloads via MediaStore, then
+    /// opens the share sheet (ACTION_SEND chooser, FileProvider URI,
+    /// "Share Biometrics CSV"). Success = the chooser was launched.
+    private fun exportCsvFile(fileName: String?, content: String?, result: MethodChannel.Result) {
+        try {
+            val name = fileName?.takeIf { it.isNotBlank() } ?: "jot_metrics.csv"
+            val bytes = (content ?: "").toByteArray(Charsets.UTF_8)
+            val cacheFile = java.io.File(cacheDir, name)
+            cacheFile.writeBytes(bytes)
+
+            val resolver = contentResolver
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                put(MediaStore.MediaColumns.MIME_TYPE, "text/csv")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            }
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            if (uri != null) {
+                resolver.openOutputStream(uri)?.use { it.write(bytes) }
+            }
+
+            val shareUri = androidx.core.content.FileProvider.getUriForFile(
+                this, "$packageName.provider", cacheFile
+            )
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/csv"
+                putExtra(Intent.EXTRA_STREAM, shareUri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(intent, "Share Biometrics CSV"))
+            result.success(true)
+        } catch (_: Exception) {
+            result.error("CSV_EXPORT_FAILED", "Could not export the CSV file.", null)
         }
     }
 }
