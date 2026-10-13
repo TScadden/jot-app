@@ -12,6 +12,7 @@ import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/connections/connections_screen.dart';
 import 'package:tabs_lab/src/features/settings/account_actions.dart';
+import 'package:tabs_lab/src/features/settings/common_conditions_catalog.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
@@ -1098,19 +1099,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
+            key: const ValueKey('auto_fill_button'),
             style: ElevatedButton.styleFrom(
                 backgroundColor: NotelColors.surfaceHigh,
                 foregroundColor: NotelColors.textPrimary),
-            onPressed: () => _snack(
-                'Auto-fill needs Health Connect weight and height reads, which are not available in the Flutter Lab yet.'),
+            onPressed: _autoFillFromHealthConnect,
             icon: const Icon(Icons.sync, color: NotelColors.primary),
             label: const Text('Auto-Fill from Connected Apps'),
           ),
         ),
       ]),
       const SizedBox(height: 16),
-      // Medications + Conditions (native :3029/:3202 live inside this
-      // page; the full editors are native Room-backed, read-only here).
+      // Medications (native :3029-3200): rows with the native date
+      // range line + delete, and the Add Medication dialog (name,
+      // started/ended free-text dates, Still taking). Native has no
+      // in-place medication edit — changing an entry is delete + add
+      // there too. Every change pushes the full list as the profile
+      // `medications` JSON string, the exact SyncProfileRequest field
+      // native's SyncManager sends (JotApi.kt:248).
       _card([
         const Text('Medications',
             style: TextStyle(
@@ -1119,20 +1125,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
             style:
                 TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
         const SizedBox(height: 8),
-        ...d.medications.map((m) => Padding(
+        if (d.medications.isEmpty)
+          const Text(
+              'No medications added yet. Tap the + button to add one manually.',
+              style:
+                  TextStyle(color: NotelColors.textSecondary, fontSize: 13))
+        else
+          ...d.medications.map((m) {
+            final isPresent = m['isPresent'] == true;
+            final range = isPresent
+                ? 'Started: ${m['startDate'] ?? ''} • Present'
+                : 'Started: ${m['startDate'] ?? ''} • Ended: ${m['endDate'] ?? ''}';
+            return Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Text('${m['name'] ?? ''}',
-                  style: const TextStyle(
-                      color: NotelColors.textPrimary,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14)),
-            )),
-        const Text(
-            'Adding and editing medications is not available in the Flutter Lab yet.',
-            style:
-                TextStyle(color: NotelColors.textSecondary, fontSize: 11)),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${m['name'] ?? ''}',
+                            style: const TextStyle(
+                                color: NotelColors.textPrimary,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14)),
+                        Text(range,
+                            style: const TextStyle(
+                                color: NotelColors.textSecondary,
+                                fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    key: ValueKey('delete_medication_${m['id'] ?? ''}'),
+                    icon: const Icon(Icons.delete,
+                        size: 20, color: NotelColors.error),
+                    onPressed: () => _deleteMedication('${m['id'] ?? ''}'),
+                  ),
+                ],
+              ),
+            );
+          }),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FloatingActionButton.small(
+            key: const ValueKey('add_medication_button'),
+            backgroundColor: NotelColors.primary,
+            onPressed: _showAddMedicationDialog,
+            child: const Icon(Icons.add, color: Colors.white, size: 20),
+          ),
+        ),
       ]),
       const SizedBox(height: 16),
+      // Conditions (native :3202-3376): chips with remove, plus the
+      // Add Condition catalog dialog. The profile push is the JSON
+      // list of plain name strings native's ConditionRepository
+      // persists (SyncManager.kt:430 sends it as `conditions`).
       _card([
         const Text('Conditions',
             style: TextStyle(
@@ -1141,21 +1189,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
             style:
                 TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
         const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          children: d.conditions
-              .map((c) => Chip(
-                    label: Text('${c['name'] ?? ''}'),
-                    backgroundColor: NotelColors.surfaceHigh,
-                    labelStyle:
-                        const TextStyle(color: NotelColors.textPrimary),
-                  ))
-              .toList(),
+        if (d.conditions.isEmpty)
+          const Text(
+              'No conditions added yet. Tap the + button to search and add one.',
+              style:
+                  TextStyle(color: NotelColors.textSecondary, fontSize: 13))
+        else
+          Wrap(
+            spacing: 8,
+            children: d.conditions
+                .map((c) => Chip(
+                      key: ValueKey('condition_chip_${c['name'] ?? ''}'),
+                      label: Text('${c['name'] ?? ''}'),
+                      backgroundColor: NotelColors.surfaceHigh,
+                      labelStyle:
+                          const TextStyle(color: NotelColors.textPrimary),
+                      onDeleted: () =>
+                          _removeCondition('${c['name'] ?? ''}'),
+                      deleteIconColor: NotelColors.error,
+                    ))
+                .toList(),
+          ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FloatingActionButton.small(
+            key: const ValueKey('add_condition_button'),
+            backgroundColor: NotelColors.primary,
+            onPressed: _showAddConditionDialog,
+            child: const Icon(Icons.add, color: Colors.white, size: 20),
+          ),
         ),
-        const Text(
-            'Adding and removing conditions is not available in the Flutter Lab yet.',
-            style:
-                TextStyle(color: NotelColors.textSecondary, fontSize: 11)),
       ]),
       const SizedBox(height: 16),
       // Privacy & Deletion (native :3378-3456)
@@ -1441,6 +1504,422 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     // Controllers intentionally not disposed here — see nickname
     // dialog note (exit transition still builds the fields).
+  }
+
+  // ── Medications / Conditions / Auto-Fill (Round 30) ──────────────
+
+  Future<void> _saveMedications(List<Map<String, dynamic>> meds) async {
+    final raw = jsonEncode(meds);
+    setState(() => _data = _data.copyWith(medicationsRaw: raw));
+    await _pushProfile({'medications': raw});
+  }
+
+  Future<void> _deleteMedication(String id) async {
+    // Native deleteMedication (SettingsViewModel.kt:976-989): drop
+    // from the profile list and push the whole list.
+    await _saveMedications(
+        _data.medications.where((m) => '${m['id'] ?? ''}' != id).toList());
+  }
+
+  Future<void> _showAddMedicationDialog() async {
+    final nameC = TextEditingController();
+    final startC = TextEditingController();
+    final endC = TextEditingController();
+    var isPresent = true;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: NotelColors.surface,
+          title: const Text('Add Medication',
+              style: TextStyle(
+                  color: NotelColors.textPrimary,
+                  fontWeight: FontWeight.bold)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  key: const ValueKey('medication_name_field'),
+                  controller: nameC,
+                  style: const TextStyle(color: NotelColors.textPrimary),
+                  decoration:
+                      const InputDecoration(labelText: 'Medication Name'),
+                ),
+                TextField(
+                  key: const ValueKey('medication_start_field'),
+                  controller: startC,
+                  style: const TextStyle(color: NotelColors.textPrimary),
+                  decoration: const InputDecoration(
+                      labelText: 'Started Date (e.g. Jun 2026)'),
+                ),
+                Row(
+                  children: [
+                    Checkbox(
+                      value: isPresent,
+                      onChanged: (v) =>
+                          setLocal(() => isPresent = v ?? true),
+                    ),
+                    const Text('Still taking (Present)',
+                        style: TextStyle(
+                            color: NotelColors.textPrimary, fontSize: 14)),
+                  ],
+                ),
+                if (!isPresent)
+                  TextField(
+                    key: const ValueKey('medication_end_field'),
+                    controller: endC,
+                    style: const TextStyle(color: NotelColors.textPrimary),
+                    decoration: const InputDecoration(
+                        labelText: 'Ended Date (e.g. Jul 2026)'),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel',
+                  style: TextStyle(color: NotelColors.textSecondary)),
+            ),
+            TextButton(
+              key: const ValueKey('medication_add'),
+              onPressed: () async {
+                final name = nameC.text.trim();
+                if (name.isEmpty) return;
+                // Native addMedication (SettingsViewModel.kt:948-974):
+                // UUID id, endDate "Present" while still taking, dose /
+                // frequency defaults from the Medication DTO.
+                final now = DateTime.now();
+                final med = <String, dynamic>{
+                  'id': '${now.microsecondsSinceEpoch}',
+                  'name': name,
+                  'startDate': startC.text.trim(),
+                  'endDate': isPresent ? 'Present' : endC.text.trim(),
+                  'isPresent': isPresent,
+                  'dose': 'As prescribed',
+                  'frequency': 'Daily',
+                  'updatedAt': now.millisecondsSinceEpoch,
+                  'isDeleted': false,
+                };
+                await _saveMedications([..._data.medications, med]);
+                if (ctx.mounted) Navigator.of(ctx).pop();
+              },
+              child: const Text('Add',
+                  style: TextStyle(color: NotelColors.primary)),
+            ),
+          ],
+        ),
+      ),
+    );
+    // Controllers intentionally not disposed — see nickname dialog note.
+  }
+
+  List<String> get _conditionNames =>
+      _data.conditions.map((c) => '${c['name'] ?? ''}').toList();
+
+  Future<void> _saveConditions(List<String> names) async {
+    // ConditionRepository.normalizeList: trim, drop blanks, dedupe
+    // case-insensitively keeping the first spelling.
+    final out = <String>[];
+    for (final n in names) {
+      final t = n.trim();
+      if (t.isEmpty) continue;
+      if (out.any((e) => e.toLowerCase() == t.toLowerCase())) continue;
+      out.add(t);
+    }
+    final raw = jsonEncode(out);
+    setState(() => _data = _data.copyWith(conditionsRaw: raw));
+    await _pushProfile({'conditions': raw});
+  }
+
+  Future<void> _removeCondition(String name) async {
+    await _saveConditions(
+        _conditionNames.where((n) => n != name).toList());
+  }
+
+  Future<void> _showAddConditionDialog() async {
+    final searchC = TextEditingController();
+    var query = '';
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          final added = _conditionNames;
+          final filtered = query.isEmpty
+              ? kCommonConditionsCatalog
+              : kCommonConditionsCatalog
+                  .where((c) =>
+                      c.toLowerCase().contains(query.toLowerCase()))
+                  .toList();
+          return AlertDialog(
+            backgroundColor: NotelColors.surface,
+            title: const Text('Add Condition',
+                style: TextStyle(
+                    color: NotelColors.textPrimary,
+                    fontWeight: FontWeight.bold)),
+            content: SizedBox(
+              width: double.maxFinite,
+              height: 350,
+              child: Column(
+                children: [
+                  TextField(
+                    key: const ValueKey('condition_search_field'),
+                    controller: searchC,
+                    style: const TextStyle(color: NotelColors.textPrimary),
+                    decoration: const InputDecoration(
+                        labelText: 'Search Conditions'),
+                    onChanged: (v) => setLocal(() => query = v),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: filtered.length,
+                      itemBuilder: (_, i) {
+                        final name = filtered[i];
+                        final isAdded = added.contains(name);
+                        return ListTile(
+                          key: ValueKey('condition_option_$name'),
+                          title: Text(name,
+                              style: const TextStyle(
+                                  color: NotelColors.textPrimary,
+                                  fontSize: 13)),
+                          trailing: isAdded
+                              ? const Icon(Icons.check,
+                                  color: NotelColors.primary, size: 18)
+                              : null,
+                          onTap: () async {
+                            // Native toggles the condition in place and
+                            // each change syncs immediately.
+                            if (isAdded) {
+                              await _removeCondition(name);
+                            } else {
+                              await _saveConditions(
+                                  [..._conditionNames, name]);
+                            }
+                            setLocal(() {});
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                key: const ValueKey('condition_done'),
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Done',
+                    style: TextStyle(color: NotelColors.primary)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    // Controller intentionally not disposed — see nickname dialog note.
+  }
+
+  /// Native `syncHealthProfile` (SettingsViewModel.kt:665-694): read
+  /// the latest Health Connect weight/height, round to whole pounds /
+  /// inches exactly as native does, keep age/gender as they are, and
+  /// save through the same profile push as Edit Profile. When Health
+  /// Connect holds neither value, nothing is saved and the user is
+  /// told plainly.
+  Future<void> _autoFillFromHealthConnect() async {
+    final hc = widget.healthConnectService ?? HealthConnectService();
+    double? weightKg;
+    double? heightCm;
+    try {
+      weightKg = await hc.readLatestWeightKg();
+    } catch (_) {
+      weightKg = null;
+    }
+    try {
+      heightCm = await hc.readLatestHeightCm();
+    } catch (_) {
+      heightCm = null;
+    }
+    if (!mounted) return;
+    if ((weightKg == null || weightKg <= 0) &&
+        (heightCm == null || heightCm <= 0)) {
+      final code = hc.lastReadErrorCode;
+      _snack(code != null
+          ? 'Could not read Health Connect data [$code]'
+          : 'No weight or height found in Health Connect yet.');
+      return;
+    }
+    final fields = <String, dynamic>{};
+    double? newWeightKg;
+    double? newHeightCm;
+    if (weightKg != null && weightKg > 0) {
+      // Native rounds the HC value to whole pounds before saving.
+      newWeightKg = (weightKg * 2.20462).round() / 2.20462;
+      fields['weightKg'] = newWeightKg;
+    }
+    if (heightCm != null && heightCm > 0) {
+      // Native rounds the HC value to whole inches before saving.
+      newHeightCm = (heightCm / 2.54).round() * 2.54;
+      fields['heightCm'] = newHeightCm;
+    }
+    final ok = await _pushProfile(fields);
+    if (ok && mounted) {
+      setState(() => _data =
+          _data.copyWith(weightKg: newWeightKg, heightCm: newHeightCm));
+      _snack('Profile updated from Health Connect.');
+    }
+  }
+
+  // ── Physician Protocols / Knowledge Base editors (Round 30) ──────
+  //
+  // Both lists are plain profile strings joined by "\n\n" in native
+  // (SettingsViewModel.editProfessionalUpdate / deleteProfessionalUpdate
+  // :790-817, editKnowledgeItem :767-777, LogRepository
+  // .deleteKnowledgeItem), pushed through POST /api/sync/profile.
+  // The Room/Gemini ingestion pipeline (file upload, text-note
+  // extraction) stays native-only and is NOT emulated here.
+
+  String get _professionalType {
+    final ctx = _data.userContext.toLowerCase();
+    final kb = _data.knowledgeBase.toLowerCase();
+    if (ctx.contains('doctor') ||
+        ctx.contains('dr.') ||
+        kb.contains('doctor') ||
+        kb.contains('dr.')) {
+      return 'Doctor';
+    }
+    if (ctx.contains('coach') || kb.contains('coach')) return 'Coach';
+    if (ctx.contains('therapist') || kb.contains('therapist')) {
+      return 'Therapist';
+    }
+    return 'Professional';
+  }
+
+  /// Native showProfessionalCheckIn gate (SettingsViewModel.kt
+  /// :324-345) also scans log entries; the Flutter gate uses the two
+  /// profile texts, which are the parts this screen owns.
+  bool get _professionalGate {
+    const keywords = [
+      'doctor', 'dr.', 'coach', 'physician', 'therapist', 'running',
+      'marathon', 'race', 'training',
+    ];
+    final ctx = _data.userContext.toLowerCase();
+    final kb = _data.knowledgeBase.toLowerCase();
+    return keywords.any((k) => ctx.contains(k) || kb.contains(k));
+  }
+
+  Future<void> _saveProfessionalUpdates(List<String> updates) async {
+    final raw = updates.join('\n\n');
+    setState(() => _data = _data.copyWith(professionalUpdates: raw));
+    await _pushProfile({'professionalUpdates': raw});
+  }
+
+  Future<void> _saveKnowledgeBase(List<String> facts) async {
+    final raw = facts.join('\n\n');
+    setState(() => _data = _data.copyWith(knowledgeBase: raw));
+    await _pushProfile({'knowledgeBase': raw});
+  }
+
+  Future<void> _showAddUpdateDialog() async {
+    final noteC = TextEditingController();
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: NotelColors.surface,
+        title: const Text('New Clinical Protocol',
+            style: TextStyle(
+                color: NotelColors.textPrimary,
+                fontWeight: FontWeight.bold)),
+        content: TextField(
+          key: const ValueKey('protocol_note_field'),
+          controller: noteC,
+          minLines: 2,
+          maxLines: 4,
+          style: const TextStyle(color: NotelColors.textPrimary),
+          decoration: const InputDecoration(labelText: 'What did they say?'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel',
+                style: TextStyle(color: NotelColors.textSecondary)),
+          ),
+          TextButton(
+            key: const ValueKey('protocol_save'),
+            onPressed: () async {
+              final note = noteC.text.trim();
+              if (note.isEmpty) return;
+              // Native addProfessionalUpdate (:779-788): prepend
+              // "From the <Type> (<MMM dd, yyyy>): <note>".
+              const months = [
+                'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+              ];
+              final now = DateTime.now();
+              final dateStr =
+                  '${months[now.month - 1]} ${now.day.toString().padLeft(2, '0')}, ${now.year}';
+              final entry = 'From the $_professionalType ($dateStr): $note';
+              final current = _data.professionalUpdates
+                  .split('\n\n')
+                  .where((s) => s.trim().isNotEmpty)
+                  .toList();
+              await _saveProfessionalUpdates([entry, ...current]);
+              if (ctx.mounted) Navigator.of(ctx).pop();
+            },
+            child: const Text('Save Update',
+                style: TextStyle(color: NotelColors.primary)),
+          ),
+        ],
+      ),
+    );
+    // Controller intentionally not disposed — see nickname dialog note.
+  }
+
+  Future<void> _showEditJoinedEntryDialog({
+    required String title,
+    required String initial,
+    required void Function(String text) onSave,
+    required String fieldKey,
+    required String saveKey,
+  }) async {
+    final c = TextEditingController(text: initial);
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: NotelColors.surface,
+        title: Text(title,
+            style: const TextStyle(
+                color: NotelColors.textPrimary,
+                fontWeight: FontWeight.bold)),
+        content: TextField(
+          key: ValueKey(fieldKey),
+          controller: c,
+          minLines: 2,
+          maxLines: 5,
+          style: const TextStyle(color: NotelColors.textPrimary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel',
+                style: TextStyle(color: NotelColors.textSecondary)),
+          ),
+          TextButton(
+            key: ValueKey(saveKey),
+            onPressed: () async {
+              final text = c.text.trim();
+              if (text.isEmpty) return;
+              onSave(text);
+              if (ctx.mounted) Navigator.of(ctx).pop();
+            },
+            child: const Text('Save',
+                style: TextStyle(color: NotelColors.primary)),
+          ),
+        ],
+      ),
+    );
+    // Controller intentionally not disposed — see nickname dialog note.
   }
 
   // ── CUSTOMIZE (native :1215-1292) ────────────────────────────────
@@ -1838,19 +2317,73 @@ class _SettingsScreenState extends State<SettingsScreen> {
         .take(15)
         .toList();
     return [
-      if (updates.isNotEmpty) ...[
+      if (updates.isNotEmpty || _professionalGate) ...[
         _sectionLabel('PHYSICIAN PROTOCOLS'),
         _card([
-          ...updates.map((u) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Text(u,
-                    style: const TextStyle(
-                        color: NotelColors.textPrimary, fontSize: 13)),
-              )),
-          const Text(
-              'Adding and editing protocol updates is not available in the Flutter Lab yet.',
-              style:
-                  TextStyle(color: NotelColors.textSecondary, fontSize: 11)),
+          const Text('New Physician Protocol',
+              style: TextStyle(
+                  color: NotelColors.textPrimary,
+                  fontWeight: FontWeight.w500)),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              key: const ValueKey('add_protocol_button'),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: NotelColors.primary,
+                  foregroundColor: Colors.white),
+              onPressed: _showAddUpdateDialog,
+              child: Text('Add $_professionalType Update',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
+          if (updates.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text('Past $_professionalType Updates',
+                style: const TextStyle(
+                    color: NotelColors.primary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold)),
+            ...updates.asMap().entries.map((e) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(e.value,
+                            style: const TextStyle(
+                                color: NotelColors.textPrimary,
+                                fontSize: 13)),
+                      ),
+                      IconButton(
+                        key: ValueKey('edit_protocol_${e.key}'),
+                        icon: const Icon(Icons.edit,
+                            size: 18, color: NotelColors.textSecondary),
+                        onPressed: () => _showEditJoinedEntryDialog(
+                          title: 'Edit $_professionalType Update',
+                          initial: e.value,
+                          fieldKey: 'protocol_edit_field',
+                          saveKey: 'protocol_edit_save',
+                          onSave: (text) {
+                            final list = [...updates];
+                            list[e.key] = text;
+                            _saveProfessionalUpdates(list);
+                          },
+                        ),
+                      ),
+                      IconButton(
+                        key: ValueKey('delete_protocol_${e.key}'),
+                        icon: const Icon(Icons.delete,
+                            size: 18, color: NotelColors.error),
+                        onPressed: () {
+                          final list = [...updates]..removeAt(e.key);
+                          _saveProfessionalUpdates(list);
+                        },
+                      ),
+                    ],
+                  ),
+                )),
+          ],
         ]),
         const SizedBox(height: 24),
       ],
@@ -1865,11 +2398,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
               style:
                   TextStyle(color: NotelColors.textSecondary, fontSize: 12))
         else
-          ...facts.map((f) => Padding(
+          ...facts.asMap().entries.map((e) => Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Text(f,
-                    style: const TextStyle(
-                        color: NotelColors.textPrimary, fontSize: 13)),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(e.value,
+                          style: const TextStyle(
+                              color: NotelColors.textPrimary, fontSize: 13)),
+                    ),
+                    IconButton(
+                      key: ValueKey('edit_fact_${e.key}'),
+                      icon: const Icon(Icons.edit,
+                          size: 18, color: NotelColors.textSecondary),
+                      onPressed: () => _showEditJoinedEntryDialog(
+                        title: 'Edit Fact',
+                        initial: e.value,
+                        fieldKey: 'fact_edit_field',
+                        saveKey: 'fact_edit_save',
+                        onSave: (text) {
+                          final list = [...facts];
+                          list[e.key] = text;
+                          _saveKnowledgeBase(list);
+                        },
+                      ),
+                    ),
+                    IconButton(
+                      key: ValueKey('delete_fact_${e.key}'),
+                      icon: const Icon(Icons.delete,
+                          size: 18, color: NotelColors.error),
+                      onPressed: () {
+                        final list = [...facts]..removeAt(e.key);
+                        _saveKnowledgeBase(list);
+                      },
+                    ),
+                  ],
+                ),
               )),
         const SizedBox(height: 8),
         const Text(

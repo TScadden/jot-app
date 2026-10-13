@@ -162,6 +162,10 @@ class MainActivity : FlutterFragmentActivity() {
                     "readCaloriesHistory" -> readCaloriesHistory(call.argument<Int>("days"), result)
                     "readBloodPressure" -> readBloodPressure(call.argument<Int>("days"), result)
                     "readSteps" -> readSteps(call.argument<String>("dateStr"), result)
+                    // Round 30: profile Auto-Fill reads (native
+                    // HealthConnectManager.readLatestWeight/readLatestHeight).
+                    "readLatestWeightKg" -> readLatestWeightKg(result)
+                    "readLatestHeightCm" -> readLatestHeightCm(result)
                     else -> result.notImplemented()
                 }
             }
@@ -744,6 +748,68 @@ class MainActivity : FlutterFragmentActivity() {
                 )
             } catch (_: Exception) {
                 result.error("BP_READ_FAILED", "Could not read blood pressure records.", null)
+            }
+        }
+    }
+
+    /// Native `selectBestRecord` (HealthConnectManager.kt:88-97):
+    /// mock records dropped, highest package-priority tier wins,
+    /// latest by time inside the tier. Null when nothing qualifies.
+    private fun <T : Record> bestRecord(records: List<T>, time: (T) -> Instant): T? {
+        val candidates = nonMock(records)
+        if (candidates.isEmpty()) return null
+        val maxPriority = candidates.maxOf { packagePriority(it.metadata.dataOrigin.packageName) }
+        return candidates
+            .filter { packagePriority(it.metadata.dataOrigin.packageName) == maxPriority }
+            .maxByOrNull(time)
+    }
+
+    /// Round 30 — latest weight, native `readLatestWeight`
+    /// (HealthConnectManager.kt:796-810): WeightRecords in
+    /// [today − 90 days, end of today], best record wins. Returns
+    /// kilograms (native returns pounds for its imperial DataStore;
+    /// the Flutter profile is metric end-to-end). Null when none.
+    private fun readLatestWeightKg(result: MethodChannel.Result) {
+        val client = hcClientOrError(result) ?: return
+        lifecycleScope.launch {
+            try {
+                val (startOfDay, endOfDay) = dayRange("today")
+                val response = client.readRecords(
+                    ReadRecordsRequest(
+                        recordType = WeightRecord::class,
+                        timeRangeFilter = TimeRangeFilter.between(
+                            startOfDay.minus(90, ChronoUnit.DAYS), endOfDay
+                        )
+                    )
+                )
+                val best = bestRecord(response.records) { it.time }
+                result.success(best?.weight?.inKilograms)
+            } catch (_: Exception) {
+                result.error("WEIGHT_READ_FAILED", "Could not read weight records.", null)
+            }
+        }
+    }
+
+    /// Round 30 — latest height, native `readLatestHeight`
+    /// (HealthConnectManager.kt:812-824): HeightRecords in the last
+    /// 365 days, best record wins. Returns centimetres. Null when none.
+    private fun readLatestHeightCm(result: MethodChannel.Result) {
+        val client = hcClientOrError(result) ?: return
+        lifecycleScope.launch {
+            try {
+                val end = Instant.now()
+                val response = client.readRecords(
+                    ReadRecordsRequest(
+                        recordType = HeightRecord::class,
+                        timeRangeFilter = TimeRangeFilter.between(
+                            end.minus(365, ChronoUnit.DAYS), end
+                        )
+                    )
+                )
+                val best = bestRecord(response.records) { it.time }
+                result.success(best?.height?.inMeters?.times(100.0))
+            } catch (_: Exception) {
+                result.error("HEIGHT_READ_FAILED", "Could not read height records.", null)
             }
         }
     }

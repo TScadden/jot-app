@@ -338,6 +338,41 @@ class HealthConnectService {
     }
   }
 
+  /// Round 30 — latest Health Connect weight in kilograms, for the
+  /// User Profile Auto-Fill. Port of native
+  /// `HealthConnectManager.readLatestWeight` (records from the last
+  /// ~90 days, best record by package priority then recency, mock
+  /// records dropped). Native's bridge returns pounds because its
+  /// DataStore is imperial; the Flutter profile is metric end-to-end,
+  /// so this bridge returns kilograms. Null when no record exists —
+  /// Auto-Fill never invents a value.
+  Future<double?> readLatestWeightKg() async {
+    try {
+      return await _channel.invokeMethod<double>('readLatestWeightKg');
+    } on PlatformException catch (e) {
+      lastReadErrorCode = e.code;
+      return null;
+    } on MissingPluginException {
+      lastReadErrorCode = 'NO_CHANNEL';
+      return null;
+    }
+  }
+
+  /// Round 30 — latest Health Connect height in centimetres. Port of
+  /// native `HealthConnectManager.readLatestHeight` (records from the
+  /// last 365 days, same best-record rule). Null when no record.
+  Future<double?> readLatestHeightCm() async {
+    try {
+      return await _channel.invokeMethod<double>('readLatestHeightCm');
+    } on PlatformException catch (e) {
+      lastReadErrorCode = e.code;
+      return null;
+    } on MissingPluginException {
+      lastReadErrorCode = 'NO_CHANNEL';
+      return null;
+    }
+  }
+
   Future<void> _persist(Set<String> granted) async {
     await _store.write(_kGrantedKey, granted.join(','));
     await _store.write(
