@@ -420,7 +420,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
   }) {
     final run = _pushChain.then((_) => _pushStateNow(
         selectedId: selectedId, subView: subView, spliceTests: spliceTests));
-    _pushChain = run.then<void>((_) {}, onError: (Object _, StackTrace __) {});
+    _pushChain = run.then<void>((_) {}, onError: (Object _, StackTrace _) {});
     return run;
   }
 
