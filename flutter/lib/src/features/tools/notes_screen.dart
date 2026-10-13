@@ -472,64 +472,18 @@ class _NotesScreenState extends State<NotesScreen> {
   }
 
   Future<void> _showEditDialog(NoteEntry note) async {
-    final titleController = TextEditingController(
-        // Native pre-fills a blank title for legacy notes whose
-        // stored title is the placeholder.
-        text: note.title == 'New Note' && note.rawText.split(noteFieldSeparator).length < 3
-            ? ''
-            : note.title);
-    final bodyController = TextEditingController(text: note.text);
     final result = await showDialog<(String, String)>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: NotelColors.surface,
-        title: const Text('Edit Note',
-            style: TextStyle(
-                color: NotelColors.textPrimary,
-                fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: titleController,
-              textCapitalization: TextCapitalization.words,
-              style: const TextStyle(color: NotelColors.textPrimary),
-              decoration: const InputDecoration(
-                hintText: 'Title (optional)...',
-                hintStyle: TextStyle(color: NotelColors.textSecondary),
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: bodyController,
-              textCapitalization: TextCapitalization.sentences,
-              maxLines: 6,
-              style: const TextStyle(color: NotelColors.textPrimary),
-              decoration: const InputDecoration(
-                hintText: 'Note content...',
-                hintStyle: TextStyle(color: NotelColors.textSecondary),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel',
-                style: TextStyle(color: NotelColors.textSecondary)),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext)
-                .pop((titleController.text, bodyController.text)),
-            style: FilledButton.styleFrom(
-                backgroundColor: NotelColors.primary),
-            child: const Text('Save'),
-          ),
-        ],
+      builder: (_) => _EditNoteDialog(
+        // Native pre-fills a blank title for legacy notes whose
+        // stored title is the placeholder.
+        initialTitle: note.title == 'New Note' &&
+                note.rawText.split(noteFieldSeparator).length < 3
+            ? ''
+            : note.title,
+        initialBody: note.text,
       ),
     );
-    titleController.dispose();
-    bodyController.dispose();
     if (result == null || !mounted) return;
     await _mutate((fresh) => notesWithEditedNote(fresh, note, result.$1,
         result.$2, DateTime.now().millisecondsSinceEpoch));
@@ -798,6 +752,89 @@ class _NotesScreenState extends State<NotesScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Native "Edit Note" dialog: title + body fields, Save/Cancel.
+class _EditNoteDialog extends StatefulWidget {
+  final String initialTitle;
+  final String initialBody;
+
+  const _EditNoteDialog({
+    required this.initialTitle,
+    required this.initialBody,
+  });
+
+  @override
+  State<_EditNoteDialog> createState() => _EditNoteDialogState();
+}
+
+class _EditNoteDialogState extends State<_EditNoteDialog> {
+  late final TextEditingController _titleController;
+  late final TextEditingController _bodyController;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController(text: widget.initialTitle);
+    _bodyController = TextEditingController(text: widget.initialBody);
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _bodyController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: NotelColors.surface,
+      title: const Text('Edit Note',
+          style: TextStyle(
+              color: NotelColors.textPrimary,
+              fontWeight: FontWeight.bold)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _titleController,
+            textCapitalization: TextCapitalization.words,
+            style: const TextStyle(color: NotelColors.textPrimary),
+            decoration: const InputDecoration(
+              hintText: 'Title (optional)...',
+              hintStyle: TextStyle(color: NotelColors.textSecondary),
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _bodyController,
+            textCapitalization: TextCapitalization.sentences,
+            maxLines: 6,
+            style: const TextStyle(color: NotelColors.textPrimary),
+            decoration: const InputDecoration(
+              hintText: 'Note content...',
+              hintStyle: TextStyle(color: NotelColors.textSecondary),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel',
+              style: TextStyle(color: NotelColors.textSecondary)),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context)
+              .pop((_titleController.text, _bodyController.text)),
+          style: FilledButton.styleFrom(
+              backgroundColor: NotelColors.primary),
+          child: const Text('Save'),
+        ),
+      ],
     );
   }
 }

@@ -391,54 +391,10 @@ class _ListsScreenState extends State<ListsScreen> {
   }
 
   Future<void> _showNewListDialog() async {
-    final controller = TextEditingController();
     final name = await showDialog<String>(
       context: context,
-      builder: (dialogContext) {
-        var text = '';
-        return StatefulBuilder(
-          builder: (context, setDialogState) => AlertDialog(
-            backgroundColor: NotelColors.surface,
-            title: const Text('New List',
-                style: TextStyle(
-                    color: NotelColors.textPrimary,
-                    fontWeight: FontWeight.bold)),
-            content: TextField(
-              controller: controller,
-              autofocus: true,
-              textCapitalization: TextCapitalization.words,
-              style: const TextStyle(color: NotelColors.textPrimary),
-              decoration: const InputDecoration(
-                hintText: 'e.g. Foods good for MCAS',
-                hintStyle: TextStyle(color: NotelColors.textSecondary),
-              ),
-              onChanged: (v) => setDialogState(() => text = v),
-              onSubmitted: (v) {
-                if (v.trim().isNotEmpty) {
-                  Navigator.of(dialogContext).pop(v);
-                }
-              },
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text('Cancel',
-                    style: TextStyle(color: NotelColors.textSecondary)),
-              ),
-              FilledButton(
-                onPressed: text.trim().isEmpty
-                    ? null
-                    : () => Navigator.of(dialogContext).pop(text),
-                style: FilledButton.styleFrom(
-                    backgroundColor: NotelColors.primary),
-                child: const Text('Create'),
-              ),
-            ],
-          ),
-        );
-      },
+      builder: (_) => const _NewListDialog(),
     );
-    controller.dispose();
     if (name == null || !mounted) return;
     final newVisibleIndex = _lists.length;
     await _mutate(
@@ -813,6 +769,66 @@ class _ListsScreenState extends State<ListsScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Native "New List" dialog: name field + Create (disabled while
+/// the name is blank, exactly like native).
+class _NewListDialog extends StatefulWidget {
+  const _NewListDialog();
+
+  @override
+  State<_NewListDialog> createState() => _NewListDialogState();
+}
+
+class _NewListDialogState extends State<_NewListDialog> {
+  final TextEditingController _controller = TextEditingController();
+  String _text = '';
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: NotelColors.surface,
+      title: const Text('New List',
+          style: TextStyle(
+              color: NotelColors.textPrimary,
+              fontWeight: FontWeight.bold)),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        textCapitalization: TextCapitalization.words,
+        style: const TextStyle(color: NotelColors.textPrimary),
+        decoration: const InputDecoration(
+          hintText: 'e.g. Foods good for MCAS',
+          hintStyle: TextStyle(color: NotelColors.textSecondary),
+        ),
+        onChanged: (v) => setState(() => _text = v),
+        onSubmitted: (v) {
+          if (v.trim().isNotEmpty) Navigator.of(context).pop(v);
+        },
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel',
+              style: TextStyle(color: NotelColors.textSecondary)),
+        ),
+        FilledButton(
+          onPressed: _text.trim().isEmpty
+              ? null
+              : () => Navigator.of(context).pop(_text),
+          style: FilledButton.styleFrom(
+              backgroundColor: NotelColors.primary),
+          child: const Text('Create'),
+        ),
+      ],
     );
   }
 }
