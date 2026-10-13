@@ -370,7 +370,7 @@ void main() {
       expect(find.text('Spike Review'), findsOneWidget);
       // Review algorithm on the same series: also 2 events.
       expect(find.text('2 Significant Spikes Detected'), findsOneWidget);
-      expect(find.text('Showing heart rate spikes ≥100 BPM for today'),
+      expect(find.text('Showing heart rate spikes ≥100 bpm for today'),
           findsOneWidget);
       expect(find.text('#1'), findsOneWidget);
       expect(find.text('130 bpm'), findsOneWidget);
@@ -388,7 +388,7 @@ void main() {
       ));
       await tester.pumpAndSettle();
       expect(find.text('0 Significant Spikes Detected'), findsOneWidget);
-      expect(find.text('No spikes ≥100 BPM recorded for this time range'),
+      expect(find.text('No spikes ≥100 bpm recorded for this time range'),
           findsOneWidget);
       expect(find.text('Normal Physiological Load'), findsOneWidget);
       expect(

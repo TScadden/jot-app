@@ -353,7 +353,7 @@ class _HeartScreenState extends State<HeartScreen> {
             IconButton(
               onPressed: _loading ? null : () => unawaited(_load()),
               icon: const Icon(Icons.refresh,
-                  color: NotelColors.textSecondary),
+                  size: 24, color: NotelColors.textSecondary),
               tooltip: 'Refresh',
             ),
           ],
@@ -863,7 +863,7 @@ class _HeartScreenState extends State<HeartScreen> {
                   ),
                 ),
                 Icon(Icons.arrow_forward,
-                    size: 16, color: NotelColors.textSecondary),
+                    size: 18, color: NotelColors.textSecondary),
               ],
             ),
           ),
