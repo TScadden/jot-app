@@ -347,9 +347,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// Push profile fields; on failure show the honest error and reload
   /// so the UI never claims a value the server did not take.
+  ///
+  /// Vera R39 fix pass, Finding 3: this is the single choke point
+  /// for ALL Settings profile pushes, and a successful push makes
+  /// the cached sync pull stale by definition — invalidate it on
+  /// success (the Tools Medications tab already does), so the next
+  /// read re-fetches instead of serving pre-push state.
   Future<bool> _pushProfile(Map<String, dynamic> fields) async {
     final ok = await _backend.postSyncProfile(fields);
-    if (!ok) {
+    if (ok) {
+      _backend.invalidateSyncPull();
+    } else {
       _snack('Could not save. Check your connection and try again.');
       await _reloadFromServer();
     }
@@ -1149,7 +1157,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               style:
                   TextStyle(color: NotelColors.textSecondary, fontSize: 13))
         else
-          ...d.medications.map((m) {
+          ...d.medications.indexed.map((indexedRow) {
+            final rawIndex = indexedRow.$1;
+            final m = indexedRow.$2;
             // Round 39 — classification and the range line go
             // through the shared MedicationEntry model (the ONE
             // synced source of truth shared with the Tools
@@ -1164,11 +1174,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 : entry.isArchived
                     ? 'Started: ${entry.startDate} • Ended: ${entry.endDate}'
                     : 'Started: ${entry.startDate} • Present';
-            // The op key the shared archive ops match on: the
-            // row's id when it has one, else its name.
-            final opKey = entry == null
-                ? '${m['id'] ?? ''}'
-                : (entry.id.isNotEmpty ? entry.id : entry.name);
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
@@ -1189,21 +1194,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ],
                     ),
                   ),
+                  // Vera R39 Finding 1: archive buttons key on the
+                  // row's index in the full list and the handlers
+                  // target that exact row — unique per rendered
+                  // row even for id-less duplicate names.
                   if (entry != null && !entry.isArchived)
                     IconButton(
-                      key: ValueKey('archive_medication_${m['id'] ?? ''}'),
+                      key: ValueKey('archive_medication_at_$rawIndex'),
                       icon: const Icon(Icons.archive,
                           size: 20, color: NotelColors.textSecondary),
                       tooltip: 'Archive',
-                      onPressed: () => _archiveMedication(opKey),
+                      onPressed: () => _archiveMedication(rawIndex),
                     ),
                   if (entry != null && entry.isArchived)
                     IconButton(
-                      key: ValueKey('unarchive_medication_${m['id'] ?? ''}'),
+                      key: ValueKey('unarchive_medication_at_$rawIndex'),
                       icon: const Icon(Icons.unarchive,
                           size: 20, color: NotelColors.textSecondary),
                       tooltip: 'Restore',
-                      onPressed: () => _unarchiveMedication(opKey),
+                      onPressed: () => _unarchiveMedication(rawIndex),
                     ),
                   IconButton(
                     key: ValueKey('delete_medication_${m['id'] ?? ''}'),
@@ -1572,26 +1581,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// Round 39 — archive via the shared model (the same op the
   /// Tools Medications tab runs): archiving stamps the end date
-  /// with today and flips `isPresent` off, native semantics. The
-  /// full list is re-encoded and saved through the existing
+  /// with today and flips `isPresent` off, native semantics.
+  ///
+  /// Vera R39 fix pass: [rawIndex] is the row's index in the full
+  /// medications list — the op targets that exact row by position
+  /// (Finding 1: no name/id first-match, so id-less duplicates
+  /// can never stamp the wrong row), and the document is built
+  /// from the raw maps `_data.medications` already holds, so the
+  /// splice-back encode retains unparseable rows verbatim and
+  /// extra non-DTO keys (Finding 2). Saved through the existing
   /// [_saveMedications], so push/failure behavior is unchanged.
-  /// [id] is the op key: the row's id, or its name when the row
-  /// has no id (the shared ops match the same way).
-  Future<void> _archiveMedication(String id) async {
-    final entries = parseMedicationBlob(_data.medications);
-    final updated = archiveMedicationInList(entries, id, now: DateTime.now());
-    await _saveMedications(encodeMedicationBlob(updated));
+  Future<void> _archiveMedication(int rawIndex) async {
+    final doc = MedicationDocument.fromRawRows(_data.medications);
+    final updated = doc.archiveAt(rawIndex, now: DateTime.now());
+    await _saveMedications(updated.encode());
   }
 
   /// Round 39 — unarchive via the shared model: restores
   /// `isPresent` and clears the end date back to the `"Present"`
-  /// sentinel, native semantics. Saved through [_saveMedications]
-  /// like archive, so push/failure behavior is unchanged.
-  Future<void> _unarchiveMedication(String id) async {
-    final entries = parseMedicationBlob(_data.medications);
-    final updated =
-        unarchiveMedicationInList(entries, id, now: DateTime.now());
-    await _saveMedications(encodeMedicationBlob(updated));
+  /// sentinel, native semantics. Same identity/retention rules
+  /// as [_archiveMedication]; saved through [_saveMedications].
+  Future<void> _unarchiveMedication(int rawIndex) async {
+    final doc = MedicationDocument.fromRawRows(_data.medications);
+    final updated = doc.unarchiveAt(rawIndex, now: DateTime.now());
+    await _saveMedications(updated.encode());
   }
 
   Future<void> _showAddMedicationDialog() async {

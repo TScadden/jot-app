@@ -52,10 +52,12 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
   late final TabsBackend _backend;
   bool _loading = true;
 
-  /// The FULL parsed blob — including deleted tombstones, which
-  /// the display filters hide but an archive write must round-trip
-  /// (dropping a row on save would delete it server-side).
-  List<MedicationEntry> _meds = const [];
+  /// The FULL blob as a [MedicationDocument] — raw rows retained
+  /// (including unparseable rows and deleted tombstones, which the
+  /// display indices hide) so an archive write round-trips every
+  /// row: dropping or stripping a row on save would delete or
+  /// corrupt it server-side (Vera R39 Findings 1–2).
+  MedicationDocument _doc = MedicationDocument.empty;
   bool _showArchived = true;
 
   @override
@@ -70,44 +72,39 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
       final profile = await _backend.fetchProfile();
       final decoded =
           TabsBackend.decodeProfileList(profile?['medications']);
-      final meds = parseMedicationBlob(decoded);
+      final doc = MedicationDocument.fromRawRows(decoded);
       if (!mounted) return;
       setState(() {
-        _meds = meds;
+        _doc = doc;
         _loading = false;
       });
     } catch (_) {
       if (!mounted) return;
       // Honest empty on any failure — nothing is invented.
       setState(() {
-        _meds = const [];
+        _doc = MedicationDocument.empty;
         _loading = false;
       });
     }
   }
 
-  /// The key archive/unarchive ops match on: the entry's id when
-  /// it has one, else its name (blob rows can lack ids — the
-  /// shared ops apply the same rule, see `data/medications.dart`).
-  String _opKey(MedicationEntry med) =>
-      med.id.isNotEmpty ? med.id : med.name;
-
   /// Archive/unarchive for real (Round 39): apply the shared op
-  /// to the full list, update the UI immediately, then push the
-  /// whole re-encoded blob through `POST /api/sync/profile`. On
-  /// success the cached pull is invalidated; on failure a SnackBar
-  /// says the change could not be saved and the screen reloads
-  /// from the server — the UI never claims an unsaved state
-  /// (Settings' `_pushProfile` honesty pattern).
+  /// to the document — targeting the exact entry instance this
+  /// screen rendered, by identity (Vera Finding 1) — update the
+  /// UI immediately, then push the whole splice-back-encoded blob
+  /// through `POST /api/sync/profile`. On success the cached pull
+  /// is invalidated; on failure a SnackBar says the change could
+  /// not be saved and the screen reloads from the server — the UI
+  /// never claims an unsaved state (Settings' `_pushProfile`
+  /// honesty pattern).
   Future<void> _setArchived(MedicationEntry med, bool archive) async {
-    final key = _opKey(med);
     final now = DateTime.now();
     final updated = archive
-        ? archiveMedicationInList(_meds, key, now: now)
-        : unarchiveMedicationInList(_meds, key, now: now);
-    setState(() => _meds = updated);
+        ? _doc.archiveEntry(med, now: now)
+        : _doc.unarchiveEntry(med, now: now);
+    setState(() => _doc = updated);
     final ok = await _backend.postSyncProfile(
-        {'medications': jsonEncode(encodeMedicationBlob(updated))});
+        {'medications': jsonEncode(updated.encode())});
     if (ok) {
       _backend.invalidateSyncPull();
       return;
@@ -122,8 +119,8 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final active = activeMedicationEntries(_meds);
-    final archived = archivedMedicationEntries(_meds);
+    final active = _doc.activeIndices;
+    final archived = _doc.archivedIndices;
 
     return Scaffold(
       backgroundColor: NotelColors.background,
@@ -188,13 +185,15 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                 if (active.isEmpty)
                   _emptyState()
                 else
-                  ...active.map((m) => _medicationCard(m, false)),
+                  ...active.map(
+                      (i) => _medicationCard(i, _doc.entryAt(i)!, false)),
                 if (archived.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   _archivedHeader(archived.length),
                   if (_showArchived) ...[
                     const SizedBox(height: 12),
-                    ...archived.map((m) => _medicationCard(m, true)),
+                    ...archived.map(
+                        (i) => _medicationCard(i, _doc.entryAt(i)!, true)),
                   ],
                 ],
               ],
@@ -347,7 +346,11 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
     );
   }
 
-  Widget _medicationCard(MedicationEntry med, bool isArchived) {
+  /// [rawIndex] is the row's index in the FULL blob (the
+  /// document's raw order) — button keys carry it so every
+  /// rendered row's buttons are unique, even for id-less
+  /// duplicate names (Vera R39 Finding 1).
+  Widget _medicationCard(int rawIndex, MedicationEntry med, bool isArchived) {
     final valid = isDoseValid(med);
     final accent =
         isArchived ? NotelColors.textSecondary : NotelColors.primary;
@@ -483,7 +486,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                 ),
               ),
               IconButton(
-                key: ValueKey('archive_med_${_opKey(med)}'),
+                key: ValueKey('archive_med_at_$rawIndex'),
                 icon: const Icon(Icons.archive,
                     size: 20, color: NotelColors.textSecondary),
                 tooltip: 'Archive',
@@ -492,7 +495,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
             ],
             if (isArchived)
               IconButton(
-                key: ValueKey('unarchive_med_${_opKey(med)}'),
+                key: ValueKey('unarchive_med_at_$rawIndex'),
                 icon: const Icon(Icons.unarchive,
                     size: 20, color: NotelColors.textSecondary),
                 tooltip: 'Restore',
