@@ -538,14 +538,28 @@ class _HeartScreenState extends State<HeartScreen> {
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  Text(
-                    data.awakeAvg != null
-                        ? '${data.awakeAvg} bpm'
-                        : '-- bpm',
-                    style: const TextStyle(
-                      color: NotelColors.textPrimary,
-                      fontSize: 40,
-                      fontWeight: FontWeight.w900,
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: data.awakeAvg != null
+                              ? '${data.awakeAvg}'
+                              : '--',
+                          style: const TextStyle(
+                            color: NotelColors.textPrimary,
+                            fontSize: 40,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const TextSpan(
+                          text: ' bpm',
+                          style: TextStyle(
+                            color: NotelColors.textSecondary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
