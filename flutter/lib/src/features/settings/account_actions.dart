@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:tabs_lab/src/data/heart_data_cache.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
@@ -8,7 +6,6 @@ import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/today_plan_store.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
-import 'package:tabs_lab/src/data/widget_sync.dart';
 
 /// Round 29 — logout / delete-account flows, mirroring native
 /// `SettingsViewModel.logout` (SettingsViewModel.kt:1148-1240) and
@@ -68,16 +65,13 @@ class AccountActions {
     try {
       await TodayPlanStore.instance.clear();
     } catch (_) {}
-    // Round 50 — the home-screen widget is an account-bound surface
-    // too: logout / account delete must drop it to its signed-out
-    // face in the same sequence, so no previous-account numbers
-    // stay visible on the launcher. Deliberately UNAWAITED: the
-    // widget is a silent side-channel and its platform bridge must
-    // never wedge the wipe (a stuck channel call would otherwise
-    // hang logout itself — the LESSONS stuck-request failure mode).
-    // WidgetSync.clear() is started here, in sequence, and swallows
-    // its own failures.
-    unawaited(WidgetSync.clear());
+    // Round 52 — single widget-clear funnel: the HomeDataCache
+    // clear at the top of this sequence IS the widget clear (it
+    // fire-and-forgets WidgetSync.clear() — unawaited inside the
+    // cache, so the widget bridge can never wedge the wipe, the
+    // R50 stuck-channel concern). The Round 50 duplicate explicit
+    // WidgetSync.clear() here was removed so logout / account
+    // delete requests exactly ONE widget update end-to-end.
   }
 
   /// Test hook: clears the real cache singletons.

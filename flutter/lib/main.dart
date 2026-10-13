@@ -43,6 +43,17 @@ void main() async {
   // Round 19c — same warm for Quick Log: cold starts seed last-known
   // categories / recents / count / membership instead of skeletons.
   await QuickLogCache.instance.warmFromDisk(currentEmail: sessionEmail);
+  // Round 52 — re-publish the widget on EVERY app start, once,
+  // unawaited: a signed-in snapshot when a session exists and the
+  // warmed cache holds one, the signed-out payload otherwise. This
+  // closes the after-update orphan gap (a new build's first launch
+  // re-binds a placed widget to current state) and the welcome-route
+  // gap (a cold start that never mounts Home still refreshes the
+  // widget). Fire-and-forget; WidgetSync never throws.
+  unawaited(WidgetSync.republishAppStart(
+    hasSession: sessionEmail != null,
+    snapshot: HomeDataCache.instance.snapshot,
+  ));
   runApp(const TabsLabApp());
 }
 
@@ -326,12 +337,11 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
     // clear is independently best-effort, like the two above.
     unawaited(TodaySummaryCache.instance.clear());
     unawaited(TodayPlanStore.instance.clear());
-    // Round 50 — session expiry clears the caches above, so the
-    // home-screen widget is cleared in the same path: it falls to
-    // its signed-out face and never keeps the expired account's
-    // numbers. (HomeDataCache.clear() also clears it; this explicit
-    // call keeps the expiry sequence self-contained.)
-    unawaited(WidgetSync.clear());
+    // Round 52 — single widget-clear funnel: HomeDataCache.clear()
+    // above IS the widget clear (it fire-and-forgets
+    // WidgetSync.clear()); the Round 50 duplicate explicit call
+    // here was removed so session expiry requests exactly ONE
+    // widget update end-to-end.
     if (!mounted) return;
     _onLogout();
   }

@@ -314,6 +314,12 @@ class HomeDataCache {
         try {
           await _delete(storageKey);
         } catch (_) {}
+        // Round 52 — this mismatch path bypasses clear() (it resets
+        // memory inline), so it must clear the widget explicitly:
+        // otherwise a dropped previous-account blob leaves that
+        // account's numbers sitting in the widget store until Home
+        // next mounts. Fire-and-forget; WidgetSync never throws.
+        unawaited(WidgetSync.clear());
         return;
       }
     }

@@ -319,8 +319,10 @@ void main() {
       expect(bridge.updateAttempts, 2);
     });
 
-    test('a save failing mid-sequence skips the remaining saves '
-        'AND the update request (partial payload, no refresh)',
+    test('a save failing mid-sequence previously skipped the '
+        'remaining saves AND the update request — FLIPPED by the '
+        'Round 52 fix (per-save isolation + update-in-finally): '
+        'remaining saves still land and the update IS requested',
         () async {
       bridge.failOnSaveKey = WidgetSync.keyStreak;
       await expectLater(
@@ -333,15 +335,19 @@ void main() {
         ),
         completes,
       );
+      // Every save is attempted; only the failing key is missing.
       expect(bridge.saveAttempts, const [
         WidgetSync.keySignedIn,
         WidgetSync.keyHeartRate,
         WidgetSync.keyStreak,
+        WidgetSync.keyLogs,
+        WidgetSync.keySleep,
       ]);
-      expect(bridge.saved.containsKey(WidgetSync.keyLogs), isFalse);
-      expect(bridge.saved.containsKey(WidgetSync.keySleep), isFalse);
-      // The widget is never told to redraw with the partial payload.
-      expect(bridge.updateAttempts, 0);
+      expect(bridge.saved.containsKey(WidgetSync.keyStreak), isFalse);
+      expect(bridge.saved[WidgetSync.keyLogs], '1');
+      expect(bridge.saved.containsKey(WidgetSync.keySleep), isTrue);
+      // The partial payload is never left un-refreshed.
+      expect(bridge.updateAttempts, 1);
     });
   });
 

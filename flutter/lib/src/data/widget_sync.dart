@@ -63,20 +63,70 @@ class WidgetSync {
     _updateOverride = null;
   }
 
-  static Future<void> _save(String key, Object? value) {
-    final override = _saveOverride;
-    if (override != null) return override(key, value);
-    if (value is bool) return HomeWidget.saveWidgetData<bool>(key, value);
-    return HomeWidget.saveWidgetData<String>(key, value as String?);
+  // Round 52 — per-save isolation: each save swallows its own
+  // failure (and logs it in debug builds) so one bad save can
+  // neither abort the remaining saves nor skip the widget update
+  // in [pushSnapshot]/[clear] — a partial payload must never be
+  // left sitting un-refreshed in the widget store.
+  //
+  // The bridge's `bool?` results are NOT discarded: `false` means
+  // the platform side refused the write/update and is treated as a
+  // failure (debug-logged; the channel stays silent to the user).
+  // A null result is the plugin's "no answer" and is not a failure.
+  static Future<void> _save(String key, Object? value) async {
+    try {
+      final override = _saveOverride;
+      if (override != null) {
+        await override(key, value);
+        return;
+      }
+      final bool? ok;
+      if (value is bool) {
+        ok = await HomeWidget.saveWidgetData<bool>(key, value);
+      } else {
+        ok = await HomeWidget.saveWidgetData<String>(key, value as String?);
+      }
+      if (ok == false) {
+        debugPrint('WidgetSync: saveWidgetData($key) returned false');
+      }
+    } catch (e) {
+      debugPrint('WidgetSync: saveWidgetData($key) failed: $e');
+    }
   }
 
-  static Future<void> _requestUpdate() {
-    final override = _updateOverride;
-    if (override != null) return override();
-    return HomeWidget.updateWidget(
-      name: providerName,
-      qualifiedAndroidName: qualifiedProviderName,
-    );
+  static Future<void> _requestUpdate() async {
+    try {
+      final override = _updateOverride;
+      if (override != null) {
+        await override();
+        return;
+      }
+      final ok = await HomeWidget.updateWidget(
+        name: providerName,
+        qualifiedAndroidName: qualifiedProviderName,
+      );
+      if (ok == false) {
+        debugPrint('WidgetSync: updateWidget returned false');
+      }
+    } catch (e) {
+      debugPrint('WidgetSync: updateWidget failed: $e');
+    }
+  }
+
+  /// Saves every key of [payload], then requests exactly one widget
+  /// update. The update is requested from a `finally` block: even
+  /// if an individual save misbehaves beyond its own isolation, a
+  /// partially-written payload is always refreshed.
+  static Future<void> _pushPayload(WidgetPayload payload) async {
+    try {
+      await _save(keySignedIn, payload.signedIn);
+      await _save(keyHeartRate, payload.heartRate);
+      await _save(keyStreak, payload.streak);
+      await _save(keyLogs, payload.logs);
+      await _save(keySleep, payload.sleep);
+    } finally {
+      await _requestUpdate();
+    }
   }
 
   /// Maps a Home snapshot to the widget payload. Pure — the unit
@@ -111,13 +161,7 @@ class WidgetSync {
     required bool signedIn,
   }) async {
     try {
-      final payload = buildPayload(snap, signedIn: signedIn);
-      await _save(keySignedIn, payload.signedIn);
-      await _save(keyHeartRate, payload.heartRate);
-      await _save(keyStreak, payload.streak);
-      await _save(keyLogs, payload.logs);
-      await _save(keySleep, payload.sleep);
-      await _requestUpdate();
+      await _pushPayload(buildPayload(snap, signedIn: signedIn));
     } catch (_) {
       // Silent side-channel: Home / login must never see this fail.
     }
@@ -129,15 +173,35 @@ class WidgetSync {
   /// requested. Never throws.
   static Future<void> clear() async {
     try {
-      const payload = WidgetPayload.signedOut();
-      await _save(keySignedIn, payload.signedIn);
-      await _save(keyHeartRate, payload.heartRate);
-      await _save(keyStreak, payload.streak);
-      await _save(keyLogs, payload.logs);
-      await _save(keySleep, payload.sleep);
-      await _requestUpdate();
+      await _pushPayload(const WidgetPayload.signedOut());
     } catch (_) {
       // Silent side-channel: logout must never see this fail.
+    }
+  }
+
+  /// Round 52 — app-start re-publish. Fired once (unawaited) from
+  /// `main()` after the session read + cache warm, so a widget
+  /// orphaned by an app update — or by a cold start that routes to
+  /// welcome/onboarding and never mounts Home — is re-bound to the
+  /// CURRENT state instead of sitting on whatever a previous build
+  /// left in the widget store:
+  /// - session present AND the cache holds a snapshot → the
+  ///   signed-in snapshot payload;
+  /// - anything else (no session, or a session with no cached
+  ///   snapshot yet) → the signed-out payload.
+  /// Exactly one push (five saves + one update) per call. Never
+  /// throws.
+  static Future<void> republishAppStart({
+    required bool hasSession,
+    required HomeCacheSnapshot snapshot,
+  }) async {
+    final hasSnapshot = snapshot.vitalsLoaded ||
+        snapshot.streakLoaded ||
+        snapshot.countersLoaded;
+    if (hasSession && hasSnapshot) {
+      await pushSnapshot(snapshot, signedIn: true);
+    } else {
+      await clear();
     }
   }
 }
