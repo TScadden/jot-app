@@ -601,9 +601,14 @@ void main() {
         client: MockClient((_) async => http.Response('boom', 500)),
         sessionStore: FakeSessionStore()..token = 'tok',
       );
+      // UniqueKey: pumpWidget with the same widget type would REUSE
+      // the first session's State (its result card would survive, and
+      // "Spinach" would match both the card and the recent chip). A
+      // real next session starts from fresh State served by the cache.
       await _pump(
           tester,
-          FoodToolScreen(backend: deadBackend, historyStore: store));
+          FoodToolScreen(
+              key: UniqueKey(), backend: deadBackend, historyStore: store));
       expect(find.text('Recently Checked'), findsOneWidget);
       await tester.tap(find.text('Spinach'));
       await tester.pumpAndSettle();
