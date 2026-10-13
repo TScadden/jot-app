@@ -406,6 +406,128 @@ class TabsBackend {
     return out;
   }
 
+  /// Round 48 — send a friend request, mirroring native
+  /// `CommunityViewModel.sendFriendRequest` → `POST api/friends/request`
+  /// with `FriendRequestApiRequest{friendIdString}` (JotApi.kt). The
+  /// friendIdString is the friend's 5-digit tag (optionally `#`-prefixed),
+  /// exactly as native's Add Friend dialog sends it. Returns the decoded
+  /// `GenericResponse` body ({success, message, error}) on HTTP 200 so
+  /// the caller can surface the server's own error text; null on any
+  /// transport failure.
+  Future<Map<String, dynamic>?> sendFriendRequest(
+          String friendIdString) =>
+      _postJsonMap('/api/friends/request', {'friendIdString': friendIdString});
+
+  /// Round 48 — respond to a friend request, mirroring native
+  /// `CommunityViewModel.respondFriendRequest` → `POST api/friends/respond`
+  /// with `RespondFriendRequestApiRequest{requestId, action}` where
+  /// action is `"accept"` or `"reject"` (JotApi.kt). Returns the decoded
+  /// `GenericResponse` body on HTTP 200, null on transport failure.
+  Future<Map<String, dynamic>?> respondFriendRequest(
+          int requestId, bool accept) =>
+      _postJsonMap('/api/friends/respond', {
+        'requestId': requestId,
+        'action': accept ? 'accept' : 'reject',
+      });
+
+  /// Round 48 — mark all friend notifications read, mirroring native
+  /// `CommunityViewModel.markNotificationsRead` →
+  /// `POST api/friends/notifications/read` (JotApi.kt, no body in
+  /// native; an empty JSON object is sent here). True on HTTP 200.
+  /// Native ignores failures silently; callers do the same.
+  Future<bool> markFriendNotificationsRead() =>
+      _postJson('/api/friends/notifications/read', const {});
+
+  /// Round 48 — one friend's shared today stats, mirroring native
+  /// `CommunityViewModel.fetchFriendDetail` →
+  /// `GET api/friends/data/{friendId}` (JotApi.kt) →
+  /// `FriendDetailResponse{success, data, error}`. Returns the decoded
+  /// body on HTTP 200, null on any failure.
+  Future<Map<String, dynamic>?> fetchFriendDetail(String friendId) =>
+      _getJson('/api/friends/data/${Uri.encodeComponent(friendId)}');
+
+  /// Round 48 — push coach sessions, mirroring native
+  /// `SyncManager.syncCoachSessions` → `POST api/sync/coach_sessions`
+  /// with `SyncCoachSessionsRequest{sessions}` (JotApi.kt). True on
+  /// HTTP 200. Callers send ONLY the sessions they created/changed
+  /// (native syncs its unsynced rows the same way).
+  Future<bool> syncCoachSessions(List<Map<String, dynamic>> sessions) =>
+      _postJson('/api/sync/coach_sessions', {'sessions': sessions});
+
+  /// Round 48 — push coach messages, mirroring native
+  /// `SyncManager.syncCoachMessages` → `POST api/sync/coach_messages`
+  /// with `SyncCoachMessagesRequest{messages}` (JotApi.kt). True on
+  /// HTTP 200.
+  Future<bool> syncCoachMessages(List<Map<String, dynamic>> messages) =>
+      _postJson('/api/sync/coach_messages', {'messages': messages});
+
+  /// Round 48 — delete a coach session server-side, mirroring native
+  /// `CoachHistoryViewModel.deleteSession` / `CoachViewModel.
+  /// deleteCurrentSession` → `DELETE api/sync/coach_sessions/{id}`
+  /// (JotApi.kt). True on HTTP 200.
+  Future<bool> deleteCoachSession(String id) =>
+      _delete('/api/sync/coach_sessions/${Uri.encodeComponent(id)}');
+
+  /// Round 48 — AI title for a new coach session, mirroring native
+  /// `LogRepository.generateCoachTitle` → `POST api/ai/coach/title`
+  /// with `TitleRequest{firstMessage}` → `TitleResponse{title}`
+  /// (JotApi.kt). Null on any failure (native falls back to "Chat").
+  Future<String?> fetchCoachTitle(String firstMessage) async {
+    final res = await postAi('/api/ai/coach/title', {
+      'firstMessage': firstMessage,
+    });
+    final title = res?['title'];
+    if (title is String && title.trim().isNotEmpty) return title.trim();
+    return null;
+  }
+
+  /// Round 48 — classify a coach-proposed note into a log category,
+  /// mirroring native `LogRepository.handleCoachNote` →
+  /// `GeminiService.classifyCoachNoteCategory` →
+  /// `POST api/ai/classify-coach-note` with
+  /// `ClassifyAndCleanRequest{noteText, categories}` (JotApi.kt).
+  /// Returns the category id, or null on any failure (native falls
+  /// back to category 7, "General").
+  Future<int?> classifyCoachNote(
+      String noteText, Map<String, String> categories) async {
+    final res = await postAi('/api/ai/classify-coach-note', {
+      'noteText': noteText,
+      'categories': categories,
+    });
+    final result = res?['result'];
+    if (result is Map<String, dynamic>) {
+      return _asInt(result['categoryId']);
+    }
+    return null;
+  }
+
+  /// Round 48 — push knowledge documents, mirroring native
+  /// `SyncManager.syncDocuments` → `POST api/sync/documents` with
+  /// `SyncDocumentsRequest{documents}` (JotApi.kt). True on HTTP 200.
+  Future<bool> syncDocuments(List<Map<String, dynamic>> documents) =>
+      _postJson('/api/sync/documents', {'documents': documents});
+
+  /// Authenticated POST returning the decoded JSON body on HTTP 200,
+  /// null on any failure (transport, non-200, malformed body).
+  Future<Map<String, dynamic>?> _postJsonMap(
+      String path, Map<String, dynamic> body) async {
+    final response = await _sendAuthed((token) => _client.post(
+          Uri.parse('$_baseUrl$path'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode(body),
+        ));
+    if (response == null || response.statusCode != 200) return null;
+    try {
+      final decoded = jsonDecode(response.body);
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Round 18 — authenticated POST to an `api/ai/*` endpoint with a JSON
   /// body → decoded JSON object, or null on any failure. Used by the
   /// AI-backed tools (food checker, tips, coach). The token is used
@@ -893,13 +1015,13 @@ class FriendDto {
   });
 
   factory FriendDto.fromJson(Map<String, dynamic> json) {
-    final level = json['level'];
     return FriendDto(
       id: '${json['id'] ?? ''}',
       nickname: '${json['nickname'] ?? ''}',
       tag: '${json['tag'] ?? ''}',
       status: '${json['status'] ?? ''}',
-      level: level is num ? level.toInt() : 0,
+      // Tolerant: server numbers may arrive as strings.
+      level: TabsBackend._asInt(json['level']) ?? 0,
     );
   }
 }
@@ -915,6 +1037,13 @@ class FriendNotificationDto {
   final String? senderNickname;
   final String? senderTag;
 
+  /// Round 48 — the pending friend request's id when [type] is
+  /// `friend_request` (native `FriendNotificationDto.friendRequestId`,
+  /// JotApi.kt). Round 18's port dropped this field, which is why
+  /// accept/decline was impossible; native renders the buttons only
+  /// when it is non-null.
+  final int? friendRequestId;
+
   const FriendNotificationDto({
     required this.id,
     required this.type,
@@ -923,19 +1052,84 @@ class FriendNotificationDto {
     required this.createdAt,
     this.senderNickname,
     this.senderTag,
+    this.friendRequestId,
   });
 
   factory FriendNotificationDto.fromJson(Map<String, dynamic> json) {
-    final id = json['id'];
     return FriendNotificationDto(
-      id: id is num ? id.toInt() : 0,
+      // Tolerant: server numbers may arrive as strings.
+      id: TabsBackend._asInt(json['id']) ?? 0,
       type: '${json['type'] ?? ''}',
       message: '${json['message'] ?? ''}',
       isRead: json['isRead'] == true,
       createdAt: '${json['createdAt'] ?? ''}',
       senderNickname: json['senderNickname']?.toString(),
       senderTag: json['senderTag']?.toString(),
+      friendRequestId: TabsBackend._asInt(json['friendRequestId']),
     );
+  }
+
+  FriendNotificationDto copyWith({bool? isRead}) {
+    return FriendNotificationDto(
+      id: id,
+      type: type,
+      message: message,
+      isRead: isRead ?? this.isRead,
+      createdAt: createdAt,
+      senderNickname: senderNickname,
+      senderTag: senderTag,
+      friendRequestId: friendRequestId,
+    );
+  }
+}
+
+/// Round 48 — one friend's shared today stats from
+/// `GET /api/friends/data/{friendId}`. Mirrors native
+/// `FriendDetailDto` (JotApi.kt). Every stat is nullable: native
+/// renders "·" for a missing stat, and [sharingEnabled] false shows
+/// the "turned off data sharing" state instead of stats.
+class FriendDetail {
+  final String friendId;
+  final String nickname;
+  final String tag;
+  final bool sharingEnabled;
+  final int? todaySleepMins;
+  final int? todayAvgHr;
+  final int? todayScore;
+  final int? todaySpikes;
+  final int? todaySleepDebt;
+
+  const FriendDetail({
+    required this.friendId,
+    required this.nickname,
+    required this.tag,
+    required this.sharingEnabled,
+    this.todaySleepMins,
+    this.todayAvgHr,
+    this.todayScore,
+    this.todaySpikes,
+    this.todaySleepDebt,
+  });
+
+  /// Parses the `data` object of a `FriendDetailResponse`. Null when
+  /// the payload isn't detail-shaped. Never throws.
+  static FriendDetail? fromJson(dynamic raw) {
+    if (raw is! Map<String, dynamic>) return null;
+    try {
+      return FriendDetail(
+        friendId: '${raw['friendId'] ?? ''}',
+        nickname: '${raw['nickname'] ?? ''}',
+        tag: '${raw['tag'] ?? ''}',
+        sharingEnabled: raw['sharingEnabled'] == true,
+        todaySleepMins: TabsBackend._asInt(raw['todaySleepMins']),
+        todayAvgHr: TabsBackend._asInt(raw['todayAvgHr']),
+        todayScore: TabsBackend._asInt(raw['todayScore']),
+        todaySpikes: TabsBackend._asInt(raw['todaySpikes']),
+        todaySleepDebt: TabsBackend._asInt(raw['todaySleepDebt']),
+      );
+    } catch (_) {
+      return null;
+    }
   }
 }
 
