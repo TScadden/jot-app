@@ -15,12 +15,23 @@ class BpUiRecord {
   final BpRecord record;
   final BpSource source;
 
-  const BpUiRecord({required this.record, required this.source});
+  /// Vera F8 (fix round): the id stored on the manual blob row this
+  /// record was parsed from, when the row carries one. Stored ids
+  /// are not always the deterministic form (older / imported /
+  /// server-written rows), and delete targets rows BY id — losing
+  /// this made such rows undeletable. Null when the stored row had
+  /// no id (or the record did not come from a stored row).
+  final String? storedId;
 
-  /// The deterministic manual-record id native uses
+  const BpUiRecord({required this.record, required this.source, this.storedId});
+
+  /// The id that identifies this record in the manual blob for
+  /// delete: the stored id when there is one, else the deterministic
+  /// manual-record id native uses
   /// (`"manual_<epochMs>_<systolic>_<diastolic>"`).
-  String get manualId =>
-      'manual_${record.timeEpochMs}_${record.systolic}_${record.diastolic}';
+  String get manualId => (storedId != null && storedId!.isNotEmpty)
+      ? storedId!
+      : 'manual_${record.timeEpochMs}_${record.systolic}_${record.diastolic}';
 }
 
 /// Merge manual + Health Connect readings for the Blood Pressure tool.
@@ -36,15 +47,32 @@ List<BpUiRecord> mergeBpRecords({
   required List<BpRecord> manual,
   required List<BpRecord> healthConnect,
 }) {
+  return mergeBpUiRecords(
+    manual: [
+      for (final r in manual) BpUiRecord(record: r, source: BpSource.manual),
+    ],
+    healthConnect: healthConnect,
+  );
+}
+
+/// Same merge as [mergeBpRecords], for manual records that already
+/// carry their stored-row identity ([BpUiRecord.storedId] rides
+/// through untouched, so delete can target the real stored id).
+/// Display/dedupe semantics are identical: duplicates by
+/// [BpRecord.timeEpochMs] collapse and the Health Connect copy wins.
+List<BpUiRecord> mergeBpUiRecords({
+  required List<BpUiRecord> manual,
+  required List<BpRecord> healthConnect,
+}) {
   final byTime = <int, BpUiRecord>{};
   for (final r in healthConnect) {
     if (r.systolic <= 0 || r.diastolic <= 0 || r.timeEpochMs <= 0) continue;
     byTime[r.timeEpochMs] = BpUiRecord(record: r, source: BpSource.healthConnect);
   }
-  for (final r in manual) {
+  for (final u in manual) {
+    final r = u.record;
     if (r.systolic <= 0 || r.diastolic <= 0 || r.timeEpochMs <= 0) continue;
-    byTime.putIfAbsent(
-        r.timeEpochMs, () => BpUiRecord(record: r, source: BpSource.manual));
+    byTime.putIfAbsent(r.timeEpochMs, () => u);
   }
   final out = byTime.values.toList()
     ..sort((a, b) => b.record.timeEpochMs.compareTo(a.record.timeEpochMs));
@@ -144,15 +172,33 @@ String? bpRowId(dynamic row) {
 
 /// Displayable manual records parsed from raw rows (fail-soft per
 /// row, like native's decode).
-List<BpRecord> bpRecordsFromRaw(List<dynamic> rows) {
-  final out = <BpRecord>[];
+List<BpRecord> bpRecordsFromRaw(List<dynamic> rows) =>
+    [for (final u in bpUiRecordsFromRaw(rows)) u.record];
+
+/// Vera F8 (fix round): like [bpRecordsFromRaw], but each record
+/// keeps the id stored on its row ([BpUiRecord.storedId]) so delete
+/// can target the row that actually exists. A row with no stored id
+/// (or a blank one) yields a null storedId, and [BpUiRecord.manualId]
+/// falls back to the deterministic id — the id [bpRowId] computes
+/// for such a row as well.
+List<BpUiRecord> bpUiRecordsFromRaw(List<dynamic> rows) {
+  final out = <BpUiRecord>[];
   for (final row in rows) {
     final v = bpRowValues(row);
     if (v == null) continue;
-    out.add(BpRecord(
-        systolic: v.systolic,
-        diastolic: v.diastolic,
-        timeEpochMs: v.timeEpochMs));
+    String? storedId;
+    if (row is Map) {
+      final id = row['id'];
+      if (id is String && id.isNotEmpty) storedId = id;
+    }
+    out.add(BpUiRecord(
+      record: BpRecord(
+          systolic: v.systolic,
+          diastolic: v.diastolic,
+          timeEpochMs: v.timeEpochMs),
+      source: BpSource.manual,
+      storedId: storedId,
+    ));
   }
   return out;
 }
@@ -738,8 +784,8 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
         } else {
           _manualRows =
               decodeBpLogsRaw(profile['manualBloodPressureLogs']);
-          _records = mergeBpRecords(
-              manual: bpRecordsFromRaw(_manualRows),
+          _records = mergeBpUiRecords(
+              manual: bpUiRecordsFromRaw(_manualRows),
               healthConnect: hcRecords);
         }
         _loading = false;
@@ -785,8 +831,8 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
         if (mounted) {
           setState(() {
             _manualRows = fresh;
-            _records = mergeBpRecords(
-                manual: bpRecordsFromRaw(fresh),
+            _records = mergeBpUiRecords(
+                manual: bpUiRecordsFromRaw(fresh),
                 healthConnect: _hcRecords);
           });
         }
@@ -799,8 +845,8 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
         _backend.invalidateSyncPull();
         setState(() {
           _manualRows = next;
-          _records = mergeBpRecords(
-              manual: bpRecordsFromRaw(next), healthConnect: _hcRecords);
+          _records = mergeBpUiRecords(
+              manual: bpUiRecordsFromRaw(next), healthConnect: _hcRecords);
         });
         return true;
       }
