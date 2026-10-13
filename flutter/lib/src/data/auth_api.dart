@@ -311,15 +311,25 @@ class AuthApiClient {
   /// `{"refreshToken": ...}` → `{"token": ..., "refreshToken": ...,
   /// "error": ...}`. Both tokens rotate on success.
   ///
-  /// Result taxonomy (native parity — do not widen or narrow):
-  /// - [RefreshSuccess]: HTTP 200 with non-blank `token` AND
-  ///   non-blank `refreshToken`.
-  /// - [RefreshDefinitiveFailure]: HTTP 401 or 403, OR the response
-  ///   `error` string (lowercased) contains "expired", "revoked",
-  ///   "invalid", or "disabled". The session is genuinely dead.
-  /// - [RefreshTemporaryFailure]: EVERYTHING else — 5xx, any other
-  ///   non-2xx, network exception/timeout, unparseable body, blank
-  ///   tokens in a 200. The session MUST be preserved.
+  /// Result taxonomy (native parity — do not widen or narrow).
+  /// The checks run STATUS-FIRST, in exactly this order (native
+  /// `AuthInterceptor.performRefresh` gates its error-string check
+  /// to successful responses):
+  /// 1. HTTP 401 or 403 → [RefreshDefinitiveFailure]. Status alone
+  ///    decides; the body is never inspected.
+  /// 2. Any other non-200 status → [RefreshTemporaryFailure]. This
+  ///    covers 5xx AND every other non-2xx (400 included) — an
+  ///    `error` string on a non-200 response is NEVER definitive,
+  ///    even when it contains a keyword below.
+  /// 3. Only on HTTP 200 is the body inspected: the `error` string
+  ///    (lowercased) containing "expired", "revoked", "invalid",
+  ///    or "disabled" → [RefreshDefinitiveFailure]; a non-blank
+  ///    `token` AND non-blank `refreshToken` → [RefreshSuccess];
+  ///    anything else (blank tokens, unparseable body) →
+  ///    [RefreshTemporaryFailure].
+  /// - Transport failures (network exception/timeout) are always
+  ///   [RefreshTemporaryFailure]. The session MUST be preserved on
+  ///   every temporary outcome.
   ///
   /// The refresh token is never logged, printed, or included in
   /// exceptions (Vera rule) — it lives in memory only for the
@@ -341,10 +351,22 @@ class AuthApiClient {
       return const RefreshTemporaryFailure();
     }
 
+    // Taxonomy step 1: 401/403 are definitive on status alone.
     if (response.statusCode == 401 || response.statusCode == 403) {
       return const RefreshDefinitiveFailure();
     }
 
+    // Taxonomy step 2: every other non-200 is temporary — 5xx, 400,
+    // anything. The error-string keyword check below must NEVER run
+    // against a non-200 body: a 500 carrying {"error":"invalid
+    // token"} is a server blip, not a dead session (native gates
+    // the keyword check to successful responses).
+    if (response.statusCode != 200) {
+      return const RefreshTemporaryFailure();
+    }
+
+    // Taxonomy step 3 (HTTP 200 only): keyword check on the error
+    // string, then the rotated-pair check.
     final body = _decodeJson(response.body);
     final error = body['error']?.toString().toLowerCase() ?? '';
     if (error.contains('expired') ||
@@ -354,17 +376,12 @@ class AuthApiClient {
       return const RefreshDefinitiveFailure();
     }
 
-    if (response.statusCode == 200) {
-      final token = body['token']?.toString() ?? '';
-      final newRefreshToken = body['refreshToken']?.toString() ?? '';
-      if (token.isNotBlank && newRefreshToken.isNotBlank) {
-        return RefreshSuccess(token: token, refreshToken: newRefreshToken);
-      }
-      // 200 with blank tokens — server bug, NOT a dead session.
-      return const RefreshTemporaryFailure();
+    final token = body['token']?.toString() ?? '';
+    final newRefreshToken = body['refreshToken']?.toString() ?? '';
+    if (token.isNotBlank && newRefreshToken.isNotBlank) {
+      return RefreshSuccess(token: token, refreshToken: newRefreshToken);
     }
-
-    // 5xx and every other non-2xx: temporary.
+    // 200 with blank tokens — server bug, NOT a dead session.
     return const RefreshTemporaryFailure();
   }
 

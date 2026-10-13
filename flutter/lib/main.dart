@@ -207,7 +207,18 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
     try {
       final token = await _sessionStore.readToken();
       if (token == null || token.trim().isEmpty) return;
-      final email = await _sessionStore.readEmail();
+      // Round 31 fix pass (Vera NIT 2): the email read is isolated
+      // in its own try/catch. The email is display-only — a storage
+      // failure reading it must not abort a restore backed by a
+      // valid token, so route on with a null email. A TOKEN-read
+      // failure keeps the outer behavior: fall to welcome, without
+      // clearing anything.
+      String? email;
+      try {
+        email = await _sessionStore.readEmail();
+      } catch (_) {
+        email = null;
+      }
       // Round 32 gate: resolve the native resume step from the
       // stored flags (local reads only — same store, no network).
       OnboardingStep? resumeStep;

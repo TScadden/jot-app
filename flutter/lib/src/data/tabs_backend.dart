@@ -54,7 +54,7 @@ class TabsBackend {
 
   final http.Client _client;
   final SessionStore _sessionStore;
-  final AuthApiClient _authApi;
+  late final AuthApiClient _authApi;
   final String _baseUrl;
 
   TabsBackend(
@@ -63,8 +63,12 @@ class TabsBackend {
       AuthApiClient? authApi,
       this._baseUrl = defaultBaseUrl})
       : _client = client ?? http.Client(),
-        _sessionStore = sessionStore ?? SessionStore(),
-        _authApi = authApi ?? AuthApiClient(client: client ?? http.Client());
+        _sessionStore = sessionStore ?? SessionStore() {
+    // Round 31 fix pass (Vera NIT 3): the default AuthApiClient
+    // shares this backend's client instead of constructing a
+    // second http.Client nobody closes separately.
+    _authApi = authApi ?? AuthApiClient(client: _client);
+  }
 
   /// Exposes the stored token check so callers can gate backend reads.
   Future<String?> readToken() => _sessionStore.readToken();
@@ -100,7 +104,18 @@ class TabsBackend {
   /// The in-flight single-flight refresh, if any. Concurrent 401s
   /// all await this same future, so the refresh endpoint is hit at
   /// most once per expiry wave.
-  Future<_RefreshOutcome>? _refreshInFlight;
+  ///
+  /// STATIC (app-wide), not per-instance (Round 31 fix pass, Vera
+  /// BLOCKER 2): the app constructs ~20 [TabsBackend] instances
+  /// (several per-access getters), all over the SAME stored session.
+  /// A per-instance slot let concurrent cold-start 401s on different
+  /// instances each POST the old refresh token; refresh tokens
+  /// rotate, and the server's reuse detection can read the second
+  /// presentation of the rotated-out token as a revocation — its
+  /// definitive failure would then clear the fresh pair the first
+  /// instance had just saved. One app-wide slot closes that race:
+  /// exactly one refresh POST per expiry wave, app-wide.
+  static Future<_RefreshOutcome>? _refreshInFlight;
 
   /// Sends [send] with the stored token. Returns null when there is
   /// no stored token or the transport fails; otherwise the response
@@ -675,21 +690,23 @@ class TabsBackend {
   /// is sent only in this request body — never logged. Native fails
   /// closed: local connected state changes only when the body reports
   /// success, and the caller enforces that.
+  ///
+  /// Round 31 fix pass (Vera SHOULD-FIX 2): routes through
+  /// [_sendAuthed] like every other authenticated call, so an
+  /// expired access token refreshes and retries once instead of
+  /// failing silently. Non-401 semantics unchanged: decoded body on
+  /// HTTP 200, null on anything else.
   Future<Map<String, dynamic>?> linkGoogle(String idToken) async {
-    final token = await _sessionStore.readToken();
-    if (token == null || token.trim().isEmpty) return null;
+    final response = await _sendAuthed((token) => _client.post(
+          Uri.parse('$_baseUrl/api/auth/link-google'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({'idToken': idToken}),
+        ));
+    if (response == null || response.statusCode != 200) return null;
     try {
-      final response = await _client
-          .post(
-            Uri.parse('$_baseUrl/api/auth/link-google'),
-            headers: {
-              'Authorization': 'Bearer $token',
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode({'idToken': idToken}),
-          )
-          .timeout(requestTimeout);
-      if (response.statusCode != 200) return null;
       final decoded = jsonDecode(response.body);
       return decoded is Map<String, dynamic> ? decoded : null;
     } catch (_) {
@@ -705,21 +722,21 @@ class TabsBackend {
   /// disconnect as done only when the body carries no error (the
   /// server refuses to remove the last usable sign-in method), and
   /// preserves local state otherwise — the caller enforces that.
+  ///
+  /// Round 31 fix pass (Vera SHOULD-FIX 2): routes through
+  /// [_sendAuthed] like [linkGoogle] — an expired access token
+  /// refreshes and retries once. Non-401 semantics unchanged.
   Future<Map<String, dynamic>?> disconnectGoogle() async {
-    final token = await _sessionStore.readToken();
-    if (token == null || token.trim().isEmpty) return null;
+    final response = await _sendAuthed((token) => _client.post(
+          Uri.parse('$_baseUrl/api/auth/disconnect-google'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode(const <String, dynamic>{}),
+        ));
+    if (response == null || response.statusCode != 200) return null;
     try {
-      final response = await _client
-          .post(
-            Uri.parse('$_baseUrl/api/auth/disconnect-google'),
-            headers: {
-              'Authorization': 'Bearer $token',
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode(const <String, dynamic>{}),
-          )
-          .timeout(requestTimeout);
-      if (response.statusCode != 200) return null;
       final decoded = jsonDecode(response.body);
       return decoded is Map<String, dynamic> ? decoded : null;
     } catch (_) {

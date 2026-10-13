@@ -29,6 +29,15 @@ FakeSessionStore _seededStore() => FakeSessionStore()
   ..refreshToken = _oldRefresh
   ..email = _email;
 
+/// Round 31 fix pass — a seeded store whose EMAIL read throws
+/// (Vera NIT 2): the token read still succeeds, so restore must
+/// route home with a null email instead of aborting to welcome.
+class _EmailThrowingStore extends FakeSessionStore {
+  @override
+  Future<String?> readEmail() async =>
+      throw StateError('fake email read failure');
+}
+
 void main() {
   setUp(() {
     TabsBackend.onSessionExpired = null;
@@ -99,6 +108,32 @@ void main() {
       expect(result, isA<RefreshTemporaryFailure>());
     });
 
+    // Round 31 fix pass (Vera BLOCKER 1) — the keyword check is
+    // status-gated to HTTP 200, native order. A 500 whose body
+    // happens to contain a keyword is a server blip, NOT a dead
+    // session.
+    test(
+        '500 with a keyword error body is TEMPORARY (status-gated '
+        'taxonomy)', () async {
+      final client = AuthApiClient(
+        client: MockClient((_) async =>
+            http.Response('{"error":"invalid token"}', 500)),
+      );
+      final result = await client.refreshSession(_oldRefresh);
+      expect(result, isA<RefreshTemporaryFailure>());
+    });
+
+    test(
+        '400 with a keyword error body is TEMPORARY, never '
+        'definitive', () async {
+      final client = AuthApiClient(
+        client: MockClient((_) async => http.Response(
+            '{"error":"refresh token revoked"}', 400)),
+      );
+      final result = await client.refreshSession(_oldRefresh);
+      expect(result, isA<RefreshTemporaryFailure>());
+    });
+
     test('transport failure is a temporary failure', () async {
       final client = AuthApiClient(
         client: MockClient((_) async => throw const SocketException('off')),
@@ -112,6 +147,21 @@ void main() {
       final client = AuthApiClient(
         client: MockClient((_) async => http.Response(
             jsonEncode({'token': _newAccess, 'refreshToken': ''}), 200)),
+      );
+      final result = await client.refreshSession(_oldRefresh);
+      expect(result, isA<RefreshTemporaryFailure>());
+    });
+
+    // Round 31 fix pass (Vera SHOULD-FIX 3) — the mirror of the
+    // blank-refresh case above: a blank ACCESS token in a 200 is
+    // equally a server bug, never a success and never definitive.
+    test(
+        '200 with a blank ACCESS token (non-blank refresh) is '
+        'temporary, never success', () async {
+      final client = AuthApiClient(
+        client: MockClient((_) async => http.Response(
+            jsonEncode({'token': '', 'refreshToken': _newRefresh}),
+            200)),
       );
       final result = await client.refreshSession(_oldRefresh);
       expect(result, isA<RefreshTemporaryFailure>());
@@ -343,6 +393,191 @@ void main() {
       expect(refreshHit, isFalse);
       expect(store.token, _oldAccess);
     });
+
+    // Round 31 fix pass (Vera BLOCKER 1), backend level — a 500
+    // refresh response whose body carries a keyword must behave
+    // exactly like any other temporary failure: session preserved,
+    // no session-expired callback.
+    test(
+        'refresh 500 with a keyword error body ("invalid token"): '
+        'session preserved, no session-expired callback', () async {
+      final store = _seededStore();
+      var expiredCalls = 0;
+      TabsBackend.onSessionExpired = () => expiredCalls++;
+      final backend = TabsBackend(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/auth/refresh-token') {
+            return http.Response('{"error":"invalid token"}', 500);
+          }
+          return http.Response('{"error":"expired"}', 401);
+        }),
+        sessionStore: store,
+      );
+
+      final streak = await backend.fetchStreak();
+
+      expect(streak.current, isNull);
+      expect(store.token, _oldAccess);
+      expect(store.refreshToken, _oldRefresh);
+      expect(store.email, _email);
+      expect(expiredCalls, 0);
+    });
+
+    // Round 31 fix pass (Vera BLOCKER 2) — the single-flight slot
+    // is app-wide: two DISTINCT TabsBackend instances over one
+    // store must share a single refresh. Per-instance slots let
+    // each instance POST the old refresh token; rotation
+    // reuse-detection could then read the second presentation as
+    // revoked and clear the pair the first instance just saved.
+    test(
+        'two TabsBackend instances share ONE app-wide refresh: '
+        'concurrent 401s → exactly one refresh POST, both calls '
+        'succeed, session never cleared', () async {
+      final store = _seededStore();
+      var refreshCalls = 0;
+      var expiredCalls = 0;
+      TabsBackend.onSessionExpired = () => expiredCalls++;
+      final sharedClient = MockClient((request) async {
+        if (request.url.path == '/api/auth/refresh-token') {
+          refreshCalls++;
+          // Small delay so both instances' 401s land while the
+          // refresh is in flight.
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+          return http.Response(
+            jsonEncode({'token': _newAccess, 'refreshToken': _newRefresh}),
+            200,
+          );
+        }
+        final authed =
+            request.headers['Authorization'] == 'Bearer $_newAccess';
+        if (!authed) return http.Response('{"error":"expired"}', 401);
+        if (request.url.path == '/api/sync/pull') {
+          return http.Response(
+            jsonEncode({
+              'entries': [],
+              'profile': {'currentStreak': 7, 'bestStreak': 9},
+            }),
+            200,
+          );
+        }
+        if (request.url.path == '/api/friends/list') {
+          return http.Response(
+            jsonEncode({
+              'friends': [
+                {
+                  'id': '1',
+                  'nickname': 'Fake Friend',
+                  'tag': '#0001',
+                  'status': 'active',
+                  'level': 3,
+                },
+              ],
+            }),
+            200,
+          );
+        }
+        return http.Response('not found', 404);
+      });
+      final backendA =
+          TabsBackend(client: sharedClient, sessionStore: store);
+      final backendB =
+          TabsBackend(client: sharedClient, sessionStore: store);
+
+      final results = await Future.wait([
+        backendA.fetchStreak(),
+        backendB.fetchFriendsList(),
+      ]);
+
+      expect((results[0] as ({int? current, int? best})).current, 7);
+      expect((results[1] as List).length, 1);
+      expect(refreshCalls, 1);
+      expect(expiredCalls, 0);
+      expect(store.token, _newAccess);
+      expect(store.refreshToken, _newRefresh);
+      expect(store.email, _email);
+    });
+
+    // Round 31 fix pass (Vera SHOULD-FIX 3) — a 401 with no stored
+    // refresh token at all is definitive WITHOUT ever calling the
+    // refresh endpoint: session cleared, callback fired.
+    test(
+        '401 with NO stored refresh token: definitive — session '
+        'cleared, callback fired, refresh endpoint never called',
+        () async {
+      final store = FakeSessionStore()
+        ..token = _oldAccess
+        ..email = _email; // refreshToken deliberately null
+      var expiredCalls = 0;
+      var refreshHit = false;
+      TabsBackend.onSessionExpired = () => expiredCalls++;
+      final backend = TabsBackend(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/auth/refresh-token') {
+            refreshHit = true;
+            return http.Response(
+              jsonEncode({'token': _newAccess, 'refreshToken': _newRefresh}),
+              200,
+            );
+          }
+          return http.Response('{"error":"expired"}', 401);
+        }),
+        sessionStore: store,
+      );
+
+      final streak = await backend.fetchStreak();
+
+      expect(streak.current, isNull);
+      expect(refreshHit, isFalse);
+      expect(store.token, isNull);
+      expect(store.refreshToken, isNull);
+      expect(store.email, isNull);
+      expect(expiredCalls, 1);
+    });
+
+    // Round 31 fix pass (Vera SHOULD-FIX 2) — linkGoogle routes
+    // through _sendAuthed: an expired access token refreshes and
+    // the link retries once instead of failing silently.
+    test(
+        'linkGoogle routes through the refresh wrapper: expired '
+        'token refreshes and retries once, returning the body',
+        () async {
+      final store = _seededStore();
+      var refreshCalls = 0;
+      var linkCalls = 0;
+      final backend = TabsBackend(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/auth/refresh-token') {
+            refreshCalls++;
+            return http.Response(
+              jsonEncode({'token': _newAccess, 'refreshToken': _newRefresh}),
+              200,
+            );
+          }
+          if (request.url.path == '/api/auth/link-google') {
+            linkCalls++;
+            if (request.headers['Authorization'] ==
+                'Bearer $_oldAccess') {
+              return http.Response('{"error":"expired"}', 401);
+            }
+            return http.Response(
+              jsonEncode({'success': true, 'message': 'linked'}),
+              200,
+            );
+          }
+          return http.Response('not found', 404);
+        }),
+        sessionStore: store,
+      );
+
+      final body = await backend.linkGoogle('fake-google-id-token');
+
+      expect(body, isNotNull);
+      expect(body!['success'], isTrue);
+      expect(refreshCalls, 1);
+      expect(linkCalls, 2); // original 401 + exactly one retry
+      expect(store.token, _newAccess);
+      expect(store.refreshToken, _newRefresh);
+    });
   });
 
   group('AppFlow cold-start restore', () {
@@ -402,6 +637,25 @@ void main() {
       expect(store.token, _oldAccess);
       expect(store.refreshToken, _oldRefresh);
       expect(store.email, _email);
+      await tester.pump(const Duration(milliseconds: 300));
+    });
+
+    // Round 31 fix pass (Vera NIT 2) — the email read is isolated:
+    // a throwing email read must not abort a restore backed by a
+    // valid token. Route home with a null email.
+    testWidgets(
+        'cold start with a valid token but a THROWING email read '
+        'still lands in Main, session untouched', (tester) async {
+      final store = _EmailThrowingStore()
+        ..token = _oldAccess
+        ..refreshToken = _oldRefresh
+        ..email = _email;
+      await pumpFlow(tester, store);
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.byType(WelcomeScreen), findsNothing);
+      expect(store.token, _oldAccess);
+      expect(store.refreshToken, _oldRefresh);
       await tester.pump(const Duration(milliseconds: 300));
     });
 

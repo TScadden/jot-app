@@ -25,8 +25,25 @@ class SessionStore {
     required String refreshToken,
     required String email,
   }) async {
-    await _storage.write(key: _tokenKey, value: token);
+    // WRITE ORDER IS LOAD-BEARING (Round 31 fix pass, Vera
+    // SHOULD-FIX 1): the refresh token is written BEFORE the
+    // access token. Secure storage offers no multi-key atomicity,
+    // so a crash between the two token writes leaves a mixed pair:
+    // - refresh-first (this order): OLD access + NEW refresh. The
+    //   stale access token simply 401s at next use and the 401 →
+    //   refresh path exchanges the new refresh token for a fresh
+    //   pair — the session self-heals.
+    // - access-first (the old order): NEW access + OLD refresh.
+    //   The old refresh token was already rotated out (revoked)
+    //   by the refresh that produced this pair, so the next
+    //   refresh fails definitively — a guaranteed logout.
+    // Residual risk: the pair is still not atomic. A crash in the
+    // window leaves the mixed pair above (self-healing, per the
+    // first bullet) until the next refresh completes, and the
+    // email — written last, display-only — can lag one save
+    // behind. Neither can strand the session.
     await _storage.write(key: _refreshTokenKey, value: refreshToken);
+    await _storage.write(key: _tokenKey, value: token);
     await _storage.write(key: _emailKey, value: email);
   }
 
