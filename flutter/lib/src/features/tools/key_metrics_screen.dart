@@ -333,97 +333,99 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
               color: NotelColors.textPrimary,
             ),
           ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Select how far back you want the download to go:',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: NotelColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                for (final (days, label) in const [
-                  (7, 'Last 7 Days'),
-                  (30, 'Last 30 Days'),
-                  (90, 'Last 90 Days'),
-                  (180, 'Last 180 Days'),
-                  (-1, 'All Time'),
-                ])
-                  InkWell(
-                    onTap: () => setDialogState(() {
-                      selectedDays = days;
-                      if (days == -1) includeSpikes = false;
-                    }),
-                    child: Row(
-                      children: [
-                        Radio<int>(
-                          value: days,
-                          groupValue: selectedDays,
-                          onChanged: (v) => setDialogState(() {
-                            selectedDays = v ?? selectedDays;
-                            if (selectedDays == -1) includeSpikes = false;
-                          }),
-                          activeColor: NotelColors.primary,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          label,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            color: NotelColors.textPrimary,
-                          ),
-                        ),
-                      ],
+          content: RadioGroup<int>(
+            groupValue: selectedDays,
+            onChanged: (v) => setDialogState(() {
+              selectedDays = v ?? selectedDays;
+              if (selectedDays == -1) includeSpikes = false;
+            }),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Select how far back you want the download to go:',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: NotelColors.textSecondary,
                     ),
                   ),
-                const SizedBox(height: 16),
-                const Divider(),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                  const SizedBox(height: 8),
+                  for (final (days, label) in const [
+                    (7, 'Last 7 Days'),
+                    (30, 'Last 30 Days'),
+                    (90, 'Last 90 Days'),
+                    (180, 'Last 180 Days'),
+                    (-1, 'All Time'),
+                  ])
+                    InkWell(
+                      onTap: () => setDialogState(() {
+                        selectedDays = days;
+                        if (days == -1) includeSpikes = false;
+                      }),
+                      child: Row(
                         children: [
-                          Text(
-                            'Include Heart Rate Spikes',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                              color: selectedDays == -1
-                                  ? NotelColors.textSecondary
-                                      .withValues(alpha: 0.5)
-                                  : NotelColors.textPrimary,
-                            ),
+                          Radio<int>(
+                            value: days,
+                            activeColor: NotelColors.primary,
                           ),
+                          const SizedBox(width: 8),
                           Text(
-                            selectedDays == -1
-                                ? 'you can not toggle it on when you are on all time'
-                                : 'Calculates POTS spikes. Turning off makes export instant.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: selectedDays == -1
-                                  ? NotelColors.primary
-                                  : NotelColors.textSecondary,
+                            label,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: NotelColors.textPrimary,
                             ),
                           ),
                         ],
                       ),
                     ),
-                    Switch(
-                      value: includeSpikes,
-                      onChanged: selectedDays == -1
-                          ? null
-                          : (v) => setDialogState(() => includeSpikes = v),
-                      activeTrackColor: NotelColors.primary,
-                    ),
-                  ],
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  const Divider(),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Include Heart Rate Spikes',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: selectedDays == -1
+                                    ? NotelColors.textSecondary
+                                        .withValues(alpha: 0.5)
+                                    : NotelColors.textPrimary,
+                              ),
+                            ),
+                            Text(
+                              selectedDays == -1
+                                  ? 'you can not toggle it on when you are on all time'
+                                  : 'Calculates POTS spikes. Turning off makes export instant.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: selectedDays == -1
+                                    ? NotelColors.primary
+                                    : NotelColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Switch(
+                        value: includeSpikes,
+                        onChanged: selectedDays == -1
+                            ? null
+                            : (v) => setDialogState(() => includeSpikes = v),
+                        activeTrackColor: NotelColors.primary,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
           actions: [
@@ -605,9 +607,7 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
               ),
               MetricTile(
                 title: 'Breathing Rate',
-                value: d.breathingRate == null
-                    ? null
-                    : d.breathingRate!.toStringAsFixed(1),
+                value: d.breathingRate?.toStringAsFixed(1),
                 unit: 'brpm',
                 icon: Icons.air,
                 color: const Color(0xFF81C784),
@@ -616,9 +616,7 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
               ),
               MetricTile(
                 title: 'Blood Oxygen',
-                value: d.bloodOxygen == null
-                    ? null
-                    : d.bloodOxygen!.toStringAsFixed(1),
+                value: d.bloodOxygen?.toStringAsFixed(1),
                 unit: '%',
                 icon: Icons.opacity,
                 color: const Color(0xFFFF8A65),
@@ -635,7 +633,7 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
               ),
               MetricTile(
                 title: 'HRV',
-                value: d.hrv == null ? null : d.hrv!.toStringAsFixed(0),
+                value: d.hrv?.toStringAsFixed(0),
                 unit: 'ms',
                 icon: Icons.timeline,
                 color: const Color(0xFF4DB6AC),

@@ -247,7 +247,7 @@ class CoachParsedContent {
     ('DENIED', CoachProposalStatus.denied),
   ];
   for (final (verb, status) in verbs) {
-    final re = RegExp('\\[$verb\_$kind:\\s*([^\\]]+)\\]',
+    final re = RegExp('\\[$verb_$kind:\\s*([^\\]]+)\\]',
         caseSensitive: false, dotAll: true);
     final m = re.firstMatch(content);
     if (m != null) {
@@ -359,7 +359,7 @@ CoachParsedContent parseCoachMessageContent(String rawContent) {
     ('APPROVED', CoachProposalStatus.approved),
     ('DENIED', CoachProposalStatus.denied),
   ]) {
-    final re = RegExp('\\[$verb\_MEDICATION:\\s*([^\\]]+)\\]',
+    final re = RegExp('\\[$verb_MEDICATION:\\s*([^\\]]+)\\]',
         caseSensitive: false, dotAll: true);
     final matches = re.allMatches(clean).toList();
     if (matches.isNotEmpty) {
@@ -404,7 +404,7 @@ CoachParsedContent parseCoachMessageContent(String rawContent) {
 String rewriteProposalTag(String content, String kind, String newVerb) {
   return content.replaceAll(
     RegExp('\\[PROPOSE\\_$kind:', caseSensitive: false),
-    '[$newVerb\_$kind:',
+    '[$newVerb_$kind:',
   );
 }
 
@@ -1323,7 +1323,7 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
         _messages = [
           for (final m in _messages)
             if (m.id == message.id) updated else m,
-          if (confirmationMsg != null) confirmationMsg,
+          ?confirmationMsg,
         ];
       });
       _scrollToBottom();
@@ -1393,7 +1393,7 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
   }
 
   /// Native `approveProposedFile` fallback path: reconstruct the
-  /// document from the "📄 Uploaded file: <name>\n\n<text>" user
+  /// document from the "📄 Uploaded file: `<name>`\n\n`<text>`" user
   /// message in this session and push it via
   /// `POST /api/sync/documents`.
   Future<bool> _approveFile(String fileName) async {

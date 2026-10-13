@@ -181,6 +181,7 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
                   await _backend.respondFriendRequest(requestId, accept);
               if (!mounted) return;
               if (body?['success'] == true) {
+                if (!sheetContext.mounted) return;
                 Navigator.of(sheetContext).pop();
                 _load();
               } else {

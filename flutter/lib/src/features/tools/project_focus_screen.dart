@@ -1749,7 +1749,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
               ],
             ),
           ),
-          if (trailing != null) trailing,
+          ?trailing,
         ],
       ),
     );
