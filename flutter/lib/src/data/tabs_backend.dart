@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
@@ -54,15 +54,151 @@ class TabsBackend {
 
   final http.Client _client;
   final SessionStore _sessionStore;
+  final AuthApiClient _authApi;
   final String _baseUrl;
 
   TabsBackend(
-      {http.Client? client, SessionStore? sessionStore, this._baseUrl = defaultBaseUrl})
+      {http.Client? client,
+      SessionStore? sessionStore,
+      AuthApiClient? authApi,
+      this._baseUrl = defaultBaseUrl})
       : _client = client ?? http.Client(),
-        _sessionStore = sessionStore ?? SessionStore();
+        _sessionStore = sessionStore ?? SessionStore(),
+        _authApi = authApi ?? AuthApiClient(client: client ?? http.Client());
 
   /// Exposes the stored token check so callers can gate backend reads.
   Future<String?> readToken() => _sessionStore.readToken();
+
+  // ── Round 31 — 401 → refresh → retry-once (native AuthInterceptor
+  // parity) ────────────────────────────────────────────────────────
+  //
+  // Every authenticated call in this class routes through
+  // [_sendAuthed]: attach the stored token; on HTTP 401 run ONE
+  // single-flight refresh (concurrent 401s share it); on success
+  // retry the original request ONCE with the rotated token.
+  //
+  // - Temporary refresh failure: the original 401 is handed back to
+  //   the caller, which runs its normal honest-failure path. The
+  //   stored session is untouched — never log out on a blip.
+  // - Definitive refresh failure: THIS wrapper is the single layer
+  //   responsible for clearing the session — it awaits
+  //   [SessionStore.clear] and then invokes [onSessionExpired] so
+  //   the app shell can route back to welcome. Callers of the
+  //   callback must NOT clear the store again.
+  //
+  // Logout is the one exception: native treats
+  // `POST /api/auth/logout` as a public auth endpoint, so
+  // [logoutAccount] bypasses this path entirely.
+
+  /// Invoked once after a definitive refresh failure has already
+  /// cleared the stored session. Static because the shell's screens
+  /// each construct their own [TabsBackend]; the app flow (main.dart)
+  /// registers its handler here so ANY instance's definitive failure
+  /// routes the app back to welcome. Default null (tests, tools).
+  static void Function()? onSessionExpired;
+
+  /// The in-flight single-flight refresh, if any. Concurrent 401s
+  /// all await this same future, so the refresh endpoint is hit at
+  /// most once per expiry wave.
+  Future<_RefreshOutcome>? _refreshInFlight;
+
+  /// Sends [send] with the stored token. Returns null when there is
+  /// no stored token or the transport fails; otherwise the response
+  /// (the retried response after a successful refresh, or the
+  /// original response — including the original 401 when the refresh
+  /// fails temporarily or definitively).
+  Future<http.Response?> _sendAuthed(
+      Future<http.Response> Function(String token) send) async {
+    final token = await _sessionStore.readToken();
+    if (token == null || token.trim().isEmpty) return null;
+    http.Response response;
+    try {
+      response = await send(token).timeout(requestTimeout);
+    } catch (_) {
+      return null;
+    }
+    if (response.statusCode != 401) return response;
+    final outcome = await _refreshSingleFlight(failedToken: token);
+    if (outcome is _RefreshSucceeded) {
+      try {
+        return await send(outcome.token).timeout(requestTimeout);
+      } catch (_) {
+        return null;
+      }
+    }
+    return response;
+  }
+
+  /// Single-flight entry point: the first 401 starts the refresh;
+  /// every concurrent 401 joins the same future.
+  Future<_RefreshOutcome> _refreshSingleFlight({required String failedToken}) {
+    final inFlight = _refreshInFlight;
+    if (inFlight != null) return inFlight;
+    late final Future<_RefreshOutcome> future;
+    future = _performRefresh(failedToken).whenComplete(() {
+      if (identical(_refreshInFlight, future)) _refreshInFlight = null;
+    });
+    _refreshInFlight = future;
+    return future;
+  }
+
+  Future<_RefreshOutcome> _performRefresh(String failedToken) async {
+    try {
+      // A concurrent caller may already have rotated the token
+      // while this one waited for the single-flight slot — reuse
+      // the stored token instead of refreshing a second time
+      // (native AuthInterceptor does the same check under its lock).
+      final current = await _sessionStore.readToken();
+      if (current != null &&
+          current.trim().isNotEmpty &&
+          current != failedToken) {
+        return _RefreshSucceeded(current);
+      }
+      final refreshToken = await _sessionStore.readRefreshToken();
+      if (refreshToken == null || refreshToken.trim().isEmpty) {
+        // Native parity: no refresh token → reconnect required.
+        return _definitiveFailure();
+      }
+      final result = await _authApi.refreshSession(refreshToken);
+      if (result is RefreshSuccess) {
+        // Both tokens rotate; the stored email stays unchanged.
+        final email = await _sessionStore.readEmail() ?? '';
+        await _sessionStore.saveSession(
+          token: result.token,
+          refreshToken: result.refreshToken,
+          email: email,
+        );
+        return _RefreshSucceeded(result.token);
+      }
+      if (result is RefreshDefinitiveFailure) {
+        return _definitiveFailure();
+      }
+      return const _RefreshTemporary();
+    } catch (_) {
+      // Storage surprise mid-refresh: preserve the session.
+      return const _RefreshTemporary();
+    }
+  }
+
+  /// Definitive failure handling — the ONE place the session is
+  /// cleared on refresh rejection. Clears first, then notifies.
+  Future<_RefreshOutcome> _definitiveFailure() async {
+    try {
+      await _sessionStore.clear();
+    } catch (_) {
+      // SessionStore.clear already isolates per-key failures; this
+      // is a last-resort guard so the callback still fires.
+    }
+    final callback = onSessionExpired;
+    if (callback != null) {
+      try {
+        callback();
+      } catch (_) {
+        // A shell routing bug must not corrupt the caller's result.
+      }
+    }
+    return const _RefreshDefinitive();
+  }
 
   /// Round 18 — the full sync-pull body, cached in memory for
   /// [syncPullTtl]. Null on any failure.
@@ -200,30 +336,18 @@ class TabsBackend {
   /// only in the header; never logged.
   Future<Map<String, dynamic>?> postAi(
       String path, Map<String, dynamic> body) async {
-    final token = await _sessionStore.readToken();
-    if (token == null || token.trim().isEmpty) return null;
+    final response = await _sendAuthed((token) => _client.post(
+          Uri.parse('$_baseUrl$path'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode(body),
+        ));
+    if (response == null || response.statusCode != 200) return null;
     try {
-      final response = await _client
-          .post(
-            Uri.parse('$_baseUrl$path'),
-            headers: {
-              'Authorization': 'Bearer $token',
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode(body),
-          )
-          .timeout(requestTimeout);
-      if (response.statusCode != 200) return null;
       final decoded = jsonDecode(response.body);
       return decoded is Map<String, dynamic> ? decoded : null;
-    } on TimeoutException {
-      return null;
-    } on SocketException {
-      return null;
-    } on HttpException {
-      return null;
-    } on FormatException {
-      return null;
     } catch (_) {
       return null;
     }
@@ -485,20 +609,16 @@ class TabsBackend {
   /// Round 29 — nickname update. Returns the decoded body on HTTP 200
   /// (callers check `success`), null on any failure.
   Future<Map<String, dynamic>?> updateNickname(String nickname) async {
-    final token = await _sessionStore.readToken();
-    if (token == null || token.trim().isEmpty) return null;
+    final response = await _sendAuthed((token) => _client.post(
+          Uri.parse('$_baseUrl/api/auth/update-nickname'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({'nickname': nickname}),
+        ));
+    if (response == null || response.statusCode != 200) return null;
     try {
-      final response = await _client
-          .post(
-            Uri.parse('$_baseUrl/api/auth/update-nickname'),
-            headers: {
-              'Authorization': 'Bearer $token',
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode({'nickname': nickname}),
-          )
-          .timeout(requestTimeout);
-      if (response.statusCode != 200) return null;
       final decoded = jsonDecode(response.body);
       return decoded is Map<String, dynamic> ? decoded : null;
     } catch (_) {
@@ -518,7 +638,10 @@ class TabsBackend {
       refresh = null;
     }
     if (refresh == null || refresh.isEmpty) return false;
-    return _postJson('/api/auth/logout', {'refreshToken': refresh});
+    // Round 31 — logout is a PUBLIC auth endpoint in the native
+    // interceptor: it must NOT go through the 401→refresh path.
+    return _postJson('/api/auth/logout', {'refreshToken': refresh},
+        allowRefresh: false);
   }
 
   /// Round 29 — permanent account deletion, mirroring native
@@ -527,84 +650,125 @@ class TabsBackend {
   /// the account and surfaces the error).
   Future<bool> deleteAccount() => _delete('/api/auth/delete-account');
 
-  /// Authenticated POST with a JSON body → true on HTTP 200.
-  /// Token used only in the header; never logged.
-  Future<bool> _postJson(String path, Map<String, dynamic> body) async {
-    final token = await _sessionStore.readToken();
-    if (token == null || token.trim().isEmpty) return false;
-    try {
-      final response = await _client
-          .post(
-            Uri.parse('$_baseUrl$path'),
-            headers: {
-              'Authorization': 'Bearer $token',
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode(body),
-          )
-          .timeout(requestTimeout);
-      return response.statusCode == 200;
-    } on TimeoutException {
-      return false;
-    } on SocketException {
-      return false;
-    } on HttpException {
-      return false;
-    } on FormatException {
-      return false;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  /// Authenticated DELETE → true on HTTP 200.
-  Future<bool> _delete(String path) async {
-    final token = await _sessionStore.readToken();
-    if (token == null || token.trim().isEmpty) return false;
-    try {
-      final response = await _client
-          .delete(
-            Uri.parse('$_baseUrl$path'),
-            headers: {'Authorization': 'Bearer $token'},
-          )
-          .timeout(requestTimeout);
-      return response.statusCode == 200;
-    } on TimeoutException {
-      return false;
-    } on SocketException {
-      return false;
-    } on HttpException {
-      return false;
-    } on FormatException {
-      return false;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  /// Authenticated GET → decoded JSON object, or null on any failure.
-  /// The token is used only here, in the header; never logged anywhere.
-  Future<Map<String, dynamic>?> _getJson(String path) async {
+  /// Round 30 — link a Google account, mirroring native
+  /// `SettingsViewModel.connectGoogleAccount` (SettingsViewModel.kt:
+  /// 218-241) → `POST api/auth/link-google` (JotApi.kt:589-590) with
+  /// `LinkGoogleRequest{idToken}` (JotApi.kt:133). Returns the decoded
+  /// `GenericResponse` body ({success, message, error}, JotApi.kt:
+  /// 146-150) on HTTP 200, null on any transport failure. The ID token
+  /// is sent only in this request body — never logged. Native fails
+  /// closed: local connected state changes only when the body reports
+  /// success, and the caller enforces that.
+  Future<Map<String, dynamic>?> linkGoogle(String idToken) async {
     final token = await _sessionStore.readToken();
     if (token == null || token.trim().isEmpty) return null;
     try {
       final response = await _client
-          .get(
-            Uri.parse('$_baseUrl$path'),
-            headers: {'Authorization': 'Bearer $token'},
+          .post(
+            Uri.parse('$_baseUrl/api/auth/link-google'),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({'idToken': idToken}),
           )
           .timeout(requestTimeout);
       if (response.statusCode != 200) return null;
       final decoded = jsonDecode(response.body);
       return decoded is Map<String, dynamic> ? decoded : null;
-    } on TimeoutException {
+    } catch (_) {
       return null;
-    } on SocketException {
+    }
+  }
+
+  /// Round 30 — disconnect the linked Google account, mirroring
+  /// native `SettingsViewModel.disconnectGoogleAccount`
+  /// (SettingsViewModel.kt:243-263) → `POST api/auth/disconnect-google`
+  /// (JotApi.kt:592-593). Returns the decoded `GenericResponse` body
+  /// on HTTP 200, null on any transport failure. Native treats the
+  /// disconnect as done only when the body carries no error (the
+  /// server refuses to remove the last usable sign-in method), and
+  /// preserves local state otherwise — the caller enforces that.
+  Future<Map<String, dynamic>?> disconnectGoogle() async {
+    final token = await _sessionStore.readToken();
+    if (token == null || token.trim().isEmpty) return null;
+    try {
+      final response = await _client
+          .post(
+            Uri.parse('$_baseUrl/api/auth/disconnect-google'),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode(const <String, dynamic>{}),
+          )
+          .timeout(requestTimeout);
+      if (response.statusCode != 200) return null;
+      final decoded = jsonDecode(response.body);
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } catch (_) {
       return null;
-    } on HttpException {
-      return null;
-    } on FormatException {
-      return null;
+    }
+  }
+
+  /// Authenticated POST with a JSON body → true on HTTP 200.
+  /// Token used only in the header; never logged.
+  ///
+  /// Round 31 — routes through the 401→refresh→retry-once path
+  /// unless [allowRefresh] is false (public auth endpoints such as
+  /// logout, which native never intercepts).
+  Future<bool> _postJson(String path, Map<String, dynamic> body,
+      {bool allowRefresh = true}) async {
+    if (!allowRefresh) {
+      final token = await _sessionStore.readToken();
+      if (token == null || token.trim().isEmpty) return false;
+      try {
+        final response = await _client
+            .post(
+              Uri.parse('$_baseUrl$path'),
+              headers: {
+                'Authorization': 'Bearer $token',
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode(body),
+            )
+            .timeout(requestTimeout);
+        return response.statusCode == 200;
+      } catch (_) {
+        return false;
+      }
+    }
+    final response = await _sendAuthed((token) => _client.post(
+          Uri.parse('$_baseUrl$path'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode(body),
+        ));
+    return response?.statusCode == 200;
+  }
+
+  /// Authenticated DELETE → true on HTTP 200.
+  Future<bool> _delete(String path) async {
+    final response = await _sendAuthed((token) => _client.delete(
+          Uri.parse('$_baseUrl$path'),
+          headers: {'Authorization': 'Bearer $token'},
+        ));
+    return response?.statusCode == 200;
+  }
+
+  /// Authenticated GET → decoded JSON object, or null on any failure.
+  /// The token is used only here, in the header; never logged anywhere.
+  Future<Map<String, dynamic>?> _getJson(String path) async {
+    final response = await _sendAuthed((token) => _client.get(
+          Uri.parse('$_baseUrl$path'),
+          headers: {'Authorization': 'Bearer $token'},
+        ));
+    if (response == null || response.statusCode != 200) return null;
+    try {
+      final decoded = jsonDecode(response.body);
+      return decoded is Map<String, dynamic> ? decoded : null;
     } catch (_) {
       return null;
     }
@@ -679,4 +843,30 @@ class FriendNotificationDto {
       senderTag: json['senderTag']?.toString(),
     );
   }
+}
+
+/// Round 31 — internal outcome of the single-flight refresh.
+/// Never leaves this file; callers of the backend only see the
+/// retried response or their normal failure result.
+sealed class _RefreshOutcome {
+  const _RefreshOutcome();
+}
+
+/// Refresh succeeded (or a concurrent caller already rotated the
+/// token) — retry the original request with [token].
+class _RefreshSucceeded extends _RefreshOutcome {
+  final String token;
+  const _RefreshSucceeded(this.token);
+}
+
+/// Temporary refresh failure — session preserved; the caller gets
+/// its original 401 as its normal failure.
+class _RefreshTemporary extends _RefreshOutcome {
+  const _RefreshTemporary();
+}
+
+/// Definitive refresh failure — the session has already been
+/// cleared and [TabsBackend.onSessionExpired] fired by the wrapper.
+class _RefreshDefinitive extends _RefreshOutcome {
+  const _RefreshDefinitive();
 }

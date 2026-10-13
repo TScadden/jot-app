@@ -7,6 +7,7 @@ import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
+import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/auth/login_screen.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
@@ -135,6 +136,46 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
     });
   }
 
+  // Round 31 — the session store this flow reads for cold-start
+  // restore (the injected one in tests, a real one otherwise).
+  late final SessionStore _sessionStore;
+
+  // Round 31 — cold-start session restore, native parity
+  // (SplashScreen.checkAuthState): stored session PRESENCE alone
+  // routes to home. No network validation at startup, and the
+  // splash is never blocked on this read — an offline cold start
+  // lands in Main with the stored session, and the backend's
+  // 401→refresh path (TabsBackend) sorts out token expiry on the
+  // first real call. No stored token → current welcome behavior.
+  Future<void> _restoreSession() async {
+    try {
+      final token = await _sessionStore.readToken();
+      if (token == null || token.trim().isEmpty) return;
+      final email = await _sessionStore.readEmail();
+      // If the user already moved past welcome (or the widget is
+      // gone), the restore has nothing to do.
+      if (!mounted || _stage != _FlowStage.welcome) return;
+      setState(() {
+        _loggedInEmail = email;
+        _stage = _FlowStage.home;
+      });
+    } catch (_) {
+      // Unreadable store → fresh-install behavior (welcome).
+    }
+  }
+
+  // Round 31 — a definitive refresh failure discovered later by any
+  // TabsBackend call. The backend wrapper has ALREADY cleared the
+  // SessionStore (it is the single layer responsible for that);
+  // here we only drop the account-bound in-memory caches and route
+  // back to welcome via the existing logout mechanics.
+  void _onSessionExpired() {
+    unawaited(HomeDataCache.instance.clear());
+    unawaited(QuickLogCache.instance.clear());
+    if (!mounted) return;
+    _onLogout();
+  }
+
   // Round 5: real login succeeded — the session is already in secure
   // storage (LoginScreen handles that); record the email for the home
   // indicator and navigate.
@@ -161,6 +202,11 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    // Round 31 — wire the backend's session-expired callback and
+    // kick off the cold-start restore (async; never blocks splash).
+    _sessionStore = widget.sessionStore ?? SessionStore();
+    TabsBackend.onSessionExpired = _onSessionExpired;
+    unawaited(_restoreSession());
     _exitController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: _exitMs),
@@ -183,6 +229,11 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
 
   @override
   void dispose() {
+    // Round 31 — don't leave this flow's handler registered on the
+    // backend after the flow is gone.
+    if (TabsBackend.onSessionExpired == _onSessionExpired) {
+      TabsBackend.onSessionExpired = null;
+    }
     _exitController.dispose();
     super.dispose();
   }

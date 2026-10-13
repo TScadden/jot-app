@@ -220,6 +220,70 @@ class AuthApiClient {
     );
   }
 
+  /// Round 31 — refresh-token exchange, mirroring the native
+  /// `AuthInterceptor.performRefresh` taxonomy exactly.
+  ///
+  /// Endpoint: `POST /api/auth/refresh-token` with JSON body
+  /// `{"refreshToken": ...}` → `{"token": ..., "refreshToken": ...,
+  /// "error": ...}`. Both tokens rotate on success.
+  ///
+  /// Result taxonomy (native parity — do not widen or narrow):
+  /// - [RefreshSuccess]: HTTP 200 with non-blank `token` AND
+  ///   non-blank `refreshToken`.
+  /// - [RefreshDefinitiveFailure]: HTTP 401 or 403, OR the response
+  ///   `error` string (lowercased) contains "expired", "revoked",
+  ///   "invalid", or "disabled". The session is genuinely dead.
+  /// - [RefreshTemporaryFailure]: EVERYTHING else — 5xx, any other
+  ///   non-2xx, network exception/timeout, unparseable body, blank
+  ///   tokens in a 200. The session MUST be preserved.
+  ///
+  /// The refresh token is never logged, printed, or included in
+  /// exceptions (Vera rule) — it lives in memory only for the
+  /// duration of the request, same as the password in [login].
+  Future<RefreshResult> refreshSession(String refreshToken) async {
+    final uri = Uri.parse('$_baseUrl/api/auth/refresh-token');
+    http.Response response;
+    try {
+      response = await _client
+          .post(
+            uri,
+            headers: const {'Content-Type': 'application/json'},
+            body: jsonEncode({'refreshToken': refreshToken}),
+          )
+          .timeout(const Duration(seconds: 20));
+    } catch (_) {
+      // Timeout / socket / TLS / anything transport — temporary.
+      // Deliberately generic: never leak transport details.
+      return const RefreshTemporaryFailure();
+    }
+
+    if (response.statusCode == 401 || response.statusCode == 403) {
+      return const RefreshDefinitiveFailure();
+    }
+
+    final body = _decodeJson(response.body);
+    final error = body['error']?.toString().toLowerCase() ?? '';
+    if (error.contains('expired') ||
+        error.contains('revoked') ||
+        error.contains('invalid') ||
+        error.contains('disabled')) {
+      return const RefreshDefinitiveFailure();
+    }
+
+    if (response.statusCode == 200) {
+      final token = body['token']?.toString() ?? '';
+      final newRefreshToken = body['refreshToken']?.toString() ?? '';
+      if (token.isNotBlank && newRefreshToken.isNotBlank) {
+        return RefreshSuccess(token: token, refreshToken: newRefreshToken);
+      }
+      // 200 with blank tokens — server bug, NOT a dead session.
+      return const RefreshTemporaryFailure();
+    }
+
+    // 5xx and every other non-2xx: temporary.
+    return const RefreshTemporaryFailure();
+  }
+
   Map<String, dynamic> _decodeJson(String source) {
     try {
       final decoded = jsonDecode(source);
@@ -259,6 +323,32 @@ class LoginFailure extends LoginResult {
   final String message;
 
   const LoginFailure(this.kind, this.message);
+}
+
+/// Outcome of [AuthApiClient.refreshSession]. Never carries error
+/// text or tokens beyond the rotated pair on success.
+sealed class RefreshResult {
+  const RefreshResult();
+}
+
+/// Refresh succeeded — both tokens rotated; save BOTH.
+class RefreshSuccess extends RefreshResult {
+  final String token;
+  final String refreshToken;
+
+  const RefreshSuccess({required this.token, required this.refreshToken});
+}
+
+/// The refresh token is genuinely dead (rejected / expired /
+/// revoked / invalid / disabled). The session must be cleared.
+class RefreshDefinitiveFailure extends RefreshResult {
+  const RefreshDefinitiveFailure();
+}
+
+/// Refresh could not complete for a transient reason. The stored
+/// session MUST be preserved — never log the user out on this.
+class RefreshTemporaryFailure extends RefreshResult {
+  const RefreshTemporaryFailure();
 }
 
 enum LoginFailureKind {
