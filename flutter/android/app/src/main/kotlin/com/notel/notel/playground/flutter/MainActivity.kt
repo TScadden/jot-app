@@ -61,6 +61,9 @@ class MainActivity : FlutterFragmentActivity() {
     companion object {
         const val HC_CHANNEL = "com.notel.notel.playground.flutter/health_connect"
         const val VOICE_CHANNEL = "com.notel.notel.playground.flutter/voice"
+        const val FILE_PICKER_CHANNEL = "com.notel.notel.playground.flutter/file_picker"
+        // Round 48: BP CSV import cap, same as native MAX_CSV_FILE_BYTES.
+        private const val MAX_CSV_FILE_BYTES = 5 * 1024 * 1024
         const val HC_PROVIDER_PACKAGE = "com.google.android.apps.healthdata"
         const val SETTINGS_ACTION = "android.health.connect.action.HEALTH_HOME_SETTINGS"
         private const val REQUEST_TIMEOUT_MS = 5 * 60 * 1000L
@@ -97,6 +100,13 @@ class MainActivity : FlutterFragmentActivity() {
     // no RECORD_AUDIO permission.
     private lateinit var voiceLauncher: ActivityResultLauncher<Intent>
     private var pendingVoiceResult: MethodChannel.Result? = null
+
+    // Round 48: CSV file picker for the Blood Pressure import flow.
+    // GetContent mirrors native BloodPressureScreen's SAF picker
+    // ("*/*" so exports the system doesn't label as CSV are still
+    // pickable; the Dart-side parser validates the content).
+    private lateinit var csvPickerLauncher: ActivityResultLauncher<String>
+    private var pendingCsvResult: MethodChannel.Result? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -140,6 +150,72 @@ class MainActivity : FlutterFragmentActivity() {
                 // Result already consumed — nothing to do.
             }
         }
+        csvPickerLauncher = activityResultRegistry.register(
+            "csv_picker_launcher",
+            ActivityResultContracts.GetContent()
+        ) { uri ->
+            val r = pendingCsvResult
+            pendingCsvResult = null
+            if (r == null) return@register // stale (superseded)
+            if (uri == null) {
+                // User cancelled the picker — a null success, not an
+                // error (Dart treats null as "no file chosen").
+                try { r.success(null) } catch (_: Exception) { }
+                return@register
+            }
+            // Read off the main thread with the native 5 MB cap
+            // (native readCsvTextCapped semantics: TooLarge / Failed
+            // / Ok-with-BOM-stripped).
+            Thread {
+                var failureCode: String? = null
+                var failureMessage: String? = null
+                var text: String? = null
+                try {
+                    val stream = contentResolver.openInputStream(uri)
+                    if (stream == null) {
+                        failureCode = "READ_FAILED"
+                        failureMessage = "Couldn't read this file. Please try a different CSV."
+                    } else {
+                        stream.use { input ->
+                            val buf = ByteArray(8192)
+                            var total = 0
+                            val out = java.io.ByteArrayOutputStream()
+                            var tooLarge = false
+                            while (true) {
+                                val n = input.read(buf)
+                                if (n == -1) break
+                                total += n
+                                if (total > MAX_CSV_FILE_BYTES) {
+                                    tooLarge = true
+                                    break
+                                }
+                                out.write(buf, 0, n)
+                            }
+                            if (tooLarge) {
+                                failureCode = "TOO_LARGE"
+                                failureMessage = "This file is too large to import. The limit is 5 MB."
+                            } else {
+                                text = out.toString(Charsets.UTF_8.name()).removePrefix("\uFEFF")
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    failureCode = "READ_FAILED"
+                    failureMessage = "Couldn't read this file. Please try a different CSV."
+                }
+                runOnUiThread {
+                    try {
+                        if (failureCode != null) {
+                            r.error(failureCode, failureMessage, null)
+                        } else {
+                            r.success(text)
+                        }
+                    } catch (_: Exception) {
+                        // Result already consumed — nothing to do.
+                    }
+                }
+            }.start()
+        }
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -177,6 +253,33 @@ class MainActivity : FlutterFragmentActivity() {
                     else -> result.notImplemented()
                 }
             }
+        // Round 48: SAF text-file picker for the Blood Pressure CSV
+        // import (native BloodPressureScreen launches "*/*" too).
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, FILE_PICKER_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "pickCsvText" -> pickCsvText(result)
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    /// Round 48: launches the system file picker and returns the
+    /// picked file's text to Dart (null when the user cancels).
+    /// Every failure path returns a visible error code — never a
+    /// silent no-op.
+    private fun pickCsvText(result: MethodChannel.Result) {
+        if (pendingCsvResult != null) {
+            result.error("IN_FLIGHT", "A file pick is already in progress", null)
+            return
+        }
+        pendingCsvResult = result
+        try {
+            csvPickerLauncher.launch("*/*")
+        } catch (e: Exception) {
+            pendingCsvResult = null
+            result.error("LAUNCH_FAILED", "Couldn't open the file picker.", null)
+        }
     }
 
     /// Round 19: launches the system speech recognizer and returns the top
