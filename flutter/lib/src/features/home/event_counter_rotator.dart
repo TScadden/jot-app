@@ -15,8 +15,9 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///
 /// Native behavior, ported:
 /// - Display per counter: `"Since {name}"` / `"Until {name}"`
-///   (9sp, FontWeight.Black, `NotelPrimary` at 80% alpha, letter
-///   spacing 0.5, right-aligned, single line, ellipsized) beside
+///   (9sp, FontWeight.Black, `NotelPrimary` — native's 80% alpha
+///   measures 3.65:1, so Round 49 renders it at full opacity, 5.08:1;
+///   letter spacing 0.5, right-aligned, single line, ellipsized) beside
 ///   `"{days}"` (14sp Black, textPrimary) + `"Days"` (8sp Bold,
 ///   textSecondary, letter spacing 0.5). The day count is the native
 ///   directed count clamped at 0 — see
@@ -219,7 +220,15 @@ class _EventCounterRotatorState extends State<EventCounterRotator> {
         child: Semantics(
           button: widget.onTap != null,
           label: 'Event counters',
-          child: content,
+          // Round 49 (audit H4): the slot's tap height was 28dp (multi)
+          // / ~20dp (single). A 48dp minimum height expands the HIT
+          // AREA only — the label/count/dots render at their native
+          // sizes, centered in the taller slot (H16's micro-labels are
+          // flagged, untouched).
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
+            child: content,
+          ),
         ),
       ),
     );
@@ -248,7 +257,10 @@ class _EventCounterRotatorState extends State<EventCounterRotator> {
               fontSize: 9,
               fontWeight: FontWeight.w900,
               letterSpacing: 0.5,
-              color: NotelColors.primary.withValues(alpha: 0.8),
+              // Round 49 (audit H6): native's primary @ 80% measures
+              // 3.65:1 on the page background; full-opacity primary is
+              // 5.08:1. Size/weight are native-verbatim (H16, flagged).
+              color: NotelColors.primary,
             ),
           ),
         ),

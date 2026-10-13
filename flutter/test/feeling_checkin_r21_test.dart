@@ -200,7 +200,9 @@ void main() {
       expect(selected, 4);
     });
 
-    testWidgets('pressed button fills Tabs purple with a white number', (
+    testWidgets(
+        'pressed button fills Tabs purple with an onPrimary-ink number '
+        '(Round 49: white on primary measured 3.80:1, ink 5.21:1)', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -251,6 +253,14 @@ void main() {
         anyOf(NotelColors.surfaceHigh, NotelColors.primary),
       );
       expect(anyPressed, isTrue);
+      // The pressed button's number renders in the onPrimary ink.
+      final pressedNumber = tester.widget<Text>(
+        find.descendant(
+          of: find.byType(FeelingCheckInCard),
+          matching: find.text('2'),
+        ),
+      );
+      expect(pressedNumber.style?.color, NotelColors.onPrimary);
       await gesture.up();
       await tester.pump();
     });

@@ -9,6 +9,18 @@ abstract final class NotelColors {
   static const primary = Color(0xFF7C6EFF); // Tabs purple — primary actions
   static const textPrimary = Color(0xFFF0EEFF); // Near-white
   static const textSecondary = Color(0xFF7A8FAF); // Muted blue-grey
+
+  /// Ink on a [primary] fill — the `_chipInk` precedent from the
+  /// History / Quick Log category chips (native `LegacyDarkChipInk`),
+  /// measured 5.21:1 on primary where white measures 3.80:1
+  /// (Round 49 audit S1). For chips, pills, and small labels on a
+  /// primary fill; large bold primary button labels keep white per
+  /// the founder exception.
+  static const onPrimary = Color(0xFF0A0A0E);
+
+  /// UV "Extreme" data color in the weather info sheets (data-series
+  /// color, not a text/surface role).
+  static const uvExtreme = Color(0xFFCE93D8);
   static const error = Color(0xFFFF6B6B);
   static const success = Color(0xFF4CAF50); // NotelSuccess (dark palette)
   static const warning = Color(0xFFFFB74D); // NotelWarning (dark palette)
