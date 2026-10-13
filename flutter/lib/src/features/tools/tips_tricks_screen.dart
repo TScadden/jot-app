@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
@@ -12,20 +13,139 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// paywall is built, just the lock. When unlocked, topic generation and
 /// per-topic tips go through `POST api/ai/advice` with the same
 /// `AiRequest`-shaped body the native `GeminiService.getAdvice` sends.
-/// Results are cached in memory for the session (like native's cached
-/// answers, but memory-only here). AI failures surface as visible
-/// errors; tips are never fabricated.
+///
+/// Round 48 — the topic/answer cache is now PERSISTED, mirroring
+/// native: topics and per-topic answers live in local preferences
+/// (`tipsAndTricksTopics` / `tipsAndTricksAnswers` in native's
+/// DataStore), so reopening the tool shows the last generated topics
+/// immediately instead of the onboarding prompt, and cached answers
+/// open without a new AI call. Regenerating topics clears the
+/// cached answers, exactly like native. The Flutter store is
+/// [TipsCacheStore] (secure storage; injectable for tests).
 class TipsTricksScreen extends StatefulWidget {
   final TabsBackend? backend;
 
-  const TipsTricksScreen({super.key, this.backend});
+  /// Injectable for tests (Round 48 cache persistence).
+  final TipsCacheStore? cacheStore;
+
+  const TipsTricksScreen({super.key, this.backend, this.cacheStore});
 
   @override
   State<TipsTricksScreen> createState() => _TipsTricksScreenState();
 }
 
+/// Round 48 — persisted topics/answers cache, mirroring native's
+/// DataStore preferences (`tipsAndTricksTopics` = a JSON array
+/// string, `tipsAndTricksAnswers` = a JSON object of topic →
+/// string array). Injectable read/write so tests never touch
+/// platform channels (ToolOrderStore pattern).
+class TipsCacheStore {
+  static const String topicsKey = 'tips_tricks_topics_v1';
+  static const String answersKey = 'tips_tricks_answers_v1';
+
+  Future<String?> Function(String key) _read =
+      (key) => const FlutterSecureStorage().read(key: key);
+  Future<void> Function(String key, String value) _write =
+      (key, value) =>
+          const FlutterSecureStorage().write(key: key, value: value);
+  Future<void> Function(String key) _delete =
+      (key) => const FlutterSecureStorage().delete(key: key);
+
+  /// Test seam.
+  void debugSetIO({
+    Future<String?> Function(String key)? read,
+    Future<void> Function(String key, String value)? write,
+    Future<void> Function(String key)? delete,
+  }) {
+    if (read != null) _read = read;
+    if (write != null) _write = write;
+    if (delete != null) _delete = delete;
+  }
+
+  Future<List<String>> loadTopics() async {
+    try {
+      final raw = await _read(topicsKey);
+      if (raw == null || raw.trim().isEmpty) return const [];
+      return decodeCachedTopics(raw);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> saveTopics(List<String> topics) async {
+    try {
+      await _write(topicsKey, jsonEncode(topics));
+    } catch (_) {
+      // Cache persistence never breaks the UI.
+    }
+  }
+
+  Future<Map<String, List<String>>> loadAnswers() async {
+    try {
+      final raw = await _read(answersKey);
+      if (raw == null || raw.trim().isEmpty) return const {};
+      return decodeCachedAnswers(raw);
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  Future<void> saveAnswers(Map<String, List<String>> answers) async {
+    try {
+      await _write(answersKey, jsonEncode(answers));
+    } catch (_) {
+      // Cache persistence never breaks the UI.
+    }
+  }
+
+  Future<void> clearAnswers() async {
+    try {
+      await _delete(answersKey);
+    } catch (_) {
+      // Cache persistence never breaks the UI.
+    }
+  }
+}
+
+/// Decodes a cached topics JSON array string (native's stored
+/// format). Tolerant: malformed → empty. Never throws.
+List<String> decodeCachedTopics(String raw) {
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is List) {
+      return [
+        for (final item in decoded)
+          if ('$item'.trim().isNotEmpty) '$item'.trim(),
+      ];
+    }
+  } catch (_) {}
+  return const [];
+}
+
+/// Decodes a cached answers JSON object string (topic → tips).
+/// Tolerant: malformed entries are skipped. Never throws.
+Map<String, List<String>> decodeCachedAnswers(String raw) {
+  final out = <String, List<String>>{};
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is Map) {
+      decoded.forEach((key, value) {
+        if (value is List) {
+          out['$key'] = [
+            for (final item in value)
+              if ('$item'.trim().isNotEmpty) '$item'.trim(),
+          ];
+        }
+      });
+    }
+  } catch (_) {}
+  return out;
+}
+
 class _TipsTricksScreenState extends State<TipsTricksScreen> {
   TabsBackend get _backend => widget.backend ?? TabsBackend();
+  late final TipsCacheStore _cacheStore =
+      widget.cacheStore ?? TipsCacheStore();
 
   /// null = gate check still running; true = unlocked; false = locked.
   bool? _unlocked;
@@ -53,6 +173,7 @@ class _TipsTricksScreenState extends State<TipsTricksScreen> {
           _gateError = null;
         }
       });
+      if (unlimited) await _loadCache();
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -60,6 +181,18 @@ class _TipsTricksScreenState extends State<TipsTricksScreen> {
         _gateError = 'Could not verify membership. Check your connection and try again.';
       });
     }
+  }
+
+  /// Loads the persisted topics/answers (native shows cached topics
+  /// on open; the onboarding prompt appears only when none exist).
+  Future<void> _loadCache() async {
+    final topics = await _cacheStore.loadTopics();
+    final answers = await _cacheStore.loadAnswers();
+    if (!mounted) return;
+    setState(() {
+      if (topics.isNotEmpty && _topics.isEmpty) _topics = topics;
+      _tips.addAll(answers);
+    });
   }
 
   Future<void> _generateTopics() async {
@@ -87,6 +220,10 @@ class _TipsTricksScreenState extends State<TipsTricksScreen> {
         _topics = topics;
         _tips.clear();
       });
+      // Native persists the new topics and clears the old cached
+      // answers when topics regenerate.
+      await _cacheStore.saveTopics(topics);
+      await _cacheStore.clearAnswers();
     } catch (_) {
       _fail('Could not generate topics. Check your connection and try again.');
     } finally {
@@ -144,6 +281,8 @@ class _TipsTricksScreenState extends State<TipsTricksScreen> {
         return const [];
       }
       _tips[topic] = tips;
+      // Native persists each fetched answer into the cached map.
+      await _cacheStore.saveAnswers(_tips);
       return tips;
     } catch (_) {
       _fail('Could not load tips for this topic. Check your connection and try again.');

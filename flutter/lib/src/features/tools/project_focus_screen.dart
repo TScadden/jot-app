@@ -1,30 +1,33 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-/// Round 18 (Team B) — Project Focus tool, READ-ONLY port of the native
-/// `ProjectFocusScreen.kt` "details" view.
+/// Round 48 (Team B) — Project Focus tool, FULL port of native
+/// `ProjectFocusScreen.kt` + `ProjectFocusViewModel.kt`.
 ///
 /// Data source: `decodeProfileList((await fetchProfile())['focusState'])`
-/// — the server-synced `FocusStateDto` JSON blob. The first decoded map is
-/// treated as the focus state; `activeTests` (or a lone test-shaped map)
-/// become the read-only test list.
+/// — the server-synced `FocusStateDto` JSON blob. Every write mirrors
+/// native `saveCurrentState`: the WHOLE state object is re-encoded
+/// and pushed via `POST /api/sync/profile {focusState}`. Writes start
+/// from the freshest decoded blob and preserve keys this screen does
+/// not own, so no test or flow state is ever dropped (PR #28 lesson).
 ///
-/// Rendered (layout per native):
-/// - Active-test selector row (local selection only — no server write).
-/// - Header card: status badge (Complete / In Progress), title, desc,
-///   progress bar ("Day X of N", "N days left" / "Done!").
-/// - Today's Check-In card, read-only (no Yes/No logging — deferred).
-/// - Log History calendar grid + Completed/Missed/Upcoming legend.
-/// - Empty state ("What are you trying to work towards?") when there are
-///   no active tests.
-///
-/// DEFERRED (display-only round): the whole creation flow (struggle
-/// input → AI suggestions → measure metric → setup → lock-in), daily
-/// check-in logging, undo, cancel, and the jottracker.com results links.
-/// Check-ins are logged from the main Tabs app.
+/// Round 18 shipped the details view read-only. Round 48 wires the
+/// rest of native's surface:
+/// - Creation flow: struggle input → `POST /api/ai/focus-suggestions`
+///   → select a suggestion → target metric → duration (3–30 days) +
+///   start today/tomorrow → "Lock it In" → splash → details.
+/// - Daily check-in logging ("Yes, I did it" / "Not today") + Undo.
+/// - Cancel Experiment (with native's confirm dialog).
+/// - Selector chips persist the selection; "Create Project" in the
+///   app bar; the help dialog; the completed-test results link and
+///   the "Manage projects on jottracker.com" link.
+/// Write failures are honest: the visible state only changes after
+/// the server push succeeds, and a visible error is shown otherwise.
 
 /// One read-only active test — mirrors native `ActiveProjectTest`.
 class FocusTest {
@@ -48,15 +51,19 @@ class FocusTest {
     this.measureMetric,
   });
 
-  /// Tolerant parse: null on a map that isn't test-shaped. Never throws.
+  /// Tolerant parse: null on a map that isn't test-shaped. Numbers
+  /// may arrive as strings (server serialization) — both are
+  /// accepted. Never throws.
   static FocusTest? fromJson(Map<String, dynamic> json) {    try {
       final title = json['title']?.toString().trim() ?? '';
-      final durationRaw = json['durationDays'];
-      final startRaw = json['startTimestamp'];
+      int? asInt(dynamic v) =>
+          v is num ? v.toInt() : (v is String ? int.tryParse(v) : null);
+      final durationRaw = asInt(json['durationDays']);
+      final startRaw = asInt(json['startTimestamp']);
       if (title.isEmpty ||
-          durationRaw is! num ||
-          startRaw is! num ||
-          durationRaw.toInt() <= 0) {
+          durationRaw == null ||
+          startRaw == null ||
+          durationRaw <= 0) {
         return null;
       }
       final logs = <String, bool>{};
@@ -79,8 +86,8 @@ class FocusTest {
         id: json['id']?.toString(),
         title: title,
         desc: json['desc']?.toString(),
-        durationDays: durationRaw.toInt(),
-        startTimestamp: startRaw.toInt(),
+        durationDays: durationRaw,
+        startTimestamp: startRaw,
         lockDayStr: json['lockDayStr']?.toString(),
         logs: logs,
         measureMetric: json['measureMetric']?.toString(),
@@ -89,6 +96,31 @@ class FocusTest {
       return null;
     }
   }
+
+  FocusTest copyWith({Map<String, bool>? logs}) {
+    return FocusTest(
+      id: id,
+      title: title,
+      desc: desc,
+      durationDays: durationDays,
+      startTimestamp: startTimestamp,
+      lockDayStr: lockDayStr,
+      logs: logs ?? this.logs,
+      measureMetric: measureMetric,
+    );
+  }
+
+  /// Serializes back to the native `ActiveProjectTest` blob shape.
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'desc': desc,
+        'durationDays': durationDays,
+        'startTimestamp': startTimestamp,
+        'lockDayStr': lockDayStr,
+        'logs': logs,
+        'measureMetric': measureMetric,
+      };
 
   /// Mirrors native `ProjectFocusScreen.kt` (`leftMs <= 0` where
   /// `leftMs = max(durationMs - elapsedMs, 0)`).
@@ -183,6 +215,49 @@ String? defaultSelectedTestId(
   return first.id ?? first.title;
 }
 
+/// One AI focus suggestion — mirrors native `FocusSuggestion`
+/// (`{title, desc}` from `POST /api/ai/focus-suggestions`).
+class FocusSuggestion {
+  final String title;
+  final String desc;
+
+  const FocusSuggestion({required this.title, required this.desc});
+
+  Map<String, dynamic> toJson() => {'title': title, 'desc': desc};
+
+  static FocusSuggestion? fromJson(dynamic raw) {
+    if (raw is! Map<String, dynamic>) return null;
+    final title = '${raw['title'] ?? ''}'.trim();
+    if (title.isEmpty) return null;
+    return FocusSuggestion(title: title, desc: '${raw['desc'] ?? ''}'.trim());
+  }
+}
+
+/// Parses the `result` list of a focus-suggestions response.
+/// Skips malformed rows; never throws.
+List<FocusSuggestion> parseFocusSuggestions(dynamic raw) {
+  if (raw is! List) return const [];
+  return [
+    for (final item in raw)
+      if (FocusSuggestion.fromJson(item) != null)
+        FocusSuggestion.fromJson(item)!,
+  ];
+}
+
+/// Native's target-metric options (ProjectFocusScreen.kt "measure"
+/// step), in native's order: (key, label). The empty key is
+/// "None / Subjective".
+const List<(String, String)> focusMeasureMetrics = [
+  ('sleepMins', 'Sleep Duration 🛌'),
+  ('deepSleepMins', 'Deep Sleep 🌌'),
+  ('avgHr', 'Heart Rate ❤️'),
+  ('hrv', 'HRV ⚡'),
+  ('calories', 'Calories 🍏'),
+  ('spikes', 'HR Spikes 📈'),
+  ('jots', 'Number of Tabs 📝'),
+  ('', 'None / Subjective 🧠'),
+];
+
 String _dateStr(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
@@ -212,11 +287,37 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
   List<FocusTest> _tests = const [];
   String? _selectedId;
 
+  /// The freshest decoded focusState blob, retained verbatim so a
+  /// push can splice this screen's changes over it without dropping
+  /// keys it does not own (native `FocusStateDto` round-trip).
+  Map<String, dynamic> _rawBlob = const {};
+
+  /// Native sub-view: input | suggestions | measure | setup |
+  /// splash | details.
+  String _subView = 'input';
+  List<FocusSuggestion> _suggestions = const [];
+  FocusSuggestion? _selectedSuggestion;
+  String _measureMetric = '';
+  int _setupDuration = 7;
+  bool _startTomorrow = false;
+  bool _suggestionsLoading = false;
+  bool _saving = false;
+  String? _flowError;
+  String? _writeError;
+  final TextEditingController _struggleController =
+      TextEditingController();
+
   @override
   void initState() {
     super.initState();
     _backend = widget.backend ?? TabsBackend();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _struggleController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -226,11 +327,25 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
       final tests = collectFocusTests(decoded);
       if (!mounted) return;
       setState(() {
+        _rawBlob = decoded.isNotEmpty ? decoded.first : const {};
         _tests = tests;
         // Founder-directed: an in-progress test is selected; with none,
         // the screen opens in the new-project/empty flow (completed tests
         // stay reachable via the selector chips).
         _selectedId = defaultSelectedTestId(decoded, tests);
+        // Restore the persisted creation-flow state like native.
+        _suggestions = parseFocusSuggestions(_rawBlob['suggestions']);
+        _selectedSuggestion =
+            FocusSuggestion.fromJson(_rawBlob['selectedSuggestion']);
+        final duration = _rawBlob['setupDuration'];
+        _setupDuration = duration is num
+            ? duration.toInt()
+            : int.tryParse('$duration') ?? 7;
+        _measureMetric =
+            _rawBlob['selectedMeasureMetric']?.toString() ?? '';
+        // Native opens on details when a test is selected, else the
+        // creation flow's input step.
+        _subView = _selectedId != null ? 'details' : 'input';
         _loading = false;
       });
     } catch (_) {
@@ -238,6 +353,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
       // Honest empty on any failure — nothing is invented.
       setState(() {
         _tests = const [];
+        _subView = 'input';
         _loading = false;
       });
     }
@@ -250,6 +366,308 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
       if ((t.id ?? t.title) == id) return t;
     }
     return null;
+  }
+
+  bool get _inCreationFlow =>
+      const ['input', 'suggestions', 'measure', 'setup']
+          .contains(_subView);
+
+  /// Pushes the whole focus state, mirroring native
+  /// `saveCurrentState` → `POST /api/sync/profile {focusState}`.
+  /// Starts from the freshest retained blob and overwrites only the
+  /// `FocusStateDto` keys, so unknown keys survive.
+  Future<bool> _pushState({
+    required List<FocusTest> tests,
+    required String? selectedId,
+    required String subView,
+  }) async {
+    final blob = Map<String, dynamic>.of(_rawBlob);
+    blob['activeTests'] = [for (final t in tests) t.toJson()];
+    FocusTest? active;
+    for (final t in tests) {
+      if ((t.id ?? t.title) == selectedId) active = t;
+    }
+    blob['activeTest'] = active?.toJson();
+    blob['selectedTestId'] = selectedId;
+    blob['currentSubView'] = subView;
+    blob['suggestions'] = [for (final s in _suggestions) s.toJson()];
+    blob['selectedSuggestion'] = _selectedSuggestion?.toJson();
+    blob['setupDuration'] = _setupDuration;
+    blob['selectedMeasureMetric'] = _measureMetric;
+    blob['lastUpdated'] = DateTime.now().millisecondsSinceEpoch;
+    final ok =
+        await _backend.postSyncProfile({'focusState': jsonEncode(blob)});
+    if (ok) _rawBlob = blob;
+    return ok;
+  }
+
+  /// Best-effort push for intermediate flow steps (native saves
+  /// them fire-and-forget; a failure never traps the user mid-flow).
+  void _pushFlowStep() {
+    _pushState(tests: _tests, selectedId: _selectedId, subView: _subView);
+  }
+
+  void _setSubView(String subView) {
+    setState(() => _subView = subView);
+    _pushFlowStep();
+  }
+
+  // ── Creation flow actions (native ProjectFocusViewModel) ────────────────
+
+  Future<void> _submitStruggle() async {
+    final struggle = _struggleController.text.trim();
+    if (struggle.isEmpty || _suggestionsLoading) return;
+    setState(() {
+      _suggestionsLoading = true;
+      _flowError = null;
+    });
+    try {
+      final res = await _backend
+          .postAi('/api/ai/focus-suggestions', {'struggle': struggle});
+      final parsed = parseFocusSuggestions(res?['result']);
+      if (!mounted) return;
+      if (parsed.isEmpty) {
+        setState(() {
+          _suggestionsLoading = false;
+          _flowError =
+              'Could not load suggestions. Check your connection and try again.';
+        });
+        return;
+      }
+      setState(() {
+        _suggestions = parsed;
+        _suggestionsLoading = false;
+        _subView = 'suggestions';
+      });
+      _pushFlowStep();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _suggestionsLoading = false;
+        _flowError =
+            'Could not load suggestions. Check your connection and try again.';
+      });
+    }
+  }
+
+  void _selectSuggestion(FocusSuggestion suggestion) {
+    setState(() {
+      _selectedSuggestion = suggestion;
+      _measureMetric = '';
+      _startTomorrow = false;
+      _subView = 'measure';
+    });
+    _pushFlowStep();
+  }
+
+  void _selectMeasureMetric(String metric) {
+    setState(() {
+      _measureMetric = metric;
+      _subView = 'setup';
+    });
+    _pushFlowStep();
+  }
+
+  void _changeDuration(bool increment) {
+    setState(() {
+      _setupDuration = increment
+          ? (_setupDuration + 1).clamp(3, 30)
+          : (_setupDuration - 1).clamp(3, 30);
+    });
+    _pushFlowStep();
+  }
+
+  Future<void> _lockInProject() async {
+    final suggestion = _selectedSuggestion;
+    if (suggestion == null || _saving) return;
+    final now = DateTime.now();
+    final nowMs = now.millisecondsSinceEpoch;
+    final startMs =
+        _startTomorrow ? nowMs + 24 * 60 * 60 * 1000 : nowMs;
+    final test = FocusTest(
+      id: 'test_${nowMs}_${Random().nextInt(10000)}',
+      title: suggestion.title,
+      desc: suggestion.desc.isEmpty ? null : suggestion.desc,
+      durationDays: _setupDuration,
+      startTimestamp: startMs,
+      lockDayStr: _lockDayStr(now),
+      logs: const {},
+      measureMetric: _measureMetric.isEmpty ? null : _measureMetric,
+    );
+    final newTests = [..._tests, test];
+    setState(() => _saving = true);
+    final ok = await _pushState(
+        tests: newTests, selectedId: test.id, subView: 'splash');
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (!ok) {
+      setState(() {
+        _flowError =
+            'Could not save your project. Check your connection and try again.';
+      });
+      return;
+    }
+    setState(() {
+      _tests = newTests;
+      _selectedId = test.id;
+      _subView = 'splash';
+      _flowError = null;
+    });
+    // Native shows the splash for 2 seconds, then opens details.
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted && _subView == 'splash') {
+        setState(() => _subView = 'details');
+        _pushState(
+            tests: _tests, selectedId: _selectedId, subView: 'details');
+      }
+    });
+  }
+
+  // ── Details actions ─────────────────────────────────────────────────────
+
+  Future<void> _selectTest(String key) async {
+    setState(() {
+      _selectedId = key;
+      _subView = 'details';
+    });
+    await _pushState(tests: _tests, selectedId: key, subView: 'details');
+  }
+
+  Future<void> _applyLogs(FocusTest test, Map<String, bool> logs) async {
+    if (_saving) return;
+    final updated = test.copyWith(logs: logs);
+    final newTests = [
+      for (final t in _tests)
+        if ((t.id ?? t.title) == (test.id ?? test.title)) updated else t,
+    ];
+    setState(() => _saving = true);
+    final ok = await _pushState(
+        tests: newTests, selectedId: _selectedId, subView: 'details');
+    if (!mounted) return;
+    setState(() {
+      _saving = false;
+      if (ok) {
+        _tests = newTests;
+        _writeError = null;
+      } else {
+        _writeError =
+            'Could not save your check-in. Check your connection and try again.';
+      }
+    });
+  }
+
+  Future<void> _checkIn(bool didIt) async {
+    final test = _selected;
+    if (test == null) return;
+    final todayStr = _dateStr(DateTime.now());
+    await _applyLogs(test, {...test.logs, todayStr: didIt});
+  }
+
+  Future<void> _undoCheckIn() async {
+    final test = _selected;
+    if (test == null) return;
+    final todayStr = _dateStr(DateTime.now());
+    await _applyLogs(test, {...test.logs}..remove(todayStr));
+  }
+
+  Future<void> _cancelTest() async {
+    final test = _selected;
+    if (test == null || _saving) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: NotelColors.surface,
+        title: const Text('Cancel Experiment',
+            style: TextStyle(color: NotelColors.textPrimary)),
+        content: const Text(
+          'Are you sure you want to cancel this experiment? This will delete all logged progress for it.',
+          style: TextStyle(color: NotelColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('No',
+                style: TextStyle(color: NotelColors.textPrimary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Yes',
+                style: TextStyle(
+                    color: NotelColors.error,
+                    fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final newTests = [
+      for (final t in _tests)
+        if ((t.id ?? t.title) != (test.id ?? test.title)) t,
+    ];
+    final fallback = newTests.isNotEmpty ? newTests.first : null;
+    final fallbackId =
+        fallback == null ? null : (fallback.id ?? fallback.title);
+    setState(() => _saving = true);
+    final ok = await _pushState(
+      tests: newTests,
+      selectedId: fallbackId,
+      subView: fallback != null ? 'details' : 'input',
+    );
+    if (!mounted) return;
+    setState(() {
+      _saving = false;
+      if (ok) {
+        _tests = newTests;
+        _selectedId = fallbackId;
+        _subView = fallback != null ? 'details' : 'input';
+        _suggestions = const [];
+        _selectedSuggestion = null;
+        _writeError = null;
+      } else {
+        _writeError =
+            'Could not cancel this experiment. Check your connection and try again.';
+      }
+    });
+  }
+
+  void _showHelp() {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: NotelColors.surface,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Text('About Project Focus',
+            style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: NotelColors.textPrimary)),
+        content: const Text(
+          'Project Focus helps you run self-experiments to tackle personal struggles (like improving sleep, managing stress, or optimizing productivity) by generating custom AI suggestions and tracking your progress over time.\n\nOur core goal is to use data to generate outcomes.',
+          style: TextStyle(
+              fontSize: 14, height: 1.45, color: NotelColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Got it',
+                style: TextStyle(
+                    color: NotelColors.primary,
+                    fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openJotTracker() async {
+    final uri = Uri.parse('https://jottracker.com/login');
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      // Link is informational; a failed launch is silent like the
+      // research screen's source links.
+    }
   }
 
   @override
@@ -265,7 +683,15 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
             color: NotelColors.textPrimary,
             semanticLabel: 'Back',
           ),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () {
+            // Native: back from a creation step returns to details
+            // when tests exist; otherwise it leaves the screen.
+            if (_tests.isNotEmpty && _inCreationFlow) {
+              _setSubView('details');
+            } else {
+              Navigator.of(context).pop();
+            }
+          },
         ),
         title: const Text(
           'Project Focus',
@@ -275,6 +701,23 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
             color: NotelColors.textPrimary,
           ),
         ),
+        actions: [
+          if (!_loading && _subView == 'details' && _selected != null)
+            TextButton(
+              onPressed: () => _setSubView('input'),
+              child: const Text('Create Project',
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: NotelColors.primary)),
+            ),
+          if (!_loading && _subView == 'input')
+            IconButton(
+              icon: const Icon(Icons.help_outline,
+                  color: NotelColors.textPrimary, semanticLabel: 'Help'),
+              onPressed: _showHelp,
+            ),
+        ],
       ),
       body: _loading
           ? const Center(
@@ -293,20 +736,22 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
                 ],
               ),
             )
-          : _selected == null
-              ? _emptyState()
-              : _detailsView(_selected!),
+          : _subView == 'details' && _selected != null
+              ? _detailsView(_selected!)
+              : _creationFlow(),
     );
   }
 
-  Widget _emptyState() {
+  /// The creation flow (native's centered glass card): input →
+  /// suggestions → measure → setup → splash. Completed tests stay
+  /// reachable via the selector chips above the card (founder
+  /// direction).
+  Widget _creationFlow() {
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Completed tests stay reachable via the selector chips even
-          // when nothing is in progress (founder direction).
           if (_tests.isNotEmpty) ...[
             _testSelector(),
             const SizedBox(height: 16),
@@ -321,64 +766,533 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
                 color: Colors.white.withValues(alpha: 0.08),
               ),
             ),
-            child: const Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Project Focus',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    color: NotelColors.textPrimary,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                SizedBox(height: 6),
-                Text(
-                  'What are you trying to work towards?',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: NotelColors.textSecondary,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                SizedBox(height: 16),
-                Text(
-                  'No active experiments right now. Creating new projects is coming soon — for now, set one up in the main Tabs app and it will appear here.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    height: 1.5,
-                    color: NotelColors.textSecondary,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
+            child: switch (_subView) {
+              'suggestions' => _suggestionsView(),
+              'measure' => _measureView(),
+              'setup' => _setupView(),
+              'splash' => _splashView(),
+              _ => _inputView(),
+            },
           ),
         ],
       ),
     );
   }
 
+  Widget _inputView() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text(
+          'Project Focus',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w900,
+            color: NotelColors.textPrimary,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'What are you trying to work towards?',
+          style: TextStyle(
+            fontSize: 14,
+            color: NotelColors.textSecondary,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 24),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.03),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.08),
+            ),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _struggleController,
+                  minLines: 2,
+                  maxLines: 5,
+                  textCapitalization: TextCapitalization.sentences,
+                  style: const TextStyle(
+                      fontSize: 15, color: NotelColors.textPrimary),
+                  decoration: const InputDecoration(
+                    hintText:
+                        'Type something you are struggling with (e.g., sleep, stress)...',
+                    hintStyle: TextStyle(
+                        fontSize: 14, color: NotelColors.textSecondary),
+                    border: InputBorder.none,
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: ElevatedButton(
+                    onPressed: _struggleController.text.trim().isEmpty ||
+                            _suggestionsLoading
+                        ? null
+                        : _submitStruggle,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: NotelColors.primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      padding: EdgeInsets.zero,
+                      disabledBackgroundColor: NotelColors.surfaceHigh,
+                    ),
+                    child: _suggestionsLoading
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                                color: Colors.white, strokeWidth: 2),
+                          )
+                        : const Icon(Icons.send, size: 16),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (_flowError != null) ...[
+          const SizedBox(height: 12),
+          Text(_flowError!,
+              style: const TextStyle(
+                  fontSize: 12, color: NotelColors.error),
+              textAlign: TextAlign.center),
+        ],
+        if (_tests.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () => _setSubView('details'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white.withValues(alpha: 0.08),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
+              ),
+              child: const Text('Cancel'),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _suggestionsView() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text(
+          'Select a Test',
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: NotelColors.textPrimary,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'Pick one of the weekly tests compiled from your struggle to begin:',
+          style: TextStyle(
+            fontSize: 13,
+            color: NotelColors.textSecondary,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 16),
+        for (final s in _suggestions) ...[
+          _flowOptionCard(
+            title: s.title,
+            subtitle: s.desc,
+            onTap: () => _selectSuggestion(s),
+          ),
+          const SizedBox(height: 12),
+        ],
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: () => _setSubView('input'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white.withValues(alpha: 0.08),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+            ),
+            child: const Text('Back'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _measureView() {
+    final selected = _selectedSuggestion;
+    if (selected == null) return _inputView();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text(
+          'Target Metric',
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: NotelColors.textPrimary,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'What metric do you want to measure to track success?',
+          style: TextStyle(
+            fontSize: 13,
+            color: NotelColors.textSecondary,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 16),
+        for (final (key, label) in focusMeasureMetrics) ...[
+          _flowOptionCard(
+            title: label,
+            onTap: () => _selectMeasureMetric(key),
+          ),
+          const SizedBox(height: 10),
+        ],
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: () => _setSubView('suggestions'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white.withValues(alpha: 0.08),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+            ),
+            child: const Text('Back'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _setupView() {
+    final selected = _selectedSuggestion;
+    if (selected == null) return _inputView();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text(
+          'Test Duration',
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: NotelColors.textPrimary,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 16),
+        Text(
+          selected.title,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: NotelColors.primary,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          selected.desc,
+          style: const TextStyle(
+            fontSize: 13,
+            height: 1.4,
+            color: NotelColors.textSecondary,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 28),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            OutlinedButton(
+              onPressed: () => _changeDuration(false),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.08)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('- Remove Day',
+                  style: TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.bold)),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              '$_setupDuration Days',
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 12),
+            OutlinedButton(
+              onPressed: () => _changeDuration(true),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.08)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('+ Add Day',
+                  style: TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        const Text(
+          'Start Date',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: NotelColors.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _startOption(
+                label: 'Today',
+                selected: !_startTomorrow,
+                onTap: () => setState(() => _startTomorrow = false),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _startOption(
+                label: 'Tomorrow',
+                selected: _startTomorrow,
+                onTap: () => setState(() => _startTomorrow = true),
+              ),
+            ),
+          ],
+        ),
+        if (_flowError != null) ...[
+          const SizedBox(height: 12),
+          Text(_flowError!,
+              style: const TextStyle(
+                  fontSize: 12, color: NotelColors.error),
+              textAlign: TextAlign.center),
+        ],
+        const SizedBox(height: 32),
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton(
+                onPressed: () => _setSubView('measure'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white.withValues(alpha: 0.08),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                ),
+                child: const Text('Back'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ElevatedButton(
+                onPressed: _saving ? null : _lockInProject,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: NotelColors.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                ),
+                child: _saving
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            color: Colors.white, strokeWidth: 2),
+                      )
+                    : const Text('Lock it In'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _splashView() {
+    return const Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('🔒', style: TextStyle(fontSize: 64)),
+        SizedBox(height: 16),
+        Text(
+          'Test Locked In!',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w900,
+            color: Colors.white,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        SizedBox(height: 8),
+        Text(
+          "Your wellness experiment has been synced. Let's get to work!",
+          style: TextStyle(
+            fontSize: 14,
+            height: 1.45,
+            color: NotelColors.textSecondary,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+  }
+
+  Widget _flowOptionCard({
+    required String title,
+    String? subtitle,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.03),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.08),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            if (subtitle != null && subtitle.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  fontSize: 12,
+                  height: 1.35,
+                  color: NotelColors.textSecondary,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _startOption({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: selected
+              ? NotelColors.primary.withValues(alpha: 0.2)
+              : Colors.white.withValues(alpha: 0.03),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected
+                ? NotelColors.primary
+                : Colors.white.withValues(alpha: 0.08),
+          ),
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: selected ? NotelColors.primary : Colors.white,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _detailsView(FocusTest test) {
+    final isCompleted = test.isCompleted;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 90),
       children: [
         if (_tests.length > 1) _testSelector(),
         if (_tests.length > 1) const SizedBox(height: 16),
         _headerCard(test),
-        const SizedBox(height: 16),
-        const Text(
-          "Today's Check-In",
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 1,
-            color: NotelColors.textSecondary,
+        if (_writeError != null) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: NotelColors.error.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                  color: NotelColors.error.withValues(alpha: 0.4)),
+            ),
+            child: Text(_writeError!,
+                style: const TextStyle(
+                    fontSize: 13, color: NotelColors.textPrimary)),
           ),
-        ),
-        const SizedBox(height: 10),
-        _checkInCard(test),
+        ],
+        if (isCompleted) ...[
+          const SizedBox(height: 16),
+          _resultsLink(),
+        ],
+        if (!isCompleted) ...[
+          const SizedBox(height: 16),
+          const Text(
+            "Today's Check-In",
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1,
+              color: NotelColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 10),
+          _checkInCard(test),
+        ],
         const SizedBox(height: 16),
         const Text(
           'Log History',
@@ -393,7 +1307,103 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
         _logCalendar(test),
         const SizedBox(height: 12),
         _legend(),
+        const SizedBox(height: 24),
+        OutlinedButton(
+          onPressed: _saving ? null : _cancelTest,
+          style: OutlinedButton.styleFrom(
+            backgroundColor: NotelColors.error.withValues(alpha: 0.1),
+            side: BorderSide(
+                color: NotelColors.error.withValues(alpha: 0.35)),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16)),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+          ),
+          child: const Text('Cancel Experiment',
+              style: TextStyle(
+                  fontWeight: FontWeight.bold, color: NotelColors.error)),
+        ),
+        const SizedBox(height: 8),
+        InkWell(
+          onTap: _openJotTracker,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: NotelColors.primary.withValues(alpha: 0.07),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                  color: NotelColors.primary.withValues(alpha: 0.2)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.open_in_browser,
+                    size: 18,
+                    color: NotelColors.primary.withValues(alpha: 0.7)),
+                const SizedBox(width: 10),
+                Text(
+                  'Manage projects on jottracker.com',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: NotelColors.primary.withValues(alpha: 0.8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
+    );
+  }
+
+  /// Native's completed-test results card.
+  Widget _resultsLink() {
+    return InkWell(
+      onTap: _openJotTracker,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: NotelColors.success.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+              color: NotelColors.success.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.open_in_browser,
+                size: 28, color: NotelColors.success),
+            const SizedBox(width: 14),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'View Your Results',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: NotelColors.success,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Tap to open jottracker.com and see your full analysis',
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.35,
+                      color: NotelColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right,
+                size: 20,
+                color: NotelColors.success.withValues(alpha: 0.7)),
+          ],
+        ),
+      ),
     );
   }
 
@@ -415,7 +1425,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
     final key = t.id ?? t.title;
     final selected = key == _selectedId;
     return GestureDetector(
-      onTap: () => setState(() => _selectedId = key),
+      onTap: () => _selectTest(key),
       child: Container(
         constraints: const BoxConstraints(minWidth: 120, maxWidth: 180),
         padding: const EdgeInsets.all(12),
@@ -613,15 +1623,86 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
             ? 'Your check-in opens at midnight (12:00 AM) so you have time to perform the experiment first.'
             : 'Resets at midnight (12:00 AM)',
         accent: isFirstDay ? NotelColors.primary : NotelColors.success,
+        // Native offers Undo on a logged response (not on lock-in day).
+        trailing: isFirstDay
+            ? null
+            : TextButton(
+                onPressed: _saving ? null : _undoCheckIn,
+                child: const Text('Undo',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: NotelColors.error)),
+              ),
       );
     }
-    // Read-only: no Yes/No buttons (check-in logging is deferred).
-    return _statusCard(
-      emoji: '⏳',
-      title: 'Not checked in yet',
-      subtitle:
-          'Daily check-ins are logged from the main Tabs app.',
-      accent: NotelColors.textSecondary,
+    // Native's Yes/No check-in buttons.
+    final isYes = test.logs[todayStr] == true;
+    final isNo = test.logs[todayStr] == false;
+    return Row(
+      children: [
+        Expanded(
+          child: _checkInOption(
+            emoji: '✅',
+            label: 'Yes, I did it',
+            selected: isYes,
+            accent: NotelColors.primary,
+            onTap: _saving ? null : () => _checkIn(true),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _checkInOption(
+            emoji: '😞',
+            label: 'Not today',
+            selected: isNo,
+            accent: NotelColors.error,
+            onTap: _saving ? null : () => _checkIn(false),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _checkInOption({
+    required String emoji,
+    required String label,
+    required bool selected,
+    required Color accent,
+    required VoidCallback? onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: selected
+              ? accent.withValues(alpha: 0.2)
+              : Colors.white.withValues(alpha: 0.03),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: selected
+                ? accent
+                : Colors.white.withValues(alpha: 0.08),
+          ),
+        ),
+        child: Column(
+          children: [
+            Text(emoji, style: const TextStyle(fontSize: 28)),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: selected ? accent : NotelColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -630,6 +1711,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
     required String title,
     required String subtitle,
     required Color accent,
+    Widget? trailing,
   }) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -667,6 +1749,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
               ],
             ),
           ),
+          if (trailing != null) trailing,
         ],
       ),
     );
