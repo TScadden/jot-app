@@ -1,11 +1,15 @@
 import 'dart:async';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/today_plan_store.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
+import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// Today Summary card — port of the native "Expandable Today Summary
@@ -46,6 +50,25 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///   native's Loading spinner — the load is one bridge round-trip,
 ///   the card starts collapsed, and live comparisons replace the
 ///   text the moment they land.
+/// - Check-off "snap" dissolve (founder directive, R35 fix pass —
+///   native has NO per-item check-off exit animation; its only
+///   AnimatedVisibility wraps the whole expanded section,
+///   TodayScreen.kt:550-554, and completed items stay visible at
+///   0.5 alpha): checking an item off IN THIS CARD dusts it — the
+///   row is snapshotted (RepaintBoundary), sampled into a bounded
+///   particle grid in the row's own colors, and disintegrates with
+///   an upward/rightward drift while its footprint is held; then
+///   the gap closes smoothly and the item is gone from this card
+///   instance's view. Presentation only: the check-off persists
+///   through the exact same loader writes as before, BEFORE the
+///   dissolve starts, so navigating away mid-dust never loses it.
+///   Items already completed when the data loads keep the existing
+///   display rule (dimmed, struck through, med Undo available) —
+///   only in-session check-offs leave the view. Reduced motion
+///   (animationsDisabled) removes the item instantly, no particles.
+///   Section rule (founder): the card auto-collapses ONLY when a
+///   check-off removes the LAST remaining plan item, and only after
+///   the dissolve finishes; otherwise the section stays open.
 class TodaySummaryCard extends StatefulWidget {
   /// Injectable for tests; production defaults are real instances.
   final TabsBackend? backend;
@@ -79,6 +102,122 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
   /// One action at a time per row (native's writes are serialized by
   /// its view-model scope; a double-tap must not double-post).
   String? _actingItemId;
+
+  /// Dust dissolve state (see the class doc). At most one row dusts
+  /// at a time; a second check-off finalizes the active dust
+  /// instantly before its own dissolve begins.
+  final Set<String> _goneItemIds = <String>{};
+  final Map<String, GlobalKey> _rowKeys = <String, GlobalKey>{};
+  String? _dustItemId;
+  ui.Image? _dustImage;
+  double _dustHeight = 0;
+  final GlobalKey<_DustRowSlotState> _dustSlotKey =
+      GlobalKey<_DustRowSlotState>();
+
+  GlobalKey _rowKeyFor(String itemId) =>
+      _rowKeys.putIfAbsent(itemId, () => GlobalKey());
+
+  /// Snapshots the row for [itemId] as currently painted (the
+  /// pre-check-off appearance). Best-effort: null when the row is
+  /// not mounted/painted — the caller then removes the item
+  /// instantly instead of dusting it.
+  Future<({ui.Image image, double height})?> _captureRow(
+      String itemId) async {
+    try {
+      final ro = _rowKeyFor(itemId).currentContext?.findRenderObject();
+      if (ro is! RenderRepaintBoundary || !ro.attached) return null;
+      final height = ro.size.height;
+      final image = await ro.toImage(pixelRatio: 1.0);
+      return (image: image, height: height);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Post-persist step of a check-off: dust the row, or remove it
+  /// instantly when reduced motion is on or the snapshot failed.
+  /// The write has ALREADY landed when this runs — presentation
+  /// only from here, so an unmount anywhere below loses nothing.
+  Future<void> _dissolveOrVanish(
+    String itemId,
+    Future<({ui.Image image, double height})?>? capture,
+  ) async {
+    if (!mounted || _goneItemIds.contains(itemId)) return;
+    if (!animationsDisabled(context) && capture != null) {
+      final shot = await capture.timeout(
+        const Duration(milliseconds: 500),
+        onTimeout: () => null,
+      );
+      if (!mounted || _goneItemIds.contains(itemId)) {
+        shot?.image.dispose();
+        return;
+      }
+      if (shot != null) {
+        // One dust at a time: finalize the active one instantly.
+        _dustSlotKey.currentState?.finalizeNow();
+        setState(() {
+          _dustItemId = itemId;
+          _dustImage = shot.image;
+          _dustHeight = shot.height;
+        });
+        return;
+      }
+    }
+    _vanishItem(itemId);
+  }
+
+  /// Instant removal (reduced motion / no snapshot): the item
+  /// leaves the view now, and the last-item collapse rule applies
+  /// immediately.
+  void _vanishItem(String itemId) {
+    _dustSlotKey.currentState?.finalizeNow();
+    if (!mounted) return;
+    setState(() {
+      _goneItemIds.add(itemId);
+      if (_dustItemId == itemId) {
+        _dustItemId = null;
+        _dustImage?.dispose();
+        _dustImage = null;
+      }
+    });
+    _collapseIfLastRemoved(itemId);
+  }
+
+  /// Slot callback: the dissolve + gap-close finished.
+  void _onDustGone(String itemId) {
+    if (!mounted) return;
+    setState(() {
+      _goneItemIds.add(itemId);
+      if (_dustItemId == itemId) {
+        _dustItemId = null;
+        _dustImage?.dispose();
+        _dustImage = null;
+      }
+    });
+    _collapseIfLastRemoved(itemId);
+  }
+
+  /// Founder section rule: auto-collapse ONLY when a check-off has
+  /// removed the last remaining plan item. Any items left — visible
+  /// or still dusting — keep the section exactly as open as it was.
+  void _collapseIfLastRemoved(String removedId) {
+    if (!mounted || !_expanded) return;
+    final items = _data?.plan.items ?? const <TodayPlanItem>[];
+    if (items.isEmpty) return;
+    final remaining = items
+        .where((i) =>
+            i.id != removedId &&
+            !_goneItemIds.contains(i.id) &&
+            i.id != _dustItemId)
+        .length;
+    if (remaining == 0) setState(() => _expanded = false);
+  }
+
+  @override
+  void dispose() {
+    _dustImage?.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -173,6 +312,14 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
 
   Future<void> _onToggleItem(TodayPlanItem item) async {
     if (_actingItemId != null) return;
+    // Checking OFF (un-completing) keeps the row — only a check-off
+    // dissolves. The snapshot is taken NOW, while the row is still
+    // painted in its pre-check-off state; the persist below does
+    // not wait for it.
+    final checkingOff = !item.isCompleted;
+    final capture = checkingOff && !animationsDisabled(context)
+        ? _captureRow(item.id)
+        : null;
     setState(() => _actingItemId = item.id);
     try {
       switch (item.kind) {
@@ -187,10 +334,21 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
     } finally {
       if (mounted) setState(() => _actingItemId = null);
     }
+    // The write has landed and the one-action guard is released —
+    // the dissolve is pure presentation from here and can never
+    // block or double-fire an action.
+    if (checkingOff) await _dissolveOrVanish(item.id, capture);
   }
 
   Future<void> _onMedAction(TodayPlanItem item, DoseStatus status) async {
     if (_actingItemId != null) return;
+    // Take/Skip resolve the dose — a check-off, so the row dusts.
+    // Undo (back to pending) keeps the row.
+    final resolving =
+        status == DoseStatus.taken || status == DoseStatus.skipped;
+    final capture = resolving && !animationsDisabled(context)
+        ? _captureRow(item.id)
+        : null;
     setState(() => _actingItemId = item.id);
     try {
       await _loader.setMedicationAction(item, status);
@@ -198,6 +356,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
     } finally {
       if (mounted) setState(() => _actingItemId = null);
     }
+    if (resolving) await _dissolveOrVanish(item.id, capture);
   }
 
   @override
@@ -317,13 +476,27 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                               ),
                             )
                           else
-                            for (final item in data.plan.items)
-                              _PlanItemRow(
-                                item: item,
-                                busy: _actingItemId == item.id,
-                                onToggle: () => _onToggleItem(item),
-                                onMedAction: (s) => _onMedAction(item, s),
-                              ),
+                            for (final item in data.plan.items
+                                .where((i) => !_goneItemIds.contains(i.id)))
+                              if (item.id == _dustItemId &&
+                                  _dustImage != null)
+                                _DustRowSlot(
+                                  key: _dustSlotKey,
+                                  image: _dustImage!,
+                                  height: _dustHeight,
+                                  onGone: () => _onDustGone(item.id),
+                                )
+                              else
+                                RepaintBoundary(
+                                  key: _rowKeyFor(item.id),
+                                  child: _PlanItemRow(
+                                    item: item,
+                                    busy: _actingItemId == item.id,
+                                    onToggle: () => _onToggleItem(item),
+                                    onMedAction: (s) =>
+                                        _onMedAction(item, s),
+                                  ),
+                                ),
                           const SizedBox(height: 14),
                           const Divider(
                             color: Color(0x14FFFFFF), // White @ 8%
@@ -591,6 +764,191 @@ class _PlanItemRow extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// One dust particle sampled from the row snapshot: a cell of the
+/// row, in the row's own color, with a randomized gentle
+/// upward/rightward drift.
+class _DustParticle {
+  final Offset origin;
+  final Color color;
+  final Offset drift; // total displacement over its active phase
+  final double size;
+  final double delay; // 0..~0.38 — the disintegration sweeps L→R
+
+  const _DustParticle({
+    required this.origin,
+    required this.color,
+    required this.drift,
+    required this.size,
+    required this.delay,
+  });
+}
+
+/// Samples [image]'s pixels into a bounded particle grid (cell
+/// grows until the count fits the cap, so a wide row stays smooth
+/// on device). Fully transparent cells (the row's rounded corners)
+/// are skipped. Deterministic seed — the founder's rows should
+/// dust the same way every time, and tests stay stable.
+List<_DustParticle> _buildDustParticles(ui.Image image, ui.ByteData rgba) {
+  final w = image.width;
+  final h = image.height;
+  if (w <= 0 || h <= 0) return const [];
+  final bytes =
+      rgba.buffer.asUint8List(rgba.offsetInBytes, rgba.lengthInBytes);
+  var cell = 6;
+  while ((w / cell).ceil() * (h / cell).ceil() > 640 && cell < 24) {
+    cell += 2;
+  }
+  final rand = math.Random(0x5eed);
+  final out = <_DustParticle>[];
+  for (var y = 0; y < h; y += cell) {
+    for (var x = 0; x < w; x += cell) {
+      final cx = math.min(x + cell ~/ 2, w - 1);
+      final cy = math.min(y + cell ~/ 2, h - 1);
+      final i = (cy * w + cx) * 4;
+      if (i + 3 >= bytes.length) continue;
+      final a = bytes[i + 3];
+      if (a < 24) continue;
+      out.add(_DustParticle(
+        origin: Offset(cx.toDouble(), cy.toDouble()),
+        color: Color.fromARGB(a, bytes[i], bytes[i + 1], bytes[i + 2]),
+        drift: Offset(
+          10 + rand.nextDouble() * 48,
+          -(14 + rand.nextDouble() * 46),
+        ),
+        size: math.max(2.0, cell * (0.55 + rand.nextDouble() * 0.5)),
+        delay: 0.30 * (cx / w) + rand.nextDouble() * 0.08,
+      ));
+    }
+  }
+  return out;
+}
+
+class _DustPainter extends CustomPainter {
+  final List<_DustParticle> particles;
+  final Animation<double> progress;
+
+  _DustPainter(this.particles, this.progress) : super(repaint: progress);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final t = progress.value;
+    final paint = Paint();
+    for (final p in particles) {
+      final local =
+          ((t - p.delay) / (1 - p.delay)).clamp(0.0, 1.0);
+      final pos = p.origin +
+          p.drift * local +
+          Offset(0, -18 * local * local); // gentle lift as it thins
+      final fade = math.pow(1 - local, 1.35).toDouble();
+      paint.color = p.color.withValues(alpha: p.color.a * fade);
+      final s = p.size * (1 - 0.5 * local);
+      canvas.drawRect(
+        Rect.fromCenter(center: pos, width: s, height: s),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DustPainter old) =>
+      old.particles != particles;
+}
+
+/// The dissolving row's slot: holds the row's exact footprint
+/// while the snapshot's particles disintegrate (~1.1s), then
+/// collapses the gap smoothly (200ms) and reports [onGone].
+/// [finalizeNow] ends it instantly (a second check-off supersedes
+/// it) — the check-off itself was persisted before the slot ever
+/// appeared, so ending early loses nothing.
+class _DustRowSlot extends StatefulWidget {
+  final ui.Image image;
+  final double height;
+  final VoidCallback onGone;
+
+  const _DustRowSlot({
+    super.key,
+    required this.image,
+    required this.height,
+    required this.onGone,
+  });
+
+  @override
+  State<_DustRowSlot> createState() => _DustRowSlotState();
+}
+
+class _DustRowSlotState extends State<_DustRowSlot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  );
+  List<_DustParticle>? _particles;
+  bool _collapsing = false;
+  bool _gone = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed && mounted && !_gone) {
+        setState(() => _collapsing = true);
+      }
+    });
+    unawaited(_sample());
+  }
+
+  Future<void> _sample() async {
+    try {
+      final bd =
+          await widget.image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (!mounted) return;
+      if (bd == null) {
+        finalizeNow();
+        return;
+      }
+      setState(() => _particles = _buildDustParticles(widget.image, bd));
+      _controller.forward();
+    } catch (_) {
+      if (mounted) finalizeNow();
+    }
+  }
+
+  /// Ends the dissolve immediately (superseded by a newer
+  /// check-off). Idempotent.
+  void finalizeNow() {
+    if (_gone) return;
+    _gone = true;
+    _controller.stop();
+    widget.onGone();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final particles = _particles;
+    return AnimatedContainer(
+      key: const Key('dust-slot'),
+      height: _collapsing ? 0 : widget.height,
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeInOut,
+      onEnd: finalizeNow,
+      child: particles == null
+          ? const SizedBox.shrink()
+          : SizedBox.expand(
+              child: CustomPaint(
+                key: const Key('dust-particles'),
+                painter: _DustPainter(particles, _controller),
+              ),
+            ),
     );
   }
 }

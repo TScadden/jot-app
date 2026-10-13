@@ -1345,8 +1345,9 @@ void main() {
       expect(find.text('Not enough data yet'), findsNothing);
     });
 
-    testWidgets('habit toggle tap posts the log and the row completes',
-        (tester) async {
+    testWidgets('habit toggle tap posts the log and the row dusts '
+        'away (founder check-off rule supersedes the R35 '
+        'completed-row display)', (tester) async {
       var habitLogged = false;
       final client = MockClient((request) async {
         if (request.url.path == '/api/habits/log') {
@@ -1390,7 +1391,11 @@ void main() {
       await tester.tap(find.byIcon(Icons.radio_button_unchecked));
       await tester.pumpAndSettle();
       expect(habitLogged, isTrue);
-      expect(find.byIcon(Icons.check_circle), findsOneWidget);
+      // Founder check-off rule: the checked item leaves the view
+      // (dust dissolve), and since it was the LAST plan item the
+      // section auto-collapses to its header after the dissolve.
+      expect(find.text('Stretch'), findsNothing);
+      expect(find.text("Today's Plan"), findsNothing);
       expect(find.text('Everything planned for today is complete'),
           findsOneWidget);
     });
@@ -1458,6 +1463,266 @@ void main() {
       await pumpCard(tester, client: client);
       expect(find.text('Everything planned for today is complete'),
           findsOneWidget);
+    });
+  });
+
+  group('Item 4 — check-off dust dissolve (founder)', () {
+    Future<void> pumpMotionCard(
+      WidgetTester tester, {
+      required http.Client client,
+      MemoryStore? planMem,
+      bool disableAnimations = false,
+    }) async {
+      final session = FakeSessionStore()
+        ..token = 'tok'
+        ..email = 'a@x.com';
+      final card = TodaySummaryCard(
+        backend: TabsBackend(client: client, sessionStore: session),
+        healthConnectService: FakeSummaryHc(),
+        planStore: planStoreWith(planMem ?? MemoryStore()),
+        summaryCache: cacheWith(MemoryStore()),
+        sessionStore: session,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: disableAnimations
+                  ? MediaQuery(
+                      data: const MediaQueryData(disableAnimations: true),
+                      child: card,
+                    )
+                  : card,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Today Summary'));
+      await tester.pumpAndSettle();
+    }
+
+    // Reminder-only fixture: one reminder (id 5) whose completion
+    // lives entirely in the plan store — no network writes — so the
+    // persisted blob can be compared byte-for-byte across runs.
+    MockClient reminderClient({bool second = false}) {
+      final reminders = jsonEncode([
+        {
+          'id': 5,
+          'title': 'Salt pills',
+          'type': 'FIXED',
+          'fixedHour': 23,
+          'fixedMinute': 45,
+          'isEnabled': true,
+          'daysOfWeekConfig': '',
+        },
+        if (second)
+          {
+            'id': 6,
+            'title': 'Water bottle',
+            'type': 'FIXED',
+            'fixedHour': 23,
+            'fixedMinute': 50,
+            'isEnabled': true,
+            'daysOfWeekConfig': '',
+          },
+      ]);
+      return MockClient((request) async {
+        if (request.url.path == '/api/sync/pull') {
+          return http.Response(
+            jsonEncode({
+              'entries': <dynamic>[],
+              'categories': [
+                {'id': 1, 'name': 'Symptoms'},
+                {'id': 8, 'name': 'Medication'},
+              ],
+              'profile': {'medications': '[]', 'reminders': reminders},
+            }),
+            200,
+          );
+        }
+        if (request.url.path == '/api/habits') {
+          return http.Response(jsonEncode({'habits': []}), 200);
+        }
+        return http.Response('{}', 404);
+      });
+    }
+
+    testWidgets('check-off dusts: particle overlay appears, the '
+        'item leaves the view, remaining rows stay and the section '
+        'stays expanded', (tester) async {
+      await pumpMotionCard(tester,
+          client: reminderClient(second: true));
+      expect(find.text('Salt pills'), findsOneWidget);
+      expect(find.text('Water bottle'), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.radio_button_unchecked).first);
+      // A few frames in, the dissolve is live: the particle overlay
+      // is up and the surviving row is untouched.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 120));
+      expect(find.byKey(const Key('dust-particles')), findsOneWidget);
+      expect(find.text('Water bottle'), findsOneWidget);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('dust-particles')), findsNothing);
+      expect(find.text('Salt pills'), findsNothing);
+      expect(find.text('Water bottle'), findsOneWidget);
+      // Not the last item — the section stays open (founder rule).
+      expect(find.text("Today's Plan"), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('checking the LAST remaining item collapses the '
+        'section after the dissolve finishes', (tester) async {
+      await pumpMotionCard(tester, client: reminderClient());
+      await tester.tap(find.byIcon(Icons.radio_button_unchecked));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 120));
+      // Mid-dissolve the section is still open — collapse waits for
+      // the dust to finish.
+      expect(find.byKey(const Key('dust-particles')), findsOneWidget);
+      expect(find.text("Today's Plan"), findsOneWidget);
+      await tester.pumpAndSettle();
+      expect(find.text('Salt pills'), findsNothing);
+      expect(find.text("Today's Plan"), findsNothing);
+      // Header (with its complete subtitle) remains.
+      expect(find.text('Everything planned for today is complete'),
+          findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('reduced motion: instant removal, no particles; '
+        'the last-item collapse is immediate', (tester) async {
+      await pumpMotionCard(tester,
+          client: reminderClient(), disableAnimations: true);
+      await tester.tap(find.byIcon(Icons.radio_button_unchecked));
+      await tester.pump();
+      expect(find.byKey(const Key('dust-particles')), findsNothing);
+      expect(find.text('Salt pills'), findsNothing);
+      expect(find.text("Today's Plan"), findsNothing);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('reduced motion: a non-final check-off stays '
+        'expanded with the remaining rows present', (tester) async {
+      await pumpMotionCard(tester,
+          client: reminderClient(second: true),
+          disableAnimations: true);
+      await tester.tap(find.byIcon(Icons.radio_button_unchecked).first);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('dust-particles')), findsNothing);
+      expect(find.text('Salt pills'), findsNothing);
+      expect(find.text('Water bottle'), findsOneWidget);
+      expect(find.text("Today's Plan"), findsOneWidget);
+    });
+
+    testWidgets('persisted state after an ANIMATED check-off is '
+        'identical to a non-animated one', (tester) async {
+      final animatedMem = MemoryStore();
+      await pumpMotionCard(tester,
+          client: reminderClient(), planMem: animatedMem);
+      await tester.tap(find.byIcon(Icons.radio_button_unchecked));
+      await tester.pumpAndSettle();
+      final animatedBlob = Map<String, String>.of(animatedMem.map);
+      final animatedState = await planStoreWith(animatedMem).load(
+        email: 'a@x.com',
+        todayStr: _today,
+      );
+      expect(animatedState.completedReminderIds, contains(5));
+
+      final reducedMem = MemoryStore();
+      await pumpMotionCard(tester,
+          client: reminderClient(),
+          planMem: reducedMem,
+          disableAnimations: true);
+      await tester.tap(find.byIcon(Icons.radio_button_unchecked));
+      await tester.pumpAndSettle();
+      expect(reducedMem.map, animatedBlob);
+    });
+
+    testWidgets('a second check-off mid-dissolve finalizes the '
+        'first instantly and loses neither write', (tester) async {
+      final planMem = MemoryStore();
+      await pumpMotionCard(tester,
+          client: reminderClient(second: true), planMem: planMem);
+      await tester.tap(find.byIcon(Icons.radio_button_unchecked).first);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(find.byKey(const Key('dust-particles')), findsOneWidget);
+      // Second row's toggle is live while the first still dusts.
+      await tester.tap(find.byIcon(Icons.radio_button_unchecked));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('Salt pills'), findsNothing);
+      expect(find.text('Water bottle'), findsNothing);
+      final blob = planMem.map.values.join('\n');
+      expect(blob, contains('5'));
+      expect(blob, contains('6'));
+      final state = await planStoreWith(planMem).load(
+        email: 'a@x.com',
+        todayStr: _today,
+      );
+      expect(state.completedReminderIds, containsAll(<int>[5, 6]));
+    });
+
+    testWidgets('med Take dusts the dose row after posting the '
+        'entry; Skip on another med does the same', (tester) async {
+      final posted = <String>[];
+      final client = MockClient((request) async {
+        if (request.url.path == '/api/sync/pull') {
+          return http.Response(
+            jsonEncode({
+              'entries': <dynamic>[],
+              'categories': [
+                {'id': 1, 'name': 'Symptoms'},
+                {'id': 8, 'name': 'Medication'},
+              ],
+              'profile': {
+                'medications': jsonEncode([
+                  {
+                    'id': 'med-uuid-1',
+                    'name': 'Ivabradine',
+                    'dose': '7.5 mg',
+                    'isPresent': true,
+                    'isDeleted': false,
+                  },
+                  {
+                    'id': 'med-uuid-2',
+                    'name': 'Pyridostigmine',
+                    'dose': '60 mg',
+                    'isPresent': true,
+                    'isDeleted': false,
+                  },
+                ]),
+                'reminders': '[]',
+              },
+            }),
+            200,
+          );
+        }
+        if (request.url.path == '/api/habits') {
+          return http.Response(jsonEncode({'habits': []}), 200);
+        }
+        if (request.url.path == '/api/sync/entries') {
+          posted.add(request.body);
+          return http.Response('{"success":true}', 200);
+        }
+        return http.Response('{}', 404);
+      });
+      await pumpMotionCard(tester, client: client);
+      expect(find.text('Ivabradine'), findsOneWidget);
+      await tester.tap(find.byTooltip('Take Medication').first);
+      await tester.pumpAndSettle();
+      expect(posted, isNotEmpty);
+      expect(find.text('Ivabradine'), findsNothing);
+      expect(find.text('Pyridostigmine'), findsOneWidget);
+      // Skip resolves the second dose the same way — and it was
+      // the last remaining item, so the section collapses.
+      await tester.tap(find.byTooltip('Skip Medication'));
+      await tester.pumpAndSettle();
+      expect(find.text('Pyridostigmine'), findsNothing);
+      expect(find.text("Today's Plan"), findsNothing);
+      expect(tester.takeException(), isNull);
     });
   });
 
