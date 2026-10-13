@@ -162,41 +162,56 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
     }
   }
 
-  /// Post-persist step of a check-off: dust the row, or remove it
-  /// instantly when reduced motion is on or the snapshot failed.
-  /// The write has ALREADY landed when this runs — presentation
-  /// only from here, so an unmount anywhere below loses nothing.
-  /// [index] is the row's position in the rendered list, captured
-  /// before the write; the item is marked gone immediately so a
-  /// stale plan that still carries it never double-renders it
-  /// alongside its dust slot.
-  Future<void> _dissolveOrVanish(
-    String itemId,
-    Future<({ui.Image image, double height})?>? capture,
-    int index,
-  ) async {
-    if (!mounted || _goneItemIds.contains(itemId)) return;
-    if (!animationsDisabled(context) && capture != null) {
-      final shot = await capture.timeout(
+  /// Resolves the row snapshot for a check-off, bounded so a
+  /// stalled capture can never delay the write for long. This MUST
+  /// complete before the write + reload: Round 41's reload excludes
+  /// the checked item, unmounting its RepaintBoundary, and a
+  /// pending `toImage` on an unmounted boundary never lands (the
+  /// R35 flow could resolve the snapshot after the persist because
+  /// the completed row stayed mounted). A painted boundary needs
+  /// one frame; on timeout/failure the caller removes the item
+  /// instantly instead of dusting it.
+  Future<({ui.Image image, double height})?> _resolveCapture(
+      String itemId) async {
+    if (animationsDisabled(context)) return null;
+    try {
+      return await _captureRow(itemId).timeout(
         const Duration(milliseconds: 500),
         onTimeout: () => null,
       );
-      if (!mounted || _goneItemIds.contains(itemId)) {
-        shot?.image.dispose();
-        return;
-      }
-      if (shot != null) {
-        // One dust at a time: finalize the active one instantly.
-        _dustSlotKey.currentState?.finalizeNow();
-        setState(() {
-          _goneItemIds.add(itemId);
-          _dustItemId = itemId;
-          _dustIndex = index;
-          _dustImage = shot.image;
-          _dustHeight = shot.height;
-        });
-        return;
-      }
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Post-persist step of a check-off: dust the row from its
+  /// already-resolved [shot], or remove it instantly when there is
+  /// none (reduced motion / capture failed). The write has ALREADY
+  /// landed when this runs — presentation only from here, so an
+  /// unmount anywhere below loses nothing. [index] is the row's
+  /// position in the rendered list, captured before the write; the
+  /// item is marked gone immediately so a stale plan that still
+  /// carries it never double-renders it alongside its dust slot.
+  void _dissolveOrVanish(
+    String itemId,
+    ({ui.Image image, double height})? shot,
+    int index,
+  ) {
+    if (!mounted || _goneItemIds.contains(itemId)) {
+      shot?.image.dispose();
+      return;
+    }
+    if (shot != null && !animationsDisabled(context)) {
+      // One dust at a time: finalize the active one instantly.
+      _dustSlotKey.currentState?.finalizeNow();
+      setState(() {
+        _goneItemIds.add(itemId);
+        _dustItemId = itemId;
+        _dustIndex = index;
+        _dustImage = shot.image;
+        _dustHeight = shot.height;
+      });
+      return;
     }
     _vanishItem(itemId);
   }
@@ -353,13 +368,13 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
     // Round 41: rendered rows are never completed, so a toggle is
     // always a check-off and always dissolves on success. The
     // snapshot + list index are taken NOW, while the row is still
-    // painted in its pre-check-off state; the persist below does
-    // not wait for either.
+    // painted in its pre-check-off state — and the snapshot is
+    // RESOLVED before the write, because the reload after the
+    // write unmounts the row (see _resolveCapture).
     final index =
         (_data?.plan.items ?? const <TodayPlanItem>[]).indexOf(item);
-    final capture =
-        !animationsDisabled(context) ? _captureRow(item.id) : null;
     setState(() => _actingItemId = item.id);
+    final shot = await _resolveCapture(item.id);
     var ok = false;
     try {
       switch (item.kind) {
@@ -377,27 +392,32 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
     // The write has landed and the one-action guard is released —
     // the dissolve is pure presentation from here and can never
     // block or double-fire an action. A FAILED write leaves the
-    // row exactly as it was: no dissolve, no phantom completion.
-    if (ok) await _dissolveOrVanish(item.id, capture, index);
+    // row exactly as it was: no dissolve, no phantom completion
+    // (and its unused snapshot is disposed with the row kept).
+    if (ok) {
+      _dissolveOrVanish(item.id, shot, index);
+    } else {
+      shot?.image.dispose();
+    }
   }
 
   Future<void> _onMedAction(TodayPlanItem item, DoseStatus status) async {
     if (_actingItemId != null) return;
     // Only Take/Skip render on a plan row (Round 41 removed the
     // completed row and its Undo) — both resolve the dose, so the
-    // row dusts.
+    // row dusts. Snapshot resolved before the write (see
+    // _resolveCapture).
     final index =
         (_data?.plan.items ?? const <TodayPlanItem>[]).indexOf(item);
-    final capture =
-        !animationsDisabled(context) ? _captureRow(item.id) : null;
     setState(() => _actingItemId = item.id);
+    final shot = await _resolveCapture(item.id);
     try {
       await _loader.setMedicationAction(item, status);
       await _load(includeTrends: false);
     } finally {
       if (mounted) setState(() => _actingItemId = null);
     }
-    await _dissolveOrVanish(item.id, capture, index);
+    _dissolveOrVanish(item.id, shot, index);
   }
 
   @override
