@@ -156,12 +156,18 @@ SettingsScreen screen({
   AccountActions? actions,
   VoidCallback? onLogout,
   List<Uri>? launched,
+  FakeReminderNotificationService? notifs,
 }) =>
     SettingsScreen(
       backend: backend,
       settingsStore: store,
       accountActions: actions,
       onLogout: onLogout,
+      // Round 30: reminder toggles now run the permission gate before
+      // persisting; the fake reports notifications already granted so
+      // the Round 29 persistence assertions exercise the same path a
+      // granted device takes.
+      notificationService: notifs ?? FakeReminderNotificationService(),
       urlLauncher: (uri) async {
         launched?.add(uri);
         return true;

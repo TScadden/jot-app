@@ -38,6 +38,14 @@ dependencies:
   # Round 24 — Google sign-in (7.x, Credential Manager-based; see
   # lib/src/data/google_sign_in_service.dart).
   google_sign_in: ^7.2.0
+  # Round 30 — local notification scheduling (native parity for the
+  # Settings reminder toggles). Pinned to the 19.x API line.
+  # flutter_timezone supplies the device's IANA zone so daily
+  # schedules land on local wall-clock times; timezone is the data
+  # library flutter_local_notifications builds TZDateTime from.
+  flutter_local_notifications: ^19.5.0
+  flutter_timezone: ^4.1.1
+  timezone: ^0.10.1
   flutter_secure_storage: ^11.2.0
   geolocator: ^14.1.1
   url_launcher: ^6.3.1

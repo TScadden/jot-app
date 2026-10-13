@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:tabs_lab/src/data/google_sign_in_service.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
+import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/connections/connections_screen.dart';
@@ -36,15 +38,24 @@ import 'package:tabs_lab/src/theme/slide_page_route.dart';
 /// - Logout / delete account: AccountActions (server revoke/delete
 ///   first, then session + Home/QuickLog/Heart caches cleared).
 ///
+/// Round 30 — the Lab-era "not available yet" states are now wired
+/// for real: reminder notifications actually schedule on-device
+/// (`notification_service.dart`, native schedulers mirrored), Google
+/// Account link/disconnect + Google Calendar connect/disconnect run
+/// the native flows, Medications / Conditions / Physician Protocols /
+/// knowledge-base entries have working profile-synced editors, and
+/// Profile Auto-Fill reads weight/height from Health Connect exactly
+/// like native `syncHealthProfile`. HR spike/delta alerts stay
+/// preference-only (native runs them from a persistent foreground
+/// monitor service — flagged as its own item), and the light theme
+/// stays a flagged design task (native has a full light palette; the
+/// Lab ships only the dark palette and does not improvise one).
+///
 /// Honest unavailable states (native presentation kept, flagged in
-/// the round report): Play purchase flow, Google Calendar / Google
-/// Account linking (native GoogleSignIn SDK flows), profile Auto-Fill
-/// (no HC weight/height reads in Flutter), file/text-note knowledge
-/// ingestion + physician protocols + progress-report PDF (native
-/// on-device Room/Gemini pipelines with no Flutter equivalent),
-/// Tabs Live BLE, Developer Terminal test notifications, and the
-/// notification-permission gate before reminder toggles (the Lab has
-/// no notification scheduler; toggles persist the synced preference).
+/// the round report): Play purchase flow, file/text-note knowledge
+/// ingestion + progress-report PDF (native on-device Room/Gemini
+/// pipelines with no Flutter equivalent), Tabs Live BLE, and
+/// Developer Terminal test notifications.
 /// Native Settings does not link to Research (that is a Tools-screen
 /// destination, already built as ResearchToolScreen), so neither does
 /// this port.
@@ -55,6 +66,12 @@ class SettingsScreen extends StatefulWidget {
   final SettingsStore? settingsStore;
   final AccountActions? accountActions;
   final HealthConnectService? healthConnectService;
+
+  /// Injectable for tests (Round 30 reminder scheduling).
+  final ReminderNotificationService? notificationService;
+
+  /// Injectable for tests (Round 30 Google linking flows).
+  final GoogleSignInService? googleSignInService;
 
   /// Injectable for tests (native opens these in the system browser).
   final Future<bool> Function(Uri uri)? urlLauncher;
@@ -67,6 +84,8 @@ class SettingsScreen extends StatefulWidget {
     this.settingsStore,
     this.accountActions,
     this.healthConnectService,
+    this.notificationService,
+    this.googleSignInService,
     this.urlLauncher,
   });
 
@@ -93,6 +112,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TabsBackend _backend;
   late final SettingsStore _store;
   late final AccountActions _actions;
+  late final ReminderNotificationService _notifs;
+  late final GoogleSignInService _google;
 
   _Page _page = _Page.main;
   SettingsProfileData _data = const SettingsProfileData();
@@ -104,6 +125,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _contextHidden = true;
   bool _checkInEnabled = true;
   int _lastSyncMs = 0;
+
+  // Round 30 — notification scheduling state. _notifError carries the
+  // visible error code when a schedule call fails; the denied flags
+  // drive native's under-row explanations after a permission denial.
+  String? _notifError;
+  bool _notifDenied = false;
+  bool _checkInDenied = false;
+
+  // Round 30 — Connected Apps device state (native keeps all four
+  // values in DataStore only; mirrored in SettingsStore).
+  bool _gCalConnected = false;
+  String _gCalEmail = '';
+  bool _gAccountConnected = false;
+  String _gAccountEmail = '';
 
   String _selectedPlan = 'monthly';
   bool _syncing = false;
@@ -123,6 +158,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _store = widget.settingsStore ?? SettingsStore();
     _actions = widget.accountActions ??
         AccountActions(backend: _backend, settingsStore: _store);
+    _notifs = widget.notificationService ?? LocalReminderNotificationService();
+    _google = widget.googleSignInService ?? GoogleSignInService();
     _load();
   }
 
@@ -141,6 +178,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _store.getUserContextHidden(),
       _store.getCheckInReminderEnabled(),
       _store.getLastSyncTimeMs(),
+      _store.getGoogleCalendarConnected(),
+      _store.getGoogleCalendarEmail(),
+      _store.getGoogleAccountConnected(),
+      _store.getGoogleAccountEmail(),
     ]);
     if (!mounted) return;
     final data = SettingsProfileData.fromPull(
@@ -152,12 +193,135 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _contextHidden = results[3] as bool;
       _checkInEnabled = results[4] as bool;
       _lastSyncMs = results[5] as int;
+      _gCalConnected = results[6] as bool;
+      _gCalEmail = results[7] as String;
+      _gAccountConnected = results[8] as bool;
+      _gAccountEmail = results[9] as String;
       _loaded = true;
       if (!_contextSeeded) {
         _contextController.text = data.userContext;
         _contextSeeded = true;
       }
     });
+    // Native re-arms its reminder schedules at app start (NotelApp
+    // onCreate + BootReceiver); the Settings load is the Flutter
+    // equivalent checkpoint. Failures land in _notifError and render
+    // on the Notifications page — never silent.
+    await _syncReminders();
+  }
+
+  /// Reconciles the on-device notification schedules with the
+  /// persisted preferences (ReminderSync). User-triggered calls pass
+  /// [report] so failures also surface as a snackbar with the code.
+  Future<void> _syncReminders({bool report = false}) async {
+    try {
+      await ReminderSync(_notifs).syncAll(
+        habitEnabled: _data.habitReminderEnabled,
+        projectEnabled: _data.projectReminderEnabled,
+        checkInEnabled: _checkInEnabled,
+        eventEnabled: _data.eventReminderEnabled,
+        events: _counters
+            .map((c) => EventReminderRequest(
+                  counterId: c.id,
+                  name: c.name,
+                  targetDateMs: c.targetDate,
+                  isArchived: c.isArchived,
+                  isUp: c.isUp,
+                ))
+            .toList(),
+      );
+      if (_notifError != null && mounted) {
+        setState(() => _notifError = null);
+      }
+    } on NotificationServiceException catch (e) {
+      if (!mounted) return;
+      setState(() => _notifError = e.code);
+      if (report) {
+        _snack('Could not update notification schedules [${e.code}]');
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _notifError = 'SCHEDULE_FAILED');
+      if (report) {
+        _snack('Could not update notification schedules [SCHEDULE_FAILED]');
+      }
+    }
+  }
+
+  /// Native's permission gate for enabling a notification toggle
+  /// (SettingsScreen.kt `checkAndToggle` :213-227 and
+  /// `handleCheckInReminderToggle` :435-455, with the founder's
+  /// rationale-before-system-prompt rule): when POST_NOTIFICATIONS is
+  /// not granted, an in-app dialog explains FIRST; the system prompt
+  /// appears only after "Allow". Returns true only when notifications
+  /// are enabled at the end of the flow — on denial the toggle stays
+  /// off, exactly like native. Never called from a background path.
+  Future<bool> _ensureNotificationPermission({bool checkIn = false}) async {
+    bool enabled;
+    try {
+      enabled = await _notifs.areNotificationsEnabled();
+    } on NotificationServiceException catch (e) {
+      _snack('Notifications are unavailable on this device [${e.code}]');
+      return false;
+    }
+    if (enabled) return true;
+    if (!mounted) return false;
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: NotelColors.surface,
+        title: const Text('Allow notifications?',
+            style: TextStyle(
+                color: NotelColors.textPrimary,
+                fontWeight: FontWeight.bold)),
+        content: Text(
+          checkIn
+              ? 'Tabs needs permission to send notifications before it can remind you. The reminder fires at 4:00 AM, only on mornings you have not checked in yet.'
+              : 'Tabs needs permission to send notifications before it can remind you. Each reminder fires at the time shown for its toggle, only while that toggle is on.',
+          style: const TextStyle(color: NotelColors.textPrimary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Not now',
+                style: TextStyle(color: NotelColors.textSecondary)),
+          ),
+          TextButton(
+            key: const ValueKey('notif_allow_button'),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Allow',
+                style: TextStyle(color: NotelColors.primary)),
+          ),
+        ],
+      ),
+    );
+    if (proceed != true) return false;
+    try {
+      enabled = await _notifs.requestNotificationsPermission();
+    } on NotificationServiceException catch (e) {
+      _snack('Could not request notification permission [${e.code}]');
+      return false;
+    }
+    if (!enabled) {
+      if (mounted) {
+        setState(() {
+          _notifDenied = true;
+          if (checkIn) _checkInDenied = true;
+        });
+      }
+      return false;
+    }
+    // Exact timing needs the separate exact-alarm grant (Android 12+).
+    // Ask from this same user-initiated flow; if the user declines,
+    // schedules fall back to inexact timing rather than not firing.
+    try {
+      if (!await _notifs.canScheduleExact()) {
+        await _notifs.requestExactAlarmsPermission();
+      }
+    } on NotificationServiceException catch (e) {
+      _snack('Exact alarm check failed [${e.code}]');
+    }
+    return true;
   }
 
   Future<void> _reloadFromServer() async {
@@ -1595,6 +1759,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           eventCountersRaw: raw, counterHistoryRaw: historyRaw);
     });
     await _pushProfile(fields);
+    // Native arms/cancels the counter's 9 AM alarm in the same save
+    // (SettingsViewModel.kt:1270); re-sync all event schedules.
+    await _syncReminders();
   }
 
   List<Widget> _countersPage() {
@@ -1888,13 +2055,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // ── NOTIFICATIONS (native :3462-3753) ────────────────────────────
   //
-  // Native gates enabling a reminder on the POST_NOTIFICATIONS system
-  // permission (checkAndToggle / handleCheckInReminderToggle with a
-  // rationale dialog for the check-in reminder). The Flutter Lab has
-  // no notification scheduler or permission channel, so the toggles
-  // persist the preference exactly as native does (DataStore locally
-  // for check-in; profile push for the rest) and the copy says the
-  // Lab cannot fire them yet — flagged in the round report.
+  // Round 30: enabling any toggle runs native's permission gate
+  // first (_ensureNotificationPermission — rationale dialog before
+  // the system prompt, toggle flips only on grant); the preference
+  // persists exactly as native does (DataStore locally for check-in;
+  // profile push for the rest) and ReminderSync arms/cancels the
+  // on-device schedule. Event reminders additionally arm one 9:00 AM
+  // alarm per active event counter (see _saveCounters + _load).
 
   List<Widget> _notificationsPage() {
     final d = _data;
@@ -1906,8 +2073,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'Daily ping at 7:00 PM if you have unchecked habits remaining.',
           d.habitReminderEnabled,
           (v) async {
+            if (v && !await _ensureNotificationPermission()) return;
             setState(() => _data = _data.copyWith(habitReminderEnabled: v));
             await _pushProfile({'habitReminderEnabled': v});
+            await _syncReminders(report: true);
           },
           key: const ValueKey('habit_reminder_toggle'),
         ),
@@ -1917,9 +2086,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'Daily ping at 8:00 PM if you have unchecked project tasks remaining.',
           d.projectReminderEnabled,
           (v) async {
+            if (v && !await _ensureNotificationPermission()) return;
             setState(
                 () => _data = _data.copyWith(projectReminderEnabled: v));
             await _pushProfile({'projectReminderEnabled': v});
+            await _syncReminders(report: true);
           },
           key: const ValueKey('project_reminder_toggle'),
         ),
@@ -1929,8 +2100,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'Daily ping at 9:00 AM on the day of scheduled events.',
           d.eventReminderEnabled,
           (v) async {
+            if (v && !await _ensureNotificationPermission()) return;
             setState(() => _data = _data.copyWith(eventReminderEnabled: v));
             await _pushProfile({'eventReminderEnabled': v});
+            await _syncReminders(report: true);
           },
           key: const ValueKey('event_reminder_toggle'),
         ),
@@ -1940,17 +2113,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'Daily at 4:00 AM, only if you have not checked in yet.',
           _checkInEnabled,
           (v) async {
+            if (v) {
+              if (!await _ensureNotificationPermission(checkIn: true)) {
+                return;
+              }
+              setState(() => _checkInDenied = false);
+            }
             setState(() => _checkInEnabled = v);
             await _store.setCheckInReminderEnabled(v);
+            await _syncReminders(report: true);
           },
           key: const ValueKey('checkin_reminder_toggle'),
         ),
+        if (_checkInDenied) ...[
+          const SizedBox(height: 4),
+          const Text(
+              'Notifications are turned off on this phone, so the reminder cannot fire. You can turn them on in system settings.',
+              style:
+                  TextStyle(color: NotelColors.textSecondary, fontSize: 11)),
+        ],
         const SizedBox(height: 20),
         _toggleRow(
           'HR Spike Alerts',
           'Real-time alert when your heart rate exceeds ${d.spikeThreshold} BPM.',
           d.hrSpikeAlertsEnabled,
           (v) async {
+            if (v && !await _ensureNotificationPermission()) return;
             setState(
                 () => _data = _data.copyWith(hrSpikeAlertsEnabled: v));
             final fields = <String, dynamic>{'hrSpikeAlertsEnabled': v};
@@ -1986,6 +2174,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'Alert if BPM jumps more than ${d.spikeDeltaThreshold} points relative to your last reading (checked every 2-5 mins).',
           d.hrDeltaEnabled,
           (v) async {
+            if (v && !await _ensureNotificationPermission()) return;
             setState(() => _data = _data.copyWith(hrDeltaEnabled: v));
             final fields = <String, dynamic>{'hrDeltaEnabled': v};
             if (v && d.spikeDeltaThreshold < 5) {
@@ -2019,9 +2208,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
         const SizedBox(height: 16),
         const Text(
-            'Reminder preferences save exactly as in the native app. The Flutter Lab does not schedule notifications yet, so these reminders and alerts will not fire from the Lab.',
+            'Habit, project, and check-in reminders are scheduled on this device and fire daily at the times shown while their toggle is on. Event reminders fire at 9:00 AM on the day of each active event counter. HR spike and delta alert preferences save exactly as in the native app, but the alerts do not fire from the Flutter app yet: in the native app they run from an always-on heart rate monitor service.',
             style:
                 TextStyle(color: NotelColors.textSecondary, fontSize: 11)),
+        if (_notifDenied) ...[
+          const SizedBox(height: 8),
+          const Text(
+              'Notifications are turned off on this phone, so reminders cannot fire. You can turn them on in system settings.',
+              style:
+                  TextStyle(color: NotelColors.textSecondary, fontSize: 11)),
+        ],
+        if (_notifError != null) ...[
+          const SizedBox(height: 8),
+          Text('Notification scheduling hit a problem [$_notifError].',
+              style:
+                  const TextStyle(color: NotelColors.error, fontSize: 11)),
+        ],
       ]),
     ];
   }

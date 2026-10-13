@@ -12,9 +12,13 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// - `theme_mode` (string "DARK"|"LIGHT"|"SYSTEM", default DARK) — :163
 /// - `user_context_hidden` (bool, default true) — :127 key, :619 default
 /// - `tabs_lab_checkin_reminder_enabled` (bool, default true) — :111.
-///   Native ALSO arms/cancels a 4 AM alarm when this flips; the Flutter
-///   Lab has no alarm/notification scheduler, so here it persists the
-///   preference only (flagged in the round report).
+///   Native arms/cancels a 4 AM alarm when this flips; Round 30 wires
+///   the Flutter equivalent (ReminderSync in notification_service.dart
+///   schedules/cancels the daily 4 AM notification with the toggle).
+/// - `google_calendar_connected` / `google_calendar_email` and
+///   `google_account_connected` / `google_account_email` — native
+///   keeps all four in DataStore only (NotelPreferences.kt:155-156,
+///   :329-336 and the google-account equivalents); never synced.
 /// - `last_sync_time` (epoch ms, default 0) — :128. Native updates it
 ///   on every successful profile push/pull; the Flutter Settings
 ///   "Sync Now" stamps it after a successful pull.
@@ -30,6 +34,12 @@ class SettingsStore {
   static const userContextHiddenKey = 'settings_user_context_hidden';
   static const checkInReminderKey = 'settings_checkin_reminder_enabled';
   static const lastSyncTimeKey = 'settings_last_sync_time';
+  static const googleCalendarConnectedKey =
+      'settings_google_calendar_connected';
+  static const googleCalendarEmailKey = 'settings_google_calendar_email';
+  static const googleAccountConnectedKey =
+      'settings_google_account_connected';
+  static const googleAccountEmailKey = 'settings_google_account_email';
 
   Future<String?> Function(String key) _read =
       (key) => const FlutterSecureStorage().read(key: key);
@@ -101,6 +111,40 @@ class SettingsStore {
   Future<void> setLastSyncTimeMs(int ms) =>
       _write(lastSyncTimeKey, '$ms');
 
+  /// Native default false (NotelPreferences.kt:329).
+  Future<bool> getGoogleCalendarConnected() =>
+      _readBool(googleCalendarConnectedKey, false);
+  Future<void> setGoogleCalendarConnected(bool v) =>
+      _writeBool(googleCalendarConnectedKey, v);
+
+  Future<String> getGoogleCalendarEmail() async {
+    try {
+      return await _read(googleCalendarEmailKey) ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  Future<void> setGoogleCalendarEmail(String v) =>
+      _write(googleCalendarEmailKey, v);
+
+  /// Native default false.
+  Future<bool> getGoogleAccountConnected() =>
+      _readBool(googleAccountConnectedKey, false);
+  Future<void> setGoogleAccountConnected(bool v) =>
+      _writeBool(googleAccountConnectedKey, v);
+
+  Future<String> getGoogleAccountEmail() async {
+    try {
+      return await _read(googleAccountEmailKey) ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  Future<void> setGoogleAccountEmail(String v) =>
+      _write(googleAccountEmailKey, v);
+
   /// Wipes every settings key. Called on logout / account deletion so a
   /// next account never inherits this account's on-device choices.
   Future<void> clear() async {
@@ -110,6 +154,10 @@ class SettingsStore {
       userContextHiddenKey,
       checkInReminderKey,
       lastSyncTimeKey,
+      googleCalendarConnectedKey,
+      googleCalendarEmailKey,
+      googleAccountConnectedKey,
+      googleAccountEmailKey,
     ]) {
       try {
         await _delete(k);

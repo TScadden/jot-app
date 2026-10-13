@@ -12,6 +12,10 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // Round 30: flutter_local_notifications requires core library
+        // desugaring for scheduled notifications on older Android
+        // versions (plugin setup docs).
+        isCoreLibraryDesugaringEnabled = true
     }
 
     defaultConfig {
@@ -19,6 +23,7 @@ android {
         applicationId = "com.notel.notel.playground.flutter"
         // Round 12: minSdk 26 — required by the Health Connect client
         // (matches the native app's minSdk).
+        multiDexEnabled = true
         minSdk = 26
         targetSdk = flutter.targetSdkVersion
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
@@ -53,6 +58,8 @@ android {
 // Version matches the native app (1.1.0-alpha09).
 dependencies {
     implementation("androidx.health.connect:connect-client:1.1.0-alpha09")
+    // Round 30: desugaring runtime for flutter_local_notifications.
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
 kotlin {
