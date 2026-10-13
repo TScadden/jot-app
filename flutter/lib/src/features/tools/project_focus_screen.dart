@@ -12,9 +12,19 @@ import 'package:url_launcher/url_launcher.dart';
 /// Data source: `decodeProfileList((await fetchProfile())['focusState'])`
 /// — the server-synced `FocusStateDto` JSON blob. Every write mirrors
 /// native `saveCurrentState`: the WHOLE state object is re-encoded
-/// and pushed via `POST /api/sync/profile {focusState}`. Writes start
-/// from the freshest decoded blob and preserve keys this screen does
-/// not own, so no test or flow state is ever dropped (PR #28 lesson).
+/// and pushed via `POST /api/sync/profile {focusState}`.
+///
+/// Round 48 fix (Vera F1) — writes now follow the Lists/Notes/BP
+/// standard: every push RE-PULLS the freshest blob first (sync-pull
+/// cache invalidated), splices only the FocusState keys this screen
+/// owns over it (unknown keys preserved), and applies its test-list
+/// change to the FRESH test list, so a server-side focus change
+/// landing after this screen opened is never reverted by a check-in,
+/// a flow step, a selection, a lock-in, or a cancel built from
+/// load-time state. ALL pushes (flow steps included — they were
+/// fire-and-forget and unguarded) serialize through the single
+/// push chain in [_pushState], so two whole-blob pushes can never
+/// run concurrently and land out of order.
 ///
 /// Round 18 shipped the details view read-only. Round 48 wires the
 /// rest of native's surface:
@@ -287,10 +297,24 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
   List<FocusTest> _tests = const [];
   String? _selectedId;
 
-  /// The freshest decoded focusState blob, retained verbatim so a
-  /// push can splice this screen's changes over it without dropping
-  /// keys it does not own (native `FocusStateDto` round-trip).
+  /// The decoded focusState blob as of the last load or the last
+  /// successful push, retained for load-time flow-state restoration
+  /// (suggestions, setup duration, selected metric). It is NOT a
+  /// write source: every push re-pulls the freshest blob from the
+  /// server and splices over THAT (Vera F1 — an earlier comment
+  /// here called this retained copy "the freshest blob", which was
+  /// exactly the stale-snapshot defect: it is only as fresh as the
+  /// last load/push, and any server-side change since then would
+  /// have been silently reverted by building a push from it).
   Map<String, dynamic> _rawBlob = const {};
+
+  /// The single serialized push chain (Vera F1): every
+  /// [_pushState] call appends its work to this future's tail, so
+  /// at most one whole-blob Focus push is ever in flight and
+  /// pushes land in call order. A queued push re-pulls when its
+  /// turn comes — after every earlier push has landed — so it
+  /// always splices over the newest server state.
+  Future<void> _pushChain = Future<void>.value();
 
   /// Native sub-view: input | suggestions | measure | setup |
   /// splash | details.
@@ -374,37 +398,90 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
 
   /// Pushes the whole focus state, mirroring native
   /// `saveCurrentState` → `POST /api/sync/profile {focusState}`.
-  /// Starts from the freshest retained blob and overwrites only the
-  /// `FocusStateDto` keys, so unknown keys survive.
-  Future<bool> _pushState({
-    required List<FocusTest> tests,
+  ///
+  /// Serialized: the push is appended to [_pushChain] and runs
+  /// only after every earlier Focus push has finished — flow
+  /// steps, test selection, check-in, undo, cancel, and lock-in
+  /// all funnel through here, so no two whole-blob pushes can
+  /// interleave or land out of order (Vera F1: the flow-step push
+  /// was fire-and-forget/unguarded and selection pushed without
+  /// `_saving`, so a slower push built from older state could
+  /// land last and revert a check-in or cancel).
+  ///
+  /// The returned future completes with the push's outcome once
+  /// its turn runs: `ok` plus the test list that was actually
+  /// pushed (fresh-derived), so callers can sync their local
+  /// state to what the server now holds.
+  Future<({bool ok, List<FocusTest> tests})> _pushState({
     required String? selectedId,
     required String subView,
+    required List<FocusTest>? Function(List<FocusTest> freshTests)
+        spliceTests,
+  }) {
+    final run = _pushChain.then((_) => _pushStateNow(
+        selectedId: selectedId, subView: subView, spliceTests: spliceTests));
+    _pushChain = run.then<void>((_) {}, onError: (Object _, StackTrace __) {});
+    return run;
+  }
+
+  /// One serialized push, run only by [_pushState]'s chain.
+  /// Re-pulls the FRESHEST blob (cache invalidated first),
+  /// applies [spliceTests] to the FRESH test list (null refuses
+  /// the push: failure, nothing posted), then overwrites only
+  /// the FocusState keys this screen owns — every other key in
+  /// the fresh blob survives verbatim. A failed pull is a failed
+  /// push: nothing is posted from stale state.
+  Future<({bool ok, List<FocusTest> tests})> _pushStateNow({
+    required String? selectedId,
+    required String subView,
+    required List<FocusTest>? Function(List<FocusTest> freshTests)
+        spliceTests,
   }) async {
-    final blob = Map<String, dynamic>.of(_rawBlob);
-    blob['activeTests'] = [for (final t in tests) t.toJson()];
-    FocusTest? active;
-    for (final t in tests) {
-      if ((t.id ?? t.title) == selectedId) active = t;
+    try {
+      _backend.invalidateSyncPull();
+      final profile = await _backend.fetchProfile();
+      if (profile == null) return (ok: false, tests: _tests);
+      final decoded =
+          TabsBackend.decodeProfileList(profile['focusState']);
+      final freshBlob = decoded.isNotEmpty
+          ? Map<String, dynamic>.of(decoded.first)
+          : <String, dynamic>{};
+      final tests = spliceTests(collectFocusTests(decoded));
+      if (tests == null) return (ok: false, tests: _tests);
+      final blob = freshBlob;
+      blob['activeTests'] = [for (final t in tests) t.toJson()];
+      FocusTest? active;
+      for (final t in tests) {
+        if ((t.id ?? t.title) == selectedId) active = t;
+      }
+      blob['activeTest'] = active?.toJson();
+      blob['selectedTestId'] = selectedId;
+      blob['currentSubView'] = subView;
+      blob['suggestions'] = [for (final s in _suggestions) s.toJson()];
+      blob['selectedSuggestion'] = _selectedSuggestion?.toJson();
+      blob['setupDuration'] = _setupDuration;
+      blob['selectedMeasureMetric'] = _measureMetric;
+      blob['lastUpdated'] = DateTime.now().millisecondsSinceEpoch;
+      final ok =
+          await _backend.postSyncProfile({'focusState': jsonEncode(blob)});
+      if (ok) _rawBlob = blob;
+      return (ok: ok, tests: tests);
+    } catch (_) {
+      return (ok: false, tests: _tests);
     }
-    blob['activeTest'] = active?.toJson();
-    blob['selectedTestId'] = selectedId;
-    blob['currentSubView'] = subView;
-    blob['suggestions'] = [for (final s in _suggestions) s.toJson()];
-    blob['selectedSuggestion'] = _selectedSuggestion?.toJson();
-    blob['setupDuration'] = _setupDuration;
-    blob['selectedMeasureMetric'] = _measureMetric;
-    blob['lastUpdated'] = DateTime.now().millisecondsSinceEpoch;
-    final ok =
-        await _backend.postSyncProfile({'focusState': jsonEncode(blob)});
-    if (ok) _rawBlob = blob;
-    return ok;
   }
 
   /// Best-effort push for intermediate flow steps (native saves
-  /// them fire-and-forget; a failure never traps the user mid-flow).
+  /// them fire-and-forget; a failure never traps the user
+  /// mid-flow). Still serialized through [_pushState]'s chain and
+  /// built from the freshest blob: the test list passes through
+  /// untouched, so a flow step can never revert a check-in, a
+  /// cancel, or a server-side change.
   void _pushFlowStep() {
-    _pushState(tests: _tests, selectedId: _selectedId, subView: _subView);
+    _pushState(
+        selectedId: _selectedId,
+        subView: _subView,
+        spliceTests: (freshTests) => freshTests);
   }
 
   void _setSubView(String subView) {
@@ -494,13 +571,17 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
       logs: const {},
       measureMetric: _measureMetric.isEmpty ? null : _measureMetric,
     );
-    final newTests = [..._tests, test];
     setState(() => _saving = true);
-    final ok = await _pushState(
-        tests: newTests, selectedId: test.id, subView: 'splash');
+    // The new test is APPENDED to the fresh server list when the
+    // serialized push runs — never spliced into the stale local
+    // list (Vera F1).
+    final result = await _pushState(
+        selectedId: test.id,
+        subView: 'splash',
+        spliceTests: (freshTests) => [...freshTests, test]);
     if (!mounted) return;
     setState(() => _saving = false);
-    if (!ok) {
+    if (!result.ok) {
       setState(() {
         _flowError =
             'Could not save your project. Check your connection and try again.';
@@ -508,7 +589,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
       return;
     }
     setState(() {
-      _tests = newTests;
+      _tests = result.tests;
       _selectedId = test.id;
       _subView = 'splash';
       _flowError = null;
@@ -518,7 +599,9 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
       if (mounted && _subView == 'splash') {
         setState(() => _subView = 'details');
         _pushState(
-            tests: _tests, selectedId: _selectedId, subView: 'details');
+            selectedId: _selectedId,
+            subView: 'details',
+            spliceTests: (freshTests) => freshTests);
       }
     });
   }
@@ -530,24 +613,47 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
       _selectedId = key;
       _subView = 'details';
     });
-    await _pushState(tests: _tests, selectedId: key, subView: 'details');
+    // Serialized through the same push chain as every other
+    // write (Vera F1: selection pushed unguarded, without
+    // `_saving`), and built from the freshest blob with the test
+    // list untouched — a selection can never revert a check-in.
+    final result = await _pushState(
+        selectedId: key,
+        subView: 'details',
+        spliceTests: (freshTests) => freshTests);
+    if (!mounted) return;
+    if (result.ok) setState(() => _tests = result.tests);
   }
 
   Future<void> _applyLogs(FocusTest test, Map<String, bool> logs) async {
     if (_saving) return;
-    final updated = test.copyWith(logs: logs);
-    final newTests = [
-      for (final t in _tests)
-        if ((t.id ?? t.title) == (test.id ?? test.title)) updated else t,
-    ];
+    final key = test.id ?? test.title;
     setState(() => _saving = true);
-    final ok = await _pushState(
-        tests: newTests, selectedId: _selectedId, subView: 'details');
+    // The log change is spliced into the FRESH copy of this test
+    // when the serialized push runs; a test that no longer exists
+    // server-side refuses the push (honest error, no phantom
+    // check-in) instead of resurrecting the stale list.
+    final result = await _pushState(
+        selectedId: _selectedId,
+        subView: 'details',
+        spliceTests: (freshTests) {
+          var found = false;
+          final out = <FocusTest>[];
+          for (final t in freshTests) {
+            if ((t.id ?? t.title) == key) {
+              found = true;
+              out.add(t.copyWith(logs: logs));
+            } else {
+              out.add(t);
+            }
+          }
+          return found ? out : null;
+        });
     if (!mounted) return;
     setState(() {
       _saving = false;
-      if (ok) {
-        _tests = newTests;
+      if (result.ok) {
+        _tests = result.tests;
         _writeError = null;
       } else {
         _writeError =
@@ -600,25 +706,44 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    final newTests = [
+    final targetKey = test.id ?? test.title;
+    final staleRemaining = [
       for (final t in _tests)
-        if ((t.id ?? t.title) != (test.id ?? test.title)) t,
+        if ((t.id ?? t.title) != targetKey) t,
     ];
-    final fallback = newTests.isNotEmpty ? newTests.first : null;
-    final fallbackId =
-        fallback == null ? null : (fallback.id ?? fallback.title);
+    final staleFallback =
+        staleRemaining.isNotEmpty ? staleRemaining.first : null;
+    final staleFallbackId =
+        staleFallback == null ? null : (staleFallback.id ?? staleFallback.title);
     setState(() => _saving = true);
-    final ok = await _pushState(
-      tests: newTests,
-      selectedId: fallbackId,
-      subView: fallback != null ? 'details' : 'input',
+    // The removal is spliced into the FRESH server list when the
+    // serialized push runs — tests added server-side after load
+    // survive the cancel (Vera F1).
+    final result = await _pushState(
+      selectedId: staleFallbackId,
+      subView: staleFallback != null ? 'details' : 'input',
+      spliceTests: (freshTests) => [
+        for (final t in freshTests)
+          if ((t.id ?? t.title) != targetKey) t,
+      ],
     );
     if (!mounted) return;
     setState(() {
       _saving = false;
-      if (ok) {
-        _tests = newTests;
-        _selectedId = fallbackId;
+      if (result.ok) {
+        _tests = result.tests;
+        // Selection follows the list that was actually pushed:
+        // the precomputed fallback when it survived, else the
+        // first remaining test, else the empty flow.
+        final remaining = result.tests;
+        final fallback = remaining.isEmpty
+            ? null
+            : remaining.firstWhere(
+                (t) => (t.id ?? t.title) == staleFallbackId,
+                orElse: () => remaining.first,
+              );
+        _selectedId =
+            fallback == null ? null : (fallback.id ?? fallback.title);
         _subView = fallback != null ? 'details' : 'input';
         _suggestions = const [];
         _selectedSuggestion = null;
