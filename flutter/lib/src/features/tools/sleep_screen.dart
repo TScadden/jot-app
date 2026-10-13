@@ -72,6 +72,25 @@ int computeSleepDebtMins(Map<String, int> history, String upToDate) {
   return (-runningDebt * 60).toInt();
 }
 
+/// Vera F4 (fix round): the debt to DISPLAY for [upToDate], or null
+/// when that date's debt window contains no real night at all.
+///
+/// [computeSleepDebtMins] is the raw native math port and returns 0
+/// for an empty rolling set — but 0 displayed is an invented
+/// biometric ("Deficit: -0h 0m") for a pre-history date whose window
+/// simply has no data (the initial load always populates recent
+/// nights, so a global "history is empty" guard can never catch
+/// this). The rolling set here is exactly the set the math uses:
+/// the last 10 real nights at or before [upToDate]. Null → the hero
+/// renders the honest missing state ("Deficit: --").
+int? sleepDebtMinsOrNull(Map<String, int> history, String upToDate) {
+  final dates = history.keys.where((d) => d.compareTo(upToDate) <= 0).toList()
+    ..sort();
+  final rolling = dates.length > 10 ? dates.sublist(dates.length - 10) : dates;
+  if (rolling.isEmpty) return null;
+  return computeSleepDebtMins(history, upToDate);
+}
+
 /// Average minutes over the 7 days ending at [endDate] (inclusive),
 /// counting only nights with real data. Null when no night has data.
 /// Ports the native Compare-Weeks math ("sum / count" over the week).
@@ -228,14 +247,14 @@ class _SleepScreenState extends State<SleepScreen> {
     _selectedMins = mins;
     // Today's deficit is the profile's synced native-computed value
     // when present; a past date's deficit is computed locally from
-    // the nights read (native fetchSleepForDate). No data at all →
-    // null → "Deficit: --".
+    // the nights read (native fetchSleepForDate). Vera F4: a past
+    // date whose 10-night window holds no real night at or before it
+    // gets null → "Deficit: --", never a fabricated 0 — even though
+    // _history is non-empty (it holds the recent nights).
     _debtMins = profileDebt ??
-        ((_history.isEmpty && mins == null)
+        (dateStr == _dateKey(DateTime.now())
             ? null
-            : (dateStr == _dateKey(DateTime.now())
-                ? null
-                : computeSleepDebtMins(_history, dateStr)));
+            : sleepDebtMinsOrNull(_history, dateStr));
     _deepMins = _positiveOrNull(stages?.deepMinutes);
     _lightMins = _positiveOrNull(stages?.lightMinutes);
     _remMins = _positiveOrNull(stages?.remMinutes);

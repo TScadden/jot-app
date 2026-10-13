@@ -96,6 +96,29 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
     _load();
   }
 
+  /// Vera F5 (fix round): a guarded Health Connect read that does
+  /// NOT swallow the failure signal. The service fails closed
+  /// (empty list / null) and records the failure in
+  /// [HealthConnectService.lastReadErrorCode]; the old `_guarded`
+  /// dropped that, so a timed-out or failed read was
+  /// indistinguishable from a genuinely-empty day. This wrapper:
+  /// - clears the recorded code before the call (the service keeps
+  ///   it sticky across successes — the Heart screen's reset rule),
+  /// - reports `failed: true` when the call throws / times out, or
+  ///   when the service recorded an error code during the call,
+  /// - reports `failed: false` for a clean return, INCLUDING a
+  ///   genuinely-empty / null result.
+  Future<({T? value, bool failed})> _readGuarded<T>(
+      Future<T> Function() call) async {
+    _hc.lastReadErrorCode = null;
+    try {
+      final value = await call().timeout(const Duration(seconds: 10));
+      return (value: value, failed: _hc.lastReadErrorCode != null);
+    } catch (_) {
+      return (value: null, failed: true);
+    }
+  }
+
   Future<void> _load() async {
     Map<String, dynamic>? profile;
     String? error;
@@ -162,28 +185,45 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
       avgHr = nonZeroInt(profile?['todayAvgHr']);
     }
 
+    // Vera F5(b): if ANY read for this date failed / timed out, the
+    // assembled result is incomplete — it must NOT enter
+    // _perDateCache, or the fake-empty values would be served for
+    // the whole session. Genuinely-empty results (clean reads, no
+    // data) cache exactly as before.
+    var anyReadFailed = false;
     if (hcConnected) {
-      final samples =
-          await _guarded(() => _hc.readHeartRateSamples(key)) ?? const [];
+      final hr = await _readGuarded(() => _hc.readHeartRateSamples(key));
+      anyReadFailed = anyReadFailed || hr.failed;
+      final samples = hr.value ?? const <HrSample>[];
       final daytime = daytimeHeartRateAvg(samples);
       if (daytime != null) avgHr = daytime;
 
-      restingHr = nonZeroInt(await _guarded(() => _hc.readRestingHeartRate(key)));
+      final resting =
+          await _readGuarded(() => _hc.readRestingHeartRate(key));
+      anyReadFailed = anyReadFailed || resting.failed;
+      restingHr = nonZeroInt(resting.value);
       if (restingHr == null) {
-        final history =
-            await _guarded(() => _hc.readRestingHrHistory(7)) ?? const [];
+        final hist = await _readGuarded(() => _hc.readRestingHrHistory(7));
+        anyReadFailed = anyReadFailed || hist.failed;
+        final history = hist.value ?? const <({String date, int bpm})>[];
         final rows = history.where((r) => r.date == key && r.bpm > 0);
         if (rows.isNotEmpty) restingHr = rows.last.bpm;
       }
 
-      final weightKg = await _guarded(() => _hc.readLatestWeightKg());
+      final weight = await _readGuarded(() => _hc.readLatestWeightKg());
+      anyReadFailed = anyReadFailed || weight.failed;
+      final weightKg = weight.value;
       if (weightKg != null && weightKg > 0) weightLbs = weightKg * 2.20462;
 
-      breathing = nonZeroDouble(
-          await _guarded(() => _hc.readRespiratoryRate(key)));
-      oxygen =
-          nonZeroDouble(await _guarded(() => _hc.readOxygenSaturation(key)));
-      hrv = nonZeroDouble(await _guarded(() => _hc.readHrvRmssd(key)));
+      final resp = await _readGuarded(() => _hc.readRespiratoryRate(key));
+      anyReadFailed = anyReadFailed || resp.failed;
+      breathing = nonZeroDouble(resp.value);
+      final oxy = await _readGuarded(() => _hc.readOxygenSaturation(key));
+      anyReadFailed = anyReadFailed || oxy.failed;
+      oxygen = nonZeroDouble(oxy.value);
+      final hrvRes = await _readGuarded(() => _hc.readHrvRmssd(key));
+      anyReadFailed = anyReadFailed || hrvRes.failed;
+      hrv = nonZeroDouble(hrvRes.value);
     }
 
     final data = _MetricsData(
@@ -195,7 +235,7 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
       hrv: hrv,
       hcConnected: hcConnected,
     );
-    _perDateCache[key] = data;
+    if (!anyReadFailed) _perDateCache[key] = data;
     return data;
   }
 
@@ -237,16 +277,36 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
     setState(() => _exporting = true);
     try {
       final resolvedDays = days == -1 ? 3650 : days;
-      final hrHistory =
-          await _guarded(() => _hc.readRestingHrHistory(resolvedDays)) ??
-              const <({String date, int bpm})>[];
+      // Vera F5(a): a failed / timed-out history read ABORTS the
+      // export. The old guarded reads failed closed to empty lists,
+      // so an outage produced an authoritative-looking CSV full of
+      // "No data" and a success report. Genuinely-empty history
+      // (clean reads, no error code) still exports "No data" rows
+      // exactly as before.
+      final hrRes =
+          await _readGuarded(() => _hc.readRestingHrHistory(resolvedDays));
+      final sleepRes =
+          await _readGuarded(() => _hc.readSleepHistory(resolvedDays));
+      var spikeFailed = false;
+      var spikeHistory = const <({String date, int count})>[];
+      if (includeSpikes && days != -1) {
+        final spikeRes = await _readGuarded(() => _hc.readSpikeCounts(days));
+        spikeFailed = spikeRes.failed;
+        spikeHistory = spikeRes.value ?? const <({String date, int count})>[];
+      }
+      if (hrRes.failed || sleepRes.failed || spikeFailed) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Export failed. Your history could not be read, so nothing was exported. Please try again.'),
+          ),
+        );
+        return;
+      }
+      final hrHistory = hrRes.value ?? const <({String date, int bpm})>[];
       final sleepHistory =
-          await _guarded(() => _hc.readSleepHistory(resolvedDays)) ??
-              const <({String date, int mins, int deep})>[];
-      final spikeHistory = (includeSpikes && days != -1)
-          ? await _guarded(() => _hc.readSpikeCounts(days)) ??
-              const <({String date, int count})>[]
-          : const <({String date, int count})>[];
+          sleepRes.value ?? const <({String date, int mins, int deep})>[];
 
       final avgHrByDate = <String, int>{
         for (final r in hrHistory)
@@ -298,10 +358,10 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
       );
       final fileName =
           days == -1 ? 'jot_metrics_alltime.csv' : 'jot_metrics_${days}d.csv';
-      final ok = await _guarded(
-            () => _hc.exportCsvFile(fileName: fileName, content: csv),
-          ) ??
-          false;
+      final exportRes = await _readGuarded(
+        () => _hc.exportCsvFile(fileName: fileName, content: csv),
+      );
+      final ok = !exportRes.failed && (exportRes.value ?? false);
       if (!mounted) return;
       if (!ok) {
         ScaffoldMessenger.of(context).showSnackBar(

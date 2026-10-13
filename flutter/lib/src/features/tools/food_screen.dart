@@ -108,16 +108,46 @@ String extractFoodJsonBlock(String raw) {
   return trimmed;
 }
 
-/// Normalizes an AI level string to exactly "High" / "Medium" /
-/// "Low". Round 48 fix: the raw string used to pass through, so a
+/// Normalizes an AI level string to "High" / "Medium" / "Low" when
+/// it is a recognized level, and otherwise preserves it.
+///
+/// Round 48 fix: the raw string used to pass through, so a
 /// lowercase "high" from the AI rendered with the green (Low) badge
 /// color while saying "high" — the badge switch is case-sensitive.
-/// Anything unrecognized falls back to "Low" (native's default).
+///
+/// Juno F4 (fix round): the first version of this fix mapped ANY
+/// unrecognized non-empty string to "Low" — silently downgrading an
+/// unknown sensitivity result to the safest-looking badge. Native
+/// (`FoodViewModel`) defaults to "Low" only when the level is
+/// MISSING (`optString("level", "Low")` / a missing topic object)
+/// and otherwise passes the string through untouched. So:
+/// - missing / empty / whitespace-only → "Low" (native default);
+/// - case / separator variants of High / Medium / Low canonicalize;
+/// - common synonyms canonicalize: mild / very low → "Low",
+///   moderate → "Medium", very high / severe → "High";
+/// - any other non-empty string passes through verbatim (trimmed),
+///   exactly like native — never silently downgraded to "Low".
 String normalizeFoodLevel(dynamic raw) {
-  final s = raw?.toString().trim().toLowerCase() ?? '';
-  if (s == 'high') return 'High';
-  if (s == 'medium') return 'Medium';
-  return 'Low';
+  final original = raw?.toString().trim() ?? '';
+  if (original.isEmpty) return 'Low';
+  // Match key: lowercased, with runs of spaces / hyphens /
+  // underscores collapsed, so "VERY  HIGH" and "very-high" match.
+  final key =
+      original.toLowerCase().replaceAll(RegExp(r'[\s_-]+'), ' ').trim();
+  switch (key) {
+    case 'high':
+    case 'very high':
+    case 'severe':
+      return 'High';
+    case 'medium':
+    case 'moderate':
+      return 'Medium';
+    case 'low':
+    case 'very low':
+    case 'mild':
+      return 'Low';
+  }
+  return original;
 }
 
 /// Parse the AI's raw text into [FoodCheckResult]s.
