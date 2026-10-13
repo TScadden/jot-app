@@ -116,6 +116,7 @@ void main() {
       TodayPlanLocalState local = const TodayPlanLocalState(),
       List<QuickLogEntry> entries = const [],
       int? medCategoryId,
+      int? goalsCategoryId = 4,
       DateTime? now,
     }) =>
         buildTodayPlan(
@@ -125,6 +126,7 @@ void main() {
           localState: local,
           entries: entries,
           medicationCategoryId: medCategoryId,
+          goalsCategoryId: goalsCategoryId,
           now: now ?? DateTime(2026, 10, 13, 9, 0),
         );
 
@@ -148,7 +150,8 @@ void main() {
       expect(one.summaryText, '1 item remaining');
     });
 
-    test('all complete → "Everything planned for today is complete"', () {
+    test('all complete → "Everything planned for today is complete" '
+        'and the completed item does not render (R41)', () {
       final data = build(
         reminders: [
           const SummaryReminder(
@@ -158,9 +161,14 @@ void main() {
               fixedMinute: 0,
               isEnabled: true),
         ],
-        local: const TodayPlanLocalState(completedReminderIds: {1}),
+        entries: [
+          entry(7, 4, 'Completed reminder: A', DateTime(2026, 10, 13, 8, 5)),
+        ],
       );
       expect(data.summaryText, 'Everything planned for today is complete');
+      expect(data.items, isEmpty);
+      expect(data.plannedCount, 1);
+      expect(data.remainingCount, 0);
     });
 
     test('overdue suffix joins with " · "', () {
@@ -185,7 +193,8 @@ void main() {
       expect(data.summaryText, 'No plans recorded today');
     });
 
-    test('sort: incomplete first, then timeDisplay string order', () {
+    test('sort: open items by timeDisplay string order; a completed '
+        'item is excluded entirely (R41)', () {
       final data = build(
         reminders: [
           const SummaryReminder(
@@ -207,20 +216,61 @@ void main() {
               fixedMinute: 0,
               isEnabled: true),
         ],
-        local: const TodayPlanLocalState(completedReminderIds: {3}),
+        entries: [
+          entry(7, 4, 'Completed reminder: done',
+              DateTime(2026, 10, 13, 6, 5)),
+        ],
       );
-      expect(data.items.map((i) => i.title).toList(),
-          ['early', 'late', 'done']);
+      expect(data.items.map((i) => i.title).toList(), ['early', 'late']);
       expect(data.items.first.timeDisplay, '07:30');
+      expect(data.plannedCount, 3);
     });
 
-    test('habit completion comes from logs containing today', () {
-      final data = build(
+    test('habit completion comes from its log ENTRY, not the habit '
+        'logs list (R41: the habit-side record alone is not a log '
+        'entry)', () {
+      // logs contains today (e.g. checked off in native / on the
+      // Habits screen) but no completion entry stands → the summary
+      // still shows the habit as an open item.
+      final fromLogsOnly = build(
         habits: [habit('h1', 'Stretch', logs: [_today])],
         now: _now,
       );
-      expect(data.items.single.isCompleted, isTrue);
-      expect(data.items.single.timeDisplay, 'Anytime');
+      expect(fromLogsOnly.items.single.title, 'Stretch');
+      expect(fromLogsOnly.items.single.isCompleted, isFalse);
+      expect(fromLogsOnly.remainingCount, 1);
+      // With the completion entry, the habit is complete — and
+      // therefore absent from the rendered plan.
+      final withEntry = build(
+        habits: [habit('h1', 'Stretch', logs: [_today])],
+        entries: [entry(9, 4, 'Completed habit: Stretch', _now)],
+        now: _now,
+      );
+      expect(withEntry.items, isEmpty);
+      expect(withEntry.plannedCount, 1);
+      expect(withEntry.summaryText,
+          'Everything planned for today is complete');
+    });
+
+    test('reminder completion comes from its log ENTRY, not the '
+        'local per-day set (R41: the set is a cache, the entry is '
+        'the source of truth)', () {
+      const rem = SummaryReminder(
+          id: 1, title: 'A', fixedHour: 8, fixedMinute: 0, isEnabled: true);
+      final fromSetOnly = build(
+        reminders: [rem],
+        local: const TodayPlanLocalState(completedReminderIds: {1}),
+      );
+      expect(fromSetOnly.items.single.title, 'A');
+      expect(fromSetOnly.remainingCount, 1);
+      final withEntry = build(
+        reminders: [rem],
+        entries: [
+          entry(7, 4, 'Completed reminder: A', DateTime(2026, 10, 13, 8, 5)),
+        ],
+      );
+      expect(withEntry.items, isEmpty);
+      expect(withEntry.remainingCount, 0);
     });
   });
 
@@ -248,21 +298,42 @@ void main() {
       expect(item.id, 'med_uuid-1_Daily');
     });
 
-    test('a today "Took …" entry in the Medication category marks taken',
-        () {
+    test('a today "Took …" entry in the Medication category marks '
+        'taken — and the dose leaves the rendered plan (R41)', () {
       final data = build(entries: [
         entry(10, 8, 'Took Ivabradine 7.5 mg', _now),
       ]);
-      expect(data.items.single.status, DoseStatus.taken);
-      expect(data.items.single.isCompleted, isTrue);
+      expect(data.items, isEmpty);
+      expect(data.plannedCount, 1);
+      expect(data.remainingCount, 0);
       expect(data.summaryText, 'Everything planned for today is complete');
     });
 
-    test('a "[Corrected to Skipped]" entry never marks taken', () {
+    test('R41 restore: the same fixture MINUS the "Took …" entry '
+        'brings the dose back, present and actionable', () {
+      final data = build(entries: const []);
+      final item = data.items.single;
+      expect(item.title, 'Ivabradine');
+      expect(item.status, DoseStatus.pending);
+      expect(item.isCompleted, isFalse);
+      expect(data.remainingCount, 1);
+    });
+
+    test('a "[Corrected to Skipped]" entry marks SKIPPED (never '
+        'taken) — and the dose leaves the rendered plan (R41)', () {
       final data = build(entries: [
         entry(10, 8, '[Corrected to Skipped] Took Ivabradine 7.5 mg', _now),
       ]);
-      expect(data.items.single.status, DoseStatus.pending);
+      expect(data.items, isEmpty);
+      expect(data.plannedCount, 1);
+      // Native's count formula counts a skipped dose as not
+      // completed, so the subtitle still reads "1 item remaining"
+      // even though the resolved dose renders nowhere (counts kept
+      // verbatim per the R41 brief).
+      expect(data.summaryText, '1 item remaining');
+      // Deleting the corrected entry restores the dose to pending.
+      final restored = build(entries: const []);
+      expect(restored.items.single.status, DoseStatus.pending);
     });
 
     test('yesterday\'s "Took …" entry does not leak into today', () {
@@ -273,26 +344,47 @@ void main() {
       expect(data.items.single.status, DoseStatus.pending);
     });
 
-    test('local SKIPPED wins over a stale "Took …" entry', () {
-      final data = build(
+    test('R41 precedence: entry evidence wins over the local record '
+        '— a "Took …" entry stands even when the local record says '
+        'SKIPPED or PENDING', () {
+      final skippedLocal = build(
         local: const TodayPlanLocalState(medActions: {
           'uuid-1|Daily': DoseStatus.skipped,
         }),
         entries: [entry(10, 8, 'Took Ivabradine 7.5 mg', _now)],
       );
-      expect(data.items.single.status, DoseStatus.skipped);
-      expect(data.items.single.isCompleted, isFalse);
-    });
-
-    test('local PENDING (undo) wins over a "Took …" entry — native '
-        'keeps the entry on undo too', () {
-      final data = build(
+      expect(skippedLocal.items, isEmpty); // taken per the entry
+      expect(skippedLocal.remainingCount, 0);
+      final pendingLocal = build(
         local: const TodayPlanLocalState(medActions: {
           'uuid-1|Daily': DoseStatus.pending,
         }),
         entries: [entry(10, 8, 'Took Ivabradine 7.5 mg', _now)],
       );
+      expect(pendingLocal.items, isEmpty);
+      expect(pendingLocal.remainingCount, 0);
+    });
+
+    test('R41 restore: a local TAKEN record whose entry was deleted '
+        'no longer holds the dose out of the plan', () {
+      final data = build(
+        local: const TodayPlanLocalState(medActions: {
+          'uuid-1|Daily': DoseStatus.taken,
+        }),
+        entries: const [],
+      );
       expect(data.items.single.status, DoseStatus.pending);
+      expect(data.remainingCount, 1);
+    });
+
+    test('a local SNOOZE remains visible: native logs nothing for '
+        'a snooze, so the plan store is its only trace', () {
+      final data = build(
+        local: const TodayPlanLocalState(medActions: {
+          'uuid-1|Daily': DoseStatus.snoozed,
+        }),
+      );
+      expect(data.items.single.status, DoseStatus.snoozed);
     });
 
     test('blob rows: deleted + not-present meds are excluded', () {
@@ -529,7 +621,8 @@ void main() {
       expect(data.overdueCount, 0);
     });
 
-    test('skipped + completed items are never overdue', () {
+    test('a skipped item is never overdue — and no longer renders '
+        'at all (R41)', () {
       final now = DateTime(2026, 10, 13, 21, 0);
       final data = buildTodayPlan(
         medications: const [
@@ -537,14 +630,15 @@ void main() {
         ],
         reminders: const [],
         habits: const [],
-        localState: const TodayPlanLocalState(medActions: {
-          'k|Daily': DoseStatus.skipped,
-        }),
-        entries: const [],
-        medicationCategoryId: null,
+        localState: const TodayPlanLocalState(),
+        entries: [
+          entry(3, 8, '[Corrected to Skipped] Took M 1',
+              DateTime(2026, 10, 13, 8, 0)),
+        ],
+        medicationCategoryId: 8,
         now: now,
       );
-      expect(data.items.single.isOverdue(now), isFalse);
+      expect(data.items, isEmpty);
       expect(data.overdueCount, 0);
     });
   });
@@ -884,6 +978,14 @@ void main() {
             'sortOrder': 0,
           },
           {
+            'id': 4,
+            'name': 'Goals & Habits',
+            'icon': 'EmojiEvents',
+            'colorHex': '#4D96FF',
+            'isDefault': true,
+            'sortOrder': 4,
+          },
+          {
             'id': 8,
             'name': 'Medication',
             'icon': 'Medication',
@@ -954,13 +1056,16 @@ void main() {
       final loader = loaderFor(healthyClient(), hc: hc);
       final data = await loader.load(now: _now);
       expect(data.pullSucceeded, isTrue);
-      // Med (pending) + reminder (pending) remain; habit is done.
-      expect(data.plan.summaryText, '2 items remaining');
+      // All three remain: the habit's `logs` list contains today,
+      // but R41 derives summary completion from the habit's log
+      // ENTRY — none stands in this pull, so Stretch stays open.
+      expect(data.plan.summaryText, '3 items remaining');
+      expect(data.plan.plannedCount, 3);
       expect(data.plan.items.map((i) => i.title).toList(),
           containsAll(['Ivabradine', 'Salt pills', 'Stretch']));
       final habitItem =
           data.plan.items.firstWhere((i) => i.title == 'Stretch');
-      expect(habitItem.isCompleted, isTrue);
+      expect(habitItem.isCompleted, isFalse);
       expect(habitItem.timeDisplay, '07:15');
       // Trends: sleep comparison + 1 symptom log (string-ts entry).
       expect(data.trends.map((t) => t.metricName).toList(),
@@ -1010,11 +1115,23 @@ void main() {
       expect(data.trends, isEmpty);
     });
 
-    test('habit toggle posts the native LogHabitRequest shape', () async {
+    test('habit toggle posts the native LogHabitRequest shape AND '
+        'exactly one completion entry (R41)', () async {
       Map<String, dynamic>? posted;
+      final postedEntries = <Map<String, dynamic>>[];
       final client = MockClient((request) async {
         if (request.url.path == '/api/habits/log') {
           posted = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response('{"success":true}', 200);
+        }
+        if (request.url.path == '/api/sync/pull') {
+          return http.Response(jsonEncode(pullBody()), 200);
+        }
+        if (request.url.path == '/api/sync/entries') {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          for (final e in (body['entries'] as List)) {
+            postedEntries.add(e as Map<String, dynamic>);
+          }
           return http.Response('{"success":true}', 200);
         }
         return http.Response('{}', 404);
@@ -1030,11 +1147,18 @@ void main() {
       );
       final ok = await loader.setHabitCompleted(item, true, now: _now);
       expect(ok, isTrue);
+      // The habit-side write is byte-identical to R35/native.
       expect(posted, {
         'habit_id': 'h1',
         'completed_date': _today,
         'is_completed': true,
       });
+      // Plus exactly one real log entry, in the Goals & Habits
+      // category, id = max existing (900) + 1.
+      expect(postedEntries, hasLength(1));
+      expect(postedEntries.single['body'], 'Completed habit: Stretch');
+      expect(postedEntries.single['categoryId'], 4);
+      expect(postedEntries.single['id'], 901);
     });
 
     test('med Take posts the native "Took …" entry and the next load '
@@ -1082,10 +1206,12 @@ void main() {
       expect(postedEntries.single['body'], 'Took Ivabradine 7.5 mg');
       expect(postedEntries.single['categoryId'], 8);
       expect(pullCount, greaterThan(0));
+      // R41: with the "Took …" entry standing, the dose is absent
+      // from the rendered plan (no Taken row anywhere).
       final after = await loader.load(now: _now);
-      final afterMed =
-          after.plan.items.firstWhere((i) => i.title == 'Ivabradine');
-      expect(afterMed.status, DoseStatus.taken);
+      expect(after.plan.items.map((i) => i.title),
+          isNot(contains('Ivabradine')));
+      expect(after.plan.plannedCount, 2);
     });
 
     test('med Skip after a Take posts the "[Corrected to Skipped]" '
@@ -1121,20 +1247,272 @@ void main() {
         return http.Response('{}', 404);
       });
       final loader = loaderFor(client);
-      final data = await loader.load(now: _now);
-      final medItem =
-          data.plan.items.firstWhere((i) => i.title == 'Ivabradine');
-      expect(medItem.status, DoseStatus.taken); // from the entry
+      // R41: the standing "Took …" entry already excludes the dose
+      // from the rendered plan, so the item is built directly (the
+      // shape buildTodayPlan produced while it was open).
+      const medItem = TodayPlanItem(
+        kind: PlanItemKind.medication,
+        id: 'med_med-uuid-1_Daily',
+        title: 'Ivabradine',
+        timeDisplay: 'Daily',
+        isCompleted: true,
+        status: DoseStatus.taken,
+        dose: '7.5 mg',
+        medKey: 'med-uuid-1',
+        slot: 'Daily',
+      );
       await loader.setMedicationAction(medItem, DoseStatus.skipped,
           now: _now);
       expect(posted, hasLength(1));
       expect(posted.single['id'], 55);
       expect(posted.single['body'],
           '[Corrected to Skipped] Took Ivabradine 7.5 mg');
+      // The mock pull still serves the uncorrected body (it does
+      // not apply posts), so assert the end state at the plan
+      // level: the corrected entry resolves the dose out of the
+      // plan.
+      final plan = buildTodayPlan(
+        medications: const [
+          SummaryMedication(
+              key: 'med-uuid-1', name: 'Ivabradine', dose: '7.5 mg'),
+        ],
+        reminders: const [],
+        habits: const [],
+        localState: const TodayPlanLocalState(),
+        entries: [
+          entry(55, 8, '[Corrected to Skipped] Took Ivabradine 7.5 mg',
+              _now),
+        ],
+        medicationCategoryId: 8,
+        now: _now,
+      );
+      expect(plan.items, isEmpty);
+      expect(plan.plannedCount, 1);
+    });
+
+    // ── Round 41 verification matrix: one row per check-off type.
+    // Each type: exactly one log entry on check-off → item absent
+    // while the entry stands → entry deleted → item returns.
+
+    /// A stateful fake server: posts to /api/sync/entries land in
+    /// the entry list the pull serves; deleting = removing from
+    /// that list (what a History delete does server-side).
+    ({MockClient client, List<Map<String, dynamic>> serverEntries})
+        matrixServer() {
+      final serverEntries = <Map<String, dynamic>>[];
+      final client = MockClient((request) async {
+        if (request.url.path == '/api/sync/pull') {
+          final extra = serverEntries
+              .map((e) => {
+                    'id': '${e['id']}',
+                    'categoryId': '${e['categoryId']}',
+                    'body': e['body'],
+                    'chips': e['chips'],
+                    'manualText': e['manualText'],
+                    'timestamp': '${e['timestamp']}',
+                    'updatedAt': '${e['timestamp']}',
+                  })
+              .toList();
+          return http.Response(jsonEncode(pullBody(entries: extra)), 200);
+        }
+        if (request.url.path == '/api/sync/entries') {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          for (final e in (body['entries'] as List)) {
+            final row = e as Map<String, dynamic>;
+            serverEntries
+                .removeWhere((s) => s['id'] == row['id']);
+            serverEntries.add(row);
+          }
+          return http.Response('{"success":true}', 200);
+        }
+        if (request.url.path == '/api/habits') {
+          return http.Response(
+            jsonEncode({
+              'habits': [
+                {
+                  'id': 'h1',
+                  'title': 'Stretch',
+                  'target_time': '07:15',
+                  'created_at': '2026-01-01',
+                  'logs': <String>[],
+                },
+              ],
+            }),
+            200,
+          );
+        }
+        if (request.url.path == '/api/habits/log') {
+          return http.Response('{"success":true}', 200);
+        }
+        return http.Response('{}', 404);
+      });
+      return (client: client, serverEntries: serverEntries);
+    }
+
+    test('R41 matrix — reminder: one entry on check-off, absent '
+        'while it stands, back when deleted', () async {
+      final server = matrixServer();
+      final planMem = MemoryStore();
+      final loader = loaderFor(server.client, planMem: planMem);
+      final before = await loader.load(now: _now);
+      final rem = before.plan.items
+          .firstWhere((i) => i.title == 'Salt pills');
+      final ok = await loader.setReminderCompleted(rem, true, now: _now);
+      expect(ok, isTrue);
+      expect(server.serverEntries, hasLength(1));
+      expect(server.serverEntries.single['body'],
+          'Completed reminder: Salt pills');
+      expect(server.serverEntries.single['categoryId'], 4);
+      // The per-day set is written as a cache of the evidence.
+      final state = await planStoreWith(planMem)
+          .load(email: 'a@x.com', todayStr: _today);
+      expect(state.completedReminderIds, contains(5));
+      final during = await loader.load(now: _now);
+      expect(during.plan.items.map((i) => i.title),
+          isNot(contains('Salt pills')));
+      // Delete the entry (History) → the reminder returns. (The
+      // invalidate models the fresh mount's fresh pull — production
+      // builds a new backend per mount, so no stale pull cache.)
+      server.serverEntries.clear();
+      loader.backend.invalidateSyncPull();
       final after = await loader.load(now: _now);
-      expect(
-          after.plan.items.firstWhere((i) => i.title == 'Ivabradine').status,
-          DoseStatus.skipped);
+      final restored = after.plan.items
+          .firstWhere((i) => i.title == 'Salt pills');
+      expect(restored.isCompleted, isFalse);
+    });
+
+    test('R41 matrix — habit: one entry on check-off (plus the '
+        'habit-side log), absent while it stands, back when '
+        'deleted', () async {
+      final server = matrixServer();
+      final loader = loaderFor(server.client);
+      final before = await loader.load(now: _now);
+      final hab = before.plan.items
+          .firstWhere((i) => i.title == 'Stretch');
+      final ok = await loader.setHabitCompleted(hab, true, now: _now);
+      expect(ok, isTrue);
+      expect(server.serverEntries, hasLength(1));
+      expect(server.serverEntries.single['body'],
+          'Completed habit: Stretch');
+      expect(server.serverEntries.single['categoryId'], 4);
+      final during = await loader.load(now: _now);
+      expect(during.plan.items.map((i) => i.title),
+          isNot(contains('Stretch')));
+      server.serverEntries.clear();
+      loader.backend.invalidateSyncPull();
+      final after = await loader.load(now: _now);
+      expect(after.plan.items.map((i) => i.title), contains('Stretch'));
+    });
+
+    test('R41 matrix — med Take: one entry, absent while it '
+        'stands, back when deleted', () async {
+      final server = matrixServer();
+      final loader = loaderFor(server.client);
+      final before = await loader.load(now: _now);
+      final med = before.plan.items
+          .firstWhere((i) => i.title == 'Ivabradine');
+      await loader.setMedicationAction(med, DoseStatus.taken, now: _now);
+      expect(server.serverEntries, hasLength(1));
+      expect(server.serverEntries.single['body'],
+          'Took Ivabradine 7.5 mg');
+      final during = await loader.load(now: _now);
+      expect(during.plan.items.map((i) => i.title),
+          isNot(contains('Ivabradine')));
+      server.serverEntries.clear();
+      loader.backend.invalidateSyncPull();
+      final after = await loader.load(now: _now);
+      final restored = after.plan.items
+          .firstWhere((i) => i.title == 'Ivabradine');
+      expect(restored.status, DoseStatus.pending);
+    });
+
+    test('R41 matrix — med Skip from pending: exactly one entry, '
+        'in the corrected shape; absent while it stands, back when '
+        'deleted', () async {
+      final server = matrixServer();
+      final loader = loaderFor(server.client);
+      final before = await loader.load(now: _now);
+      final med = before.plan.items
+          .firstWhere((i) => i.title == 'Ivabradine');
+      expect(med.status, DoseStatus.pending);
+      await loader.setMedicationAction(med, DoseStatus.skipped,
+          now: _now);
+      expect(server.serverEntries, hasLength(1));
+      expect(server.serverEntries.single['body'],
+          '[Corrected to Skipped] Took Ivabradine 7.5 mg');
+      expect(server.serverEntries.single['categoryId'], 8);
+      final during = await loader.load(now: _now);
+      expect(during.plan.items.map((i) => i.title),
+          isNot(contains('Ivabradine')));
+      server.serverEntries.clear();
+      loader.backend.invalidateSyncPull();
+      final after = await loader.load(now: _now);
+      final restored = after.plan.items
+          .firstWhere((i) => i.title == 'Ivabradine');
+      expect(restored.status, DoseStatus.pending);
+    });
+
+    test('R41 — reminder check-off whose entry post FAILS reports '
+        'false, caches nothing, and the item stays (no phantom '
+        'completion)', () async {
+      final client = MockClient((request) async {
+        if (request.url.path == '/api/sync/pull') {
+          return http.Response(jsonEncode(pullBody()), 200);
+        }
+        if (request.url.path == '/api/sync/entries') {
+          return http.Response('{"error":"down"}', 500);
+        }
+        if (request.url.path == '/api/habits') {
+          return http.Response('{"habits":[]}', 200);
+        }
+        return http.Response('{}', 404);
+      });
+      final planMem = MemoryStore();
+      final loader = loaderFor(client, planMem: planMem);
+      const item = TodayPlanItem(
+        kind: PlanItemKind.reminder,
+        id: 'rem_5',
+        title: 'Salt pills',
+        timeDisplay: '23:45',
+        isCompleted: false,
+        reminderId: 5,
+        reminderHour: 23,
+        reminderMinute: 45,
+      );
+      final ok = await loader.setReminderCompleted(item, true, now: _now);
+      expect(ok, isFalse);
+      final state = await planStoreWith(planMem)
+          .load(email: 'a@x.com', todayStr: _today);
+      expect(state.completedReminderIds, isEmpty);
+      final after = await loader.load(now: _now);
+      expect(after.plan.items.map((i) => i.title), contains('Salt pills'));
+    });
+
+    test('R41 — habit check-off whose entry post FAILS reports '
+        'false even though the habit-side log landed', () async {
+      final client = MockClient((request) async {
+        if (request.url.path == '/api/habits/log') {
+          return http.Response('{"success":true}', 200);
+        }
+        if (request.url.path == '/api/sync/pull') {
+          return http.Response(jsonEncode(pullBody()), 200);
+        }
+        if (request.url.path == '/api/sync/entries') {
+          return http.Response('{"error":"down"}', 500);
+        }
+        return http.Response('{}', 404);
+      });
+      final loader = loaderFor(client);
+      const item = TodayPlanItem(
+        kind: PlanItemKind.habit,
+        id: 'habit_h1',
+        title: 'Stretch',
+        timeDisplay: 'Anytime',
+        isCompleted: false,
+        habitId: 'h1',
+      );
+      final ok = await loader.setHabitCompleted(item, true, now: _now);
+      expect(ok, isFalse);
     });
   });
 
@@ -1233,7 +1611,10 @@ void main() {
         'remaining; expand/collapse toggles repeatedly', (tester) async {
       await pumpCard(tester, client: dataClient());
       expect(find.text('Today Summary'), findsOneWidget);
-      expect(find.text('2 items remaining'), findsOneWidget);
+      // Med + reminder + habit all open: the habit's `logs` entry
+      // (habitDone fixture) is a habit-side record only — R41
+      // completes summary rows from log ENTRIES, so it still counts.
+      expect(find.text('3 items remaining'), findsOneWidget);
       expect(find.text("Today's Plan"), findsNothing);
       expect(find.byIcon(Icons.keyboard_arrow_down), findsOneWidget);
 
@@ -1365,17 +1746,36 @@ void main() {
         'away (founder check-off rule supersedes the R35 '
         'completed-row display)', (tester) async {
       var habitLogged = false;
+      final serverEntries = <Map<String, dynamic>>[];
       final client = MockClient((request) async {
         if (request.url.path == '/api/habits/log') {
           habitLogged = true;
           return http.Response('{"success":true}', 200);
         }
+        if (request.url.path == '/api/sync/entries') {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          for (final e in (body['entries'] as List)) {
+            serverEntries.add(e as Map<String, dynamic>);
+          }
+          return http.Response('{"success":true}', 200);
+        }
         if (request.url.path == '/api/sync/pull') {
           return http.Response(
             jsonEncode({
-              'entries': <dynamic>[],
+              'entries': serverEntries
+                  .map((e) => {
+                        'id': '${e['id']}',
+                        'categoryId': '${e['categoryId']}',
+                        'body': e['body'],
+                        'chips': e['chips'],
+                        'manualText': e['manualText'],
+                        'timestamp': '${e['timestamp']}',
+                        'updatedAt': '${e['timestamp']}',
+                      })
+                  .toList(),
               'categories': [
                 {'id': 1, 'name': 'Symptoms'},
+                {'id': 4, 'name': 'Goals & Habits'},
                 {'id': 8, 'name': 'Medication'},
               ],
               'profile': {'medications': '[]', 'reminders': '[]'},
@@ -1408,6 +1808,10 @@ void main() {
       await bridgeRealAsync(tester);
       await tester.pumpAndSettle();
       expect(habitLogged, isTrue);
+      // R41: the check-off also left exactly one real log entry.
+      expect(serverEntries, hasLength(1));
+      expect(serverEntries.single['body'], 'Completed habit: Stretch');
+      expect(serverEntries.single['categoryId'], 4);
       // Founder check-off rule: the checked item leaves the view
       // (dust dissolve), and since it was the LAST plan item the
       // section auto-collapses to its header after the dissolve.
@@ -1481,6 +1885,146 @@ void main() {
       expect(find.text('Everything planned for today is complete'),
           findsOneWidget);
     });
+
+    testWidgets('R41: everything complete at load — expanding shows '
+        'the completed message as the plan area content, no plan '
+        'rows, and Trends still renders below it', (tester) async {
+      final client = MockClient((request) async {
+        if (request.url.path == '/api/sync/pull') {
+          return http.Response(
+            jsonEncode({
+              'entries': [
+                {
+                  'id': '11',
+                  'categoryId': '8',
+                  'body': 'Took Ivabradine 7.5 mg',
+                  'chips': '[]',
+                  'manualText': '',
+                  'timestamp': '$_pastMs',
+                  'updatedAt': '$_pastMs',
+                },
+                {
+                  'id': '12',
+                  'categoryId': '4',
+                  'body': 'Completed reminder: Salt pills',
+                  'chips': '[]',
+                  'manualText': '',
+                  'timestamp': '$_pastMs',
+                  'updatedAt': '$_pastMs',
+                },
+                {
+                  'id': '13',
+                  'categoryId': '4',
+                  'body': 'Completed habit: Stretch',
+                  'chips': '[]',
+                  'manualText': '',
+                  'timestamp': '$_pastMs',
+                  'updatedAt': '$_pastMs',
+                },
+                {
+                  'id': '14',
+                  'categoryId': '1',
+                  'body': 'Migraine',
+                  'chips': '[]',
+                  'manualText': '',
+                  'timestamp': '$_pastMs',
+                  'updatedAt': '$_pastMs',
+                },
+              ],
+              'categories': [
+                {'id': 1, 'name': 'Symptoms'},
+                {'id': 4, 'name': 'Goals & Habits'},
+                {'id': 8, 'name': 'Medication'},
+              ],
+              'profile': {
+                'medications': jsonEncode([
+                  {
+                    'id': 'med-uuid-1',
+                    'name': 'Ivabradine',
+                    'dose': '7.5 mg',
+                    'isPresent': true,
+                    'isDeleted': false,
+                  },
+                ]),
+                'reminders': jsonEncode([
+                  {
+                    'id': 5,
+                    'title': 'Salt pills',
+                    'type': 'FIXED',
+                    'fixedHour': 23,
+                    'fixedMinute': 45,
+                    'isEnabled': true,
+                    'daysOfWeekConfig': '',
+                  },
+                ]),
+              },
+            }),
+            200,
+          );
+        }
+        if (request.url.path == '/api/habits') {
+          return http.Response(
+            jsonEncode({
+              'habits': [
+                {
+                  'id': 'h1',
+                  'title': 'Stretch',
+                  'target_time': '07:15',
+                  'logs': [_today],
+                },
+              ],
+            }),
+            200,
+          );
+        }
+        return http.Response('{}', 404);
+      });
+      await pumpCard(tester, client: client);
+      await tester.tap(find.text('Today Summary'));
+      await tester.pumpAndSettle();
+      // Subtitle AND plan-area body both carry the completed
+      // message; no completed item renders anywhere.
+      expect(find.text('Everything planned for today is complete'),
+          findsNWidgets(2));
+      expect(find.text('Ivabradine'), findsNothing);
+      expect(find.text('Salt pills'), findsNothing);
+      expect(find.text('Stretch'), findsNothing);
+      expect(find.text('No plans recorded today'), findsNothing);
+      // Trends is not part of the plan — it renders normally.
+      expect(find.text('Trends'), findsOneWidget);
+      expect(find.text('Symptom Logs'), findsOneWidget);
+    });
+
+    testWidgets('R41: a day with nothing planned — expanding shows '
+        'the no-plans state, NOT the completed message',
+        (tester) async {
+      final client = MockClient((request) async {
+        if (request.url.path == '/api/sync/pull') {
+          return http.Response(
+            jsonEncode({
+              'entries': <dynamic>[],
+              'categories': [
+                {'id': 1, 'name': 'Symptoms'},
+                {'id': 4, 'name': 'Goals & Habits'},
+                {'id': 8, 'name': 'Medication'},
+              ],
+              'profile': {'medications': '[]', 'reminders': '[]'},
+            }),
+            200,
+          );
+        }
+        if (request.url.path == '/api/habits') {
+          return http.Response('{"habits":[]}', 200);
+        }
+        return http.Response('{}', 404);
+      });
+      await pumpCard(tester, client: client);
+      await tester.tap(find.text('Today Summary'));
+      await tester.pumpAndSettle();
+      expect(find.text('No plans recorded today'), findsWidgets);
+      expect(find.text('Everything planned for today is complete'),
+          findsNothing);
+    });
   });
 
   group('Item 4 — check-off dust dissolve (founder)', () {
@@ -1519,10 +2063,15 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    // Reminder-only fixture: one reminder (id 5) whose completion
-    // lives entirely in the plan store — no network writes — so the
-    // persisted blob can be compared byte-for-byte across runs.
+    // Reminder-only fixture: one reminder (id 5, optionally a
+    // second). Round 41: a reminder check-off posts a real log
+    // entry, so the fixture is a stateful fake server — posts to
+    // /api/sync/entries land in the pull, exactly like production.
+    // The persisted plan-store blob can still be compared
+    // byte-for-byte across runs (the set is written as a cache of
+    // the entry evidence, deterministically).
     MockClient reminderClient({bool second = false}) {
+      final serverEntries = <Map<String, dynamic>>[];
       final reminders = jsonEncode([
         {
           'id': 5,
@@ -1545,12 +2094,30 @@ void main() {
           },
       ]);
       return MockClient((request) async {
+        if (request.url.path == '/api/sync/entries') {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          for (final e in (body['entries'] as List)) {
+            serverEntries.add(e as Map<String, dynamic>);
+          }
+          return http.Response('{"success":true}', 200);
+        }
         if (request.url.path == '/api/sync/pull') {
           return http.Response(
             jsonEncode({
-              'entries': <dynamic>[],
+              'entries': serverEntries
+                  .map((e) => {
+                        'id': '${e['id']}',
+                        'categoryId': '${e['categoryId']}',
+                        'body': e['body'],
+                        'chips': e['chips'],
+                        'manualText': e['manualText'],
+                        'timestamp': '${e['timestamp']}',
+                        'updatedAt': '${e['timestamp']}',
+                      })
+                  .toList(),
               'categories': [
                 {'id': 1, 'name': 'Symptoms'},
+                {'id': 4, 'name': 'Goals & Habits'},
                 {'id': 8, 'name': 'Medication'},
               ],
               'profile': {'medications': '[]', 'reminders': reminders},
@@ -1701,11 +2268,24 @@ void main() {
     testWidgets('med Take dusts the dose row after posting the '
         'entry; Skip on another med does the same', (tester) async {
       final posted = <String>[];
+      // Stateful: posted entries land in the pull (R41 derives the
+      // dose state from them, so the reload must see them).
+      final serverEntries = <Map<String, dynamic>>[];
       final client = MockClient((request) async {
         if (request.url.path == '/api/sync/pull') {
           return http.Response(
             jsonEncode({
-              'entries': <dynamic>[],
+              'entries': serverEntries
+                  .map((e) => {
+                        'id': '${e['id']}',
+                        'categoryId': '${e['categoryId']}',
+                        'body': e['body'],
+                        'chips': e['chips'],
+                        'manualText': e['manualText'],
+                        'timestamp': '${e['timestamp']}',
+                        'updatedAt': '${e['timestamp']}',
+                      })
+                  .toList(),
               'categories': [
                 {'id': 1, 'name': 'Symptoms'},
                 {'id': 8, 'name': 'Medication'},
@@ -1738,6 +2318,12 @@ void main() {
         }
         if (request.url.path == '/api/sync/entries') {
           posted.add(request.body);
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          for (final e in (body['entries'] as List)) {
+            final row = e as Map<String, dynamic>;
+            serverEntries.removeWhere((s) => s['id'] == row['id']);
+            serverEntries.add(row);
+          }
           return http.Response('{"success":true}', 200);
         }
         return http.Response('{}', 404);
@@ -1757,6 +2343,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Pyridostigmine'), findsNothing);
       expect(find.text("Today's Plan"), findsNothing);
+      // R41: each check-off left exactly one entry — the take in
+      // its "Took …" shape, the skip-from-pending directly in the
+      // corrected shape.
+      expect(serverEntries.map((e) => e['body']).toList(), [
+        'Took Ivabradine 7.5 mg',
+        '[Corrected to Skipped] Took Pyridostigmine 60 mg',
+      ]);
       expect(tester.takeException(), isNull);
     });
   });

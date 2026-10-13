@@ -64,13 +64,25 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///   instance's view. Presentation only: the check-off persists
 ///   through the exact same loader writes as before, BEFORE the
 ///   dissolve starts, so navigating away mid-dust never loses it.
-///   Items already completed when the data loads keep the existing
-///   display rule (dimmed, struck through, med Undo available) —
-///   only in-session check-offs leave the view. Reduced motion
-///   (animationsDisabled) removes the item instantly, no particles.
+///   Reduced motion (animationsDisabled) removes the item
+///   instantly, no particles.
 ///   Section rule (founder): the card auto-collapses ONLY when a
 ///   check-off removes the LAST remaining plan item, and only after
 ///   the dissolve finishes; otherwise the section stays open.
+/// - Round 41 (founder, supersedes the R35 completed-row display):
+///   a completed/resolved item NEVER renders — not dimmed, not
+///   struck through, no Undo affordance. `buildTodayPlan` already
+///   excludes them from the plan, so a dose or habit completed
+///   before this card mounted is simply absent, and the founder's
+///   undo is deleting the check-off's log entry in History (the
+///   next load restores the item). Because the reload after a
+///   check-off already excludes the item, the dissolve slot is
+///   inserted at the row's captured index rather than substituted
+///   for a rendered row. When nothing remains but things were
+///   planned, the expanded plan area shows the completed message
+///   ("Everything planned for today is complete") — the same copy
+///   as the subtitle — instead of an empty void; a day with
+///   nothing planned shows "No plans recorded today".
 class TodaySummaryCard extends StatefulWidget {
   /// Injectable for tests; production defaults are real instances.
   final TabsBackend? backend;
@@ -111,6 +123,12 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
   final Set<String> _goneItemIds = <String>{};
   final Map<String, GlobalKey> _rowKeys = <String, GlobalKey>{};
   String? _dustItemId;
+
+  /// The dusting row's index in the rendered list, captured before
+  /// its check-off write: after the reload the item is already
+  /// excluded from the plan data (Round 41), so the slot is
+  /// INSERTED at this index instead of replacing a rendered row.
+  int _dustIndex = 0;
   ui.Image? _dustImage;
   double _dustHeight = 0;
   final GlobalKey<_DustRowSlotState> _dustSlotKey =
@@ -148,9 +166,14 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
   /// instantly when reduced motion is on or the snapshot failed.
   /// The write has ALREADY landed when this runs — presentation
   /// only from here, so an unmount anywhere below loses nothing.
+  /// [index] is the row's position in the rendered list, captured
+  /// before the write; the item is marked gone immediately so a
+  /// stale plan that still carries it never double-renders it
+  /// alongside its dust slot.
   Future<void> _dissolveOrVanish(
     String itemId,
     Future<({ui.Image image, double height})?>? capture,
+    int index,
   ) async {
     if (!mounted || _goneItemIds.contains(itemId)) return;
     if (!animationsDisabled(context) && capture != null) {
@@ -166,7 +189,9 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
         // One dust at a time: finalize the active one instantly.
         _dustSlotKey.currentState?.finalizeNow();
         setState(() {
+          _goneItemIds.add(itemId);
           _dustItemId = itemId;
+          _dustIndex = index;
           _dustImage = shot.image;
           _dustHeight = shot.height;
         });
@@ -210,10 +235,13 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
   /// Founder section rule: auto-collapse ONLY when a check-off has
   /// removed the last remaining plan item. Any items left — visible
   /// or still dusting — keep the section exactly as open as it was.
+  /// Round 41: the reloaded plan already EXCLUDES the removed item,
+  /// so an empty list is exactly the collapse case (the R35
+  /// early-return on empty assumed the completed item still sat in
+  /// the data).
   void _collapseIfLastRemoved(String removedId) {
-    if (!mounted || !_expanded) return;
-    final items = _data?.plan.items ?? const <TodayPlanItem>[];
-    if (items.isEmpty) return;
+    if (!mounted || !_expanded || _data == null) return;
+    final items = _data!.plan.items;
     final remaining = items
         .where((i) =>
             i.id != removedId &&
@@ -322,23 +350,25 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
 
   Future<void> _onToggleItem(TodayPlanItem item) async {
     if (_actingItemId != null) return;
-    // Checking OFF (un-completing) keeps the row — only a check-off
-    // dissolves. The snapshot is taken NOW, while the row is still
+    // Round 41: rendered rows are never completed, so a toggle is
+    // always a check-off and always dissolves on success. The
+    // snapshot + list index are taken NOW, while the row is still
     // painted in its pre-check-off state; the persist below does
-    // not wait for it.
-    final checkingOff = !item.isCompleted;
-    final capture = checkingOff && !animationsDisabled(context)
-        ? _captureRow(item.id)
-        : null;
+    // not wait for either.
+    final index =
+        (_data?.plan.items ?? const <TodayPlanItem>[]).indexOf(item);
+    final capture =
+        !animationsDisabled(context) ? _captureRow(item.id) : null;
     setState(() => _actingItemId = item.id);
+    var ok = false;
     try {
       switch (item.kind) {
         case PlanItemKind.reminder:
-          await _loader.setReminderCompleted(item, !item.isCompleted);
+          ok = await _loader.setReminderCompleted(item, true);
         case PlanItemKind.habit:
-          await _loader.setHabitCompleted(item, !item.isCompleted);
+          ok = await _loader.setHabitCompleted(item, true);
         case PlanItemKind.medication:
-          return; // Meds use the Take/Skip/Undo controls, not a toggle.
+          return; // Meds use the Take/Skip controls, not a toggle.
       }
       await _load(includeTrends: false);
     } finally {
@@ -346,19 +376,20 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
     }
     // The write has landed and the one-action guard is released —
     // the dissolve is pure presentation from here and can never
-    // block or double-fire an action.
-    if (checkingOff) await _dissolveOrVanish(item.id, capture);
+    // block or double-fire an action. A FAILED write leaves the
+    // row exactly as it was: no dissolve, no phantom completion.
+    if (ok) await _dissolveOrVanish(item.id, capture, index);
   }
 
   Future<void> _onMedAction(TodayPlanItem item, DoseStatus status) async {
     if (_actingItemId != null) return;
-    // Take/Skip resolve the dose — a check-off, so the row dusts.
-    // Undo (back to pending) keeps the row.
-    final resolving =
-        status == DoseStatus.taken || status == DoseStatus.skipped;
-    final capture = resolving && !animationsDisabled(context)
-        ? _captureRow(item.id)
-        : null;
+    // Only Take/Skip render on a plan row (Round 41 removed the
+    // completed row and its Undo) — both resolve the dose, so the
+    // row dusts.
+    final index =
+        (_data?.plan.items ?? const <TodayPlanItem>[]).indexOf(item);
+    final capture =
+        !animationsDisabled(context) ? _captureRow(item.id) : null;
     setState(() => _actingItemId = item.id);
     try {
       await _loader.setMedicationAction(item, status);
@@ -366,7 +397,7 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
     } finally {
       if (mounted) setState(() => _actingItemId = null);
     }
-    if (resolving) await _dissolveOrVanish(item.id, capture);
+    await _dissolveOrVanish(item.id, capture, index);
   }
 
   @override
@@ -376,6 +407,41 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
     // the header matches native's initial state: empty subtitle,
     // plan/trends unresolved. It resolves within the first load.
     final subtitle = data?.plan.summaryText ?? '';
+
+    // Rendered plan rows (Round 41): the plan data already excludes
+    // completed items; _goneItemIds additionally hides an item whose
+    // check-off landed but whose reload served a stale plan. The
+    // dust slot is INSERTED at the checked-off row's captured index
+    // — the item itself is no longer in the data to substitute for.
+    final visibleItems = (data?.plan.items ?? const <TodayPlanItem>[])
+        .where((i) => !_goneItemIds.contains(i.id))
+        .toList();
+    final dusting = _dustItemId != null && _dustImage != null;
+    final planRows = <Widget>[];
+    if (data != null) {
+      Widget dustSlot() => _DustRowSlot(
+            key: _dustSlotKey,
+            image: _dustImage!,
+            height: _dustHeight,
+            onGone: () => _onDustGone(_dustItemId!),
+          );
+      for (var idx = 0; idx < visibleItems.length; idx++) {
+        if (dusting && idx == _dustIndex) planRows.add(dustSlot());
+        final item = visibleItems[idx];
+        planRows.add(RepaintBoundary(
+          key: _rowKeyFor(item.id),
+          child: _PlanItemRow(
+            item: item,
+            busy: _actingItemId == item.id,
+            onToggle: () => _onToggleItem(item),
+            onMedAction: (s) => _onMedAction(item, s),
+          ),
+        ));
+      }
+      if (dusting && _dustIndex >= visibleItems.length) {
+        planRows.add(dustSlot());
+      }
+    }
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
       decoration: BoxDecoration(
@@ -474,39 +540,28 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
                             ),
                           ),
                           const SizedBox(height: 6),
-                          if (data == null || data.plan.items.isEmpty)
-                            const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 6.0),
+                          if (data == null || planRows.isEmpty)
+                            // Zero rendered rows, two honest states
+                            // (founder, Round 41): nothing was ever
+                            // planned → the no-plans text; things
+                            // were planned and all are done → the
+                            // completed message, never a blank void.
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 6.0),
                               child: Text(
-                                'No plans recorded today',
-                                style: TextStyle(
+                                data != null && data.plan.plannedCount > 0
+                                    ? 'Everything planned for today is '
+                                        'complete'
+                                    : 'No plans recorded today',
+                                style: const TextStyle(
                                   fontSize: 12,
                                   color: NotelColors.textSecondary,
                                 ),
                               ),
                             )
                           else
-                            for (final item in data.plan.items
-                                .where((i) => !_goneItemIds.contains(i.id)))
-                              if (item.id == _dustItemId &&
-                                  _dustImage != null)
-                                _DustRowSlot(
-                                  key: _dustSlotKey,
-                                  image: _dustImage!,
-                                  height: _dustHeight,
-                                  onGone: () => _onDustGone(item.id),
-                                )
-                              else
-                                RepaintBoundary(
-                                  key: _rowKeyFor(item.id),
-                                  child: _PlanItemRow(
-                                    item: item,
-                                    busy: _actingItemId == item.id,
-                                    onToggle: () => _onToggleItem(item),
-                                    onMedAction: (s) =>
-                                        _onMedAction(item, s),
-                                  ),
-                                ),
+                            ...planRows,
                           const SizedBox(height: 14),
                           const Divider(
                             color: Color(0x14FFFFFF), // White @ 8%
@@ -570,10 +625,13 @@ class _TodaySummaryCardState extends State<TodaySummaryCard> {
   }
 }
 
-/// One plan row — native's per-type layout:
-/// - reminder/habit: a 32dp toggle button (check-circle when done);
+/// One plan row — native's per-type layout. Round 41: only OPEN
+/// items ever render (completed/resolved items are excluded from
+/// the plan data), so there is no dimmed/struck-through state and
+/// no Undo affordance here:
+/// - reminder/habit: a 32dp toggle button (unchecked circle);
 /// - medication: a status icon, "{dose} · {slot}" line, and the
-///   Take/Skip buttons while pending (status text + Undo once acted).
+///   Take/Skip buttons (a pending or snoozed dose).
 class _PlanItemRow extends StatelessWidget {
   final TodayPlanItem item;
   final bool busy;
@@ -591,12 +649,11 @@ class _PlanItemRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final overdue = item.isOverdue(now);
-    final alpha = item.isCompleted ? 0.5 : 1.0;
     final isMed = item.kind == PlanItemKind.medication;
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 3.0),
       decoration: BoxDecoration(
-        color: NotelColors.surfaceHigh.withValues(alpha: alpha),
+        color: NotelColors.surfaceHigh,
         borderRadius: BorderRadius.circular(10),
         border: overdue
             ? Border.all(
@@ -610,20 +667,15 @@ class _PlanItemRow extends StatelessWidget {
           children: [
             if (isMed) ...[
               Icon(
-                switch (item.status) {
-                  DoseStatus.taken => Icons.check_circle,
-                  DoseStatus.skipped => Icons.block,
-                  DoseStatus.snoozed => Icons.access_time,
-                  DoseStatus.pending => Icons.radio_button_unchecked,
-                },
+                item.status == DoseStatus.snoozed
+                    ? Icons.access_time
+                    : Icons.radio_button_unchecked,
                 size: 18,
-                color: switch (item.status) {
-                  DoseStatus.taken => NotelColors.primary,
-                  DoseStatus.skipped => NotelColors.textSecondary,
-                  DoseStatus.snoozed => const Color(0xFFFFA500),
-                  DoseStatus.pending =>
-                    overdue ? NotelColors.error : NotelColors.textSecondary,
-                },
+                color: item.status == DoseStatus.snoozed
+                    ? const Color(0xFFFFA500)
+                    : overdue
+                        ? NotelColors.error
+                        : NotelColors.textSecondary,
               ),
               const SizedBox(width: 10),
             ] else ...[
@@ -633,15 +685,11 @@ class _PlanItemRow extends StatelessWidget {
                 child: IconButton(
                   onPressed: busy ? null : onToggle,
                   padding: EdgeInsets.zero,
-                  tooltip: item.isCompleted ? 'Completed' : 'Mark complete',
-                  icon: Icon(
-                    item.isCompleted
-                        ? Icons.check_circle
-                        : Icons.radio_button_unchecked,
+                  tooltip: 'Mark complete',
+                  icon: const Icon(
+                    Icons.radio_button_unchecked,
                     size: 18,
-                    color: item.isCompleted
-                        ? NotelColors.primary
-                        : NotelColors.textSecondary,
+                    color: NotelColors.textSecondary,
                   ),
                 ),
               ),
@@ -656,16 +704,10 @@ class _PlanItemRow extends StatelessWidget {
                       Expanded(
                         child: Text(
                           item.title,
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 13,
-                            fontWeight: item.isCompleted
-                                ? FontWeight.normal
-                                : FontWeight.w500,
-                            color: NotelColors.textPrimary
-                                .withValues(alpha: alpha),
-                            decoration: item.isCompleted
-                                ? TextDecoration.lineThrough
-                                : TextDecoration.none,
+                            fontWeight: FontWeight.w500,
+                            color: NotelColors.textPrimary,
                           ),
                         ),
                       ),
@@ -687,10 +729,9 @@ class _PlanItemRow extends StatelessWidget {
                     isMed
                         ? '${item.dose} · ${item.timeDisplay}'
                         : item.timeDisplay,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 11,
-                      color:
-                          NotelColors.textSecondary.withValues(alpha: alpha),
+                      color: NotelColors.textSecondary,
                     ),
                   ),
                 ],
@@ -698,78 +739,44 @@ class _PlanItemRow extends StatelessWidget {
             ),
             if (isMed) ...[
               const SizedBox(width: 8),
-              if (item.status == DoseStatus.pending ||
-                  item.status == DoseStatus.snoozed)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(
-                      width: 32,
-                      height: 32,
-                      child: IconButton(
-                        onPressed:
-                            busy ? null : () => onMedAction(DoseStatus.taken),
-                        padding: EdgeInsets.zero,
-                        tooltip: 'Take Medication',
-                        style: IconButton.styleFrom(
-                          backgroundColor:
-                              NotelColors.primary.withValues(alpha: 0.15),
-                          foregroundColor: NotelColors.primary,
-                        ),
-                        icon: const Icon(Icons.check, size: 16),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: IconButton(
+                      onPressed:
+                          busy ? null : () => onMedAction(DoseStatus.taken),
+                      padding: EdgeInsets.zero,
+                      tooltip: 'Take Medication',
+                      style: IconButton.styleFrom(
+                        backgroundColor:
+                            NotelColors.primary.withValues(alpha: 0.15),
+                        foregroundColor: NotelColors.primary,
+                      ),
+                      icon: const Icon(Icons.check, size: 16),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: IconButton(
+                      onPressed: busy
+                          ? null
+                          : () => onMedAction(DoseStatus.skipped),
+                      padding: EdgeInsets.zero,
+                      tooltip: 'Skip Medication',
+                      icon: const Icon(
+                        Icons.block,
+                        size: 16,
+                        color: NotelColors.textSecondary,
                       ),
                     ),
-                    const SizedBox(width: 6),
-                    SizedBox(
-                      width: 32,
-                      height: 32,
-                      child: IconButton(
-                        onPressed: busy
-                            ? null
-                            : () => onMedAction(DoseStatus.skipped),
-                        padding: EdgeInsets.zero,
-                        tooltip: 'Skip Medication',
-                        icon: const Icon(
-                          Icons.block,
-                          size: 16,
-                          color: NotelColors.textSecondary,
-                        ),
-                      ),
-                    ),
-                  ],
-                )
-              else
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      item.status == DoseStatus.taken ? 'Taken' : 'Skipped',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: item.status == DoseStatus.taken
-                            ? NotelColors.primary
-                            : NotelColors.textSecondary,
-                      ),
-                    ),
-                    SizedBox(
-                      width: 28,
-                      height: 28,
-                      child: IconButton(
-                        onPressed: busy
-                            ? null
-                            : () => onMedAction(DoseStatus.pending),
-                        padding: EdgeInsets.zero,
-                        tooltip: 'Undo action',
-                        icon: const Icon(
-                          Icons.undo,
-                          size: 14,
-                          color: NotelColors.textSecondary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
+              ),
             ],
           ],
         ),

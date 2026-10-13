@@ -33,17 +33,25 @@ import 'package:tabs_lab/src/data/today_plan_store.dart';
 ///   trace of a dose action is the log entry native writes on TAKEN
 ///   (`ScheduledDoseRepository.recordDoseAction`: category Medication,
 ///   body "Took {name} {dose}", and a skip after a take rewrites that
-///   body to "[Corrected to Skipped] …"). Flutter mirrors both
-///   channels: today's explicit action lives in [TodayPlanStore]
-///   (device-local, like the occurrence row) and wins; otherwise a
-///   med counts as taken when today's pulled entries carry its
-///   "Took …" entry. SKIPPED/SNOOZED recorded only in the native app
-///   have no synced trace and read as PENDING here.
+///   body to "[Corrected to Skipped] …"). Round 41 (founder:
+///   "everything you check off should be logged" + delete-the-log
+///   restores the item): the pulled entries are the dose's source of
+///   truth — an uncorrected "Took …" entry reads TAKEN, a corrected
+///   one reads SKIPPED, no entry reads PENDING; [TodayPlanStore]
+///   keeps the device-local record and remains the only trace of a
+///   SNOOZE (native logs nothing for one either).
 /// - Reminders: the pull's `profile.reminders` blob (native `Reminder`
-///   entity rows, ids included); completion is the device-local
-///   per-day set in [TodayPlanStore], like native's DataStore set.
-/// - Habits: `GET /api/habits` (`HabitDto`), completed when `logs`
-///   contains today's device-local date string.
+///   entity rows, ids included). Native completion was ONLY the
+///   device-local DataStore set — no log entry. Round 41: a check-off
+///   posts a "Completed reminder: {title}" entry (Goals & Habits
+///   category) and completion derives from it; the [TodayPlanStore]
+///   per-day set remains as a device-local cache of that evidence.
+/// - Habits: `GET /api/habits` (`HabitDto`) for the plan rows; the
+///   check-off still posts `POST /api/habits/log` (native's only
+///   trace — a habit-side record, not a log entry) and Round 41 adds
+///   a "Completed habit: {title}" entry, from which summary
+///   completion derives (the habit `logs` list alone no longer
+///   completes a summary row).
 /// - Trends biometrics: Health Connect via [HealthConnectService]
 ///   (per-day sleep minutes + resting-HR history). Symptom counts
 ///   come from the pulled entries + categories.
@@ -349,7 +357,17 @@ int? resolveSummaryCategoryId(
 // ── Plan computation (port of the TodayViewModel combine block) ─────
 
 class TodayPlanData {
+  /// The RENDERED plan (Round 41 founder rule): completed/resolved
+  /// items are excluded entirely — no dimmed or struck-through rows.
+  /// Completion shows only in [remainingCount] / [summaryText].
   final List<TodayPlanItem> items;
+
+  /// How many items were planned in total, completed ones included.
+  /// Distinguishes "nothing was ever planned" ([plannedCount] 0 →
+  /// 'No plans recorded today') from "everything is done"
+  /// ([plannedCount] > 0 with an empty [items] → the completed
+  /// message) in the card's expanded body.
+  final int plannedCount;
   final int remainingCount;
   final int overdueCount;
   final String summaryText;
@@ -359,6 +377,7 @@ class TodayPlanData {
     required this.remainingCount,
     required this.overdueCount,
     required this.summaryText,
+    this.plannedCount = 0,
   });
 
   static const empty = TodayPlanData(
@@ -370,6 +389,7 @@ class TodayPlanData {
 
   Map<String, dynamic> toJson() => {
         'items': items.map((i) => i.toJson()).toList(),
+        'plannedCount': plannedCount,
         'remainingCount': remainingCount,
         'overdueCount': overdueCount,
         'summaryText': summaryText,
@@ -388,6 +408,10 @@ class TodayPlanData {
       }
       return TodayPlanData(
         items: items,
+        // Pre-R41 cache blobs carry no plannedCount; their items
+        // still included completed rows, so the item count is the
+        // honest fallback.
+        plannedCount: parseLooseIntOrNull(j['plannedCount']) ?? items.length,
         remainingCount: parseLooseIntOrNull(j['remainingCount']) ?? 0,
         overdueCount: parseLooseIntOrNull(j['overdueCount']) ?? 0,
         summaryText: '${j['summaryText'] ?? ''}',
@@ -419,10 +443,117 @@ bool medTakenFromEntries({
   return false;
 }
 
-/// Builds the plan exactly as native's combine block does:
-/// meds (Daily slot) → enabled reminders → habits; sorted incomplete
-/// first, then by `timeDisplay` string; remaining/overdue counts and
-/// the subtitle string follow the native formulas verbatim.
+/// Whether today's pulled entries prove [medName] was SKIPPED: the
+/// "[Corrected to Skipped] Took …" body a skip leaves in the
+/// Medication category (Round 41: a skip from pending posts that
+/// body directly; a skip after a take rewrites the take's entry —
+/// either way exactly one such entry stands in the log, and
+/// deleting it restores the dose to pending on the next load).
+bool medSkippedFromEntries({
+  required String medName,
+  required List<QuickLogEntry> todayEntries,
+  required int? medicationCategoryId,
+}) {
+  if (medicationCategoryId == null) return false;
+  const prefix = '[Corrected to Skipped] Took ';
+  for (final e in todayEntries) {
+    if (e.categoryId != medicationCategoryId) continue;
+    final body = e.body.trim();
+    if (!body.startsWith(prefix)) continue;
+    final rest = body.substring(prefix.length);
+    if (rest == medName || rest.startsWith('$medName ')) return true;
+  }
+  return false;
+}
+
+// ── Habit / reminder completion entries (Round 41) ───────────────────
+//
+// Founder rule: "everything you check off should be logged." Native
+// logs NEITHER of these in Today: `completeReminder` writes only a
+// device-local DataStore set, and `toggleHabitLog` writes only the
+// habit-side record (`POST /api/habits/log`) — neither leaves a
+// deletable entry in the user's log, so neither could ever be
+// restored by deleting one. Round 41 gives both a real entry,
+// shaped on the closest native completion entry (the med take's
+// "Took {name} {dose}" in its category): a verb-phrase body naming
+// the item, in the seeded "Goals & Habits" category (native
+// `DefaultCategories` id 4 — the category both features belong to).
+// The entry is the completion EVIDENCE the plan derives from:
+// present → the item is complete (and, per the Round 41 rendering
+// rule, absent from the plan); deleted in History → the item
+// returns on the next load.
+
+/// Body of the log entry a Today Summary habit check-off creates.
+String habitCompletionBody(String habitTitle) => 'Completed habit: $habitTitle';
+
+/// Body of the log entry a Today Summary reminder check-off creates.
+String reminderCompletionBody(String reminderTitle) =>
+    'Completed reminder: $reminderTitle';
+
+bool _completionEntryPresent({
+  required String body,
+  required List<QuickLogEntry> todayEntries,
+  required int? goalsCategoryId,
+}) {
+  if (goalsCategoryId == null) return false;
+  for (final e in todayEntries) {
+    if (e.categoryId != goalsCategoryId) continue;
+    if (e.body.trim() == body) return true;
+  }
+  return false;
+}
+
+/// Whether today's entries prove the habit [habitTitle] was checked
+/// off (its completion entry stands in the Goals & Habits category).
+bool habitCompletedFromEntries({
+  required String habitTitle,
+  required List<QuickLogEntry> todayEntries,
+  required int? goalsCategoryId,
+}) =>
+    _completionEntryPresent(
+      body: habitCompletionBody(habitTitle),
+      todayEntries: todayEntries,
+      goalsCategoryId: goalsCategoryId,
+    );
+
+/// Whether today's entries prove the reminder [reminderTitle] was
+/// checked off (its completion entry stands in the Goals & Habits
+/// category).
+bool reminderCompletedFromEntries({
+  required String reminderTitle,
+  required List<QuickLogEntry> todayEntries,
+  required int? goalsCategoryId,
+}) =>
+    _completionEntryPresent(
+      body: reminderCompletionBody(reminderTitle),
+      todayEntries: todayEntries,
+      goalsCategoryId: goalsCategoryId,
+    );
+
+/// Builds the plan: meds (Daily slot) → enabled reminders →
+/// habits; sorted incomplete first, then by `timeDisplay` string;
+/// remaining/overdue counts and the subtitle string follow the
+/// native formulas verbatim over the FULL plan.
+///
+/// Round 41 founder rules layered on the native computation:
+/// - The RETURNED `items` exclude every completed/resolved item
+///   (taken or skipped meds, completed reminders, completed
+///   habits) — completed items never render. Counts and the
+///   subtitle still derive from the full plan, so completion
+///   shows there and nowhere else.
+/// - Completion is derived from LOG EVIDENCE (today's entries),
+///   so deleting the entry in History restores the item on the
+///   next load: meds from their "Took …" / "[Corrected to
+///   Skipped] …" entries, habits and reminders from their Round 41
+///   completion entries. The one device-local exception is a
+///   SNOOZED dose — native leaves no entry for a snooze, so the
+///   plan store's record remains its only trace. (Round 35 let
+///   the local med record win over entries; the founder's
+///   delete-the-log-to-restore-it model reverses that precedence
+///   for TAKEN/SKIPPED/PENDING — a local record whose entry was
+///   deleted no longer holds the dose out of the plan. The
+///   reminder per-day set likewise remains only as a write
+///   cache; the entry is the source of truth.)
 TodayPlanData buildTodayPlan({
   required List<SummaryMedication> medications,
   required List<SummaryReminder> reminders,
@@ -430,6 +561,7 @@ TodayPlanData buildTodayPlan({
   required TodayPlanLocalState localState,
   required List<QuickLogEntry> entries,
   required int? medicationCategoryId,
+  int? goalsCategoryId,
   required DateTime now,
 }) {
   final todayStr = dateStrOf(now);
@@ -448,14 +580,21 @@ TodayPlanData buildTodayPlan({
     const slot = 'Daily';
     final explicit =
         localState.medActions[TodayPlanStore.medActionKey(med.key, slot)];
-    final status = explicit ??
-        (medTakenFromEntries(
-          medName: med.name,
-          todayEntries: todayEntries,
-          medicationCategoryId: medicationCategoryId,
-        )
-            ? DoseStatus.taken
-            : DoseStatus.pending);
+    final status = medTakenFromEntries(
+      medName: med.name,
+      todayEntries: todayEntries,
+      medicationCategoryId: medicationCategoryId,
+    )
+        ? DoseStatus.taken
+        : medSkippedFromEntries(
+            medName: med.name,
+            todayEntries: todayEntries,
+            medicationCategoryId: medicationCategoryId,
+          )
+            ? DoseStatus.skipped
+            : (explicit == DoseStatus.snoozed
+                ? DoseStatus.snoozed
+                : DoseStatus.pending);
     plan.add(TodayPlanItem(
       kind: PlanItemKind.medication,
       id: 'med_${med.key}_$slot',
@@ -477,7 +616,11 @@ TodayPlanData buildTodayPlan({
       title: rem.title,
       timeDisplay:
           '${rem.fixedHour.toString().padLeft(2, '0')}:${rem.fixedMinute.toString().padLeft(2, '0')}',
-      isCompleted: localState.completedReminderIds.contains(rem.id),
+      isCompleted: reminderCompletedFromEntries(
+        reminderTitle: rem.title,
+        todayEntries: todayEntries,
+        goalsCategoryId: goalsCategoryId,
+      ),
       reminderId: rem.id,
       reminderHour: rem.fixedHour,
       reminderMinute: rem.fixedMinute,
@@ -490,7 +633,11 @@ TodayPlanData buildTodayPlan({
       id: 'habit_${habit.id}',
       title: habit.title,
       timeDisplay: habit.targetTime,
-      isCompleted: habit.logs.contains(todayStr),
+      isCompleted: habitCompletedFromEntries(
+        habitTitle: habit.title,
+        todayEntries: todayEntries,
+        goalsCategoryId: goalsCategoryId,
+      ),
       habitId: habit.id,
       habitTargetTime: habit.targetTime,
     ));
@@ -527,8 +674,17 @@ TodayPlanData buildTodayPlan({
           ? 'Everything planned for today is complete'
           : 'No plans recorded today');
 
+  // Round 41 rendering rule: completed/resolved items do not
+  // render at all. A skipped dose is resolved (an intentional
+  // action, never an open task), so it leaves the rendered plan
+  // alongside taken doses and completed reminders/habits.
+  bool resolved(TodayPlanItem i) =>
+      i.isCompleted ||
+      (i.kind == PlanItemKind.medication && i.status == DoseStatus.skipped);
+
   return TodayPlanData(
-    items: plan,
+    items: plan.where((i) => !resolved(i)).toList(),
+    plannedCount: plan.length,
     remainingCount: remainingCount,
     overdueCount: overdueCount,
     summaryText: summaryText,
@@ -996,6 +1152,8 @@ class TodaySummaryLoader {
             await planStore.load(email: email, todayStr: todayStr);
         final medCategoryId = resolveSummaryCategoryId(categories,
             name: 'Medication', fallbackId: 8);
+        final goalsCategoryId = resolveSummaryCategoryId(categories,
+            name: 'Goals & Habits', fallbackId: 4);
         final plan = buildTodayPlan(
           medications: _parseMeds(profile),
           reminders: _parseReminders(profile),
@@ -1003,6 +1161,7 @@ class TodaySummaryLoader {
           localState: localState,
           entries: entries,
           medicationCategoryId: medCategoryId,
+          goalsCategoryId: goalsCategoryId,
           now: at,
         );
         _lastPlan = plan;
@@ -1174,45 +1333,126 @@ class TodaySummaryLoader {
 
   // ── Plan-row actions (native TodayViewModel handlers) ─────────────
 
-  /// Reminder checkbox — native `completeReminder` writes the
-  /// device-local per-day set; the plan store is that set.
-  Future<void> setReminderCompleted(TodayPlanItem item, bool completed,
+  /// Posts one Round 41 completion entry ([body]) into the
+  /// "Goals & Habits" category through the entries write path
+  /// (`POST /api/sync/entries`, fresh id = max + 1 — the round-19
+  /// discipline the med take uses). Idempotent per body: an entry
+  /// that already stands is not duplicated. False when the category
+  /// cannot be resolved or the post fails — the caller then treats
+  /// the check-off as NOT landed (no phantom completion).
+  Future<bool> _postCompletionEntry(String body, DateTime at) async {
+    backend.invalidateSyncPull();
+    final entries = await backend.fetchLogEntryDtos();
+    final categories = await backend.fetchLogCategories();
+    final goalsCategoryId = resolveSummaryCategoryId(categories,
+        name: 'Goals & Habits', fallbackId: 4);
+    if (goalsCategoryId == null) return false;
+    final todayStr = dateStrOf(at);
+    for (final e in entries) {
+      if (e.categoryId == goalsCategoryId &&
+          e.body.trim() == body &&
+          dateStrOf(DateTime.fromMillisecondsSinceEpoch(e.timestamp)) ==
+              todayStr) {
+        return true; // Already logged — exactly one entry stands.
+      }
+    }
+    var maxId = 0;
+    for (final e in entries) {
+      if (e.id > maxId) maxId = e.id;
+    }
+    final ok = await backend.postLogEntries([
+      QuickLogEntry(
+        id: maxId + 1,
+        categoryId: goalsCategoryId,
+        body: body,
+        chips: '[]',
+        manualText: '',
+        timestamp: at.millisecondsSinceEpoch,
+      ),
+    ]);
+    if (ok) backend.invalidateSyncPull();
+    return ok;
+  }
+
+  /// Reminder checkbox — Round 41: checking a reminder off creates
+  /// a real log entry (see [reminderCompletionBody]); native's
+  /// `completeReminder` wrote only a device-local DataStore set, so
+  /// the plan store's per-day set is still written, but now as a
+  /// device-local CACHE of the entry evidence — the entry is the
+  /// source of truth the plan derives from, and deleting it in
+  /// History restores the reminder on the next load. False when
+  /// the entry post failed: nothing is cached and the row keeps
+  /// its state (no phantom completion).
+  Future<bool> setReminderCompleted(TodayPlanItem item, bool completed,
       {DateTime? now}) async {
     final at = now ?? DateTime.now();
     final email = await _email();
-    await planStore.setReminderCompleted(
-      email: email,
-      todayStr: dateStrOf(at),
-      reminderId: item.reminderId,
-      completed: completed,
-    );
-  }
-
-  /// Habit checkbox — native `toggleHabit` → `POST /api/habits/log`.
-  /// False when the write failed (the row keeps its current state,
-  /// exactly as native's flow only re-emits on success).
-  Future<bool> setHabitCompleted(TodayPlanItem item, bool completed,
-      {DateTime? now}) async {
-    final at = now ?? DateTime.now();
-    try {
-      return await backend.logHabit(
-        habitId: item.habitId,
-        date: dateStrOf(at),
-        completed: completed,
+    if (!completed) {
+      await planStore.setReminderCompleted(
+        email: email,
+        todayStr: dateStrOf(at),
+        reminderId: item.reminderId,
+        completed: false,
       );
+      return true;
+    }
+    try {
+      final ok =
+          await _postCompletionEntry(reminderCompletionBody(item.title), at);
+      if (!ok) return false;
+      await planStore.setReminderCompleted(
+        email: email,
+        todayStr: dateStrOf(at),
+        reminderId: item.reminderId,
+        completed: true,
+      );
+      return true;
     } catch (_) {
       return false;
     }
   }
 
-  /// Medication Take / Skip / Undo — native `markMedicationAction` →
+  /// Habit checkbox — native `toggleHabit` → `POST /api/habits/log`
+  /// (payload byte-identical, kept first: streaks/widgets read the
+  /// habit-side record), PLUS the Round 41 completion entry (see
+  /// [habitCompletionBody]) that makes the check-off a real,
+  /// deletable log entry like a med take. False when either write
+  /// failed — the row keeps its current state and does not
+  /// dissolve, so a failed check-off never reads as done.
+  Future<bool> setHabitCompleted(TodayPlanItem item, bool completed,
+      {DateTime? now}) async {
+    final at = now ?? DateTime.now();
+    try {
+      final logged = await backend.logHabit(
+        habitId: item.habitId,
+        date: dateStrOf(at),
+        completed: completed,
+      );
+      if (!logged) return false;
+      if (!completed) return true;
+      return await _postCompletionEntry(
+          habitCompletionBody(item.title), at);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Medication Take / Skip — native `markMedicationAction` →
   /// `ScheduledDoseRepository.recordDoseAction`:
   /// - the action itself is recorded device-locally (plan store);
   /// - TAKEN also posts the synced "Took {name} {dose}" log entry in
   ///   the Medication category (fresh id = max + 1, round-19 rule);
   /// - SKIPPED after a take rewrites that entry's body with the
-  ///   "[Corrected to Skipped] " prefix;
-  /// - undo (→ PENDING) leaves the entry, as native does.
+  ///   "[Corrected to Skipped] " prefix (byte-identical to R35);
+  /// - SKIPPED from pending (Round 41): native creates no entry
+  ///   there, but the founder's "everything checked off is logged"
+  ///   rule requires one — the entry is posted directly in its
+  ///   corrected shape, "[Corrected to Skipped] Took {name} {dose}",
+  ///   so exactly one entry stands for the skip, in the same body
+  ///   the take→skip path leaves behind.
+  /// - undo (→ PENDING) leaves the entry, as native does; Round 41
+  ///   removes the in-card Undo affordance — the founder's undo is
+  ///   deleting the log entry in History, which restores the dose.
   /// The local record happens even if the entry post fails — native's
   /// occurrence write is local-first the same way.
   Future<void> setMedicationAction(TodayPlanItem item, DoseStatus status,
@@ -1261,6 +1501,25 @@ class TodaySummaryLoader {
                 chips: took.chips,
                 manualText: took.manualText,
                 timestamp: took.timestamp,
+              ),
+            ]);
+          } else if (status == DoseStatus.skipped && took == null) {
+            // Round 41: a skip from pending still logs — directly
+            // in the corrected shape (see the method doc).
+            var maxId = 0;
+            for (final e in entries) {
+              if (e.id > maxId) maxId = e.id;
+            }
+            final dose = item.dose.trim();
+            await backend.postLogEntries([
+              QuickLogEntry(
+                id: maxId + 1,
+                categoryId: medCategoryId,
+                body: '[Corrected to Skipped] '
+                    'Took ${item.title}${dose.isNotEmpty ? ' $dose' : ''}',
+                chips: '[]',
+                manualText: '',
+                timestamp: at.millisecondsSinceEpoch,
               ),
             ]);
           }
