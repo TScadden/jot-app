@@ -127,6 +127,90 @@ class AuthApiClient {
     );
   }
 
+  /// Round 32 — real registration, mirroring native
+  /// `LoginViewModel.register()` (`LoginScreen.kt:252-296`):
+  /// `POST https://api.jottracker.com/api/auth/register` with
+  /// `{"email": ..., "password": ..., "ageConfirmed": ...}`
+  /// (`AuthRequest`, JotApi.kt:119-123; endpoint JotApi.kt:559-560).
+  ///
+  /// Success: HTTP 200 + non-blank `token` → [LoginSuccess] (the same
+  /// `AuthResponse` shape as login). Native's register does NOT mark
+  /// onboarding complete — the new account enters onboarding
+  /// (`onboardingCompleteByServer = false` in native) — so callers
+  /// must route a register success into onboarding, not home.
+  ///
+  /// Failure: the server's `{"error": "..."}` message verbatim when
+  /// present (native: `body?.error ?: "Registration failed"`),
+  /// otherwise the native fallback. Transport failures use the same
+  /// generic network message as [login]. The password is never
+  /// logged, printed, or included in any error (Vera rule).
+  Future<LoginResult> register({
+    required String email,
+    required String password,
+    required bool ageConfirmed,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/api/auth/register');
+    http.Response response;
+    try {
+      response = await _client
+          .post(
+            uri,
+            headers: const {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'email': email,
+              'password': password,
+              'ageConfirmed': ageConfirmed,
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
+    } on TimeoutException {
+      return const LoginFailure(
+        LoginFailureKind.network,
+        "Couldn't reach the server. Check your connection and try again.",
+      );
+    } on SocketException {
+      return const LoginFailure(
+        LoginFailureKind.network,
+        "Couldn't reach the server. Check your connection and try again.",
+      );
+    } on HttpException {
+      return const LoginFailure(
+        LoginFailureKind.network,
+        "Couldn't reach the server. Check your connection and try again.",
+      );
+    } catch (_) {
+      return const LoginFailure(
+        LoginFailureKind.network,
+        "Couldn't reach the server. Check your connection and try again.",
+      );
+    }
+
+    if (response.statusCode == 200) {
+      final body = _decodeJson(response.body);
+      final token = body['token']?.toString() ?? '';
+      if (token.isNotBlank) {
+        return LoginSuccess(
+          token: <redacted>,
+          refreshToken: body['refreshToken']?.toString() ?? '',
+          userId: body['userId']?.toString(),
+          email: body['email']?.toString() ?? email,
+        );
+      }
+      return const LoginFailure(
+        LoginFailureKind.server,
+        'Registration failed',
+      );
+    }
+
+    final serverMessage = _decodeJson(response.body)['error']?.toString();
+    return LoginFailure(
+      LoginFailureKind.server,
+      (serverMessage?.isNotBlank ?? false)
+          ? serverMessage!
+          : 'Registration failed',
+    );
+  }
+
   /// Round 24 — Google sign-in against the Tabs backend.
   ///
   /// Mirrors the native flow (`LoginScreen.kt` + `JotApi.kt`):

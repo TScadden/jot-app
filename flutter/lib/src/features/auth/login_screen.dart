@@ -50,6 +50,18 @@ import 'package:url_launcher/url_launcher.dart';
 /// configuration-class failures show the Lab-build message below;
 /// server rejections show the server's own message.
 ///
+/// Round 32 — REAL registration ("Sign Up" button): native parity
+/// with `LoginViewModel.register()` — blank-field guard, the 13+
+/// age gate with the exact native block message, then
+/// `AuthApiClient.register`. On success the session is stored the
+/// same way as login, but [onRegisterSuccess] fires instead of
+/// [onLoginSuccess]: a brand-new account has NOT completed
+/// onboarding (native sets `onboardingCompleteByServer = false` for
+/// register, `true` for login/Google), and AppFlow routes register
+/// successes into the onboarding flow. Google sign-in keeps using
+/// [onLoginSuccess] in both modes, exactly like native
+/// (`loginWithGoogleAccount` marks onboarding complete).
+///
 /// [initialRegisterMode] mirrors the native `mode` query arg: `true`
 /// starts on "Create Your Account", `false` on "Welcome Back".
 /// [onBack] pops to the welcome screen (native back button).
@@ -58,6 +70,11 @@ class LoginScreen extends StatefulWidget {
   final bool initialRegisterMode;
   final VoidCallback? onBack;
   final ValueChanged<String>? onLoginSuccess;
+
+  /// Round 32 — fires with the account email after a real
+  /// email+password REGISTRATION (see the class doc). Falls back to
+  /// [onLoginSuccess] when unset so older call sites keep working.
+  final ValueChanged<String>? onRegisterSuccess;
 
   /// Injectable for tests; defaults to the real backend client.
   final AuthApiClient? authApi;
@@ -74,6 +91,7 @@ class LoginScreen extends StatefulWidget {
     this.initialRegisterMode = true,
     this.onBack,
     this.onLoginSuccess,
+    this.onRegisterSuccess,
     this.authApi,
     this.sessionStore,
     this.googleSignInService,
@@ -141,6 +159,65 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (_) {
       // The API client already maps transport failures; this is a
       // last-resort guard so the button can never wedge loading.
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Something went wrong. Please try again.';
+      });
+    }
+  }
+
+  /// Round 32: real registration. Mirrors native
+  /// `LoginViewModel.register()` + the Sign Up button handler
+  /// (`LoginScreen.kt:546-554`): blank fields → "Please fill in all
+  /// fields"; register mode without the 13+ attestation → the exact
+  /// native age-gate block message and NO request; otherwise the
+  /// register call. Success stores the session exactly like login,
+  /// then fires [LoginScreen.onRegisterSuccess] (onboarding entry —
+  /// see the class doc).
+  Future<void> _onRegisterPressed() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    if (email.isEmpty || password.isEmpty) {
+      setState(() => _errorMessage = 'Please fill in all fields');
+      return;
+    }
+    if (!_ageConfirmed) {
+      setState(() => _errorMessage =
+          'Tabs is for people 13 and older. You cannot create an account yet.');
+      return;
+    }
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+    try {
+      final api = widget.authApi ?? AuthApiClient();
+      final result = await api.register(
+        email: email,
+        password: password,
+        ageConfirmed: _ageConfirmed,
+      );
+      if (!mounted) return;
+      switch (result) {
+        case LoginSuccess(:final token, :final refreshToken):
+          final store = widget.sessionStore ?? SessionStore();
+          await store.saveSession(
+            token: <redacted>,
+            refreshToken: refreshToken,
+            email: result.email,
+          );
+          if (!mounted) return;
+          setState(() => _isLoading = false);
+          (widget.onRegisterSuccess ?? widget.onLoginSuccess)
+              ?.call(result.email);
+        case LoginFailure(:final message):
+          setState(() {
+            _isLoading = false;
+            _errorMessage = message;
+          });
+      }
+    } catch (_) {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
@@ -430,8 +507,9 @@ class _LoginScreenState extends State<LoginScreen> {
             const SizedBox(height: 4),
           ],
           // Main action button. "Log In" (login mode) performs the real
-          // login (Round 5); "Sign Up" and "Send Reset Link" stay
-          // no-ops (their real destinations don't exist yet).
+          // login (Round 5); "Sign Up" (register mode) performs the
+          // real registration (Round 32); "Send Reset Link" stays a
+          // no-op (its real destination doesn't exist yet).
           SizedBox(
             width: double.infinity,
             height: 50,
@@ -439,7 +517,11 @@ class _LoginScreenState extends State<LoginScreen> {
               onPressed: _isLoading
                   ? null
                   : () {
-                      if (!_isRegisterMode && !_isForgotPasswordMode) {
+                      if (_isForgotPasswordMode) {
+                        // Send Reset Link: still a no-op.
+                      } else if (_isRegisterMode) {
+                        _onRegisterPressed();
+                      } else {
                         _onLoginPressed();
                       }
                     },

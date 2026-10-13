@@ -6,11 +6,14 @@ import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
+import 'package:tabs_lab/src/data/notification_service.dart';
+import 'package:tabs_lab/src/data/onboarding_store.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/auth/login_screen.dart';
 import 'package:tabs_lab/src/features/shell/main_shell.dart';
+import 'package:tabs_lab/src/features/onboarding/onboarding_flow.dart';
 import 'package:tabs_lab/src/features/onboarding/welcome_screen.dart';
 import 'package:tabs_lab/src/features/splash/splash_screen.dart';
 import 'package:tabs_lab/src/theme/notel_theme.dart';
@@ -71,6 +74,14 @@ class TabsLabApp extends StatelessWidget {
 /// https://api.jottracker.com (see AuthApiClient); on success the session
 /// is stored securely and the user lands on the home screen, which shows
 /// a "Logged in as {email}" indicator.
+///
+/// Round 32 — onboarding. A real REGISTRATION (LoginScreen's
+/// onRegisterSuccess) enters [OnboardingFlow] at the consent step —
+/// native routes register success to `consent` because the new
+/// account has not completed onboarding, while email/Google LOGIN
+/// success marks onboarding complete and lands home (native
+/// `LoginViewModel`). Cold start layers the same native splash rule
+/// over Round 31's session restore: see [_AppFlowState._restoreSession].
 class AppFlow extends StatefulWidget {
   /// Injectable for tests; defaults to the real backend client.
   final AuthApiClient? authApi;
@@ -88,19 +99,33 @@ class AppFlow extends StatefulWidget {
   /// Shared with the connections screen (and future onboarding).
   final HealthConnectService? healthConnectService;
 
+  /// Round 32 — injectable for tests; defaults to secure storage.
+  final OnboardingStore? onboardingStore;
+
+  /// Round 32 — injectable for tests; defaults to a real backend
+  /// bound to the flow's session store.
+  final TabsBackend? tabsBackend;
+
+  /// Round 32 — injectable for tests; defaults to the real local
+  /// notification service (Round 30).
+  final ReminderNotificationService? notificationService;
+
   const AppFlow(
       {super.key,
       this.authApi,
       this.sessionStore,
       this.weatherApi,
       this.locationService,
-      this.healthConnectService});
+      this.healthConnectService,
+      this.onboardingStore,
+      this.tabsBackend,
+      this.notificationService});
 
   @override
   State<AppFlow> createState() => _AppFlowState();
 }
 
-enum _FlowStage { welcome, login, home }
+enum _FlowStage { welcome, login, onboarding, home }
 
 class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
   static const _entryMs = 650;
@@ -113,6 +138,11 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
   _FlowStage _stage = _FlowStage.welcome;
   bool _loginIsRegister = true;
   String? _loggedInEmail;
+
+  // Round 32 — onboarding state for this flow (injected in tests).
+  late final OnboardingStore _onboardingStore;
+  late final TabsBackend _tabsBackend;
+  OnboardingStep _onboardingStep = OnboardingStep.consent;
 
   void _goLogin(bool isRegister) {
     setState(() {
@@ -129,7 +159,17 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
   // has already cleared the session and every account-bound cache by
   // the time this fires; return to the welcome flow and drop the
   // in-memory email so no previous-account state can render.
+  //
+  // Round 32 (additive): also wipe the onboarding store. Native's
+  // restartOnboarding (the Settings "Reset Account Status" path)
+  // calls clearCredentials() — a FULL DataStore clear — before
+  // logging out, so the next account on the device starts onboarding
+  // from a clean slate; plain native logout leaves the flags, but a
+  // Flutter re-login rewrites them all on success (see
+  // _onLoginSuccess / _onRegisterSuccess), so wiping here is
+  // outcome-identical and keeps reset behavior exact.
   void _onLogout() {
+    unawaited(_onboardingStore.clear());
     setState(() {
       _loggedInEmail = null;
       _stage = _FlowStage.welcome;
@@ -147,21 +187,115 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
   // lands in Main with the stored session, and the backend's
   // 401→refresh path (TabsBackend) sorts out token expiry on the
   // first real call. No stored token → current welcome behavior.
+  //
+  // Round 32 — onboarding gate, layered INSIDE this restore (the
+  // restore's mechanics are unchanged: presence check, no network,
+  // splash never blocked, welcome-stage guard). Native's full
+  // splash rule (SplashScreen.checkAuthState reads loggedIn +
+  // onboardingComplete; the MainActivity splash handler then checks
+  // hasConsented / introConsultationSeen) routes a signed-in user:
+  //   !hasConsented → consent · !introSeen → consultation_intro ·
+  //   !onboardingComplete → profile_setup · else → today.
+  // The gate applies only when onboarding state exists on this
+  // device: a pre-Round-32 stored session has none, and native marks
+  // such existing accounts complete (login and pull both set the
+  // flag — register was a no-op before Round 32, so every stored
+  // session came through login/Google). Legacy sessions therefore
+  // keep Round 31's straight-to-home landing and are backfilled
+  // complete, instead of dropping an existing user into onboarding.
   Future<void> _restoreSession() async {
     try {
       final token = await _sessionStore.readToken();
       if (token == null || token.trim().isEmpty) return;
       final email = await _sessionStore.readEmail();
+      // Round 32 gate: resolve the native resume step from the
+      // stored flags (local reads only — same store, no network).
+      OnboardingStep? resumeStep;
+      var hasState = false;
+      try {
+        hasState = await _onboardingStore.hasAnyState();
+        if (hasState) {
+          final hasConsented = await _onboardingStore.getHasConsented();
+          final introSeen =
+              await _onboardingStore.getIntroConsultationSeen();
+          final complete = await _onboardingStore.getOnboardingComplete();
+          if (!hasConsented) {
+            resumeStep = OnboardingStep.consent;
+          } else if (!introSeen) {
+            resumeStep = OnboardingStep.consultationIntro;
+          } else if (!complete) {
+            resumeStep = OnboardingStep.profileSetup;
+          }
+        }
+      } catch (_) {
+        // Unreadable flags → Round 31 behavior (home).
+        resumeStep = null;
+        hasState = false;
+      }
       // If the user already moved past welcome (or the widget is
       // gone), the restore has nothing to do.
       if (!mounted || _stage != _FlowStage.welcome) return;
-      setState(() {
-        _loggedInEmail = email;
-        _stage = _FlowStage.home;
-      });
+      if (!hasState) {
+        // Legacy (pre-Round-32) session: backfill the flags complete,
+        // mirroring native's login/pull marking (see the header).
+        unawaited(_backfillLegacyOnboarding());
+      }
+      if (resumeStep != null) {
+        // Native fires pullAllData in the background for a signed-in
+        // cold start (SplashViewModel); its profile handling can
+        // mark onboarding complete server-side truth — reconcile the
+        // local flag for the NEXT launch (native does not re-route
+        // mid-onboarding either).
+        unawaited(_reconcileOnboardingFromServer());
+        setState(() {
+          _loggedInEmail = email;
+          _onboardingStep = resumeStep!;
+          _stage = _FlowStage.onboarding;
+        });
+      } else {
+        setState(() {
+          _loggedInEmail = email;
+          _stage = _FlowStage.home;
+        });
+      }
     } catch (_) {
       // Unreadable store → fresh-install behavior (welcome).
     }
+  }
+
+  // Round 32 — marks a pre-onboarding stored session complete, the
+  // same end state native reaches via LoginViewModel.login (sets
+  // onboardingComplete) and SyncManager.pullAllData (sets it when the
+  // server profile says so, or when entries/categories exist).
+  Future<void> _backfillLegacyOnboarding() async {
+    try {
+      await _onboardingStore.setHasConsented(true);
+      await _onboardingStore.setIntroConsultationSeen(true);
+      await _onboardingStore.setOnboardingComplete(true);
+    } catch (_) {}
+  }
+
+  // Round 32 — background server reconciliation for a resumed
+  // onboarding (native: SplashViewModel fires pullAllData when
+  // logged in; SyncManager.pullAllData sets onboardingComplete=true
+  // when the pulled profile has onboardingComplete=true, or when the
+  // account already has entries/categories). Local-flag only; the
+  // current routing decision is never revisited mid-flow.
+  Future<void> _reconcileOnboardingFromServer() async {
+    try {
+      final body = await _tabsBackend.fetchSyncPull();
+      if (body == null) return;
+      final profile = body['profile'];
+      final serverComplete =
+          profile is Map && profile['onboardingComplete'] == true;
+      final entries = body['entries'];
+      final categories = body['categories'];
+      final hasData = (entries is List && entries.isNotEmpty) ||
+          (categories is List && categories.isNotEmpty);
+      if (serverComplete || hasData) {
+        await _onboardingStore.setOnboardingComplete(true);
+      }
+    } catch (_) {}
   }
 
   // Round 31 — a definitive refresh failure discovered later by any
@@ -193,9 +327,79 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
   void _onLoginSuccess(String email) {
     unawaited(QuickLogCache.instance.clearIfOwnerMismatch(email));
     unawaited(HomeDataCache.instance.clearIfOwnerMismatch(email));
+    // Round 32 — native parity: email login and Google sign-in (both
+    // modes) mark onboarding complete (LoginViewModel.login /
+    // loginWithGoogleAccount call setOnboardingComplete(true)), and
+    // MainActivity's onLoginSuccess(true) branch also sets
+    // hasConsented + introConsultationSeen before navigating home.
+    unawaited(_markOnboardingComplete());
     setState(() {
       _loggedInEmail = email;
       _stage = _FlowStage.home;
+    });
+  }
+
+  Future<void> _markOnboardingComplete() async {
+    try {
+      await _onboardingStore.setHasConsented(true);
+      await _onboardingStore.setIntroConsultationSeen(true);
+      await _onboardingStore.setOnboardingComplete(true);
+    } catch (_) {}
+  }
+
+  // Round 32 — real registration succeeded. Native register leaves
+  // onboarding incomplete (LoginViewModel.register never sets the
+  // flag; onboardingCompleteByServer = false) and MainActivity
+  // routes to `consent`. Stamp the fresh-account flags explicitly
+  // (all false) so onboarding state EXISTS for this account — that
+  // is what lets a later cold start resume onboarding instead of
+  // taking the legacy-session home path — then enter the flow at
+  // the consent step.
+  void _onRegisterSuccess(String email) {
+    unawaited(QuickLogCache.instance.clearIfOwnerMismatch(email));
+    unawaited(HomeDataCache.instance.clearIfOwnerMismatch(email));
+    unawaited(_stampFreshAccountOnboarding());
+    setState(() {
+      _loggedInEmail = email;
+      _onboardingStep = OnboardingStep.consent;
+      _stage = _FlowStage.onboarding;
+    });
+  }
+
+  Future<void> _stampFreshAccountOnboarding() async {
+    try {
+      await _onboardingStore.setHasConsented(false);
+      await _onboardingStore.setIntroConsultationSeen(false);
+      await _onboardingStore.setOnboardingComplete(false);
+    } catch (_) {}
+  }
+
+  // Round 32 — onboarding finished (setup loading's "Start keeping
+  // Tabs"): the completion flag is already written by the setup
+  // step (native finalizeSetup); land home.
+  void _onOnboardingComplete() {
+    setState(() => _stage = _FlowStage.home);
+  }
+
+  // Round 32 — consent declined (the decline dialog's "Log Out").
+  // Native onDecline: setLoggedIn(false), setHasConsented(false),
+  // setIntroConsultationSeen(false), navigate to welcome with the
+  // stack cleared. The Flutter session's presence IS the token, so
+  // clearing the session is the functional equivalent of
+  // setLoggedIn(false); onboardingComplete is left untouched,
+  // exactly as native leaves it.
+  Future<void> _onConsentDecline() async {
+    try {
+      await _sessionStore.clear();
+    } catch (_) {}
+    try {
+      await _onboardingStore.setHasConsented(false);
+      await _onboardingStore.setIntroConsultationSeen(false);
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _loggedInEmail = null;
+      _stage = _FlowStage.welcome;
     });
   }
 
@@ -205,6 +409,10 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
     // Round 31 — wire the backend's session-expired callback and
     // kick off the cold-start restore (async; never blocks splash).
     _sessionStore = widget.sessionStore ?? SessionStore();
+    // Round 32 — the onboarding store the restore gate reads.
+    _onboardingStore = widget.onboardingStore ?? OnboardingStore();
+    _tabsBackend =
+        widget.tabsBackend ?? TabsBackend(sessionStore: _sessionStore);
     TabsBackend.onSessionExpired = _onSessionExpired;
     unawaited(_restoreSession());
     _exitController = AnimationController(
@@ -253,8 +461,19 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
             initialRegisterMode: _loginIsRegister,
             onBack: _goWelcome,
             onLoginSuccess: _onLoginSuccess,
+            onRegisterSuccess: _onRegisterSuccess,
             authApi: widget.authApi,
             sessionStore: widget.sessionStore,
+          )
+        else if (_stage == _FlowStage.onboarding)
+          OnboardingFlow(
+            initialStep: _onboardingStep,
+            onboardingStore: _onboardingStore,
+            backend: _tabsBackend,
+            healthConnectService: widget.healthConnectService,
+            notificationService: widget.notificationService,
+            onComplete: _onOnboardingComplete,
+            onDeclineConsent: () => unawaited(_onConsentDecline()),
           )
         else
           MainShell(email: _loggedInEmail,
