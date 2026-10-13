@@ -67,6 +67,26 @@ int? parseLooseIntOrNull(dynamic v) {
   return null;
 }
 
+/// Loose bool: bool → itself, num 1/0 → true/false, string
+/// 'true'/'false'/'1'/'0' (trimmed, any case) → true/false, anything
+/// else (including absent) → null. The sync payload serializes
+/// loosely (the same blob carries int8s as strings), so flag checks
+/// must never rely on strict `== true` / `== false` identity.
+bool? parseLooseBoolOrNull(dynamic v) {
+  if (v is bool) return v;
+  if (v is num) {
+    if (v == 1) return true;
+    if (v == 0) return false;
+    return null;
+  }
+  if (v is String) {
+    final s = v.trim().toLowerCase();
+    if (s == 'true' || s == '1') return true;
+    if (s == 'false' || s == '0') return false;
+  }
+  return null;
+}
+
 String dateStrOf(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
@@ -233,8 +253,28 @@ class SummaryMedication {
 
   static SummaryMedication? fromBlobRow(Map<String, dynamic> row) {
     try {
-      if (row['isDeleted'] == true) return null;
-      if (row['isPresent'] == false) return null;
+      // Tolerant flag parses (founder defect, R35 fix pass): the
+      // strict `== true` / `== false` checks this replaces let
+      // archived meds through whenever the server serialized the
+      // flags as strings/nums, and ignored an explicit `isArchived`
+      // stamp entirely. Native ground truth: the profile blob's
+      // view-model `Medication` (SettingsViewModel.kt:1684) carries
+      // `isPresent`/`isDeleted`; the sync restore converts
+      // `isArchived = !isPresent` (SyncManager.kt, pullAllData med
+      // merge); Today's plan keeps only `!isArchived && !isDeleted`
+      // (TodayViewModel.kt:213).
+      if (parseLooseBoolOrNull(row['isDeleted']) == true) return null;
+      if (parseLooseBoolOrNull(row['isArchived']) == true) return null;
+      final present = parseLooseBoolOrNull(row['isPresent']);
+      if (present == false) return null;
+      if (present == null) {
+        // No usable present flag: fall back to the end-date signal,
+        // mirroring the Flutter Medications screen's parse — an
+        // ended med (a real end date, not native's "Present"
+        // sentinel) is not a current med.
+        final end = '${row['endDate'] ?? row['endedDate'] ?? ''}'.trim();
+        if (end.isNotEmpty && end.toLowerCase() != 'present') return null;
+      }
       final name = '${row['name'] ?? ''}'.trim();
       if (name.isEmpty) return null;
       final uuid = '${row['id'] ?? ''}'.trim();

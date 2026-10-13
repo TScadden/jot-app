@@ -309,6 +309,107 @@ void main() {
       expect(active?.key, 'u3');
     });
 
+    test('blob rows: string/num flag variants exclude archived + '
+        'deleted meds (real payload shapes)', () {
+      SummaryMedication? row(Map<String, dynamic> r) =>
+          SummaryMedication.fromBlobRow({
+            'id': 'u9',
+            'name': 'Variant',
+            'dose': '5 mg',
+            ...r,
+          });
+      // Archived representations — every one must be excluded.
+      expect(row({'isPresent': 'false'}), isNull);
+      expect(row({'isPresent': 'False'}), isNull);
+      expect(row({'isPresent': 0}), isNull);
+      expect(row({'isPresent': '0'}), isNull);
+      expect(row({'isArchived': true}), isNull);
+      expect(row({'isArchived': 'true'}), isNull);
+      expect(row({'isArchived': 1, 'isPresent': true}), isNull);
+      // Deleted representations.
+      expect(row({'isDeleted': 'true', 'isPresent': true}), isNull);
+      expect(row({'isDeleted': 1, 'isPresent': true}), isNull);
+      // Active representations — every one must survive.
+      expect(row({'isPresent': 'true'})?.name, 'Variant');
+      expect(row({'isPresent': 1})?.name, 'Variant');
+      expect(row({'isPresent': '1'})?.name, 'Variant');
+      expect(row({'isPresent': true, 'isArchived': 'false'})?.name,
+          'Variant');
+      expect(row({'isPresent': true, 'isDeleted': 'false'})?.name,
+          'Variant');
+    });
+
+    test('blob rows: with no usable isPresent flag, a real end date '
+        'marks the med ended; the "Present" sentinel stays active',
+        () {
+      SummaryMedication? row(Map<String, dynamic> r) =>
+          SummaryMedication.fromBlobRow({
+            'id': 'u10',
+            'name': 'Ended',
+            'dose': '5 mg',
+            ...r,
+          });
+      expect(row({'endDate': '2026-08-01'}), isNull);
+      expect(row({'endedDate': '2026-08-01'}), isNull);
+      expect(row({'endDate': 'Present'})?.name, 'Ended');
+      expect(row({'endDate': ''})?.name, 'Ended');
+      expect(row({})?.name, 'Ended');
+    });
+
+    test('plan: archived meds in the real payload shape produce no '
+        'rows and count nowhere; the active med remains', () {
+      final rows = <Map<String, dynamic>>[
+        {
+          'id': 'a1',
+          'name': 'Ivabradine',
+          'dose': '7.5 mg',
+          'isPresent': 'true', // string bool, real payload shape
+          'isDeleted': 'false',
+          'updatedAt': '1760000000000',
+        },
+        {
+          'id': 'a2',
+          'name': 'Sertraline', // stopped — archived via string flag
+          'dose': '50 mg',
+          'isPresent': 'false',
+          'isDeleted': 'false',
+        },
+        {
+          'id': 'a3',
+          'name': 'Carvedilol', // stopped — archived via explicit stamp
+          'dose': '3.125 mg',
+          'isPresent': true,
+          'isArchived': true,
+        },
+        {
+          'id': 'a4',
+          'name': 'Qulipta', // stopped — ended, no present flag
+          'dose': '60 mg',
+          'endDate': '2026-09-15',
+        },
+      ];
+      // Mirrors TodaySummaryLoader._parseMeds exactly.
+      final meds = rows
+          .map(SummaryMedication.fromBlobRow)
+          .whereType<SummaryMedication>()
+          .toList();
+      expect(meds.map((m) => m.name), ['Ivabradine']);
+      final data = buildTodayPlan(
+        medications: meds,
+        reminders: const [],
+        habits: const [],
+        localState: const TodayPlanLocalState(),
+        entries: const [],
+        medicationCategoryId: 8,
+        now: _now,
+      );
+      expect(data.items.single.title, 'Ivabradine');
+      expect(data.items.single.kind, PlanItemKind.medication);
+      expect(data.remainingCount, 1);
+      expect(data.overdueCount, 0);
+      expect(data.summaryText, '1 item remaining');
+    });
+
     test('reminder blob rows tolerate string-encoded ints', () {
       final rem = SummaryReminder.fromBlobRow({
         'id': '42',
