@@ -654,7 +654,7 @@ void main() {
           'items': ['Milk', 'Eggs'],
         },
       ]);
-      expect(find.text('✓ List Created Successfully'), findsOneWidget);
+      expect(find.text('✓ List Created'), findsOneWidget);
       expect(
           find.text('Awesome! I\'ve created the list "Groceries" with 2 items.'),
           findsOneWidget);
@@ -684,7 +684,7 @@ void main() {
       await tester.enterText(find.byType(TextField), 'deny');
       await tester.tap(find.byIcon(Icons.send));
       await tester.pumpAndSettle();
-      expect(find.text('✗ Suggestion Dismissed'), findsOneWidget);
+      expect(find.text('✗ Note Dismissed'), findsOneWidget);
       expect(find.text("Okay, I won't save that note."), findsOneWidget);
       // The word "deny" was NOT sent to the coach endpoint.
       expect(log.any((r) => r.url.path == '/api/ai/coach'), isFalse);

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -41,6 +42,7 @@ MockClient serverClient(
   List<dynamic> pullEntries = const [],
   List<dynamic> pullCategories = const [],
   bool pullFails = false,
+  bool omitEntries = false,
   String coachReply = 'All good.',
 }) {
   return MockClient((request) async {
@@ -52,7 +54,7 @@ MockClient serverClient(
             jsonEncode({
               'isUnlimited': true,
               'profile': profile,
-              'entries': pullEntries,
+              if (!omitEntries) 'entries': pullEntries,
               'categories': pullCategories,
             }),
             200);
@@ -482,23 +484,125 @@ void main() {
       expect(await store.load('a@x.com'), isEmpty);
     });
 
-    test('REMEMBER extraction strips only a trailing line', () {
+    String blobFor(String owner, String text) => jsonEncode({
+          'ownerEmail': owner,
+          'facts': [
+            {'text': text, 'createdAt': 1, 'source': 'coach'}
+          ],
+        });
+
+    test('in-flight load(A) + clear + load(B) yields B-only facts',
+        () async {
+      final mem = <String, String>{};
+      var reads = 0;
+      final gate = Completer<String?>();
+      final store = CoachMemoryStore.withStorage(
+        read: (k) {
+          reads++;
+          if (reads == 1) return gate.future;
+          return Future.value(mem[k]);
+        },
+        write: (k, v) async => mem[k] = v,
+        delete: (k) async => mem.remove(k),
+      );
+      mem[CoachMemoryStore.storageKey] = blobFor('a@x.com', 'A fact');
+      final futureA = store.load('a@x.com'); // gated in-flight read
+      await store.clear();
+      mem[CoachMemoryStore.storageKey] = blobFor('b@x.com', 'B fact');
+      final factsB = await store.load('b@x.com');
+      expect(factsB.map((f) => f.text), ['B fact']);
+      gate.complete(blobFor('a@x.com', 'A fact'));
+      // The stale load's result is discarded, never resurrected.
+      expect(await futureA, isEmpty);
+      expect(store.cachedFactsFor('b@x.com').map((f) => f.text),
+          ['B fact']);
+      expect(store.cachedFactsFor('a@x.com'), isEmpty);
+    });
+
+    test('recordFact during an account switch persists only the '
+        'caller snapshot under the caller owner', () async {
+      final mem = <String, String>{};
+      var reads = 0;
+      final gate = Completer<String?>();
+      final store = CoachMemoryStore.withStorage(
+        read: (k) {
+          reads++;
+          if (reads == 1) return gate.future;
+          return Future.value(mem[k]);
+        },
+        write: (k, v) async => mem[k] = v,
+        delete: (k) async => mem.remove(k),
+      );
+      final loading = store.load('a@x.com'); // in-flight
+      store.recordFact(
+          text: 'A fact', source: 'coach', email: 'a@x.com');
+      await store.clear();
+      mem[CoachMemoryStore.storageKey] = blobFor('b@x.com', 'B fact');
+      final factsB = await store.load('b@x.com');
+      expect(factsB.map((f) => f.text), ['B fact']);
+      gate.complete(null);
+      await loading;
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      // A's deferred persist never landed: the blob is still B's,
+      // owned by B, holding only B's fact.
+      final stored =
+          jsonDecode(mem[CoachMemoryStore.storageKey]!)
+              as Map<String, dynamic>;
+      expect(stored['ownerEmail'], 'b@x.com');
+      expect(
+          (stored['facts'] as List).map((f) => f['text']), ['B fact']);
+      expect(store.cachedFactsFor('b@x.com').map((f) => f.text),
+          ['B fact']);
+    });
+
+    test('clearIfOwnerMismatch wipes a mismatched mirror regardless '
+        'of disk state', () async {
+      final mem = <String, String>{};
+      final store = memoryStore(mem);
+      await store.addFact(
+          text: 'A fact', source: 's', email: 'a@x.com');
+      // Disk now claims B; the mirror still holds A's facts.
+      mem[CoachMemoryStore.storageKey] = blobFor('b@x.com', 'B fact');
+      expect(await store.clearIfOwnerMismatch('b@x.com'), isTrue);
+      expect(store.cachedFacts, isEmpty);
+    });
+
+    test('REMEMBER extraction strips trailing, double, bare, and '
+        'mid-reply lines', () {
       final (clean, fact) = extractCoachRememberLine(
           'Advice here.\nREMEMBER: User started creatine.');
       expect(clean, 'Advice here.');
       expect(fact, 'User started creatine.');
 
+      // Fix pass: ALL trailing REMEMBER lines are stripped; the
+      // last fact-bearing one is captured.
+      final (cleanD, factD) = extractCoachRememberLine(
+          'Advice.\nREMEMBER: first fact.\nREMEMBER: second fact.');
+      expect(cleanD, 'Advice.');
+      expect(factD, 'second fact.');
+
+      // A bare trailing REMEMBER: is stripped and captures nothing.
+      final (cleanB, factB) =
+          extractCoachRememberLine('Advice.\nREMEMBER:');
+      expect(cleanB, 'Advice.');
+      expect(factB, isNull);
+
+      // Fix pass: a standalone REMEMBER line anywhere is stripped
+      // (the pre-fix behavior of leaving mid-reply lines in is
+      // reversed by Vera's ruling).
       final (clean2, fact2) =
           extractCoachRememberLine('REMEMBER: not trailing\nMore text');
-      expect(fact2, isNull);
-      expect(clean2, contains('REMEMBER: not trailing'));
+      expect(fact2, 'not trailing');
+      expect(clean2, 'More text');
+      expect(clean2, isNot(contains('REMEMBER')));
 
       final (clean3, fact3) = extractCoachRememberLine('Just advice.');
       expect(fact3, isNull);
       expect(clean3, 'Just advice.');
     });
 
-    test('memory context heading, dates, and follow-through line', () {
+    test('memory context heading, dates, and Juno follow-through '
+        'line', () {
       final ctx = buildCoachMemoryContext([
         CoachMemoryFact(
           text: 'User is trying morning sunlight.',
@@ -510,7 +614,15 @@ void main() {
           'this device):'));
       expect(ctx, contains('- 2026-10-12: User is trying morning '
           'sunlight.'));
-      expect(ctx, contains('check prior items'));
+      expect(
+          ctx,
+          contains('You may reference these facts. When a fact '
+              'mentions something the user started, stopped, or is '
+              'trying, you may note its date together with the '
+              'related values in the fresh health data above, '
+              'exactly as recorded. Do not state or imply that it '
+              'caused, helped, worsened, or changed any health '
+              'value, symptom, or outcome.'));
       expect(buildCoachMemoryContext(const []), isEmpty);
     });
 
@@ -582,13 +694,65 @@ void main() {
       await tester.ensureVisible(find.text('Approve'));
       await tester.tap(find.text('Approve'));
       await tester.pumpAndSettle();
-      expect(find.text('✓ List Created Successfully'), findsOneWidget);
+      expect(find.text('✓ List Created'), findsOneWidget);
       final facts = await store.load('user@example.com');
       expect(
           facts.map((f) => f.text),
           contains(contains(
               'Created the list "Groceries" with 1 items '
               '(approved from Coach).')));
+    });
+  });
+
+  group('Fix pass — stored REMEMBER rendering + file card (N9)', () {
+    testWidgets('a stored message with a REMEMBER line renders '
+        'clean', (tester) async {
+      final log = <http.BaseRequest>[];
+      await pumpChat(
+        tester,
+        backend: backendWith(serverClient(log)),
+        messages: [coachMsg('Stored advice.\nREMEMBER: secret fact')],
+      );
+      expect(find.text('Stored advice.'), findsOneWidget);
+      expect(find.textContaining('REMEMBER'), findsNothing);
+      expect(find.textContaining('secret fact'), findsNothing);
+    });
+
+    testWidgets('file card without an upload source states the '
+        'limitation and disables approve', (tester) async {
+      final log = <http.BaseRequest>[];
+      await pumpChat(
+        tester,
+        backend: backendWith(serverClient(log)),
+        messages: [coachMsg('Save it? [PROPOSE_FILE:notes.txt]')],
+      );
+      expect(find.text(coachFileNotAttachedMessage), findsOneWidget);
+      final approve = tester.widget<ElevatedButton>(
+          find.widgetWithText(ElevatedButton, 'Approve'));
+      expect(approve.onPressed, isNull);
+    });
+
+    testWidgets('file card with an upload source behaves as '
+        'before', (tester) async {
+      final log = <http.BaseRequest>[];
+      await pumpChat(
+        tester,
+        backend: backendWith(serverClient(log)),
+        messages: [
+          const CoachChatMessage(
+            id: 'u1',
+            sessionId: 's1',
+            role: 'user',
+            content: '📄 Uploaded file: notes.txt\n\nhello body',
+            timestamp: 1,
+          ),
+          coachMsg('Save it? [PROPOSE_FILE:notes.txt]'),
+        ],
+      );
+      expect(find.text(coachFileNotAttachedMessage), findsNothing);
+      final approve = tester.widget<ElevatedButton>(
+          find.widgetWithText(ElevatedButton, 'Approve'));
+      expect(approve.onPressed, isNotNull);
     });
   });
 
@@ -601,6 +765,8 @@ void main() {
         backend: backendWith(serverClient(log, pullEntries: [
           {'id': 7, 'body': 'older'},
           {'id': 3, 'body': 'oldest'},
+        ], pullCategories: const [
+          {'id': 3, 'name': 'Symptoms'},
         ])),
         messages: [
           coachMsg('Log it? [PROPOSE_LOG_ENTRY:Symptoms|Headache today]'),
@@ -609,7 +775,7 @@ void main() {
           {'id': 3, 'name': 'Symptoms'},
         ],
       );
-      expect(find.text('Log entry'), findsOneWidget);
+      expect(find.text('Proposed Log Entry'), findsOneWidget);
       expect(find.text('Symptoms'), findsOneWidget);
       await tester.ensureVisible(find.text('Approve'));
       await tester.tap(find.text('Approve'));
@@ -629,7 +795,9 @@ void main() {
       final log = <http.BaseRequest>[];
       await pumpChat(
         tester,
-        backend: backendWith(serverClient(log)),
+        backend: backendWith(serverClient(log, pullCategories: const [
+          {'id': 3, 'name': 'Symptoms'},
+        ])),
         messages: [
           coachMsg('Log it? [PROPOSE_LOG_ENTRY:Nope|Headache today]'),
         ],
@@ -643,7 +811,34 @@ void main() {
       expect(requestsTo(log, '/api/sync/entries'), isEmpty);
       expect(find.text(coachLogEntryUnknownCategoryMessage),
           findsOneWidget);
-      expect(find.text('Log entry'), findsOneWidget);
+      expect(find.text('Proposed Log Entry'), findsOneWidget);
+      expect(find.text('✓ Entry Logged'), findsNothing);
+      await flushSnack(tester);
+    });
+
+    testWidgets('contract-violating pull (entries missing) posts '
+        'nothing and stays pending', (tester) async {
+      final log = <http.BaseRequest>[];
+      await pumpChat(
+        tester,
+        backend: backendWith(serverClient(log,
+            omitEntries: true,
+            pullCategories: const [
+              {'id': 3, 'name': 'Symptoms'},
+            ])),
+        messages: [
+          coachMsg('Log it? [PROPOSE_LOG_ENTRY:Symptoms|Headache]'),
+        ],
+        pullCategories: const [
+          {'id': 3, 'name': 'Symptoms'},
+        ],
+      );
+      await tester.ensureVisible(find.text('Approve'));
+      await tester.tap(find.text('Approve'));
+      await tester.pumpAndSettle();
+      expect(requestsTo(log, '/api/sync/entries'), isEmpty);
+      expect(find.text(coachLogEntryPullFailedMessage), findsOneWidget);
+      expect(find.text('Proposed Log Entry'), findsOneWidget);
       expect(find.text('✓ Entry Logged'), findsNothing);
       await flushSnack(tester);
     });
@@ -687,7 +882,7 @@ void main() {
           coachMsg('Track it? [PROPOSE_COUNTER:Last migraine|2020-01-15]'),
         ],
       );
-      expect(find.text('Event counter'), findsOneWidget);
+      expect(find.text('Proposed Event Counter'), findsOneWidget);
       expect(find.text('Last migraine'), findsOneWidget);
       await tester.ensureVisible(find.text('Approve'));
       await tester.tap(find.text('Approve'));
@@ -710,6 +905,28 @@ void main() {
       expect(added['isArchived'], isFalse);
       expect(added['isFavorite'], isFalse); // not the first counter
       expect(find.text('✓ Counter Created'), findsOneWidget);
+    });
+
+    testWidgets('counter date 2026-02-31 is rejected: the parsed '
+        'date must round-trip', (tester) async {
+      final log = <http.BaseRequest>[];
+      await pumpChat(
+        tester,
+        backend: backendWith(serverClient(log, profile: {
+          'eventCounters': '[]',
+        })),
+        messages: [
+          coachMsg('Track it? [PROPOSE_COUNTER:Last migraine|2026-02-31]'),
+        ],
+      );
+      expect(find.text('Proposed Event Counter'), findsOneWidget);
+      await tester.ensureVisible(find.text('Approve'));
+      await tester.tap(find.text('Approve'));
+      await tester.pumpAndSettle();
+      expect(find.text(coachCounterInvalidDateMessage), findsOneWidget);
+      expect(requestsTo(log, '/api/sync/profile'), isEmpty);
+      expect(find.text('✓ Counter Created'), findsNothing);
+      await flushSnack(tester);
     });
   });
 
@@ -738,6 +955,44 @@ void main() {
           contains('Name|Dose|Frequency|StartDate|EndDate|isPresent'));
       expect(ctx, contains('[PROPOSE_LOG_ENTRY:CategoryName|Entry text]'));
       expect(ctx, contains('[PROPOSE_COUNTER:Counter name|yyyy-MM-dd]'));
+      // Juno B2: the MEMORY instruction's exact wording.
+      expect(ctx, contains('what they decided to start'));
+      expect(ctx, contains("starting with 'User reported', and not "
+          'as an established result'));
+    });
+
+    test('name-with-pipe and non-literal-flag tags fail safe', () {
+      // 7 fields (the name itself contains a pipe): no shifted
+      // dose/frequency may be read; dates/present come from the
+      // final three fields.
+      final piped = parseCoachMessageContent(
+          'Meds [PROPOSE_MEDICATION:Foo|Bar|7.5 mg|Twice daily|Jan 2026||true]');
+      final med = piped.medications.single;
+      expect(med.name, 'Foo');
+      expect(med.dose, isEmpty);
+      expect(med.frequency, isEmpty);
+      expect(med.startDate, 'Jan 2026');
+      expect(med.isPresent, isTrue);
+      expect(med.endDate, 'Present');
+
+      // Exactly 5 fields with a non-literal flag: legacy parse —
+      // dose/frequency stay empty, never shifted into.
+      final five = parseCoachMessageContent(
+          'Meds [PROPOSE_MEDICATION:MedX|Jan 2025|May 2026|yes|trailing]');
+      final legacy = five.medications.single;
+      expect(legacy.dose, isEmpty);
+      expect(legacy.frequency, isEmpty);
+      expect(legacy.startDate, 'Jan 2025');
+      expect(legacy.endDate, 'May 2026');
+      expect(legacy.isPresent, isFalse);
+
+      // A genuine 5-field extended tag (flag in field 5 only)
+      // still parses as extended.
+      final fiveExt = parseCoachMessageContent(
+          'Meds [PROPOSE_MEDICATION:MedY|10 mg|Daily|Jan 2026|true]');
+      expect(fiveExt.medications.single.dose, '10 mg');
+      expect(fiveExt.medications.single.frequency, 'Daily');
+      expect(fiveExt.medications.single.isPresent, isTrue);
     });
 
     testWidgets('6-field approval writes real dose/frequency',
@@ -762,8 +1017,8 @@ void main() {
       expect(added['frequency'], 'Twice daily');
     });
 
-    testWidgets('legacy approval keeps the placeholders',
-        (tester) async {
+    testWidgets('legacy approval keeps the dose placeholder and '
+        'an EMPTY frequency (Juno M1)', (tester) async {
       final log = <http.BaseRequest>[];
       await pumpChat(
         tester,
@@ -780,7 +1035,7 @@ void main() {
       final rows = lastProfileField(log, 'medications') as List;
       final added = rows.single as Map<String, dynamic>;
       expect(added['dose'], 'As prescribed');
-      expect(added['frequency'], 'Daily');
+      expect(added['frequency'], '');
     });
   });
 
