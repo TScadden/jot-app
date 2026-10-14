@@ -2,16 +2,27 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/data/health_connect_service.dart';
+import 'package:tabs_lab/src/data/health_data.dart';
+import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/reminder_alarm_sync.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
+import 'package:tabs_lab/src/features/settings/settings_profile.dart';
+import 'package:tabs_lab/src/features/tools/habits_screen.dart'
+    show habitStreak;
+import 'package:tabs_lab/src/features/tools/project_focus_screen.dart'
+    show collectFocusTests;
 import 'package:tabs_lab/src/features/tools/reminders_screen.dart'
     show
         buildReminderRow,
         nextReminderId,
         parseReminderModels,
         runReminderCreatePermissionGate;
+import 'package:tabs_lab/src/features/tools/sleep_screen.dart'
+    show sleepDebtMinsOrNull;
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
@@ -519,7 +530,7 @@ String formatCoachDateOnly(DateTime now) =>
 /// event data is included. (Tags arriving from synced
 /// native-created sessions still parse and render in the UI.)
 String coachEnrichedUserContext(String? baseUserContext,
-    {required DateTime now}) {
+    {required DateTime now, String healthContext = '', String memoryContext = ''}) {
   final todayStr = formatCoachNow(now);
   final todayDateOnly = formatCoachDateOnly(now);
   final calendarInstructions = '''
@@ -549,7 +560,427 @@ $calendarInstructions
 Only include ONE action tag per response. (Note: For multiple medications, combine them into a single [PROPOSE_MEDICATION:...] tag separated by semicolons as shown above). Do not include markdown formatting inside the brackets.''';
 
   final base = (baseUserContext ?? '').trim();
-  return base.isEmpty ? actionInstructions : '$base\n\n$actionInstructions';
+  // Round 55 Step 1/2: the fresh health block (and, adjacent to it,
+  // the coach-memory block) rides between the user's base context
+  // and the action instructions. With neither block present the
+  // result is byte-identical to the pre-Round-55 shape.
+  final extra = [
+    if (healthContext.trim().isNotEmpty) healthContext.trim(),
+    if (memoryContext.trim().isNotEmpty) memoryContext.trim(),
+  ].join('\n\n');
+  final parts = [
+    if (base.isNotEmpty) base,
+    if (extra.isNotEmpty) extra,
+    actionInstructions,
+  ];
+  return parts.join('\n\n');
+}
+
+// ── Round 55 Step 1: real-data coach context ────────────────────────────────
+//
+// The server forwards userContext as a sanitized plain-text string
+// and strips square brackets and angle brackets from it, so every
+// section below is plain text with plain headings and NO brackets
+// or angle brackets in data values (see _coachPlain). Biometric
+// rule: a 0 is a failed read and is treated as missing everywhere
+// below — it is never printed, averaged, or counted as a night.
+
+/// Hard budget for the added health context, in characters.
+const int coachHealthContextBudget = 9000;
+
+/// Strips the characters the server sanitizer would remove anyway
+/// (and any raw JSON look) from a data value riding userContext.
+String coachPlainText(String raw) => raw
+    .replaceAll('[', '(')
+    .replaceAll(']', ')')
+    .replaceAll('<', '')
+    .replaceAll('>', '')
+    .replaceAll(RegExp(r'\s+'), ' ')
+    .trim();
+
+String _coachDateStr(DateTime d) =>
+    '${d.year}-${_pad2(d.month)}-${_pad2(d.day)}';
+
+int? _coachPositiveInt(dynamic v) {
+  final n = v is num ? v.toInt() : (v is String ? int.tryParse(v) : null);
+  return (n != null && n > 0) ? n : null;
+}
+
+double? _coachPositiveDouble(dynamic v) {
+  final n = v is num ? v.toDouble() : (v is String ? double.tryParse(v) : null);
+  return (n != null && n > 0) ? n : null;
+}
+
+String _coachFmtMins(int mins) {
+  final h = mins ~/ 60;
+  final m = mins % 60;
+  if (h > 0 && m > 0) return '${h}h ${m}m';
+  if (h > 0) return '${h}h';
+  return '${m}m';
+}
+
+String _coachFmtHours(double hours) {
+  final mins = (hours * 60).round();
+  return _coachFmtMins(mins);
+}
+
+/// Health Connect snapshot precomputed by the chat screen's guarded
+/// loader. Every field is nullable/empty when its source was missing
+/// or failed — the assembler omits those sections entirely.
+class CoachHealthSnapshot {
+  /// Sleep nights with real data (mins greater than 0).
+  final List<({String date, int mins})> sleepNights;
+
+  /// Current sleep debt as a positive number of minutes owed.
+  final int? sleepDebtMins;
+  final int? restingLatestBpm;
+  final String? restingLatestDate;
+  final double? restingAvg7Bpm;
+  final int? daytimeHrTodayBpm;
+  final double? hrvLatestMs;
+  final int? spikesLast7Total;
+  final int? spikesToday;
+  final List<({String name, int streak})> habits;
+  final BpRecord? latestBp;
+  final ({int sys, int dia})? bpAvg7;
+  final String? weatherLine;
+
+  const CoachHealthSnapshot({
+    this.sleepNights = const [],
+    this.sleepDebtMins,
+    this.restingLatestBpm,
+    this.restingLatestDate,
+    this.restingAvg7Bpm,
+    this.daytimeHrTodayBpm,
+    this.hrvLatestMs,
+    this.spikesLast7Total,
+    this.spikesToday,
+    this.habits = const [],
+    this.latestBp,
+    this.bpAvg7,
+    this.weatherLine,
+  });
+}
+
+int _logRelevanceRank(String categoryName) {
+  final n = categoryName.toLowerCase();
+  if (n.contains('symptom')) return 0;
+  if (n.contains('medication') || n.contains('med')) return 1;
+  if (n.contains('mood') || n.contains('energy')) return 2;
+  return 3;
+}
+
+/// Dated, categorized digest lines for the last 14 days of pull
+/// entries, most relevant first (symptom, then medication, then
+/// mood categories, then everything else; newest first inside a
+/// rank). Capped at [cap] lines. Plain text only.
+List<String> coachLogDigestLines(
+  List<Map<String, dynamic>> entries,
+  List<Map<String, dynamic>> categories, {
+  required DateTime now,
+  int cap = 20,
+}) {
+  final catNames = <int, String>{
+    for (final c in categories)
+      if (_asIntOr(c['id'], -1) >= 0)
+        _asIntOr(c['id'], 0): '${c['name'] ?? ''}'.trim(),
+  };
+  final cutoff = DateTime(now.year, now.month, now.day)
+      .subtract(const Duration(days: 14))
+      .millisecondsSinceEpoch;
+  final rows = <({int rank, int ts, String line})>[];
+  for (final e in entries) {
+    final ts = _asIntOr(e['timestamp'], 0);
+    if (ts < cutoff || ts <= 0) continue;
+    var body = coachPlainText('${e['body'] ?? ''}');
+    if (body.isEmpty) body = coachPlainText('${e['manualText'] ?? ''}');
+    if (body.isEmpty) continue;
+    if (body.length > 160) body = '${body.substring(0, 157)}...';
+    final catId = _asIntOr(e['categoryId'], 0);
+    final cat = catNames[catId] ?? 'General';
+    final date = _coachDateStr(DateTime.fromMillisecondsSinceEpoch(ts));
+    rows.add((
+      rank: _logRelevanceRank(cat),
+      ts: ts,
+      line: '$date $cat: $body',
+    ));
+  }
+  rows.sort((a, b) {
+    final r = a.rank.compareTo(b.rank);
+    return r != 0 ? r : b.ts.compareTo(a.ts);
+  });
+  return [for (final r in rows.take(cap)) r.line];
+}
+
+/// Feeling check-in history for the bodyLoadHistory request field:
+/// one plain line per energy day, 2026-10-12: 3/5, for the last 14
+/// days. Detection is the app's existing rule (Mood and Energy
+/// category plus the Daily Ranking chip, see feeling_checkin_card).
+String buildCoachBodyLoadHistory(
+  List<Map<String, dynamic>> entries,
+  List<Map<String, dynamic>> categories, {
+  required DateTime now,
+}) {
+  final cats = <QuickLogCategory>[];
+  for (final c in categories) {
+    try {
+      cats.add(QuickLogCategory.fromJson(c));
+    } catch (_) {}
+  }
+  final moodId = resolveFeelingCategoryId(cats);
+  if (moodId == null) return '';
+  final byDay = <String, ({int ts, int value})>{};
+  final cutoffDay = DateTime(now.year, now.month, now.day)
+      .subtract(const Duration(days: 14));
+  for (final e in entries) {
+    if (_asIntOr(e['categoryId'], -1) != moodId) continue;
+    if (!chipsContainFeelingTag('${e['chips'] ?? ''}')) continue;
+    final m = RegExp(r'Feeling:\s*([1-5])\s*/\s*5')
+        .firstMatch('${e['body'] ?? ''}');
+    if (m == null) continue;
+    final ts = _asIntOr(e['timestamp'], 0);
+    if (ts <= 0) continue;
+    final when = DateTime.fromMillisecondsSinceEpoch(ts);
+    final dayStart = feelingDayStart(when);
+    if (dayStart.isBefore(cutoffDay)) continue;
+    final key = _coachDateStr(dayStart);
+    final value = int.parse(m.group(1)!);
+    final prev = byDay[key];
+    if (prev == null || ts >= prev.ts) byDay[key] = (ts: ts, value: value);
+  }
+  final days = byDay.keys.toList()..sort();
+  return [for (final d in days) '$d: ${byDay[d]!.value}/5'].join('\n');
+}
+
+/// Assembles the compact plain-text health block from the profile
+/// map already in hand, the pull entries/categories, and a Health
+/// Connect snapshot. Failure-tolerant by construction: missing
+/// sources simply omit their section. Hard budget
+/// [coachHealthContextBudget]: the log digest is truncated first,
+/// then the oldest sleep nights.
+String buildCoachHealthContext({
+  Map<String, dynamic>? profile,
+  List<Map<String, dynamic>> entries = const [],
+  List<Map<String, dynamic>> categories = const [],
+  CoachHealthSnapshot? health,
+  required DateTime now,
+}) {
+  final p = profile ?? const <String, dynamic>{};
+  var logLines = coachLogDigestLines(entries, categories, now: now);
+  var nights = [...(health?.sleepNights ?? const <({String date, int mins})>[])]
+    ..sort((a, b) => a.date.compareTo(b.date));
+  if (nights.length > 7) nights = nights.sublist(nights.length - 7);
+
+  String assemble() {
+    final sections = <String>[];
+
+    // Professional / clinician updates first: native advice treats
+    // them as highest priority.
+    final pro = coachPlainText('${p['professionalUpdates'] ?? ''}');
+    if (pro.isNotEmpty) {
+      final capped = pro.length > 2000 ? pro.substring(0, 2000) : pro;
+      sections.add('CLINICIAN UPDATES (highest priority):\n$capped');
+    }
+
+    // Profile: demographics in the native enriched shape.
+    final demo = <String>[];
+    final gender = coachPlainText('${p['gender'] ?? ''}');
+    if (gender.isNotEmpty) demo.add('Gender: $gender');
+    final age = _coachPositiveInt(p['age']);
+    if (age != null) demo.add('Age: $age');
+    final heightCm = _coachPositiveDouble(p['heightCm']);
+    if (heightCm != null) {
+      demo.add('Height: ${heightCm.round()} cm');
+    }
+    final weightKg = _coachPositiveDouble(p['weightKg']);
+    if (weightKg != null) {
+      demo.add('Weight: ${(weightKg * 2.20462).round()} lbs');
+    }
+    if (demo.isNotEmpty) {
+      sections.add('Profile Info: ${demo.join(', ')}');
+    }
+
+    final conditions = TabsBackend.decodeProfileList(p['conditions']);
+    final condNames = [
+      for (final c in conditions)
+        if (coachPlainText('${c['name'] ?? ''}').isNotEmpty)
+          coachPlainText('${c['name'] ?? ''}'),
+    ];
+    if (condNames.isNotEmpty) {
+      sections.add('Conditions: ${condNames.join(', ')}');
+    }
+
+    // Active medications from the profile map in hand.
+    final medRows = TabsBackend.decodeProfileList(p['medications']);
+    final medLines = <String>[];
+    for (final row in medRows) {
+      final med = MedicationEntry.fromBlobRow(row);
+      if (med == null || med.isDeleted || med.isArchived) continue;
+      final parts = <String>[coachPlainText(med.name)];
+      if (med.dose.trim().isNotEmpty) {
+        parts.add('dose ${coachPlainText(med.dose)}');
+      }
+      if (med.rawFrequency.trim().isNotEmpty) {
+        parts.add(coachPlainText(med.rawFrequency));
+      }
+      medLines.add(parts.join(', '));
+    }
+    if (medLines.isNotEmpty) {
+      sections.add('Active medications:\n${medLines.map((l) => '- $l').join('\n')}');
+    }
+
+    // Today's vitals keys already in the profile map.
+    final vitals = <String>[];
+    final tSleep = _coachPositiveInt(p['todaySleepMins']);
+    if (tSleep != null) vitals.add('sleep last night ${_coachFmtMins(tSleep)}');
+    final tHr = _coachPositiveInt(p['todayAvgHr']);
+    if (tHr != null) vitals.add('daytime heart rate average $tHr bpm');
+    final tSpikesRaw = p['todaySpikes'];
+    final tSpikes = tSpikesRaw is num
+        ? tSpikesRaw.toInt()
+        : (tSpikesRaw is String ? int.tryParse(tSpikesRaw) : null);
+    if (tSpikes != null) {
+      vitals.add(tSpikes == 1 ? '1 heart rate spike today' : '$tSpikes heart rate spikes today');
+    }
+    final tDebtRaw = p['todaySleepDebt'];
+    final tDebt = tDebtRaw is num
+        ? tDebtRaw.toInt()
+        : (tDebtRaw is String ? int.tryParse(tDebtRaw) : null);
+    if (tDebt != null) {
+      vitals.add(tDebt == 0
+          ? 'sleep debt none'
+          : 'sleep debt about ${_coachFmtMins(tDebt.abs())}');
+    }
+    if (vitals.isNotEmpty) {
+      sections.add('Today from profile: ${vitals.join('; ')}.');
+    }
+
+    // Health Connect sections.
+    if (health != null) {
+      if (nights.isNotEmpty) {
+        final avgMins =
+            nights.fold<int>(0, (a, n) => a + n.mins) / nights.length;
+        final last = nights.last;
+        final perNight =
+            nights.map((n) => '${n.date} ${_coachFmtMins(n.mins)}').join(', ');
+        var line =
+            'Sleep last ${nights.length} nights: avg ${_coachFmtHours(avgMins / 60)}; '
+            'last night ${_coachFmtMins(last.mins)}';
+        final debt = health.sleepDebtMins;
+        if (debt != null && debt > 0) {
+          line += '; sleep debt about ${_coachFmtMins(debt)}';
+        }
+        sections.add('$line.\nPer night: $perNight.');
+      }
+      final hrParts = <String>[];
+      if (health.restingLatestBpm != null && health.restingLatestBpm! > 0) {
+        hrParts.add('resting heart rate ${health.restingLatestBpm} bpm'
+            '${health.restingLatestDate != null ? ' on ${health.restingLatestDate}' : ''}');
+      }
+      if (health.restingAvg7Bpm != null && health.restingAvg7Bpm! > 0) {
+        hrParts.add(
+            'resting heart rate 7 day average ${health.restingAvg7Bpm!.round()} bpm');
+      }
+      if (health.daytimeHrTodayBpm != null && health.daytimeHrTodayBpm! > 0) {
+        hrParts.add(
+            'daytime heart rate today (7am to 11pm) average ${health.daytimeHrTodayBpm} bpm');
+      }
+      if (health.hrvLatestMs != null && health.hrvLatestMs! > 0) {
+        hrParts.add('latest HRV ${health.hrvLatestMs!.round()} ms');
+      }
+      if (hrParts.isNotEmpty) {
+        sections.add('Heart: ${hrParts.join('; ')}.');
+      }
+      if (health.spikesLast7Total != null || health.spikesToday != null) {
+        final parts = <String>[];
+        if (health.spikesLast7Total != null) {
+          parts.add('${health.spikesLast7Total} heart rate spikes in the last 7 days');
+        }
+        if (health.spikesToday != null) {
+          parts.add('${health.spikesToday} today');
+        }
+        sections.add('Heart rate spikes: ${parts.join('; ')}.');
+      }
+      if (health.latestBp != null) {
+        final bp = health.latestBp!;
+        if (bp.systolic > 0 && bp.diastolic > 0) {
+          var line =
+              'Blood pressure: latest ${bp.systolic}/${bp.diastolic} mmHg';
+          if (health.bpAvg7 != null) {
+            line +=
+                '; 7 day average ${health.bpAvg7!.sys}/${health.bpAvg7!.dia} mmHg';
+          }
+          sections.add('$line.');
+        }
+      }
+      if (health.habits.isNotEmpty) {
+        final lines = [
+          for (final h in health.habits)
+            '- ${coachPlainText(h.name)}: current streak ${h.streak} ${h.streak == 1 ? 'day' : 'days'}',
+        ];
+        sections.add('Habits:\n${lines.join('\n')}');
+      }
+      if (health.weatherLine != null &&
+          health.weatherLine!.trim().isNotEmpty) {
+        sections.add('Weather today: ${coachPlainText(health.weatherLine!)}.');
+      }
+    }
+
+    // Goals: event counters (day counts like Settings and Home)
+    // plus an active Project Focus test when it parses cheaply.
+    final goalLines = <String>[];
+    final counterRows = TabsBackend.decodeProfileList(p['eventCounters']);
+    for (final row in counterRows) {
+      try {
+        final c = EventCounterItem.fromMap(row);
+        if (c.isArchived || c.name.trim().isEmpty) continue;
+        goalLines.add(
+            '- ${coachPlainText(c.name)}: ${c.daysLabel(now: now)}');
+      } catch (_) {}
+    }
+    try {
+      final focusDecoded = TabsBackend.decodeProfileList(p['focusState']);
+      final tests = collectFocusTests(focusDecoded)
+          .where((t) => !t.isCompletedAt(now.millisecondsSinceEpoch))
+          .toList();
+      if (tests.isNotEmpty) {
+        final t = tests.first;
+        final startDay = DateTime.fromMillisecondsSinceEpoch(t.startTimestamp);
+        final dayCount = DateTime(now.year, now.month, now.day)
+                .difference(DateTime(startDay.year, startDay.month, startDay.day))
+                .inDays +
+            1;
+        final logged = t.logs.values.where((v) => v).length;
+        goalLines.add(
+            '- Active Project Focus test: ${coachPlainText(t.title)}, day $dayCount of ${t.durationDays}, logged $logged ${logged == 1 ? 'day' : 'days'} so far');
+      }
+    } catch (_) {}
+    if (goalLines.isNotEmpty) {
+      sections.add('Goals and event counters:\n${goalLines.join('\n')}');
+    }
+
+    if (logLines.isNotEmpty) {
+      sections.add(
+          'Recent logs, last 14 days, most relevant first:\n${logLines.join('\n')}');
+    }
+    return sections.join('\n\n');
+  }
+
+  var result = assemble();
+  // Budget: truncate the log digest first.
+  while (result.length > coachHealthContextBudget && logLines.isNotEmpty) {
+    logLines = logLines.sublist(0, logLines.length - 1);
+    result = assemble();
+  }
+  // Then drop the oldest sleep nights.
+  while (result.length > coachHealthContextBudget && nights.length > 1) {
+    nights = nights.sublist(1);
+    result = assemble();
+  }
+  if (result.length > coachHealthContextBudget) {
+    result = result.substring(0, coachHealthContextBudget);
+  }
+  return result;
 }
 
 /// Round 48 fix round (Vera F6) — decodes a profile blob into its
@@ -728,7 +1159,13 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
     try {
       final pull = await _backend.fetchSyncPull();
       if (!mounted) return;
-      final unlimited = pull?['isUnlimited'] == true;
+      // Round 55: unlocked = isUnlimited OR isAdmin, both strictly
+      // from the sync pull (fail-closed: a failed/null pull leaves
+      // _unlocked false). The server already ORs admin into
+      // isUnlimited, but the client rule now matches the spec and
+      // the Settings membership derivation exactly.
+      final unlimited =
+          pull?['isUnlimited'] == true || pull?['isAdmin'] == true;
       setState(() {
         _pull = pull;
         _unlocked = unlimited;
@@ -1057,6 +1494,10 @@ class CoachChatScreen extends StatefulWidget {
   /// notifications service is used).
   final ReminderNotificationService? notificationService;
 
+  /// Injectable Health Connect seam for the Round 55 context loader.
+  /// Null in production (a default [HealthConnectService] is used).
+  final HealthConnectService? healthConnectService;
+
   final String? sessionId;
   final String sessionTitle;
   final int sessionCreatedAt;
@@ -1069,6 +1510,7 @@ class CoachChatScreen extends StatefulWidget {
     super.key,
     this.backend,
     this.notificationService,
+    this.healthConnectService,
     this.sessionId,
     this.sessionTitle = 'New Chat',
     this.sessionCreatedAt = 0,
@@ -1097,6 +1539,14 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
   final ScrollController _scroll = ScrollController();
   bool _sending = false;
   bool _actionBusy = false;
+
+  // Round 55 Step 1: the health block + body-load history are
+  // assembled ONCE per chat session and cached here; a new session
+  // (a new screen state) assembles fresh. Every source inside the
+  // loader is failure-tolerant, so a failed source simply omits
+  // its section and never blocks a send.
+  String? _cachedHealthContext;
+  String? _cachedBodyLoadHistory;
 
   @override
   void initState() {
@@ -1173,6 +1623,159 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
   void _notifySyncFailure() {
     _snack('Could not save this chat to your account. Check your '
         'connection — it may not appear on your other devices.');
+  }
+
+  /// Guarded Health Connect read (the Sleep/Key Metrics pattern):
+  /// a timeout or throw becomes null, never a blocked send.
+  Future<T?> _coachGuarded<T>(Future<T> Function() call) async {
+    try {
+      return await call().timeout(const Duration(seconds: 5));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<CoachHealthSnapshot> _loadCoachHealthSnapshot() async {
+    try {
+      final hc = widget.healthConnectService ?? HealthConnectService();
+      final now = DateTime.now();
+      final todayStr = _coachDateStr(now);
+      List<({String date, int mins})> sleepNights = const [];
+      int? sleepDebt;
+      int? restingLatest;
+      String? restingDate;
+      double? restingAvg;
+      int? daytimeHr;
+      double? hrv;
+      int? spikesTotal;
+      int? spikesToday;
+      var bpRecords = <BpRecord>[];
+      final connected = await _coachGuarded(() => hc.isConnected()) ?? false;
+      if (connected) {
+        final sleepHist =
+            await _coachGuarded(() => hc.readSleepHistory(10)) ?? const [];
+        final sleepMap = <String, int>{
+          for (final r in sleepHist)
+            if (r.mins > 0) r.date: r.mins,
+        };
+        sleepNights = [
+          for (final e in sleepMap.entries) (date: e.key, mins: e.value),
+        ];
+        final debt = sleepDebtMinsOrNull(sleepMap, todayStr);
+        if (debt != null && debt < 0) sleepDebt = -debt;
+        final restingHist =
+            await _coachGuarded(() => hc.readRestingHrHistory(7)) ?? const [];
+        final restingValid = restingHist.where((r) => r.bpm > 0).toList()
+          ..sort((a, b) => a.date.compareTo(b.date));
+        if (restingValid.isNotEmpty) {
+          restingLatest = restingValid.last.bpm;
+          restingDate = restingValid.last.date;
+          restingAvg = restingValid.fold<int>(0, (a, r) => a + r.bpm) /
+              restingValid.length;
+        }
+        final samples =
+            await _coachGuarded(() => hc.readHeartRateSamples(todayStr)) ??
+                const <HrSample>[];
+        daytimeHr = daytimeHeartRateAvg(samples);
+        for (var i = 0; i < 7 && hrv == null; i++) {
+          final d = _coachDateStr(now.subtract(Duration(days: i)));
+          final v = await _coachGuarded(() => hc.readHrvRmssd(d));
+          if (v != null && v > 0) hrv = v;
+        }
+        final spikeCounts =
+            await _coachGuarded(() => hc.readSpikeCounts(7)) ?? const [];
+        if (spikeCounts.isNotEmpty) {
+          spikesTotal = spikeCounts.fold<int>(0, (a, r) => a + r.count);
+          for (final r in spikeCounts) {
+            if (r.date == todayStr) spikesToday = r.count;
+          }
+        }
+        bpRecords = [
+          ...?await _coachGuarded(() => hc.readBloodPressure(7)),
+        ];
+      }
+      try {
+        final manual = await _backend.fetchManualBpLogs();
+        bpRecords = [...bpRecords, ...manual];
+      } catch (_) {}
+      bpRecords = bpRecords
+          .where((r) => r.systolic > 0 && r.diastolic > 0)
+          .toList();
+      BpRecord? latestBp;
+      ({int sys, int dia})? bpAvg;
+      if (bpRecords.isNotEmpty) {
+        latestBp = bpRecords.reduce(
+            (a, b) => a.timeEpochMs >= b.timeEpochMs ? a : b);
+        final cutoff =
+            now.subtract(const Duration(days: 7)).millisecondsSinceEpoch;
+        final recent =
+            bpRecords.where((r) => r.timeEpochMs >= cutoff).toList();
+        if (recent.isNotEmpty) {
+          bpAvg = (
+            sys: (recent.fold<int>(0, (a, r) => a + r.systolic) /
+                    recent.length)
+                .round(),
+            dia: (recent.fold<int>(0, (a, r) => a + r.diastolic) /
+                    recent.length)
+                .round(),
+          );
+        }
+      }
+      var habitRows = const <({String name, int streak})>[];
+      try {
+        final habits = await _backend.fetchHabitsOrNull();
+        if (habits != null) {
+          habitRows = [
+            for (final h in habits)
+              if (h.title.trim().isNotEmpty)
+                (name: h.title, streak: habitStreak(h.logs)),
+          ];
+        }
+      } catch (_) {}
+      // Weather is intentionally omitted in Round 55: the weather
+      // client's 5-minute cache is per-instance (Home constructs a
+      // fresh client per call), so there is no shared cached entry
+      // for the coach to reuse without a new network fetch on the
+      // send path. See the Round 55 report.
+      return CoachHealthSnapshot(
+        sleepNights: sleepNights,
+        sleepDebtMins: sleepDebt,
+        restingLatestBpm: restingLatest,
+        restingLatestDate: restingDate,
+        restingAvg7Bpm: restingAvg,
+        daytimeHrTodayBpm: daytimeHr,
+        hrvLatestMs: hrv,
+        spikesLast7Total: spikesTotal,
+        spikesToday: spikesToday,
+        habits: habitRows,
+        latestBp: latestBp,
+        bpAvg7: bpAvg,
+      );
+    } catch (_) {
+      return const CoachHealthSnapshot();
+    }
+  }
+
+  Future<void> _ensureCoachContext() async {
+    if (_cachedHealthContext != null) return;
+    CoachHealthSnapshot snapshot;
+    try {
+      snapshot = await _loadCoachHealthSnapshot();
+    } catch (_) {
+      snapshot = const CoachHealthSnapshot();
+    }
+    _cachedHealthContext = buildCoachHealthContext(
+      profile: widget.profile,
+      entries: widget.pullEntries,
+      categories: widget.pullCategories,
+      health: snapshot,
+      now: DateTime.now(),
+    );
+    _cachedBodyLoadHistory = buildCoachBodyLoadHistory(
+      widget.pullEntries,
+      widget.pullCategories,
+      now: DateTime.now(),
+    );
   }
 
   Future<void> _send() async {
@@ -1260,13 +1863,16 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
         .map((m) => m.toJson())
         .toList();
     final kb = '${widget.profile?['knowledgeBase'] ?? ''}'.trim();
+    await _ensureCoachContext();
     final body = {
       'messages': history,
       'userContext': coachEnrichedUserContext(
         widget.profile?['userContext']?.toString(),
         now: DateTime.now(),
+        healthContext: _cachedHealthContext ?? '',
       ),
       'knowledgeBase': kb.isEmpty ? null : kb,
+      'bodyLoadHistory': _cachedBodyLoadHistory ?? '',
       'recentEntries': [
         for (final e in widget.pullEntries.take(10))
           {
