@@ -314,22 +314,32 @@ void main() {
       expect(find.text('Drink water and rest.'), findsOneWidget);
       expect(find.text(saveFailureBanner), findsNothing);
 
-      // The save sequence, in order (the title call is backgrounded
-      // by design, so it is checked separately below): session
-      // upsert → history+user messages → coach call → session bump
-      // → coach message.
-      final sequence = [
-        for (final p in server.paths)
-          if (p != '/api/ai/coach/title') p,
+      // The save sequence: session upsert → history+user messages
+      // happen FIRST, the coach call follows, and the reply lands as
+      // a session bump + the coach message. The background title
+      // fetch (its own session upsert) and the one-time context
+      // loads (sync pull / habits) interleave freely between those
+      // anchors, so the anchors and the totals are what is pinned.
+      final paths = server.paths;
+      final syncPaths = [
+        for (final p in paths)
+          if (p == '/api/sync/coach_sessions' ||
+              p == '/api/sync/coach_messages')
+            p,
       ];
-      expect(sequence, [
-        '/api/sync/coach_sessions',
-        '/api/sync/coach_messages',
-        '/api/ai/coach',
-        '/api/sync/coach_sessions',
-        '/api/sync/coach_messages',
-      ]);
-      expect(server.paths, contains('/api/ai/coach/title'));
+      expect(syncPaths.first, '/api/sync/coach_sessions');
+      expect(syncPaths[1], '/api/sync/coach_messages');
+      expect(syncPaths.last, '/api/sync/coach_messages');
+      expect(syncPaths[syncPaths.length - 2], '/api/sync/coach_sessions');
+      // 3 session upserts (create, AI title, reply bump) and 2
+      // message batches (history+user, then the coach reply).
+      expect(
+          syncPaths.where((p) => p.endsWith('coach_sessions')), hasLength(3));
+      expect(
+          syncPaths.where((p) => p.endsWith('coach_messages')), hasLength(2));
+      expect(paths.indexOf('/api/ai/coach'),
+          greaterThan(paths.indexOf('/api/sync/coach_messages')));
+      expect(paths, contains('/api/ai/coach/title'));
 
       // Exact payload shapes (native DTO contract).
       final firstSession = server.log
