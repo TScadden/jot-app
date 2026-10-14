@@ -226,6 +226,45 @@ class HomeDataCache {
     return changed;
   }
 
+  /// Round 59 — mirrors a JUST-CREATED entry's effect on today's
+  /// log count into the snapshot, preserving every other vitals
+  /// field, so the caller can [persist] (which pushes the widget)
+  /// and the strip + widget move the moment an entry is created —
+  /// not whenever Home next happens to reload.
+  ///
+  /// Why this exists: entry creation lives OUTSIDE Home (Quick Log's
+  /// save / re-log, History's repeat / delete). Those paths updated
+  /// only [QuickLogCache]; the Home snapshot kept the count from its
+  /// last full load, and the widget kept showing it (founder,
+  /// Round 58 phone test: strip 7 after a Home reload, widget 1).
+  ///
+  /// Staleness guard (same policy as [snapshot]): the preserved
+  /// biometrics are carried over ONLY when the cached vitals are
+  /// from today — a process living past local midnight must not
+  /// resurrect yesterday's heart rate / calories / sleep as today's
+  /// by re-stamping them. Stale or absent vitals seed a count-only
+  /// vitals section (biometrics honestly null → "--"), which the
+  /// next Home load replaces wholesale via [applyVitals].
+  /// Returns true when the in-memory snapshot changed.
+  bool applyLogCountToday(int count, {DateTime? now}) {
+    final at = now ?? DateTime.now();
+    final vitalsFresh = _vitalsLoaded &&
+        _fetchedAt != null &&
+        _dayString(_fetchedAt!) == _dayString(at);
+    final base = vitalsFresh ? _vitals : null;
+    final next = TodayVitals(
+      heartRate: base?.heartRate,
+      activeCalories: base?.activeCalories,
+      sleepMinutes: base?.sleepMinutes,
+      logCountToday: count,
+    );
+    final changed = !vitalsFresh || !_vitalsEqual(_vitals, next);
+    _vitals = next;
+    _vitalsLoaded = true;
+    _fetchedAt = at;
+    return changed;
+  }
+
   /// Stores a completed streak load. Nulls are honest (logged out or
   /// backend failure) and cached as "loaded, empty". Returns true when
   /// the in-memory snapshot changed.

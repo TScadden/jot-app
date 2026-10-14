@@ -8,6 +8,9 @@ import 'package:tabs_lab/src/data/widget_sync.dart';
 /// biometric 0 / null is a failed read and renders "--", never a
 /// number; the log count is real even at 0; sleep reuses the strip's
 /// formatter; signed-out payloads carry no numbers at all.
+/// Round 59 amended the flame cell: it now carries the strip's
+/// active calories (Round 50 put streak days there — the founder's
+/// phone test caught the divergence).
 HomeCacheSnapshot _snap({
   TodayVitals? vitals,
   bool vitalsLoaded = true,
@@ -25,8 +28,8 @@ HomeCacheSnapshot _snap({
 
 void main() {
   group('WidgetSync.buildPayload', () {
-    test('normal values map preformatted, streak in the flame cell',
-        () {
+    test('normal values map preformatted, calories in the flame '
+        'cell (Round 59 strip parity)', () {
       final payload = WidgetSync.buildPayload(
         _snap(
           vitals: const TodayVitals(
@@ -41,8 +44,9 @@ void main() {
       );
       expect(payload.signedIn, isTrue);
       expect(payload.heartRate, '72');
-      // The flame cell is the streak days, NOT active calories.
-      expect(payload.streak, '12');
+      // Round 59: the flame cell is the strip's active calories,
+      // NOT the streak days (12) — Round 50's substitution is gone.
+      expect(payload.calories, '310');
       expect(payload.logs, '3');
       expect(payload.sleep, '8h2m');
     });
@@ -75,7 +79,9 @@ void main() {
       expect(payload.sleep, '--');
       // Same rule as the strip: `v?.logCountToday ?? 0`.
       expect(payload.logs, '0');
-      expect(payload.streak, '4');
+      // No vitals section → no calories either; the snapshot's
+      // streak (4) must NOT leak into the flame cell (Round 59).
+      expect(payload.calories, '--');
     });
 
     test('sleep 0 → "--" and sleep null → "--"', () {
@@ -115,17 +121,22 @@ void main() {
       expect(payload.logs, '0');
     });
 
-    test('streak null → "--"; streak 0 is an honest count', () {
+    test('calories null → "--"; calories 0 is a failed read → "--" '
+        '(biometric rule; the repository nulls it before the strip)',
+        () {
       final missing = WidgetSync.buildPayload(
         _snap(vitals: const TodayVitals(), currentStreak: null),
         signedIn: true,
       );
-      expect(missing.streak, '--');
+      expect(missing.calories, '--');
       final zero = WidgetSync.buildPayload(
-        _snap(vitals: const TodayVitals(), currentStreak: 0),
+        _snap(
+          vitals: const TodayVitals(activeCalories: 0),
+          currentStreak: 0,
+        ),
         signedIn: true,
       );
-      expect(zero.streak, '0');
+      expect(zero.calories, '--');
     });
 
     test('signed-out payload carries no numbers at all', () {
@@ -142,7 +153,7 @@ void main() {
       );
       expect(payload.signedIn, isFalse);
       expect(payload.heartRate, '--');
-      expect(payload.streak, '--');
+      expect(payload.calories, '--');
       expect(payload.logs, '--');
       expect(payload.sleep, '--');
       // No digit from the snapshot may leak into any cell.
@@ -173,6 +184,7 @@ void main() {
         _snap(
           vitals: const TodayVitals(
             heartRate: 68,
+            activeCalories: 240,
             sleepMinutes: 426,
             logCountToday: 2,
           ),
@@ -182,7 +194,7 @@ void main() {
       );
       expect(saved[WidgetSync.keySignedIn], isTrue);
       expect(saved[WidgetSync.keyHeartRate], '68');
-      expect(saved[WidgetSync.keyStreak], '7');
+      expect(saved[WidgetSync.keyCalories], '240');
       expect(saved[WidgetSync.keyLogs], '2');
       expect(saved[WidgetSync.keySleep], '7h6m');
       expect(updateCount, 1);
@@ -200,7 +212,7 @@ void main() {
       await WidgetSync.clear();
       expect(saved[WidgetSync.keySignedIn], isFalse);
       expect(saved[WidgetSync.keyHeartRate], '--');
-      expect(saved[WidgetSync.keyStreak], '--');
+      expect(saved[WidgetSync.keyCalories], '--');
       expect(saved[WidgetSync.keyLogs], '--');
       expect(saved[WidgetSync.keySleep], '--');
       expect(updateCount, 2);

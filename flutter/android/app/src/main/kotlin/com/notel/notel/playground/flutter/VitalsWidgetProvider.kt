@@ -22,6 +22,13 @@ import es.antonborri.home_widget.HomeWidgetProvider
 /// Keys must match `WidgetSync` in
 /// `lib/src/data/widget_sync.dart`.
 ///
+/// Round 59 — the flame cell carries the strip's active calories,
+/// exactly like the in-app VitalsStrip (Round 50 put streak days
+/// there). [KEY_CALORIES] keeps the Round 50 wire value
+/// "widget_streak": an opaque storage identifier shared with the
+/// layout's view id and already-placed widgets' stores — only the
+/// VALUE stored under it changed meaning, to the strip's field.
+///
 /// Round 52 hardening (behavior + design tokens unchanged):
 /// - `onUpdate` can never throw into the launcher: any failure
 ///   falls back to the signed-out face (zero data dependencies),
@@ -38,7 +45,7 @@ class VitalsWidgetProvider : HomeWidgetProvider() {
     companion object {
         const val KEY_SIGNED_IN = "widget_signed_in"
         const val KEY_HEART_RATE = "widget_heart_rate"
-        const val KEY_STREAK = "widget_streak"
+        const val KEY_CALORIES = "widget_streak"
         const val KEY_LOGS = "widget_logs"
         const val KEY_SLEEP = "widget_sleep"
         const val PLACEHOLDER = "--"
@@ -96,7 +103,7 @@ class VitalsWidgetProvider : HomeWidgetProvider() {
                 )
                 setTextViewText(
                     R.id.widget_streak,
-                    textValue(all, KEY_STREAK),
+                    textValue(all, KEY_CALORIES),
                 )
                 setTextViewText(
                     R.id.widget_logs,

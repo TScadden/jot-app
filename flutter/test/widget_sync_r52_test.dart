@@ -87,7 +87,7 @@ HomeCacheSnapshot _snap({
 const _signedOutMap = <String, Object?>{
   WidgetSync.keySignedIn: false,
   WidgetSync.keyHeartRate: '--',
-  WidgetSync.keyStreak: '--',
+  WidgetSync.keyCalories: '--',
   WidgetSync.keyLogs: '--',
   WidgetSync.keySleep: '--',
 };
@@ -120,7 +120,7 @@ void main() {
       expect(bridge.updateAttempts, 1);
     });
 
-    test('signed in, no vitals section and no streak → "--" per '
+    test('signed in, no vitals section → "--" per '
         'biometric cell, logs "0" (real count, strip parity)',
         () async {
       await WidgetSync.pushSnapshot(
@@ -130,7 +130,7 @@ void main() {
       expect(bridge.saved, const <String, Object?>{
         WidgetSync.keySignedIn: true,
         WidgetSync.keyHeartRate: '--',
-        WidgetSync.keyStreak: '--',
+        WidgetSync.keyCalories: '--',
         WidgetSync.keyLogs: '0',
         WidgetSync.keySleep: '--',
       });
@@ -145,7 +145,7 @@ void main() {
       );
       expect(bridge.saved[WidgetSync.keySignedIn], isTrue);
       expect(bridge.saved[WidgetSync.keyHeartRate], '--');
-      expect(bridge.saved[WidgetSync.keyStreak], '--');
+      expect(bridge.saved[WidgetSync.keyCalories], '--');
       expect(bridge.saved[WidgetSync.keySleep], '--');
       expect(bridge.updateAttempts, 1);
     });
@@ -161,7 +161,7 @@ void main() {
       );
       expect(bridge.saved[WidgetSync.keyHeartRate], '65');
       expect(bridge.saved[WidgetSync.keySleep], '--');
-      expect(bridge.saved[WidgetSync.keyStreak], '--');
+      expect(bridge.saved[WidgetSync.keyCalories], '--');
       expect(bridge.saved[WidgetSync.keyLogs], '2');
       expect(bridge.updateAttempts, 1);
     });
@@ -195,17 +195,19 @@ void main() {
           const WidgetPayload(
             signedIn: true,
             heartRate: '--',
-            streak: '--',
+            calories: '--',
             logs: '0',
             sleep: '--',
           ),
         ),
         (
-          'signed in, failed reads (HR 0 / sleep 0) → "--"; honest '
-              'zeros (streak 0 / logs 0) stay "0"',
+          'signed in, failed reads (HR 0 / calories 0 / sleep 0) '
+              '→ "--"; the honest zero (logs 0) stays "0"; a streak '
+              'of 0 no longer leaks into the flame cell (Round 59)',
           _snap(
             vitals: const TodayVitals(
               heartRate: 0,
+              activeCalories: 0,
               sleepMinutes: 0,
               logCountToday: 0,
             ),
@@ -215,7 +217,7 @@ void main() {
           const WidgetPayload(
             signedIn: true,
             heartRate: '--',
-            streak: '0',
+            calories: '--',
             logs: '0',
             sleep: '--',
           ),
@@ -227,7 +229,7 @@ void main() {
           const WidgetPayload(
             signedIn: true,
             heartRate: '--',
-            streak: '--',
+            calories: '--',
             logs: '0',
             sleep: '7h6m',
           ),
@@ -255,7 +257,7 @@ void main() {
       expect(bridge.saveAttempts, const [
         WidgetSync.keySignedIn,
         WidgetSync.keyHeartRate,
-        WidgetSync.keyStreak,
+        WidgetSync.keyCalories,
         WidgetSync.keyLogs,
         WidgetSync.keySleep,
       ]);
@@ -266,7 +268,7 @@ void main() {
       expect(bridge.saved[WidgetSync.keySignedIn], isA<bool>());
       for (final key in [
         WidgetSync.keyHeartRate,
-        WidgetSync.keyStreak,
+        WidgetSync.keyCalories,
         WidgetSync.keyLogs,
         WidgetSync.keySleep,
       ]) {
@@ -324,7 +326,7 @@ void main() {
         'Round 52 fix (per-save isolation + update-in-finally): '
         'remaining saves still land and the update IS requested',
         () async {
-      bridge.failOnSaveKey = WidgetSync.keyStreak;
+      bridge.failOnSaveKey = WidgetSync.keyCalories;
       await expectLater(
         WidgetSync.pushSnapshot(
           _snap(
@@ -339,11 +341,11 @@ void main() {
       expect(bridge.saveAttempts, const [
         WidgetSync.keySignedIn,
         WidgetSync.keyHeartRate,
-        WidgetSync.keyStreak,
+        WidgetSync.keyCalories,
         WidgetSync.keyLogs,
         WidgetSync.keySleep,
       ]);
-      expect(bridge.saved.containsKey(WidgetSync.keyStreak), isFalse);
+      expect(bridge.saved.containsKey(WidgetSync.keyCalories), isFalse);
       expect(bridge.saved[WidgetSync.keyLogs], '1');
       expect(bridge.saved.containsKey(WidgetSync.keySleep), isTrue);
       // The partial payload is never left un-refreshed.
@@ -373,16 +375,19 @@ void main() {
       final cache = HomeDataCache.instance;
       cache.applyVitals(const TodayVitals(
         heartRate: 70,
+        activeCalories: 310,
         sleepMinutes: 400,
         logCountToday: 1,
       ));
+      // Round 59: the streak (3) is loaded into the same snapshot
+      // and must NOT reach the widget's flame cell — calories do.
       cache.applyStreak(3, 9);
       await cache.persist();
       await pumpEventQueue();
       expect(bridge.saved, const <String, Object?>{
         WidgetSync.keySignedIn: true,
         WidgetSync.keyHeartRate: '70',
-        WidgetSync.keyStreak: '3',
+        WidgetSync.keyCalories: '310',
         WidgetSync.keyLogs: '1',
         WidgetSync.keySleep: '6h40m',
       });

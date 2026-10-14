@@ -60,7 +60,7 @@ class _FakeBridge {
 const _signedOutMap = <String, Object?>{
   WidgetSync.keySignedIn: false,
   WidgetSync.keyHeartRate: '--',
-  WidgetSync.keyStreak: '--',
+  WidgetSync.keyCalories: '--',
   WidgetSync.keyLogs: '--',
   WidgetSync.keySleep: '--',
 };
@@ -98,6 +98,7 @@ void main() {
         snapshot: _snap(
           vitals: const TodayVitals(
             heartRate: 72,
+            activeCalories: 310,
             sleepMinutes: 482,
             logCountToday: 3,
           ),
@@ -107,7 +108,8 @@ void main() {
       expect(bridge.saved, const <String, Object?>{
         WidgetSync.keySignedIn: true,
         WidgetSync.keyHeartRate: '72',
-        WidgetSync.keyStreak: '12',
+        // Round 59: calories (310), never the streak (12).
+        WidgetSync.keyCalories: '310',
         WidgetSync.keyLogs: '3',
         WidgetSync.keySleep: '8h2m',
       });

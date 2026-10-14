@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -435,6 +436,17 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
     return maxId + 1;
   }
 
+  /// Round 59 — after any successful entry creation on this screen,
+  /// today's count changed, and the Home strip + home-screen widget
+  /// render that count from [HomeDataCache]. Mirror the fresh count
+  /// there and persist: persist() is the widget-push choke point, so
+  /// the widget refreshes on entry creation itself, not on Home's
+  /// next reload. Fire-and-forget; neither call can throw.
+  void _syncHomeEntryCount() {
+    HomeDataCache.instance.applyLogCountToday(_todayCount);
+    unawaited(HomeDataCache.instance.persist());
+  }
+
   /// Native `saveEntry()`: chipless manual notes file under the
   /// "general" category (native `findCategoryIdBySlug("general",
   /// defaultId = 7)`); here resolved against the real category set.
@@ -494,6 +506,11 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
         recentSuggestions: _recentSuggestions,
       );
       unawaited(QuickLogCache.instance.persist());
+      // Round 59: the new entry also moves the Home strip's count —
+      // mirror it into the Home snapshot and persist (which pushes
+      // the home-screen widget), so the widget shows the new count
+      // immediately instead of the count from Home's last load.
+      _syncHomeEntryCount();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Entry logged · $_todayCount today')),
@@ -530,6 +547,8 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
       });
       QuickLogCache.instance.applyCounts(todayCount: _todayCount);
       unawaited(QuickLogCache.instance.persist());
+      // Round 59: same Home/widget count sync as the save path.
+      _syncHomeEntryCount();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Entry logged · $_todayCount today')),
       );

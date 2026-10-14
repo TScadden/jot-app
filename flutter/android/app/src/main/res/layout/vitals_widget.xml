@@ -3,13 +3,39 @@
      in-app VitalsStrip (lib/src/features/home/vitals_strip.dart)
      as a RemoteViews twin, elevated to iOS-widget polish.
      Four cells, NO text labels: icon (18dp, tinted with the strip's
-     exact accent) left of a bold white 20sp value. Cell order and
-     icons match the strip; the flame cell shows the current streak
-     days on the widget (founder spec, differs from the strip's
-     calories cell). Colors (from lib/src/theme/notel_colors.dart):
-     primary #7C6EFF, error #FF6B6B, success #4CAF50, info #42A5F5,
-     text #FFFFFFFF (legacyDarkOnDark), divider #26FFFFFF
-     (legacyDarkDivider, white at 15%).
+     exact accent) left of a bold white value. Cell order and icons
+     match the strip. Colors (from
+     lib/src/theme/notel_colors.dart): primary #7C6EFF, error
+     #FF6B6B, success #4CAF50, info #42A5F5, text #FFFFFFFF
+     (legacyDarkOnDark), divider #26FFFFFF (legacyDarkDivider,
+     white at 15%).
+
+     Round 59 — strip parity + no wrapped values. The flame cell
+     now carries the strip's ACTIVE CALORIES (Round 50 put streak
+     days there; WidgetSync maps the strip's field now — the view
+     id/widget_streak storage key are opaque identifiers and are
+     unchanged). The sleep value ("8h36m") wrapped its "m" onto a
+     second line on the founder's phone: unlike the in-app strip,
+     a launcher cell is a fixed weight-1 slice, so wrap_content
+     text reflows when the value exceeds the slice. Every value
+     TextView therefore carries android:singleLine="true" +
+     android:maxLines="1" (plain TextView attributes the
+     RemoteViews inflater honors — the classic pre-autosize
+     mechanism; android:autoSizeTextType is AppCompat-only and is
+     NOT available to a RemoteViews TextView in the launcher's
+     process, and ellipsize would amputate the sleep unit, so
+     neither is used). The sleep cell — the only variable-length
+     value — renders at 16sp instead of 20sp. Measured with
+     Roboto Bold advances (digit 0.556em, h 0.551em, m 0.832em):
+     the founder's "8h36m" is 3.05em — 61dp at 20sp, which is the
+     entire text space of a weight-1 cell at the launcher's
+     4-cell width (icon 18dp + 6dp gap inside an ~85dp cell), so
+     it wrapped; at 16sp it is 49dp, and even a 10h59m night
+     ("10h59m", 3.61em) is 58dp — both fit on one line. The
+     fixed-width numeric cells stay at 20sp (3-digit heart rate
+     33dp, 4-digit calories 44dp). includeFontPadding="false"
+     keeps the single line vertically tight in the 56dp-minimum
+     height.
 
      Round 58 — RemoteViews inflation safety (the values face
      inflated as a bare black bar in the launcher): the dividers
@@ -55,7 +81,10 @@
             android:text="--"
             android:textColor="#FFFFFFFF"
             android:textSize="20sp"
-            android:textStyle="bold" />
+            android:textStyle="bold"
+            android:singleLine="true"
+            android:maxLines="1"
+            android:includeFontPadding="false" />
     </LinearLayout>
 
     <FrameLayout
@@ -74,7 +103,7 @@
         <ImageView
             android:layout_width="18dp"
             android:layout_height="18dp"
-            android:contentDescription="Streak"
+            android:contentDescription="Calories"
             android:src="@drawable/ic_widget_flame" />
 
         <TextView
@@ -85,7 +114,10 @@
             android:text="--"
             android:textColor="#FFFFFFFF"
             android:textSize="20sp"
-            android:textStyle="bold" />
+            android:textStyle="bold"
+            android:singleLine="true"
+            android:maxLines="1"
+            android:includeFontPadding="false" />
     </LinearLayout>
 
     <FrameLayout
@@ -115,7 +147,10 @@
             android:text="--"
             android:textColor="#FFFFFFFF"
             android:textSize="20sp"
-            android:textStyle="bold" />
+            android:textStyle="bold"
+            android:singleLine="true"
+            android:maxLines="1"
+            android:includeFontPadding="false" />
     </LinearLayout>
 
     <FrameLayout
@@ -144,7 +179,10 @@
             android:layout_marginStart="6dp"
             android:text="--"
             android:textColor="#FFFFFFFF"
-            android:textSize="20sp"
-            android:textStyle="bold" />
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:singleLine="true"
+            android:maxLines="1"
+            android:includeFontPadding="false" />
     </LinearLayout>
 </LinearLayout>

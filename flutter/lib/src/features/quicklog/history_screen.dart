@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
@@ -287,6 +288,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (!mounted) return;
     if (ok) {
       final today = todayEntryCount(_entries);
+      // Round 59: a repeated entry is an entry creation — mirror
+      // the new today count into the Home snapshot + widget, same
+      // as the Quick Log save path.
+      _syncHomeEntryCount(today);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Last entry repeated · $today today')),
       );
@@ -300,6 +305,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
             content: Text("Couldn't repeat that entry — try again.")),
       );
     }
+  }
+
+  /// Round 59 — entry creation/deletion here changes today's count,
+  /// which the Home strip + home-screen widget render from
+  /// [HomeDataCache]. Mirror + persist (persist pushes the widget),
+  /// exactly as the Quick Log save path does. Fire-and-forget;
+  /// neither call can throw.
+  void _syncHomeEntryCount(int todayCount) {
+    HomeDataCache.instance.applyLogCountToday(todayCount);
+    unawaited(HomeDataCache.instance.persist());
   }
 
   Future<void> _deleteEntry(QuickLogEntry entry) async {
@@ -341,6 +356,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final ok = await _backend.deleteLogEntry(entry.id);
     if (!mounted) return;
     if (ok) {
+      // Round 59: deleting a today entry lowers the strip/widget
+      // count the same way creating one raises it.
+      _syncHomeEntryCount(todayEntryCount(_entries));
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Entry removed')));
       // Quiet background reconcile — never blanks the screen.
