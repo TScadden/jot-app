@@ -197,7 +197,7 @@ void main() {
       expect(find.text(coachCalendarCardLimitation), findsOneWidget);
       expect(find.text('Approve & Add'), findsNothing);
       final approve = tester.widget<ElevatedButton>(
-          find.widgetWithText(ElevatedButton, 'Approve'));
+          find.widgetWithText(ElevatedButton, 'Native App Required'));
       expect(approve.onPressed, isNull);
       expect(find.text('✓ Event Scheduled & Added to Calendar'),
           findsNothing);
@@ -226,7 +226,7 @@ void main() {
       expect(find.text(coachCalendarCardLimitation), findsOneWidget);
       expect(find.text('Approve & Delete'), findsNothing);
       final approve = tester.widget<ElevatedButton>(
-          find.widgetWithText(ElevatedButton, 'Approve'));
+          find.widgetWithText(ElevatedButton, 'Native App Required'));
       expect(approve.onPressed, isNull);
 
       await tester.tap(find.text('Dismiss'));
