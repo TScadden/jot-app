@@ -453,18 +453,46 @@ class TabsBackend {
 
   /// Round 48 — push coach sessions, mirroring native
   /// `SyncManager.syncCoachSessions` → `POST api/sync/coach_sessions`
-  /// with `SyncCoachSessionsRequest{sessions}` (JotApi.kt). True on
-  /// HTTP 200. Callers send ONLY the sessions they created/changed
-  /// (native syncs its unsynced rows the same way).
-  Future<bool> syncCoachSessions(List<Map<String, dynamic>> sessions) =>
-      _postJson('/api/sync/coach_sessions', {'sessions': sessions});
+  /// with `SyncCoachSessionsRequest{sessions}` (JotApi.kt). Callers
+  /// send ONLY the sessions they created/changed (native syncs its
+  /// unsynced rows the same way).
+  ///
+  /// Round 57 — true only when the server's `{synced: n}` accounts
+  /// for EVERY row sent, not merely on HTTP 200. The pre-Round-57
+  /// status-only check trusted any 200: the original server handler
+  /// silently skipped messages whose session check failed while
+  /// still returning 200, so a chat could report "saved" with rows
+  /// missing. The restored handler counts rows already stored by an
+  /// idempotent retry, so an exact match is the honest success test.
+  /// A 200 without a usable `synced` count fails closed.
+  Future<bool> syncCoachSessions(
+      List<Map<String, dynamic>> sessions) async {
+    final res = await _postJsonMap(
+        '/api/sync/coach_sessions', {'sessions': sessions});
+    return _syncedAll(res, sessions.length);
+  }
 
   /// Round 48 — push coach messages, mirroring native
   /// `SyncManager.syncCoachMessages` → `POST api/sync/coach_messages`
-  /// with `SyncCoachMessagesRequest{messages}` (JotApi.kt). True on
-  /// HTTP 200.
-  Future<bool> syncCoachMessages(List<Map<String, dynamic>> messages) =>
-      _postJson('/api/sync/coach_messages', {'messages': messages});
+  /// with `SyncCoachMessagesRequest{messages}` (JotApi.kt). True
+  /// only on the same Round 57 full-batch verification as
+  /// [syncCoachSessions].
+  Future<bool> syncCoachMessages(
+      List<Map<String, dynamic>> messages) async {
+    final res = await _postJsonMap(
+        '/api/sync/coach_messages', {'messages': messages});
+    return _syncedAll(res, messages.length);
+  }
+
+  /// Round 57 — whether a sync response body proves the server holds
+  /// all [sent] rows of the batch. Tolerant of a string count (the
+  /// server serializes int8 values as JSON strings elsewhere in its
+  /// payloads); null/missing/partial counts are failures.
+  static bool _syncedAll(Map<String, dynamic>? res, int sent) {
+    if (res == null) return false;
+    final synced = _asInt(res['synced']);
+    return synced != null && synced == sent;
+  }
 
   /// Round 48 — delete a coach session server-side, mirroring native
   /// `CoachHistoryViewModel.deleteSession` / `CoachViewModel.

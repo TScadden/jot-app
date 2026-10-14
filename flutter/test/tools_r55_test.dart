@@ -59,9 +59,17 @@ MockClient serverClient(
             }),
             200);
       case '/api/sync/profile':
+        return http.Response(jsonEncode({'saved': true, 'synced': 1}), 200);
       case '/api/sync/coach_sessions':
       case '/api/sync/coach_messages':
-        return http.Response(jsonEncode({'saved': true, 'synced': 1}), 200);
+        // Round 57: echo the real batch count, like the restored
+        // server handler — a constant 1 hid partial saves.
+        final key = request.url.path.endsWith('sessions')
+            ? 'sessions'
+            : 'messages';
+        final batch =
+            (jsonDecode(request.body) as Map<String, dynamic>)[key] as List;
+        return http.Response(jsonEncode({'synced': batch.length}), 200);
       case '/api/sync/entries':
         return http.Response(jsonEncode({'synced': 1}), 200);
       case '/api/ai/coach':

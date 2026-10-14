@@ -290,6 +290,18 @@ void main() {
           expect(body['messages'], isA<List>());
           return http.Response(jsonEncode({'result': reply}), 200);
         }
+        // Round 57: coach sync posts answer with the real batch
+        // count, like the restored server handler.
+        if (request.url.path == '/api/sync/coach_sessions' ||
+            request.url.path == '/api/sync/coach_messages') {
+          final key = request.url.path.endsWith('sessions')
+              ? 'sessions'
+              : 'messages';
+          final batch =
+              (jsonDecode(request.body) as Map<String, dynamic>)[key]
+                  as List;
+          return http.Response(jsonEncode({'synced': batch.length}), 200);
+        }
         return http.Response('{}', 200);
       });
     }
