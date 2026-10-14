@@ -9,7 +9,19 @@
      calories cell). Colors (from lib/src/theme/notel_colors.dart):
      primary #7C6EFF, error #FF6B6B, success #4CAF50, info #42A5F5,
      text #FFFFFFFF (legacyDarkOnDark), divider #26FFFFFF
-     (legacyDarkDivider, white at 15%). -->
+     (legacyDarkDivider, white at 15%).
+
+     Round 58 — RemoteViews inflation safety (the values face
+     inflated as a bare black bar in the launcher): the dividers
+     are FrameLayout spacers, NOT bare <View> — plain View is not
+     in RemoteViews' supported view set and one unsupported class
+     fails inflation atomically. Identical geometry/background,
+     so the rendered strip is unchanged. The four icons are
+     multi-density PNGs (res/drawable-<density>/ic_widget_*.png)
+     rasterized from the same vector path data — vector drawables
+     (one with an evenOdd path) are likewise unsafe here. The
+     check_widget_apk.sh gate fails any build that regresses
+     either hazard. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
@@ -46,7 +58,7 @@
             android:textStyle="bold" />
     </LinearLayout>
 
-    <View
+    <FrameLayout
         android:layout_width="1dp"
         android:layout_height="16dp"
         android:layout_gravity="center_vertical"
@@ -76,7 +88,7 @@
             android:textStyle="bold" />
     </LinearLayout>
 
-    <View
+    <FrameLayout
         android:layout_width="1dp"
         android:layout_height="16dp"
         android:layout_gravity="center_vertical"
@@ -106,7 +118,7 @@
             android:textStyle="bold" />
     </LinearLayout>
 
-    <View
+    <FrameLayout
         android:layout_width="1dp"
         android:layout_height="16dp"
         android:layout_gravity="center_vertical"
