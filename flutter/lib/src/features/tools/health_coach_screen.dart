@@ -4290,6 +4290,11 @@ class _ProposalBadge extends StatelessWidget {
 class _ProposalCard extends StatelessWidget {
   final String emoji;
   final String title;
+
+  /// Title color. Defaults to the Round 55 design's title color
+  /// (textSecondary) so every existing card renders unchanged;
+  /// Round 54's calendar-DELETION card passes NotelColors.error.
+  final Color titleColor;
   final List<Widget> children;
   final String approveLabel;
   final String denyLabel;
@@ -4310,6 +4315,7 @@ class _ProposalCard extends StatelessWidget {
   const _ProposalCard({
     required this.emoji,
     required this.title,
+    this.titleColor = NotelColors.textSecondary,
     required this.children,
     required this.approveLabel,
     required this.denyLabel,
@@ -4339,10 +4345,10 @@ class _ProposalCard extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(title,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: NotelColors.textSecondary)),
+                        color: titleColor)),
               ),
             ],
           ),
