@@ -9,7 +9,13 @@
      calories cell). Colors (from lib/src/theme/notel_colors.dart):
      primary #7C6EFF, error #FF6B6B, success #4CAF50, info #42A5F5,
      text #FFFFFFFF (legacyDarkOnDark), divider #26FFFFFF
-     (legacyDarkDivider, white at 15%). -->
+     (legacyDarkDivider, white at 15%).
+     Round 56: dividers are ImageViews (@drawable/widget_divider,
+     a plain shape) — bare <View> is not RemoteViews-supported and
+     can fail launcher inflation; icons are PNG rasters
+     (@drawable/ic_widget_*_png, generated from the former vector
+     path data) — vector drawables are likewise kept out of every
+     widget layout. Geometry and colors are unchanged. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
@@ -33,7 +39,7 @@
             android:layout_width="18dp"
             android:layout_height="18dp"
             android:contentDescription="Heart Rate"
-            android:src="@drawable/ic_widget_heart" />
+            android:src="@drawable/ic_widget_heart_png" />
 
         <TextView
             android:id="@+id/widget_heart_rate"
@@ -46,11 +52,11 @@
             android:textStyle="bold" />
     </LinearLayout>
 
-    <View
+    <ImageView
         android:layout_width="1dp"
         android:layout_height="16dp"
         android:layout_gravity="center_vertical"
-        android:background="#26FFFFFF" />
+        android:src="@drawable/widget_divider" />
 
     <LinearLayout
         android:layout_width="0dp"
@@ -63,7 +69,7 @@
             android:layout_width="18dp"
             android:layout_height="18dp"
             android:contentDescription="Streak"
-            android:src="@drawable/ic_widget_flame" />
+            android:src="@drawable/ic_widget_flame_png" />
 
         <TextView
             android:id="@+id/widget_streak"
@@ -76,11 +82,11 @@
             android:textStyle="bold" />
     </LinearLayout>
 
-    <View
+    <ImageView
         android:layout_width="1dp"
         android:layout_height="16dp"
         android:layout_gravity="center_vertical"
-        android:background="#26FFFFFF" />
+        android:src="@drawable/widget_divider" />
 
     <LinearLayout
         android:layout_width="0dp"
@@ -93,7 +99,7 @@
             android:layout_width="18dp"
             android:layout_height="18dp"
             android:contentDescription="Logs"
-            android:src="@drawable/ic_widget_edit" />
+            android:src="@drawable/ic_widget_edit_png" />
 
         <TextView
             android:id="@+id/widget_logs"
@@ -106,11 +112,11 @@
             android:textStyle="bold" />
     </LinearLayout>
 
-    <View
+    <ImageView
         android:layout_width="1dp"
         android:layout_height="16dp"
         android:layout_gravity="center_vertical"
-        android:background="#26FFFFFF" />
+        android:src="@drawable/widget_divider" />
 
     <LinearLayout
         android:layout_width="0dp"
@@ -123,7 +129,7 @@
             android:layout_width="18dp"
             android:layout_height="18dp"
             android:contentDescription="Sleep"
-            android:src="@drawable/ic_widget_sleep" />
+            android:src="@drawable/ic_widget_sleep_png" />
 
         <TextView
             android:id="@+id/widget_sleep"

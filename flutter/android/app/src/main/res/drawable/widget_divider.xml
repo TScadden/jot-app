@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Round 56 — widget cell divider fill. Plain <shape> rectangle
+     (RemoteViews-safe) so the dividers in vitals_widget.xml can be
+     ImageViews instead of bare <View> elements: android.view.View
+     is NOT in RemoteViews' supported view set, and a bare <View>
+     divider can fail inflation atomically in the launcher process,
+     leaving only the widget background visible (black bar).
+     Color is the exact divider token the bare <View> carried:
+     #26FFFFFF (legacyDarkDivider, white at 15%). The shape has no
+     intrinsic size; the ImageView's 1dp x 16dp bounds set it. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#26FFFFFF" />
+</shape>
