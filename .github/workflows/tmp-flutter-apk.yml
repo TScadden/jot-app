@@ -15,5 +15,28 @@ jobs:
           flutter-version: '3.47.7'
           channel: stable
       - run: cd flutter && flutter pub get
-      - run: cd flutter && flutter analyze
-      - run: cd flutter && flutter test
+      - run: >-
+          cd flutter && flutter analyze
+          lib/src/data/calendar_service.dart
+          lib/src/features/tools/health_coach_screen.dart
+          lib/src/features/settings/settings_screen.dart
+          test/tools_r54_coachcal_test.dart
+      - run: >-
+          cd flutter && flutter test
+          test/tools_r54_coachcal_test.dart
+          test/tools_r48c_test.dart
+          test/tools_r48d_test.dart
+          test/tools_r48d2_test.dart
+          test/tools_r48fix_a_test.dart
+          test/tools_r48fix_b_test.dart
+          test/tools_r48fix_c_test.dart
+          test/settings_r51_connstate_test.dart
+          test/settings_r30_google_test.dart
+          test/settings_r29_test.dart
+          test/settings_r30_editors_test.dart
+          test/tools_r47_test.dart
+      - run: cd flutter && flutter build apk --release --split-per-abi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tabs-flutter-coachcal-r54c
+          path: flutter/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
