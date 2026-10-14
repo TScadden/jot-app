@@ -73,6 +73,11 @@ class TabsBackend {
   /// Exposes the stored token check so callers can gate backend reads.
   Future<String?> readToken() => _sessionStore.readToken();
 
+  /// Round 55 — the stored account email, for account-bound local
+  /// stores (CoachMemoryStore). Routes through this backend's
+  /// session store so callers never construct a second one.
+  Future<String?> readEmail() => _sessionStore.readEmail();
+
   // ── Round 31 — 401 → refresh → retry-once (native AuthInterceptor
   // parity) ────────────────────────────────────────────────────────
   //

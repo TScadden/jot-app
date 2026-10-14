@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/data/heart_data_cache.dart';
+import 'package:tabs_lab/src/data/coach_memory_store.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
@@ -83,6 +84,14 @@ void seedRealCaches() {
   wireCache(HeartDataCache.instance);
   wireCache(TodaySummaryCache.instance);
   wireCache(TodayPlanStore.instance);
+  // Round 55: coach memory joined the account-bound caches — wire
+  // its singleton to the same in-memory disk so the real wipe in
+  // these flows completes against it too.
+  CoachMemoryStore.instance.debugSetStore(
+    read: (k) async => cacheDisk[k],
+    write: (k, v) async => cacheDisk[k] = v,
+    delete: (k) async => cacheDisk.remove(k),
+  );
   HomeDataCache.instance.debugReset();
   HomeDataCache.instance.applyVitals(
       const TodayVitals(heartRate: 80), ownerEmail: 'a@example.com');

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -111,34 +112,150 @@ class CoachMemoryStore {
     return t;
   }
 
+  // ── In-memory mirror ─────────────────────────────────────────────
+  // The screens' critical paths (chat send, proposal resolution,
+  // history load) NEVER await this store's disk IO: they read
+  // [cachedFacts] and record through [recordFact], while disk
+  // reads/writes complete in the background. On device the warm
+  // finishes in milliseconds (the history screen warms the mirror
+  // before any chat opens); a wedged storage channel can therefore
+  // never hang a send, an approval, or a logout. The awaited APIs
+  // ([load], [addFact], [deleteAt]) remain for the memory screen
+  // and for tests, where the injected IO completes normally.
+  List<CoachMemoryFact> _mirror = const [];
+  String? _mirrorOwner;
+  bool _mirrorLoaded = false;
+  Future<List<CoachMemoryFact>>? _loading;
+
+  /// The facts currently mirrored in memory (empty until the first
+  /// [load] lands). Synchronous and never throws.
+  List<CoachMemoryFact> get cachedFacts =>
+      _mirrorLoaded ? _mirror : const [];
+
+  static List<CoachMemoryFact> _dedupeCap(List<CoachMemoryFact> facts) {
+    final seen = <String>{};
+    final out = <CoachMemoryFact>[];
+    for (final f in facts) {
+      if (seen.add(normalizeFactText(f.text))) out.add(f);
+      if (out.length >= maxFacts) break;
+    }
+    return out;
+  }
+
+  /// Records one fact into the mirror IMMEDIATELY (dedupe + caps
+  /// applied) and persists in the background, merging with the
+  /// disk facts once the in-flight warm lands so a fact recorded
+  /// during the first warm is never lost. Returns the mirror.
+  List<CoachMemoryFact> recordFact({
+    required String text,
+    required String source,
+    String? email,
+    DateTime? now,
+  }) {
+    final cleaned = cleanFactText(text);
+    if (cleaned.isEmpty) return cachedFacts;
+    final fact = CoachMemoryFact(
+      text: cleaned,
+      createdAt: (now ?? DateTime.now()).millisecondsSinceEpoch,
+      source: source,
+    );
+    final emailNorm = normalizeEmail(email);
+    if (emailNorm != null &&
+        _mirrorOwner != null &&
+        _mirrorOwner != emailNorm) {
+      _mirror = const [];
+      _diskLoaded = false;
+    }
+    _mirror = _dedupeCap([fact, ..._mirror]);
+    _mirrorLoaded = true;
+    _mirrorOwner = normalizeEmail(email) ?? _mirrorOwner;
+    final loading = _loading;
+    if (loading != null) {
+      unawaited(loading.then((_) => _persist(_mirror, email)));
+    } else if (_diskLoaded) {
+      unawaited(_persist(_mirror, email));
+    } else {
+      unawaited(load(email).then((_) => _persist(_mirror, email)));
+    }
+    return _mirror;
+  }
+
+  bool _diskLoaded = false;
+
   /// Reads the stored blob. When [email] is known and the blob is
   /// owned by a different account (or by no recorded account), the
   /// blob is wiped and an empty list is returned — one account's
   /// memory never surfaces for another. Never throws.
-  Future<List<CoachMemoryFact>> load(String? email) async {
+  Future<List<CoachMemoryFact>> load(String? email) {
+    final expected = normalizeEmail(email);
+    if (_mirrorLoaded && _diskLoaded && _mirrorOwner == expected) {
+      return Future.value(_mirror);
+    }
+    final inFlight = _loading;
+    if (inFlight != null) return inFlight;
+    late final Future<List<CoachMemoryFact>> future;
+    future = _loadFromDisk(email).whenComplete(() {
+      if (identical(_loading, future)) _loading = null;
+    });
+    _loading = future;
+    return future;
+  }
+
+  Future<List<CoachMemoryFact>> _loadFromDisk(String? email) async {
+    final expected = normalizeEmail(email);
     try {
       final raw = await _read(storageKey);
-      if (raw == null || raw.isEmpty) return const [];
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map<String, dynamic>) return const [];
-      final expected = normalizeEmail(email);
-      if (expected != null) {
-        final owner = normalizeEmail(decoded['ownerEmail']?.toString());
-        if (owner != expected) {
-          await clear();
-          return const [];
+      List<CoachMemoryFact> disk = const [];
+      if (raw != null && raw.isNotEmpty) {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map<String, dynamic>) {
+          if (expected != null) {
+            final owner = normalizeEmail(decoded['ownerEmail']?.toString());
+            if (owner != expected) {
+              // Another account's blob: wipe it and start empty —
+              // but facts recorded locally during this load (for
+              // the CURRENT account) survive in the mirror.
+              // Only facts recorded for THIS account during the
+              // load may survive — a previous account's mirror is
+              // dropped with its blob.
+              final pending =
+                  _mirrorOwner == expected ? _mirror : const <CoachMemoryFact>[];
+              await clear();
+              _mirror = _dedupeCap(pending);
+              _mirrorLoaded = true;
+              _mirrorOwner = expected;
+              _diskLoaded = true;
+              return _mirror;
+            }
+          }
+          final factsRaw = decoded['facts'];
+          if (factsRaw is List) {
+            disk = [
+              for (final f in factsRaw)
+                if (CoachMemoryFact.fromJson(f) != null)
+                  CoachMemoryFact.fromJson(f)!,
+            ];
+          }
         }
       }
-      final factsRaw = decoded['facts'];
-      if (factsRaw is! List) return const [];
-      final out = <CoachMemoryFact>[];
-      for (final f in factsRaw) {
-        final fact = CoachMemoryFact.fromJson(f);
-        if (fact != null) out.add(fact);
-      }
-      return out;
+      // Facts recorded while the disk read was in flight are the
+      // newest and win the merge — unless the mirror still holds a
+      // different account's facts, which never merge.
+      final local = (_mirrorOwner == null ||
+              expected == null ||
+              _mirrorOwner == expected)
+          ? _mirror
+          : const <CoachMemoryFact>[];
+      _mirror = _dedupeCap([...local, ...disk]);
+      _mirrorLoaded = true;
+      _mirrorOwner = expected;
+      _diskLoaded = true;
+      return _mirror;
     } catch (_) {
-      return const [];
+      _mirrorLoaded = true;
+      _mirrorOwner = expected;
+      _diskLoaded = true;
+      return _mirror;
     }
   }
 
@@ -177,6 +294,7 @@ class CoachMemoryStore {
       source: source,
     );
     final out = [fact, ...kept].take(maxFacts).toList();
+    _mirror = out;
     await _persist(out, email);
     return out;
   }
@@ -187,6 +305,7 @@ class CoachMemoryStore {
     final existing = await load(email);
     if (index < 0 || index >= existing.length) return existing;
     final out = [...existing]..removeAt(index);
+    _mirror = out;
     await _persist(out, email);
     return out;
   }
@@ -198,6 +317,10 @@ class CoachMemoryStore {
   /// session expiry exactly like the other account-bound caches.
   /// Never throws.
   Future<void> clear() async {
+    _mirror = const [];
+    _mirrorLoaded = false;
+    _mirrorOwner = null;
+    _diskLoaded = false;
     try {
       await _delete(storageKey);
     } catch (_) {}

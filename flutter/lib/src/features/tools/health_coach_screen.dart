@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -9,7 +10,6 @@ import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/reminder_alarm_sync.dart';
-import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
@@ -894,8 +894,12 @@ String buildCoachHealthContext({
 }) {
   final p = profile ?? const <String, dynamic>{};
   var logLines = coachLogDigestLines(entries, categories, now: now);
-  var nights = [...(health?.sleepNights ?? const <({String date, int mins})>[])]
-    ..sort((a, b) => a.date.compareTo(b.date));
+  // A 0-minute night is a failed read, never a real night — the
+  // assembler enforces it too, not just the loader.
+  var nights = [
+    for (final n in health?.sleepNights ?? const <({String date, int mins})>[])
+      if (n.mins > 0) n,
+  ]..sort((a, b) => a.date.compareTo(b.date));
   if (nights.length > 7) nights = nights.sublist(nights.length - 7);
 
   String assemble() {
@@ -1463,16 +1467,20 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
       });
       if (unlimited) {
         try {
-          _resolvedAccountEmail = widget.accountEmail ??
-              await SessionStore().readEmail();
+          _resolvedAccountEmail =
+              widget.accountEmail ?? await _backend.readEmail();
         } catch (_) {
           _resolvedAccountEmail = widget.accountEmail;
         }
         try {
-          final facts = await (widget.coachMemoryStore ??
-                  CoachMemoryStore.instance)
-              .load(_resolvedAccountEmail);
-          if (mounted) setState(() => _memoryFacts = facts);
+          final store =
+              widget.coachMemoryStore ?? CoachMemoryStore.instance;
+          _memoryFacts = store.cachedFacts;
+          // Background warm: the tile count refreshes when the
+          // disk read lands; nothing here awaits storage IO.
+          unawaited(store.load(_resolvedAccountEmail).then((facts) {
+            if (mounted) setState(() => _memoryFacts = facts);
+          }));
         } catch (_) {}
       }
     } catch (_) {
@@ -1586,10 +1594,12 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
       ),
     );
     try {
-      final facts = await (widget.coachMemoryStore ??
-              CoachMemoryStore.instance)
-          .load(_resolvedAccountEmail ?? widget.accountEmail);
-      if (mounted) setState(() => _memoryFacts = facts);
+      final store = widget.coachMemoryStore ?? CoachMemoryStore.instance;
+      unawaited(store
+          .load(_resolvedAccountEmail ?? widget.accountEmail)
+          .then((facts) {
+        if (mounted) setState(() => _memoryFacts = facts);
+      }));
     } catch (_) {}
   }
 
@@ -2132,7 +2142,7 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
       return _resolvedAccountEmail;
     }
     try {
-      _resolvedAccountEmail = await SessionStore().readEmail();
+      _resolvedAccountEmail = await _backend.readEmail();
     } catch (_) {
       _resolvedAccountEmail = null;
     }
@@ -2141,12 +2151,13 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
 
   /// Captures one memory fact (both Round 55 sources funnel here)
   /// and refreshes the injected memory section for later sends in
-  /// this session. Storage failures are silent — memory must never
-  /// break a chat or an approval.
+  /// this session. The record itself is a synchronous mirror update
+  /// with background persistence — memory must never break or delay
+  /// a chat or an approval, so no storage IO is awaited here.
   Future<void> _captureMemory(String text, String source) async {
     try {
       final email = await _accountEmail();
-      final facts = await _memoryStore.addFact(
+      final facts = _memoryStore.recordFact(
         text: text,
         source: source,
         email: email,
@@ -2384,10 +2395,17 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
       widget.pullCategories,
       now: DateTime.now(),
     );
+    // Memory: read the store's in-memory mirror (never await disk
+    // IO on the send path) and warm it in the background; when the
+    // warm lands it refreshes the section for later sends.
     try {
       final email = await _accountEmail();
-      _memoryFacts = await _memoryStore.load(email);
+      _memoryFacts = _memoryStore.cachedFacts;
       _cachedMemoryContext = buildCoachMemoryContext(_memoryFacts);
+      unawaited(_memoryStore.load(email).then((facts) {
+        _memoryFacts = facts;
+        _cachedMemoryContext = buildCoachMemoryContext(facts);
+      }));
     } catch (_) {
       _memoryFacts = const [];
       _cachedMemoryContext = '';
