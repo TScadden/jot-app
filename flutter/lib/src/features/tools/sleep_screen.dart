@@ -3,6 +3,7 @@ import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/skeleton.dart';
 
 /// Round 18 (Team B) — Sleep tool port of the native `SleepScreen.kt`.
 /// Round 48 — completed to full native parity:
@@ -422,22 +423,19 @@ class _SleepScreenState extends State<SleepScreen> {
             : null,
       ),
       body: _loading
-          ? const Center(
+          ? const SkeletonGroup(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 110),
               child: Column(
-                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  CircularProgressIndicator(color: NotelColors.primary),
+                  SkeletonBox(height: 240, radius: 20),
                   SizedBox(height: 16),
-                  Text(
-                    'Loading Sleep Data...',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: NotelColors.textSecondary,
-                    ),
-                  ),
+                  SkeletonBox(height: 120, radius: 20),
                 ],
               ),
-            )
+            ),
+          )
           : !_connected
               ? _notConnectedState()
               : _analysisView(),
@@ -510,7 +508,7 @@ class _SleepScreenState extends State<SleepScreen> {
 
   Widget _analysisView() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -532,7 +530,7 @@ class _SleepScreenState extends State<SleepScreen> {
           const Text(
             'Sleep Stages',
             style: TextStyle(
-              fontSize: 18,
+              fontSize: 16,
               fontWeight: FontWeight.bold,
               color: NotelColors.textPrimary,
             ),
@@ -569,7 +567,7 @@ class _SleepScreenState extends State<SleepScreen> {
           children: [
             const Icon(
               Icons.hotel,
-              size: 64,
+              size: 56,
               color: NotelColors.primary,
             ),
             const SizedBox(height: 16),
@@ -649,7 +647,7 @@ class _SleepScreenState extends State<SleepScreen> {
                 style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w900,
-                  color: NotelColors.primary,
+                  color: NotelColors.primaryText,
                 ),
               ),
             ),
@@ -815,7 +813,7 @@ class _SleepScreenState extends State<SleepScreen> {
         const Text(
           'Recent Nights',
           style: TextStyle(
-            fontSize: 18,
+            fontSize: 16,
             fontWeight: FontWeight.bold,
             color: NotelColors.textPrimary,
           ),
@@ -840,9 +838,9 @@ class _SleepScreenState extends State<SleepScreen> {
               for (var i = 0; i < _nights.length; i++) ...[
                 _nightRow(_nights[i]),
                 if (i < _nights.length - 1)
-                  Divider(
+                  const Divider(
                     height: 1,
-                    color: NotelColors.textSecondary.withValues(alpha: 0.2),
+                    color: NotelColors.divider,
                   ),
               ],
             ],

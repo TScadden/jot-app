@@ -312,7 +312,7 @@ class _ToolsScreenState extends State<ToolsScreen>
               mainAxisSpacing: 14,
               crossAxisSpacing: 14,
               childAspectRatio: 1.0,
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 110),
               children: [
                 for (final tile in _tiles) _reorderableCell(tile),
               ],
@@ -385,7 +385,7 @@ class _InfoBanner extends StatelessWidget {
             editMode ? Icons.open_with : Icons.touch_app,
             size: 16,
             color: editMode
-                ? NotelColors.primary
+                ? NotelColors.primaryText
                 : NotelColors.textSecondary,
           ),
           const SizedBox(width: 8),
@@ -399,7 +399,7 @@ class _InfoBanner extends StatelessWidget {
                 fontWeight:
                     editMode ? FontWeight.bold : FontWeight.w500,
                 color: editMode
-                    ? NotelColors.primary
+                    ? NotelColors.primaryText
                     : NotelColors.textSecondary,
               ),
             ),
@@ -431,7 +431,7 @@ class _ToolCard extends StatelessWidget {
             ? NotelColors.primary.withValues(alpha: 0.45)
             : NotelColors.cardBorder;
     final card = Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: NotelColors.surface,
         borderRadius: BorderRadius.circular(20),

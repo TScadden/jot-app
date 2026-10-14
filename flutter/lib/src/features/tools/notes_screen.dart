@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/skeleton.dart';
 
 /// Round 48 — Notes tool screen, FULL read/write port of native
 /// `ui/screen/NotesScreen.kt` + `NotesViewModel.kt`.
@@ -519,8 +520,20 @@ class _NotesScreenState extends State<NotesScreen> {
 
   Widget _buildBody() {
     if (_loading) {
-      return const Center(
-        child: CircularProgressIndicator(color: NotelColors.primary),
+      return const SkeletonGroup(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 110),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SkeletonBox(height: 120, radius: 16),
+              SizedBox(height: 16),
+              SkeletonBox(height: 84, radius: 16),
+              SizedBox(height: 16),
+              SkeletonBox(height: 84, radius: 16),
+            ],
+          ),
+        ),
       );
     }
     if (_failed || _loadFailed) {
@@ -541,7 +554,7 @@ class _NotesScreenState extends State<NotesScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text('📝', style: TextStyle(fontSize: 48)),
-                      SizedBox(height: 12),
+                      SizedBox(height: 16),
                       Text(
                         'No notes yet',
                         style: TextStyle(
@@ -550,12 +563,13 @@ class _NotesScreenState extends State<NotesScreen> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      SizedBox(height: 4),
+                      SizedBox(height: 8),
                       Text(
                         'Write your first note above',
                         style: TextStyle(
                           color: NotelColors.textSecondary,
                           fontSize: 13,
+                          height: 1.5,
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -563,7 +577,7 @@ class _NotesScreenState extends State<NotesScreen> {
                   ),
                 )
               : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 110),
                   itemCount: notes.length,
                   separatorBuilder: (_, _) => const SizedBox(height: 10),
                   itemBuilder: (context, i) => _noteCard(notes[i]),
@@ -650,7 +664,7 @@ class _NotesScreenState extends State<NotesScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text('📝', style: TextStyle(fontSize: 48)),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             const Text(
               'Couldn\'t load notes',
               style: TextStyle(
@@ -659,12 +673,13 @@ class _NotesScreenState extends State<NotesScreen> {
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 8),
             const Text(
               'Check your connection and try again.',
               style: TextStyle(
                 color: NotelColors.textSecondary,
                 fontSize: 13,
+                height: 1.5,
               ),
               textAlign: TextAlign.center,
             ),

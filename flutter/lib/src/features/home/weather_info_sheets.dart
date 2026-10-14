@@ -244,7 +244,7 @@ Widget thinDivider() {
   return Padding(
     padding: const EdgeInsets.symmetric(vertical: 12.0),
     child: Divider(
-      color: Colors.white.withValues(alpha: 0.05),
+      color: NotelColors.legacyDarkHairlineFaint,
       thickness: 0.5,
       height: 0.5,
     ),

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/skeleton.dart';
 
 /// Round 48 — Lists tool screen, FULL read/write port of native
 /// `ui/screen/ListsScreen.kt` + `ListsViewModel.kt`:
@@ -473,8 +474,20 @@ class _ListsScreenState extends State<ListsScreen> {
 
   Widget _buildBody() {
     if (_loading) {
-      return const Center(
-        child: CircularProgressIndicator(color: NotelColors.primary),
+      return const SkeletonGroup(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 110),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SkeletonBox(height: 84, radius: 16),
+              SizedBox(height: 16),
+              SkeletonBox(height: 84, radius: 16),
+              SizedBox(height: 16),
+              SkeletonBox(height: 84, radius: 16),
+            ],
+          ),
+        ),
       );
     }
     if (_failed || _loadFailed) {
@@ -486,22 +499,23 @@ class _ListsScreenState extends State<ListsScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('📋', style: TextStyle(fontSize: 52)),
+            const Text('📋', style: TextStyle(fontSize: 48)),
             const SizedBox(height: 16),
             const Text(
               'No lists yet',
               style: TextStyle(
                 color: NotelColors.textPrimary,
-                fontSize: 20,
+                fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             const Text(
               'Tap + in the top right to create your first list',
               style: TextStyle(
                 color: NotelColors.textSecondary,
-                fontSize: 14,
+                fontSize: 13,
+                height: 1.5,
               ),
               textAlign: TextAlign.center,
             ),
@@ -518,7 +532,7 @@ class _ListsScreenState extends State<ListsScreen> {
       );
     }
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
       itemCount: lists.length,
       separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemBuilder: (context, i) => _listCard(lists[i], i),
@@ -532,22 +546,23 @@ class _ListsScreenState extends State<ListsScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('📋', style: TextStyle(fontSize: 52)),
+            const Text('📋', style: TextStyle(fontSize: 48)),
             const SizedBox(height: 16),
             const Text(
               'Couldn\'t load lists',
               style: TextStyle(
                 color: NotelColors.textPrimary,
-                fontSize: 20,
+                fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             const Text(
               'Check your connection and try again.',
               style: TextStyle(
                 color: NotelColors.textSecondary,
-                fontSize: 14,
+                fontSize: 13,
+                height: 1.5,
               ),
               textAlign: TextAlign.center,
             ),

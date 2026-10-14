@@ -230,7 +230,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.bold,
-                color: NotelColors.primary,
+                color: NotelColors.primaryText,
               ),
             ),
           ),
@@ -244,7 +244,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
             tooltip: 'Dismiss Tooltip',
             icon: const Icon(
               Icons.close,
-              size: 14,
+              size: 18,
               color: NotelColors.textSecondary,
             ),
           ),
@@ -256,7 +256,7 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
   /// Tooltip value formatting, verbatim from native `SnapshotDataContent`.
   String _formatValue(WeeklySnapshotMetricData data, DailySnapshotPoint pt) {
     if (pt.secondaryValue != null) {
-      return '${pt.value?.toInt() ?? '--'}/${pt.secondaryValue!.toInt()} ${data.metric.unit}';
+      return '${pt.value?.toInt() ?? '--'} / ${pt.secondaryValue!.toInt()} ${data.metric.unit}';
     }
     if (pt.value != null) {
       if (data.metric.unit == 'h') {
@@ -380,7 +380,7 @@ class _MetricSelectorState extends State<_MetricSelector> {
                                 ? FontWeight.bold
                                 : FontWeight.normal,
                             color: isCurrent
-                                ? NotelColors.primary
+                                ? NotelColors.primaryText
                                 : NotelColors.textPrimary,
                           ),
                         ),
@@ -422,7 +422,7 @@ class _MetricSelectorState extends State<_MetricSelector> {
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: NotelColors.primary,
+                  color: NotelColors.primaryText,
                 ),
               ),
               const Icon(
@@ -574,7 +574,7 @@ class _SnapshotChartPainter extends CustomPainter {
           style: TextStyle(
             fontSize: 11,
             fontWeight: isSel ? FontWeight.bold : FontWeight.w500,
-            color: isSel ? NotelColors.primary : NotelColors.textSecondary,
+            color: isSel ? NotelColors.primaryText : NotelColors.textSecondary,
           ),
         ),
         textDirection: TextDirection.ltr,

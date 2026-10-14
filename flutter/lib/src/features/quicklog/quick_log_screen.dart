@@ -823,28 +823,36 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
   }
 
   Widget _buildLoadError() {
+    // R53 S11: Pattern A error state (was Pattern B).
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.symmetric(horizontal: 32),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              _loadError!,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: NotelColors.textSecondary),
-            ),
+            const Icon(Icons.cloud_off_outlined,
+                size: 56, color: NotelColors.textSecondary),
             const SizedBox(height: 16),
-            TextButton(
+            Text(_loadError!,
+                style: const TextStyle(
+                    fontSize: 14,
+                    height: 1.5,
+                    color: NotelColors.textSecondary),
+                textAlign: TextAlign.center),
+            const SizedBox(height: 24),
+            ElevatedButton(
               onPressed: () {
                 setState(() => _loadError = null);
                 _backend.invalidateSyncPull();
                 _refresh();
               },
-              child: const Text('Retry',
-                  style: TextStyle(
-                      color: NotelColors.primary,
-                      fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: NotelColors.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
+              child: const Text('Try again'),
             ),
           ],
         ),
@@ -1064,12 +1072,13 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
       onTap: _addCategory,
       // R49 Q1: same 48dp hit area as the category chips it sits
       // beside (visual box unchanged, centered in the row).
+      // R53: visual padding v10->v8 (row-chip tier).
       child: SizedBox(
         height: 48,
         child: Center(
           child: Container(
             padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               color: NotelColors.surface,
@@ -1115,6 +1124,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
         SizedBox(
           // R49 Q2: row 44→48 so the chips' hit area reaches 48dp
           // (was 36dp); visual chip unchanged, centered in the row.
+          // R53: visual chip v8->v6, radius 12->10 (compact-chip tier).
           height: 48,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
@@ -1134,9 +1144,9 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
                   child: Center(
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
+                          horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(10),
                         color: NotelColors.surfaceHigh,
                         border: Border.all(
                             color: NotelColors.surfaceHigh

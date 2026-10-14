@@ -129,8 +129,8 @@ class _HeartSpikeReviewScreenState extends State<HeartSpikeReviewScreen> {
                 const SizedBox(height: 2),
                 Text(
                   hasSpikes
-                      ? 'Showing heart rate spikes ≥100 BPM for today'
-                      : 'No spikes ≥100 BPM recorded for this time range',
+                      ? 'Showing heart rate spikes ≥100 bpm for today'
+                      : 'No spikes ≥100 bpm recorded for this time range',
                   style: const TextStyle(
                     color: NotelColors.textSecondary,
                     fontSize: 12,
@@ -272,7 +272,7 @@ class _HeartSpikeReviewScreenState extends State<HeartSpikeReviewScreen> {
                 ),
                 if (expanded) ...[
                   const SizedBox(height: 14),
-                  const Divider(height: 1, color: NotelColors.surfaceHigh),
+                  const Divider(height: 1, color: NotelColors.divider),
                   const SizedBox(height: 12),
                   Text(
                     'Surrounding Context (${contextReadings.length} data points):',

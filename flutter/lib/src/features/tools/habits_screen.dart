@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/skeleton.dart';
 
 /// Round 18 — Habits tool screen (display).
 /// Round 47 — WRITE actions, porting native `HabitsScreen.kt`:
@@ -380,8 +381,20 @@ class _HabitsScreenState extends State<HabitsScreen> {
 
   Widget _buildBody(int checkedCount, double progressRatio) {
     if (_loading) {
-      return const Center(
-        child: CircularProgressIndicator(color: NotelColors.primary),
+      return const SkeletonGroup(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 110),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SkeletonBox(height: 64, radius: 20),
+              SizedBox(height: 16),
+              SkeletonBox(height: 110, radius: 20),
+              SizedBox(height: 16),
+              SkeletonBox(height: 110, radius: 20),
+            ],
+          ),
+        ),
       );
     }
     if (_failed) {
@@ -499,7 +512,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
                 borderSide: BorderSide.none,
               ),
               contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 14, vertical: 12),
+                  horizontal: 16, vertical: 12),
             ),
             textInputAction: TextInputAction.done,
             onSubmitted: (_) => _addHabit(),
@@ -582,8 +595,8 @@ class _HabitsScreenState extends State<HabitsScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('🔥', style: TextStyle(fontSize: 40)),
-          SizedBox(height: 12),
+          Text('🔥', style: TextStyle(fontSize: 48)),
+          SizedBox(height: 16),
           Text(
             'No habits yet',
             style: TextStyle(
@@ -592,12 +605,13 @@ class _HabitsScreenState extends State<HabitsScreen> {
               fontWeight: FontWeight.bold,
             ),
           ),
-          SizedBox(height: 4),
+          SizedBox(height: 8),
           Text(
             'Add your first daily routine above!',
             style: TextStyle(
               color: NotelColors.textSecondary,
               fontSize: 13,
+              height: 1.5,
             ),
             textAlign: TextAlign.center,
           ),
@@ -613,7 +627,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
           i, i + 2 > _habits.length ? _habits.length : i + 2));
     }
     return ListView.separated(
-      padding: const EdgeInsets.only(bottom: 100),
+      padding: const EdgeInsets.only(bottom: 110),
       itemCount: rows.length,
       separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemBuilder: (context, index) {
@@ -644,12 +658,12 @@ class _HabitsScreenState extends State<HabitsScreen> {
       onTap: _writing ? null : () => _toggleHabit(habit),
       child: Container(
       constraints: const BoxConstraints(minHeight: 100),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
         color: checked
             ? NotelColors.primary.withValues(alpha: 0.15)
-            : NotelColors.surfaceHigh.withValues(alpha: 0.1),
+            : NotelColors.surface,
         border: Border.all(
           color: checked
               ? NotelColors.primary.withValues(alpha: 0.3)
@@ -675,7 +689,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
                 ),
                 padding: EdgeInsets.zero,
                 constraints:
-                    const BoxConstraints(minWidth: 20, minHeight: 20),
+                    const BoxConstraints(minWidth: 48, minHeight: 48),
                 onPressed: _writing ? null : () => _deleteHabit(habit),
               ),
             ],

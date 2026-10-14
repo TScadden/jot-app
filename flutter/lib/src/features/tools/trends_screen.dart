@@ -373,8 +373,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
                                     : 'Tap to view all time',
                             style: TextStyle(
                                 fontSize: 11,
-                                color: NotelColors.primary
-                                    .withValues(alpha: 0.7))),
+                                color: NotelColors.primaryText)),
                       ],
                     ),
                   ),
@@ -443,7 +442,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
           ],
         ],
 
-        const SliverToBoxAdapter(child: SizedBox(height: 100)),
+        const SliverToBoxAdapter(child: SizedBox(height: 110)),
       ],
     );
   }
@@ -568,11 +567,16 @@ class _TrendsScreenState extends State<TrendsScreen> {
             _dayOffset = 0;
             _selectedHour = null;
           }),
-          child: Text(_dateLabel(_selectedDate),
-              style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: NotelColors.textPrimary)),
+          child: SizedBox(
+            height: 48,
+            child: Center(
+              child: Text(_dateLabel(_selectedDate),
+                  style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: NotelColors.textPrimary)),
+            ),
+          ),
         ),
         IconButton(
           icon: Icon(Icons.chevron_right,
@@ -661,12 +665,14 @@ class _TrendsScreenState extends State<TrendsScreen> {
                     style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w500,
-                        color: NotelColors.primary
-                            .withValues(alpha: 0.6))),
+                        color: NotelColors.primaryText)),
               if (entry.timestamp > 0) const SizedBox(height: 4),
               Text(entry.body,
                   style: const TextStyle(
-                      fontSize: 14, color: NotelColors.textPrimary)),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      height: 1.45,
+                      color: NotelColors.textPrimary)),
             ],
           ),
         ),
@@ -757,7 +763,7 @@ class _HourlyChart extends StatelessWidget {
           return InkWell(
             onTap: () => onHourSelected(hour),
             child: SizedBox(
-              width: 40,
+              width: 48,
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
@@ -769,7 +775,7 @@ class _HourlyChart extends StatelessWidget {
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
                               color: isSelected
-                                  ? NotelColors.primary
+                                  ? NotelColors.primaryText
                                   : NotelColors.textSecondary)),
                     ),
                   Container(
@@ -789,12 +795,12 @@ class _HourlyChart extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text(_hourLabel(hour),
                       style: TextStyle(
-                          fontSize: 9,
+                          fontSize: 10,
                           fontWeight: isSelected
                               ? FontWeight.bold
                               : FontWeight.w500,
                           color: isSelected
-                              ? NotelColors.primary
+                              ? NotelColors.primaryText
                               : NotelColors.textSecondary),
                       maxLines: 1),
                 ],
@@ -945,7 +951,14 @@ class _SymptomsDialog extends StatelessWidget {
                           InkWell(
                             onTap: () => onSelect(c.chip),
                             borderRadius: BorderRadius.circular(10),
-                            child: Container(
+                            // R53 T3: 48dp hit area; visual chip (h12/v6,
+                            // r10) centered inside, unchanged.
+                            child: SizedBox(
+                              height: 48,
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 12, vertical: 6),
                               decoration: BoxDecoration(
@@ -965,7 +978,7 @@ class _SymptomsDialog extends StatelessWidget {
                                       style: TextStyle(
                                           fontSize: 13,
                                           color: selected == c.chip
-                                              ? Colors.white
+                                              ? NotelColors.onPrimary
                                               : NotelColors.textPrimary)),
                                   const SizedBox(width: 6),
                                   Text('${c.count}',
@@ -973,8 +986,11 @@ class _SymptomsDialog extends StatelessWidget {
                                           fontSize: 11,
                                           fontWeight: FontWeight.bold,
                                           color: selected == c.chip
-                                              ? Colors.white
+                                              ? NotelColors.onPrimary
                                               : NotelColors.primary)),
+                                ],
+                              ),
+                                  ),
                                 ],
                               ),
                             ),

@@ -805,7 +805,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: ElevatedButton(
           key: const ValueKey('logout_button'),
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF801515),
+            backgroundColor: NotelColors.logoutRed,
             foregroundColor: Colors.white,
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(26)),
@@ -910,8 +910,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       // R49 SE7: row-title role unified at 16.
                       fontSize: 16)),
             ),
-            const Icon(Icons.keyboard_arrow_right,
-                color: NotelColors.textSecondary),
+            const Icon(Icons.chevron_right,
+                size: 20, color: NotelColors.textSecondary),
           ],
         ),
       ),
@@ -1400,7 +1400,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   IconButton(
                     key: ValueKey('delete_medication_${m['id'] ?? ''}'),
                     icon: const Icon(Icons.delete,
-                        size: 20, color: NotelColors.error),
+                        size: 18, color: NotelColors.error),
                     onPressed: () => _deleteMedication('${m['id'] ?? ''}'),
                   ),
                 ],
@@ -3047,7 +3047,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             constraints:
                 const BoxConstraints(minWidth: 48, minHeight: 48),
             icon: Icon(archived ? Icons.unarchive : Icons.archive,
-                size: 20, color: NotelColors.textSecondary),
+                size: 18, color: NotelColors.textSecondary),
             onPressed: () async {
               final updated = _counters
                   .map((x) => x.id == c.id
@@ -3063,7 +3063,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             constraints:
                 const BoxConstraints(minWidth: 48, minHeight: 48),
             icon: const Icon(Icons.edit,
-                size: 20, color: NotelColors.textSecondary),
+                size: 18, color: NotelColors.textSecondary),
             onPressed: () => _showCounterDialog(c),
           ),
           IconButton(
@@ -3072,7 +3072,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             constraints:
                 const BoxConstraints(minWidth: 48, minHeight: 48),
             icon: const Icon(Icons.stop_circle,
-                size: 20, color: NotelColors.textSecondary),
+                size: 18, color: NotelColors.textSecondary),
             onPressed: () async {
               // Native endCounterAndSave: remove + append to history.
               final remaining =

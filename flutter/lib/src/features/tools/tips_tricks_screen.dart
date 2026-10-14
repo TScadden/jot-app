@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/skeleton.dart';
 
 /// Round 18 (Team C) — Tips & Tricks, Flutter port of the native
 /// `TipsAndTricksScreen.kt` + `TipsAndTricksViewModel.kt`.
@@ -457,8 +458,20 @@ Example format:
 
   Widget _buildBody() {
     if (_unlocked == null) {
-      return const Center(
-        child: CircularProgressIndicator(color: NotelColors.primary),
+      return const SkeletonGroup(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 110),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SkeletonBox(height: 96, radius: 16),
+              SizedBox(height: 16),
+              SkeletonBox(height: 96, radius: 16),
+              SizedBox(height: 16),
+              SkeletonBox(height: 96, radius: 16),
+            ],
+          ),
+        ),
       );
     }
     if (_unlocked == false) {
@@ -487,7 +500,7 @@ Example format:
           ),
         Expanded(
           child: ListView.separated(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 110),
             itemCount: _topics.length,
             separatorBuilder: (context, _) => const SizedBox(height: 12),
             itemBuilder: (context, i) {
@@ -615,11 +628,11 @@ class _InlineError extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: NotelColors.error.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: NotelColors.error.withValues(alpha: 0.35)),
+        border: Border.all(color: NotelColors.error.withValues(alpha: 0.4)),
       ),
       child: Row(
         children: [
@@ -754,7 +767,7 @@ class _TopicCard extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         decoration: BoxDecoration(
           color: NotelColors.surface,
           borderRadius: BorderRadius.circular(16),
@@ -778,7 +791,7 @@ class _TopicCard extends StatelessWidget {
                   : const Icon(Icons.lightbulb_outline,
                       color: NotelColors.primary, size: 18),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 16),
             Expanded(
               child: Text(topic,
                   style: const TextStyle(
@@ -901,7 +914,7 @@ class _TipsSheetState extends State<_TipsSheet> {
                     shrinkWrap: true,
                     itemCount: tips.length,
                     separatorBuilder: (context, _) =>
-                        const SizedBox(height: 14),
+                        const SizedBox(height: 16),
                     itemBuilder: (context, i) =>
                         _TipRow(index: i + 1, text: tips[i]),
                   );
@@ -924,7 +937,7 @@ class _TipRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: NotelColors.surfaceHigh.withValues(alpha: 0.25),
         borderRadius: BorderRadius.circular(16),

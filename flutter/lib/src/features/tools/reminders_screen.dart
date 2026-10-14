@@ -7,6 +7,7 @@ import 'package:tabs_lab/src/data/reminder_alarm_sync.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/skeleton.dart';
 
 /// Round 18 — Reminders tool screen (display).
 /// Round 47 — WRITE actions, porting native `RemindersScreen.kt` +
@@ -710,8 +711,20 @@ class _RemindersScreenState extends State<RemindersScreen> {
 
   Widget _buildBody() {
     if (_loading) {
-      return const Center(
-        child: CircularProgressIndicator(color: NotelColors.primary),
+      return const SkeletonGroup(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 110),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SkeletonBox(height: 84, radius: 16),
+              SizedBox(height: 16),
+              SkeletonBox(height: 84, radius: 16),
+              SizedBox(height: 16),
+              SkeletonBox(height: 84, radius: 16),
+            ],
+          ),
+        ),
       );
     }
     if (_failed || _loadFailed) {
@@ -729,16 +742,17 @@ class _RemindersScreenState extends State<RemindersScreen> {
               'No reminders yet',
               style: TextStyle(
                 color: NotelColors.textPrimary,
-                fontSize: 20,
+                fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            SizedBox(height: 6),
+            SizedBox(height: 8),
             Text(
               'Tap New Reminder to add your first one.',
               style: TextStyle(
                 color: NotelColors.textSecondary,
-                fontSize: 14,
+                fontSize: 13,
+                height: 1.5,
               ),
               textAlign: TextAlign.center,
             ),
@@ -748,7 +762,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
     }
     return ListView.separated(
       padding:
-          const EdgeInsets.fromLTRB(16, 8, 16, 100),
+          const EdgeInsets.fromLTRB(16, 8, 16, 110),
       itemCount: visible.length,
       separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemBuilder: (context, i) =>
@@ -769,16 +783,17 @@ class _RemindersScreenState extends State<RemindersScreen> {
               'Couldn\'t load reminders',
               style: TextStyle(
                 color: NotelColors.textPrimary,
-                fontSize: 20,
+                fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             const Text(
               'Check your connection and try again.',
               style: TextStyle(
                 color: NotelColors.textSecondary,
-                fontSize: 14,
+                fontSize: 13,
+                height: 1.5,
               ),
               textAlign: TextAlign.center,
             ),

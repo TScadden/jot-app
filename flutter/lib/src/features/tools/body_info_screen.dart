@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/skeleton.dart';
 
 /// Body Info & Impact Map — port of the native `BodyInfoScreen.kt` +
 /// `BodyInfoViewModel.kt` + `BodyImpactEngine.kt`.
@@ -590,11 +591,23 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
         ),
       ),
       body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(color: NotelColors.primary),
-            )
+          ? const SkeletonGroup(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 110),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SkeletonBox(height: 152, radius: 20),
+                  SizedBox(height: 16),
+                  SkeletonBox(height: 96, radius: 20),
+                  SizedBox(height: 16),
+                  SkeletonBox(height: 96, radius: 20),
+                ],
+              ),
+            ),
+          )
           : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 110),
               children: [
                 const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -688,7 +701,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
           child: Text(
             'Active Body Impact Zones',
             style: TextStyle(
-              fontSize: 17,
+              fontSize: 16,
               fontWeight: FontWeight.bold,
               color: NotelColors.textPrimary,
             ),
@@ -927,7 +940,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
         const Text(
           'Your Conditions',
           style: TextStyle(
-            fontSize: 17,
+            fontSize: 16,
             fontWeight: FontWeight.bold,
             color: NotelColors.textPrimary,
           ),
@@ -943,7 +956,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
             style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.bold,
-              color: NotelColors.primary,
+              color: NotelColors.primaryText,
             ),
           ),
         ),
@@ -957,7 +970,7 @@ class _BodyInfoScreenState extends State<BodyInfoScreen> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: NotelColors.surface.withValues(alpha: 0.8),
+          color: NotelColors.surface,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
         ),

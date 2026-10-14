@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
@@ -522,7 +523,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ),
           Expanded(
             child: ListView.separated(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
               separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemCount: 4,
               itemBuilder: (_, _) => Container(
@@ -552,24 +553,32 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Widget _buildLoadError() {
+    // R53 S11: Pattern A error state (was Pattern B).
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.symmetric(horizontal: 32),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              _loadError!,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: NotelColors.textSecondary),
-            ),
+            const Icon(Icons.cloud_off_outlined,
+                size: 56, color: NotelColors.textSecondary),
             const SizedBox(height: 16),
-            TextButton(
+            Text(_loadError!,
+                style: const TextStyle(
+                    fontSize: 14,
+                    height: 1.5,
+                    color: NotelColors.textSecondary),
+                textAlign: TextAlign.center),
+            const SizedBox(height: 24),
+            ElevatedButton(
               onPressed: _load,
-              child: const Text('Retry',
-                  style: TextStyle(
-                      color: NotelColors.primary,
-                      fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: NotelColors.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
+              child: const Text('Try again'),
             ),
           ],
         ),
@@ -768,7 +777,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       );
     }
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
       separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemCount: filtered.length,
       itemBuilder: (context, index) =>
@@ -790,6 +799,36 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final lockedCheckIn = isLockedCheckInEntry(entry, _categories);
     final chipLabel = lockedCheckIn ? feelingCheckInTag : cat?.name;
     final chipColor = lockedCheckIn ? NotelColors.primary : accent;
+    // R53 HI5: chip label ink. Primary case (incl. the locked
+    // check-in tag, which shares this builder) uses primaryText on
+    // its @15%-over-surface tint (5.92:1). For all other category
+    // colors, the label keeps chipColor only where chipColor on its
+    // own @15%-over-surface tint computes >= 4.5:1 per skill §2;
+    // otherwise it falls back to textPrimary. Tint, border, and the
+    // accent stripe are unchanged.
+    Color chipLabelColor(Color color) {
+      if (color == NotelColors.primary) return NotelColors.primaryText;
+      double linearize(double c) => c <= 0.03928
+          ? c / 12.92
+          : math.pow((c + 0.055) / 1.055, 2.4).toDouble();
+      double luminance(double r, double g, double b) =>
+          0.2126 * linearize(r) +
+          0.7152 * linearize(g) +
+          0.0722 * linearize(b);
+      const bg = NotelColors.surface;
+      final tintLum = luminance(
+        color.r * 0.15 + bg.r * 0.85,
+        color.g * 0.15 + bg.g * 0.85,
+        color.b * 0.15 + bg.b * 0.85,
+      );
+      final chipLum = luminance(color.r, color.g, color.b);
+      final light = math.max(chipLum, tintLum);
+      final dark = math.min(chipLum, tintLum);
+      final ratio = (light + 0.05) / (dark + 0.05);
+      return ratio >= 4.5 ? color : NotelColors.textPrimary;
+    }
+
+    final chipLabelColorValue = chipLabelColor(chipColor);
     return GestureDetector(
       onTap: () => _showEntryDetail(entry),
       child: Container(
@@ -844,7 +883,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   child: Text(
                                     chipLabel,
                                     style: TextStyle(
-                                      color: chipColor,
+                                      color: chipLabelColorValue,
                                       fontSize: 10,
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -854,16 +893,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             : const SizedBox.shrink(),
                       ),
                       SizedBox(
-                        // R49 HI2: 48dp target (was 28×28); glyph
-                        // stays 16dp.
+                        // R49 HI2: 48dp target (was 28×28). R53: glyph
+                        // 16->18, full-opacity textSecondary.
                         width: 48,
                         height: 48,
                         child: IconButton(
                           padding: EdgeInsets.zero,
                           onPressed: () => _deleteEntry(entry),
-                          icon: const Icon(Icons.delete, size: 16),
-                          color: NotelColors.textSecondary
-                              .withValues(alpha: 0.45),
+                          icon: const Icon(Icons.delete, size: 18),
+                          color: NotelColors.textSecondary,
                         ),
                       ),
                     ],

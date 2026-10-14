@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/skeleton.dart';
 
 /// Leaderboard order: friends sorted by weekly level, highest first.
 /// Pure and unit-testable.
@@ -334,10 +335,21 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
         ),
       ),
       body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(color: NotelColors.primary))
+          ? const SkeletonGroup(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 110),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SkeletonBox(height: 140, radius: 16),
+                  SizedBox(height: 16),
+                  SkeletonBox(height: 180, radius: 16),
+                ],
+              ),
+            ),
+          )
           : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 110),
               children: [
                 if (_error != null) ...[
                   _errorBanner(_error!),
@@ -348,7 +360,7 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
                   children: [
                     const Text('Friends',
                         style: TextStyle(
-                            fontSize: 18,
+                            fontSize: 16,
                             fontWeight: FontWeight.bold,
                             color: NotelColors.textPrimary)),
                     TextButton(
@@ -371,7 +383,7 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: NotelColors.surface.withValues(alpha: 0.8),
+                    color: NotelColors.surface,
                     borderRadius: BorderRadius.circular(16),
                     border:
                         Border.all(color: NotelColors.cardBorder),
@@ -393,14 +405,14 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
                 const SizedBox(height: 24),
                 const Text('Weekly Leaderboard',
                     style: TextStyle(
-                        fontSize: 18,
+                        fontSize: 16,
                         fontWeight: FontWeight.bold,
                         color: NotelColors.textPrimary)),
                 const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: NotelColors.surface.withValues(alpha: 0.8),
+                    color: NotelColors.surface,
                     borderRadius: BorderRadius.circular(16),
                     border:
                         Border.all(color: NotelColors.cardBorder),
@@ -419,7 +431,7 @@ class _CommunityToolScreenState extends State<CommunityToolScreen> {
 
   Widget _errorBanner(String text) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: NotelColors.error.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),
