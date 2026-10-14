@@ -371,19 +371,27 @@ bool _isPresentFlag(String v) {
   return t == 'true' || t == 'false';
 }
 
-/// Round 55 Step 3 — medication tag disambiguation rule (documented
-/// per the round brief):
-/// - 6 or more fields: the EXTENDED grammar
+/// Round 55 Step 3 — medication tag disambiguation rule, final
+/// form after the Round 55 fix pass (Vera 4d, fail-safe):
+/// - Exactly 6 fields AND field 6 is a recognizable present flag
+///   (true/false): the EXTENDED grammar
 ///   Name|Dose|Frequency|StartDate|EndDate|isPresent.
+/// - 6 or more fields where field 6 is NOT a recognizable present
+///   flag, OR more than 6 fields at all (for example a medication
+///   name that itself contains a pipe, shifting every slot): FAIL
+///   SAFE to a placeholders parse — name is field 1, dose and
+///   frequency stay EMPTY (never a shifted value), and
+///   start/end/present come from the FINAL three fields, with
+///   present parsed from the very last field.
+/// - Exactly 5 fields: the extended grammar
+///   (Name|Dose|Frequency|StartDate|isPresent, empty EndDate) is
+///   taken ONLY when field 5 IS a present flag and field 4 is
+///   NOT one. Otherwise the tag is legacy (Name|StartDate|EndDate|
+///   isPresent, any 5th field ignored — exactly as pre-Round-55
+///   tags with trailing data behaved).
 /// - 4 or fewer fields: the LEGACY grammar
 ///   Name|StartDate|EndDate|isPresent (dose/frequency stay empty,
 ///   so approvals keep the historical placeholders).
-/// - Exactly 5 fields is ambiguous, so field 4 decides: when the
-///   4th field parses as a present flag it is the legacy grammar
-///   (any 5th field is ignored, exactly as pre-Round-55 tags with
-///   trailing data behaved); otherwise the 5th field is the flag
-///   and the tag is the extended grammar with an empty EndDate
-///   (Name|Dose|Frequency|StartDate|isPresent).
 List<CoachMedProposal> _parseMedicationString(String raw) {
   final out = <CoachMedProposal>[];
   for (final item in raw.split(';')) {
@@ -395,13 +403,24 @@ List<CoachMedProposal> _parseMedicationString(String raw) {
     String startDate;
     var endDate = '';
     bool isPresent;
-    if (parts.length >= 6) {
+    if (parts.length >= 6 &&
+        !(parts.length == 6 && _isPresentFlag(parts[5]))) {
+      // Fail-safe placeholders parse (see the rule above): no
+      // dose/frequency is read from shifted slots; the dates and
+      // the present flag come from the final three fields.
+      startDate = parts[parts.length - 3].trim();
+      endDate = parts[parts.length - 2].trim();
+      isPresent =
+          parts[parts.length - 1].trim().toLowerCase() == 'true';
+    } else if (parts.length >= 6) {
       dose = parts[1].trim();
       frequency = parts[2].trim();
       startDate = parts[3].trim();
       endDate = parts[4].trim();
       isPresent = parts[5].trim().toLowerCase() == 'true';
-    } else if (parts.length == 5 && !_isPresentFlag(parts[3])) {
+    } else if (parts.length == 5 &&
+        _isPresentFlag(parts[4]) &&
+        !_isPresentFlag(parts[3])) {
       dose = parts[1].trim();
       frequency = parts[2].trim();
       startDate = parts[3].trim();
@@ -430,7 +449,10 @@ List<CoachMedProposal> _parseMedicationString(String raw) {
 /// tag from the display text and reports each proposal + status.
 /// Pure and unit-tested. Never throws.
 CoachParsedContent parseCoachMessageContent(String rawContent) {
-  var clean = rawContent;
+  // Round 55 fix pass (Vera): the REMEMBER extraction also runs
+  // here, so a stored/synced message can neither render nor
+  // re-persist a REMEMBER line.
+  var clean = extractCoachRememberLine(rawContent).$1;
 
   String? noteText;
   var noteStatus = CoachProposalStatus.none;
@@ -680,7 +702,7 @@ Use 'isPresent' as 'true' if the user is currently taking the medication, or 'fa
 Dates should look like "Jun 2026", "2025-12-05", "Dec 2025" or similar based on context.
 Example for multiple medications: [PROPOSE_MEDICATION:Pyridostigmine|60 mg|3 times daily|Jun 2026||true;Metoprolol|25 mg|Once daily|Jan 2025|May 2026|false]
 
-MEMORY: When the user states a durable health or goal fact or a decision (what they are trying, what helped, or what they stopped), end your reply with exactly one line in the form REMEMBER: followed by one short factual sentence capturing it. Include at most one REMEMBER line per reply, and only when there is a durable fact or decision to remember.
+MEMORY: When the user states a durable health or goal fact or a decision (what they are trying, what they decided to start, or what they stopped), end your reply with exactly one line in the form REMEMBER: followed by one short sentence capturing only what the user stated. If the user describes an effect, capture it as their report, starting with 'User reported', and not as an established result. Include at most one REMEMBER line per reply, and only when there is a durable fact or decision to remember.
 
 $calendarInstructions
 
@@ -810,7 +832,7 @@ List<String> coachLogDigestLines(
   final catNames = <int, String>{
     for (final c in categories)
       if (_asIntOr(c['id'], -1) >= 0)
-        _asIntOr(c['id'], 0): '${c['name'] ?? ''}'.trim(),
+        _asIntOr(c['id'], 0): coachPlainText('${c['name'] ?? ''}'),
   };
   final cutoff = DateTime(now.year, now.month, now.day)
       .subtract(const Duration(days: 14))
@@ -1121,41 +1143,48 @@ String buildCoachHealthContext({
 // are dropped), so facts live in CoachMemoryStore on this device
 // and the UI says so plainly. Capture has exactly two sources:
 // deterministic events this client itself performs (approved or
-// dismissed proposals, below) and a single trailing REMEMBER line
-// the model is instructed to emit — extracted before display and
-// before persistence, so neither the rendered text nor the stored
-// coach message ever contains it.
+// dismissed proposals, below) and REMEMBER lines the model is
+// instructed to emit — extracted before display and before
+// persistence, so neither the rendered text nor the stored
+// coach message ever contains one.
 
-/// Extracts a trailing REMEMBER line from a coach reply. Returns
-/// the reply with that line stripped, and the fact text (null when
-/// there is no usable trailing line). Only a TRAILING line is
-/// stripped — a REMEMBER mention mid-reply is left alone.
+/// Extracts REMEMBER lines from a coach reply. Returns the reply
+/// with EVERY standalone REMEMBER line stripped — trailing lines
+/// (all of them, loop-stripped) and any standalone REMEMBER line
+/// anywhere else in the reply, including a bare trailing
+/// `REMEMBER:` with no fact — plus the captured fact: the last
+/// fact-bearing REMEMBER line's text (null when no REMEMBER line
+/// carried a fact). Round 55 fix pass (Vera): a REMEMBER line
+/// must never render or persist regardless of its position.
 (String, String?) extractCoachRememberLine(String reply) {
-  final lines = reply.split('\n');
-  var end = lines.length;
-  while (end > 0 && lines[end - 1].trim().isEmpty) {
-    end--;
+  final kept = <String>[];
+  String? fact;
+  for (final line in reply.split('\n')) {
+    final m = RegExp(r'^REMEMBER:\s*(.*)$', caseSensitive: false)
+        .firstMatch(line.trim());
+    if (m != null) {
+      final f = m.group(1)!.trim();
+      if (f.isNotEmpty) fact = f;
+      continue;
+    }
+    kept.add(line);
   }
-  if (end == 0) return (reply, null);
-  final last = lines[end - 1].trim();
-  final m = RegExp(r'^REMEMBER:\s*(.+)$', caseSensitive: false).firstMatch(last);
-  if (m == null) return (reply, null);
-  final fact = m.group(1)!.trim();
-  if (fact.isEmpty) return (reply, null);
-  final clean = lines.sublist(0, end - 1).join('\n').trim();
-  return (clean, fact);
+  return (kept.join('\n').trim(), fact);
 }
 
 /// The memory section injected into the enriched context, newest
 /// first, physically adjacent to the fresh health sections (it is
 /// passed as the memoryContext of coachEnrichedUserContext, which
-/// places it directly after the health block). This is also the
-/// follow-through mechanism: the coach is told to check prior
-/// items against the fresh data above it.
+/// places it directly after the health block). The closing
+/// instruction lets the coach note a remembered start/stop date
+/// alongside the fresh values above it, exactly as recorded —
+/// it must never state or imply causation (Juno, Round 55 fix).
 String buildCoachMemoryContext(List<CoachMemoryFact> facts) {
   if (facts.isEmpty) return '';
   final lines = <String>[];
-  for (final f in facts) {
+  // Round 55 fix pass (Vera LOW): the injected section is capped
+  // at the store's fact cap even when handed a longer list.
+  for (final f in facts.take(CoachMemoryStore.maxFacts)) {
     final text = coachPlainText(f.text);
     if (text.isEmpty) continue;
     final hasDatePrefix =
@@ -1172,8 +1201,12 @@ String buildCoachMemoryContext(List<CoachMemoryFact> facts) {
   if (lines.isEmpty) return '';
   return 'FROM EARLIER SESSIONS (coach memory, this device):\n'
       '${lines.join('\n')}\n'
-      'You may reference these facts, and you should check prior '
-      'items in them against the fresh health data above.';
+      'You may reference these facts. When a fact mentions '
+      'something the user started, stopped, or is trying, you may '
+      'note its date together with the related values in the '
+      'fresh health data above, exactly as recorded. Do not state '
+      'or imply that it caused, helped, worsened, or changed any '
+      'health value, symptom, or outcome.';
 }
 
 String _coachMemoryDate(DateTime now) => _coachDateStr(now);
@@ -1574,7 +1607,7 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
                 ),
               ),
               const Icon(Icons.chevron_right,
-                  color: NotelColors.textSecondary),
+                  size: 20, color: NotelColors.textSecondary),
             ],
           ),
         ),
@@ -1665,7 +1698,7 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
         title: const Text(
           'Tabs Coach History',
           style: TextStyle(
-              fontSize: 20,
+              fontSize: 22,
               fontWeight: FontWeight.bold,
               color: NotelColors.textPrimary),
         ),
@@ -1755,8 +1788,6 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
                     icon: const Icon(Icons.close,
                         size: 18, color: NotelColors.textSecondary),
                     onPressed: () => setState(() => _actionError = null),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
                   ),
                 ],
               ),
@@ -1788,7 +1819,7 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                    fontSize: 18,
+                                    fontSize: 16,
                                     fontWeight: FontWeight.bold,
                                     color: NotelColors.textPrimary)),
                             const SizedBox(height: 4),
@@ -1806,7 +1837,7 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
                         onPressed: () => _deleteSession(session),
                       ),
                       const Icon(Icons.chevron_right,
-                          color: NotelColors.textSecondary),
+                          size: 20, color: NotelColors.textSecondary),
                     ],
                   ),
                 ),
@@ -1903,7 +1934,7 @@ class _CoachMemoryScreenState extends State<CoachMemoryScreen> {
         title: const Text(
           'Coach memory',
           style: TextStyle(
-              fontSize: 20,
+              fontSize: 22,
               fontWeight: FontWeight.bold,
               color: NotelColors.textPrimary),
         ),
@@ -1912,7 +1943,10 @@ class _CoachMemoryScreenState extends State<CoachMemoryScreen> {
             TextButton(
               onPressed: _clearAll,
               child: const Text('Clear all',
-                  style: TextStyle(color: NotelColors.error)),
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: NotelColors.error)),
             ),
         ],
       ),
@@ -1934,13 +1968,27 @@ class _CoachMemoryScreenState extends State<CoachMemoryScreen> {
                 ? const Center(
                     child: Padding(
                       padding: EdgeInsets.symmetric(horizontal: 32),
-                      child: Text(
-                        'No coach memory yet. Facts the coach remembers from your chats and approved actions will appear here.',
-                        style: TextStyle(
-                            fontSize: 14,
-                            height: 1.5,
-                            color: NotelColors.textSecondary),
-                        textAlign: TextAlign.center,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.psychology_outlined,
+                              size: 64,
+                              color: NotelColors.textSecondary),
+                          SizedBox(height: 16),
+                          Text('No coach memory yet.',
+                              style: TextStyle(
+                                  fontSize: 16,
+                                  color: NotelColors.textSecondary)),
+                          SizedBox(height: 4),
+                          Text(
+                              'Facts the coach remembers from your '
+                              'chats and approved actions will appear '
+                              'here.',
+                              style: TextStyle(
+                                  fontSize: 14,
+                                  color: NotelColors.textSecondary),
+                              textAlign: TextAlign.center),
+                        ],
                       ),
                     ),
                   )
@@ -1948,17 +1996,24 @@ class _CoachMemoryScreenState extends State<CoachMemoryScreen> {
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                     itemCount: _facts.length,
                     separatorBuilder: (context, _) =>
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 12),
                     itemBuilder: (context, i) {
                       final fact = _facts[i];
                       final dateLabel = fact.createdAt > 0
                           ? formatCoachDate(fact.createdAt)
                           : '';
+                      // Round 55 fix pass (Mira S12): a leading
+                      // yyyy-MM-dd: prefix is display noise (the
+                      // date already renders below) — stripped
+                      // here only; the stored text and the context
+                      // builder keep it.
+                      final displayText = fact.text.replaceFirst(
+                          RegExp(r'^\d{4}-\d{2}-\d{2}:\s*'), '');
                       return Container(
-                        padding: const EdgeInsets.all(14),
+                        padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: NotelColors.surfaceHigh,
-                          borderRadius: BorderRadius.circular(14),
+                          color: NotelColors.surface,
+                          borderRadius: BorderRadius.circular(16),
                         ),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1968,9 +2023,10 @@ class _CoachMemoryScreenState extends State<CoachMemoryScreen> {
                                 crossAxisAlignment:
                                     CrossAxisAlignment.start,
                                 children: [
-                                  Text(fact.text,
+                                  Text(displayText,
                                       style: const TextStyle(
                                           fontSize: 14,
+                                          fontWeight: FontWeight.normal,
                                           height: 1.4,
                                           color:
                                               NotelColors.textPrimary)),
@@ -1987,12 +2043,10 @@ class _CoachMemoryScreenState extends State<CoachMemoryScreen> {
                             ),
                             IconButton(
                               icon: const Icon(Icons.delete_outline,
-                                  size: 20,
+                                  size: 18,
                                   color: NotelColors.error,
                                   semanticLabel: 'Delete memory'),
                               onPressed: () => _deleteAt(i),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
                             ),
                           ],
                         ),
@@ -2128,7 +2182,6 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
   // its section and never blocks a send.
   String? _cachedHealthContext;
   String? _cachedBodyLoadHistory;
-  List<CoachMemoryFact> _memoryFacts = const [];
   String _cachedMemoryContext = '';
   String? _resolvedAccountEmail;
 
@@ -2162,7 +2215,6 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
         source: source,
         email: email,
       );
-      _memoryFacts = facts;
       _cachedMemoryContext = buildCoachMemoryContext(facts);
     } catch (_) {}
   }
@@ -2395,19 +2447,25 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
       widget.pullCategories,
       now: DateTime.now(),
     );
-    // Memory: read the store's in-memory mirror (never await disk
-    // IO on the send path) and warm it in the background; when the
-    // warm lands it refreshes the section for later sends.
+    // Memory: Round 55 fix pass (Vera) — the memory context is
+    // built ONLY from owner-verified facts for this account: the
+    // owner-gated cachedFactsFor(email) (Vera's sanctioned
+    // alternative to awaiting load here — the send path must
+    // never await disk IO, per the store's contract, since a
+    // wedged storage channel would hang the chat). The mirror is
+    // warmed by the History screen's load before any chat opens
+    // and by recordFact in-session; a background load also
+    // refreshes the section for later sends. The unguarded
+    // cachedFacts are never read here, so one account's facts
+    // can never be injected into another's chat.
     try {
       final email = await _accountEmail();
-      _memoryFacts = _memoryStore.cachedFacts;
-      _cachedMemoryContext = buildCoachMemoryContext(_memoryFacts);
+      _cachedMemoryContext =
+          buildCoachMemoryContext(_memoryStore.cachedFactsFor(email));
       unawaited(_memoryStore.load(email).then((facts) {
-        _memoryFacts = facts;
         _cachedMemoryContext = buildCoachMemoryContext(facts);
       }));
     } catch (_) {
-      _memoryFacts = const [];
       _cachedMemoryContext = '';
     }
   }
@@ -2703,7 +2761,7 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
 
       final updated = message.copyWith(
         content: rewriteProposalTag(
-          message.content,
+          extractCoachRememberLine(message.content).$1,
           _tagKindByKind[kind]!,
           approve ? 'APPROVED' : 'DENIED',
         ),
@@ -2821,20 +2879,41 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
     }
   }
 
-  /// Round 55 Step 3 — approves a LOG_ENTRY proposal: resolves the
-  /// category by name from the pull's categories (case-insensitive;
-  /// unknown category fails honestly and the proposal stays
-  /// pending), then upserts the entry with the note flow's
-  /// discipline — a failed re-pull aborts before any id math, and
+  /// Round 55 Step 3 — approves a LOG_ENTRY proposal: re-pulls,
+  /// then resolves the category by name from the RE-PULLED
+  /// categories (case-insensitive; unknown category fails
+  /// honestly and the proposal stays pending) and upserts the
+  /// entry with the note flow's discipline — a failed or
+  /// contract-violating re-pull aborts before any id math, and
   /// the new id is max(existing) + 1.
   Future<CoachApprovalOutcome> _approveLogEntry(
       CoachParsedContent parsed) async {
     try {
-      final wanted = (parsed.logEntryCategory ?? '').trim().toLowerCase();
+      _backend.invalidateSyncPull();
+      final pull = await _backend.fetchSyncPull();
+      if (pull == null) {
+        return const CoachApprovalOutcome.failure(
+            coachLogEntryPullFailedMessage);
+      }
+      // Round 55 fix pass (Vera 4a): a contract-violating pull
+      // (entries missing or not a list) aborts BEFORE any id
+      // math — the note flow's null-check discipline.
+      final entries = pull['entries'];
+      if (entries is! List) {
+        return const CoachApprovalOutcome.failure(
+            coachLogEntryPullFailedMessage);
+      }
+      // Round 55 fix pass (Vera 4b): the category resolves
+      // against the RE-PULLED categories, never the stale
+      // navigation-time widget.pullCategories.
+      final wanted =
+          (parsed.logEntryCategory ?? '').trim().toLowerCase();
       int? categoryId;
-      if (wanted.isNotEmpty) {
-        for (final c in widget.pullCategories) {
-          if ('${c['name'] ?? ''}'.trim().toLowerCase() == wanted) {
+      final pulledCategories = pull['categories'];
+      if (wanted.isNotEmpty && pulledCategories is List) {
+        for (final c in pulledCategories) {
+          if (c is Map &&
+              '${c['name'] ?? ''}'.trim().toLowerCase() == wanted) {
             final id = _asIntOr(c['id'], -999);
             if (id != -999) categoryId = id;
             break;
@@ -2845,20 +2924,11 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
         return const CoachApprovalOutcome.failure(
             coachLogEntryUnknownCategoryMessage);
       }
-      _backend.invalidateSyncPull();
-      final pull = await _backend.fetchSyncPull();
-      if (pull == null) {
-        return const CoachApprovalOutcome.failure(
-            coachLogEntryPullFailedMessage);
-      }
-      final entries = pull['entries'];
       var maxId = 0;
-      if (entries is List) {
-        for (final e in entries) {
-          if (e is Map) {
-            final id = _asIntOr(e['id'], 0);
-            if (id > maxId) maxId = id;
-          }
+      for (final e in entries) {
+        if (e is Map) {
+          final id = _asIntOr(e['id'], 0);
+          if (id > maxId) maxId = id;
         }
       }
       final saved = await _backend.postLogEntries([
@@ -2894,7 +2964,17 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
     try {
       final rawDate = (parsed.counterDate ?? '').trim();
       final parsedDate = DateTime.tryParse(rawDate);
-      if (parsedDate == null ||
+      // Round 55 fix pass (Vera LOW): the parsed date must
+      // ROUND-TRIP — Dart's parser normalizes out-of-range
+      // components (2026-02-31 rolls into March), so the parsed
+      // year/month/day must equal the split components exactly.
+      final dateParts = rawDate.split('-');
+      final roundTrips = parsedDate != null &&
+          dateParts.length == 3 &&
+          int.tryParse(dateParts[0]) == parsedDate.year &&
+          int.tryParse(dateParts[1]) == parsedDate.month &&
+          int.tryParse(dateParts[2]) == parsedDate.day;
+      if (!roundTrips ||
           !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(rawDate)) {
         return const CoachApprovalOutcome.failure(
             coachCounterInvalidDateMessage);
@@ -3143,8 +3223,9 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
           // dose/frequency — write those. The placeholders remain
           // only for legacy-shape tags that carry neither.
           'dose': med.dose.trim().isNotEmpty ? med.dose.trim() : 'As prescribed',
-          'frequency':
-              med.frequency.trim().isNotEmpty ? med.frequency.trim() : 'Daily',
+          // Round 55 fix pass (Juno M1): the stated frequency or
+          // empty — never a fabricated 'Daily'.
+          'frequency': med.frequency.trim(),
           'updatedAt': now,
           'isDeleted': false,
         });
@@ -3192,7 +3273,7 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
               child: Text(
                 _title,
                 style: const TextStyle(
-                    fontSize: 20,
+                    fontSize: 22,
                     fontWeight: FontWeight.bold,
                     color: NotelColors.textPrimary),
                 maxLines: 1,
@@ -3222,6 +3303,7 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
                   const SizedBox(height: 14),
               itemBuilder: (context, i) => _ChatBubble(
                 message: _messages[i],
+                sessionMessages: _messages,
                 actionBusy: _actionBusy,
                 onProposal: (kind, approve) => _resolveProposal(
                     _messages[i], kind,
@@ -3266,14 +3348,28 @@ class _DisclaimerBanner extends StatelessWidget {
 
 class _ChatBubble extends StatelessWidget {
   final CoachChatMessage message;
+
+  /// Every message in this session (Round 55 fix pass, Mira N9:
+  /// the File proposal card checks it for its upload source, the
+  /// same existence check _approveFile performs).
+  final List<CoachChatMessage> sessionMessages;
   final bool actionBusy;
   final void Function(String kind, bool approve) onProposal;
 
   const _ChatBubble({
     required this.message,
+    this.sessionMessages = const [],
     required this.actionBusy,
     required this.onProposal,
   });
+
+  /// Whether this session holds the "📄 Uploaded file:" source
+  /// message for [fileName] — mirrors _approveFile's lookup.
+  bool _hasFileSource(String fileName) {
+    final prefix = '📄 Uploaded file: $fileName';
+    return sessionMessages
+        .any((m) => m.role == 'user' && m.content.startsWith(prefix));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -3368,12 +3464,12 @@ class _ChatBubble extends StatelessWidget {
             emoji: '📝',
             title: 'Suggested Note Log',
             approveLabel: 'Approve',
-            denyLabel: 'Deny',
+            denyLabel: 'Dismiss',
             busy: actionBusy,
             onApprove: () => onProposal('note', true),
             onDeny: () => onProposal('note', false),
             children: [
-              Text('"${parsed.noteText}"',
+              Text('“${parsed.noteText}”',
                   style: const TextStyle(
                       fontSize: 14,
                       fontStyle: FontStyle.italic,
@@ -3386,7 +3482,8 @@ class _ChatBubble extends StatelessWidget {
               text: '✓ Note Saved', color: NotelColors.success));
         case CoachProposalStatus.denied:
           addCard(const _ProposalBadge(
-              text: '✗ Suggestion Dismissed', color: NotelColors.error));
+              text: '✗ Note Dismissed',
+              color: NotelColors.textSecondary));
         case CoachProposalStatus.none:
           break;
       }
@@ -3400,7 +3497,15 @@ class _ChatBubble extends StatelessWidget {
             emoji: '📁',
             title: 'Save Document to Tabs DB?',
             approveLabel: 'Approve',
-            denyLabel: 'Deny',
+            denyLabel: 'Dismiss',
+            // Round 55 fix pass (Mira N9): when this session has
+            // no uploaded-file source message, the limitation is
+            // stated on the card face and approve is disabled
+            // (the _approveFile snackbar remains the backstop).
+            approveEnabled: _hasFileSource(parsed.fileName!),
+            notice: _hasFileSource(parsed.fileName!)
+                ? null
+                : coachFileNotAttachedMessage,
             busy: actionBusy,
             onApprove: () => onProposal('file', true),
             onDeny: () => onProposal('file', false),
@@ -3419,8 +3524,8 @@ class _ChatBubble extends StatelessWidget {
               color: NotelColors.success));
         case CoachProposalStatus.denied:
           addCard(const _ProposalBadge(
-              text: '✗ Save Suggestion Dismissed',
-              color: NotelColors.error));
+              text: '✗ Document Dismissed',
+              color: NotelColors.textSecondary));
         case CoachProposalStatus.none:
           break;
       }
@@ -3434,7 +3539,7 @@ class _ChatBubble extends StatelessWidget {
             emoji: '📋',
             title: 'Create List?',
             approveLabel: 'Approve',
-            denyLabel: 'Deny',
+            denyLabel: 'Dismiss',
             busy: actionBusy,
             onApprove: () => onProposal('list', true),
             onDeny: () => onProposal('list', false),
@@ -3451,18 +3556,17 @@ class _ChatBubble extends StatelessWidget {
                   child: Text('•  $item',
                       style: const TextStyle(
                           fontSize: 13,
-                          color: NotelColors.textSecondary)),
+                          color: NotelColors.textPrimary)),
                 ),
             ],
           ));
         case CoachProposalStatus.approved:
           addCard(const _ProposalBadge(
-              text: '✓ List Created Successfully',
-              color: NotelColors.success));
+              text: '✓ List Created', color: NotelColors.success));
         case CoachProposalStatus.denied:
           addCard(const _ProposalBadge(
-              text: '✗ List Suggestion Dismissed',
-              color: NotelColors.error));
+              text: '✗ List Dismissed',
+              color: NotelColors.textSecondary));
         case CoachProposalStatus.none:
           break;
       }
@@ -3476,14 +3580,14 @@ class _ChatBubble extends StatelessWidget {
             emoji: '🔔',
             title: 'Set Reminder?',
             approveLabel: 'Set It',
-            denyLabel: 'Deny',
+            denyLabel: 'Dismiss',
             busy: actionBusy,
             onApprove: () => onProposal('reminder', true),
             onDeny: () => onProposal('reminder', false),
             children: [
               Text(parsed.reminderTitle!,
                   style: const TextStyle(
-                      fontSize: 15,
+                      fontSize: 14,
                       fontWeight: FontWeight.bold,
                       color: NotelColors.textPrimary)),
               if (parsed.reminderTime != null) ...[
@@ -3500,7 +3604,8 @@ class _ChatBubble extends StatelessWidget {
               text: '✓ Reminder Set', color: NotelColors.success));
         case CoachProposalStatus.denied:
           addCard(const _ProposalBadge(
-              text: '✗ Reminder Dismissed', color: NotelColors.error));
+              text: '✗ Reminder Dismissed',
+              color: NotelColors.textSecondary));
         case CoachProposalStatus.none:
           break;
       }
@@ -3517,7 +3622,7 @@ class _ChatBubble extends StatelessWidget {
           addCard(_ProposalCard(
             emoji: '📅',
             title: 'Proposed Calendar Event',
-            approveLabel: 'Native App Required',
+            approveLabel: 'Approve',
             approveEnabled: false,
             notice: coachCalendarCardLimitation,
             denyLabel: 'Dismiss',
@@ -3527,38 +3632,30 @@ class _ChatBubble extends StatelessWidget {
             children: [
               Text(parsed.calendarTitle!,
                   style: const TextStyle(
-                      fontSize: 15,
+                      fontSize: 14,
                       fontWeight: FontWeight.bold,
                       color: NotelColors.textPrimary)),
               if ((parsed.calendarDate ?? '').isNotEmpty) ...[
                 const SizedBox(height: 4),
-                Text('📅 ${parsed.calendarDate}',
+                Text('📅 ${_formatCoachDatePremium(parsed.calendarDate!)}',
                     style: const TextStyle(
                         fontSize: 13,
                         color: NotelColors.textSecondary)),
               ],
               if ((parsed.calendarTime ?? '').isNotEmpty) ...[
-                const SizedBox(height: 2),
-                Text('🕐 ${parsed.calendarTime}',
+                const SizedBox(height: 4),
+                Text('🕐 ${_formatReminderTime(parsed.calendarTime!)}',
                     style: const TextStyle(
                         fontSize: 13,
                         color: NotelColors.textSecondary)),
               ],
               if ((parsed.calendarDesc ?? '').isNotEmpty) ...[
-                const SizedBox(height: 6),
+                const SizedBox(height: 4),
                 Text(parsed.calendarDesc!,
                     style: const TextStyle(
                         fontSize: 12,
                         color: NotelColors.textSecondary)),
               ],
-              const SizedBox(height: 12),
-              const Text(
-                "If you want changes, type them in the chat. I'll update the proposal and ask for your approval again.",
-                style: TextStyle(
-                    fontSize: 11,
-                    height: 1.35,
-                    color: NotelColors.textSecondary),
-              ),
             ],
           ));
         case CoachProposalStatus.approved:
@@ -3567,7 +3664,8 @@ class _ChatBubble extends StatelessWidget {
               color: NotelColors.success));
         case CoachProposalStatus.denied:
           addCard(const _ProposalBadge(
-              text: '✗ Event Dismissed', color: NotelColors.error));
+              text: '✗ Event Dismissed',
+              color: NotelColors.textSecondary));
         case CoachProposalStatus.none:
           break;
       }
@@ -3582,8 +3680,7 @@ class _ChatBubble extends StatelessWidget {
           addCard(_ProposalCard(
             emoji: '📅',
             title: 'Proposed Calendar Deletion',
-            titleColor: NotelColors.error,
-            approveLabel: 'Native App Required',
+            approveLabel: 'Approve',
             approveEnabled: false,
             notice: coachCalendarCardLimitation,
             denyLabel: 'Dismiss',
@@ -3593,12 +3690,13 @@ class _ChatBubble extends StatelessWidget {
             children: [
               Text(parsed.calendarDeleteTitle!,
                   style: const TextStyle(
-                      fontSize: 15,
+                      fontSize: 14,
                       fontWeight: FontWeight.bold,
                       color: NotelColors.textPrimary)),
               if ((parsed.calendarDeleteDate ?? '').isNotEmpty) ...[
                 const SizedBox(height: 4),
-                Text('Scheduled for: ${parsed.calendarDeleteDate}',
+                Text(
+                    'Scheduled for: ${_formatCoachDatePremium(parsed.calendarDeleteDate!)}',
                     style: const TextStyle(
                         fontSize: 13,
                         color: NotelColors.textSecondary)),
@@ -3608,7 +3706,7 @@ class _ChatBubble extends StatelessWidget {
         case CoachProposalStatus.approved:
           addCard(const _ProposalBadge(
               text: '✓ Event Deleted from Calendar',
-              color: NotelColors.error));
+              color: NotelColors.success));
         case CoachProposalStatus.denied:
           addCard(const _ProposalBadge(
               text: '✗ Deletion Dismissed',
@@ -3623,28 +3721,29 @@ class _ChatBubble extends StatelessWidget {
       switch (parsed.logEntryStatus) {
         case CoachProposalStatus.pending:
           addCard(_ProposalCard(
-            emoji: '📝',
-            title: 'Log entry',
+            emoji: '📓',
+            title: 'Proposed Log Entry',
             approveLabel: 'Approve',
-            denyLabel: 'Deny',
+            denyLabel: 'Dismiss',
             busy: actionBusy,
             onApprove: () => onProposal('logEntry', true),
             onDeny: () => onProposal('logEntry', false),
             children: [
-              if (parsed.logEntryCategory != null &&
-                  parsed.logEntryCategory!.isNotEmpty)
-                Text(parsed.logEntryCategory!,
-                    style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        color: NotelColors.textSecondary)),
-              const SizedBox(height: 4),
-              Text('"${parsed.logEntryText}"',
+              Text('“${parsed.logEntryText}”',
                   style: const TextStyle(
                       fontSize: 14,
                       fontStyle: FontStyle.italic,
                       height: 1.4,
                       color: NotelColors.textPrimary)),
+              if (parsed.logEntryCategory != null &&
+                  parsed.logEntryCategory!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(parsed.logEntryCategory!,
+                    style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: NotelColors.textSecondary)),
+              ],
             ],
           ));
         case CoachProposalStatus.approved:
@@ -3652,7 +3751,8 @@ class _ChatBubble extends StatelessWidget {
               text: '✓ Entry Logged', color: NotelColors.success));
         case CoachProposalStatus.denied:
           addCard(const _ProposalBadge(
-              text: '✗ Log Entry Dismissed', color: NotelColors.error));
+              text: '✗ Log Entry Dismissed',
+              color: NotelColors.textSecondary));
         case CoachProposalStatus.none:
           break;
       }
@@ -3678,21 +3778,24 @@ class _ChatBubble extends StatelessWidget {
                 ).daysLabel();
           addCard(_ProposalCard(
             emoji: '⏳',
-            title: 'Event counter',
+            title: 'Proposed Event Counter',
             approveLabel: 'Approve',
-            denyLabel: 'Deny',
+            denyLabel: 'Dismiss',
             busy: actionBusy,
             onApprove: () => onProposal('counter', true),
             onDeny: () => onProposal('counter', false),
             children: [
               Text(parsed.counterName!,
                   style: const TextStyle(
-                      fontSize: 15,
+                      fontSize: 14,
                       fontWeight: FontWeight.bold,
                       color: NotelColors.textPrimary)),
               if ((parsed.counterDate ?? '').isNotEmpty) ...[
                 const SizedBox(height: 4),
-                Text('${parsed.counterDate} — $daysLabel',
+                Text(
+                    target == null
+                        ? parsed.counterDate!
+                        : '${_monthNames[target.month - 1]} ${target.day}, ${target.year} — $daysLabel',
                     style: const TextStyle(
                         fontSize: 13,
                         color: NotelColors.textSecondary)),
@@ -3704,7 +3807,8 @@ class _ChatBubble extends StatelessWidget {
               text: '✓ Counter Created', color: NotelColors.success));
         case CoachProposalStatus.denied:
           addCard(const _ProposalBadge(
-              text: '✗ Counter Dismissed', color: NotelColors.error));
+              text: '✗ Counter Dismissed',
+              color: NotelColors.textSecondary));
         case CoachProposalStatus.none:
           break;
       }
@@ -3725,33 +3829,42 @@ class _ChatBubble extends StatelessWidget {
             onApprove: () => onProposal('medication', true),
             onDeny: () => onProposal('medication', false),
             children: [
-              for (final med in parsed.medications) ...[
-                Text(med.name,
+              for (var i = 0; i < parsed.medications.length; i++) ...[
+                Text(parsed.medications[i].name,
                     style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
                         color: NotelColors.textPrimary)),
+                const SizedBox(height: 2),
                 Text(
-                  med.isPresent
-                      ? 'Started: ${med.startDate} • Present'
-                      : 'Started: ${med.startDate} • Ended: ${med.endDate}',
+                  parsed.medications[i].isPresent
+                      ? 'Started: ${parsed.medications[i].startDate} • Present'
+                      : 'Started: ${parsed.medications[i].startDate} • Ended: ${parsed.medications[i].endDate}',
                   style: const TextStyle(
                       fontSize: 12,
                       color: NotelColors.textSecondary),
                 ),
-                if (med.dose.trim().isNotEmpty ||
-                    med.frequency.trim().isNotEmpty)
+                if (parsed.medications[i].dose.trim().isNotEmpty ||
+                    parsed.medications[i].frequency
+                        .trim()
+                        .isNotEmpty) ...[
+                  const SizedBox(height: 2),
                   Text(
                     [
-                      if (med.dose.trim().isNotEmpty) med.dose.trim(),
-                      if (med.frequency.trim().isNotEmpty)
-                        med.frequency.trim(),
+                      if (parsed.medications[i].dose.trim().isNotEmpty)
+                        parsed.medications[i].dose.trim(),
+                      if (parsed.medications[i].frequency
+                          .trim()
+                          .isNotEmpty)
+                        parsed.medications[i].frequency.trim(),
                     ].join(' • '),
                     style: const TextStyle(
                         fontSize: 12,
                         color: NotelColors.textSecondary),
                   ),
-                const SizedBox(height: 8),
+                ],
+                if (i < parsed.medications.length - 1)
+                  const SizedBox(height: 8),
               ],
             ],
           ));
@@ -3762,8 +3875,10 @@ class _ChatBubble extends StatelessWidget {
                   : '✓ Medication Added to Profile',
               color: NotelColors.success));
         case CoachProposalStatus.denied:
-          addCard(const _ProposalBadge(
-              text: '✗ Suggestion Dismissed',
+          addCard(_ProposalBadge(
+              text: parsed.medications.length > 1
+                  ? '✗ Medications Dismissed'
+                  : '✗ Medication Dismissed',
               color: NotelColors.textSecondary));
         case CoachProposalStatus.none:
           break;
@@ -3772,6 +3887,16 @@ class _ChatBubble extends StatelessWidget {
 
     return out;
   }
+}
+
+/// Round 55 fix pass (Mira S7): a parseable date renders in the
+/// premium long form, "October 13, 2026"; the raw string is the
+/// fallback only when parsing fails.
+String _formatCoachDatePremium(String raw) {
+  final parsed = DateTime.tryParse(raw.trim());
+  if (parsed == null) return raw;
+  return '${_monthNames[parsed.month - 1]} ${parsed.day}, '
+      '${parsed.year}';
 }
 
 /// Formats an "HH:MM" reminder time as 12-hour, like native's card.
@@ -3805,7 +3930,6 @@ class _ProposalBadge extends StatelessWidget {
 class _ProposalCard extends StatelessWidget {
   final String emoji;
   final String title;
-  final Color titleColor;
   final List<Widget> children;
   final String approveLabel;
   final String denyLabel;
@@ -3826,7 +3950,6 @@ class _ProposalCard extends StatelessWidget {
   const _ProposalCard({
     required this.emoji,
     required this.title,
-    this.titleColor = NotelColors.primary,
     required this.children,
     required this.approveLabel,
     required this.denyLabel,
@@ -3841,7 +3964,7 @@ class _ProposalCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: 300,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: NotelColors.surface,
         borderRadius: BorderRadius.circular(16),
@@ -3856,10 +3979,10 @@ class _ProposalCard extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(title,
-                    style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        color: titleColor)),
+                    style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: NotelColors.textSecondary)),
               ),
             ],
           ),
@@ -3883,15 +4006,14 @@ class _ProposalCard extends StatelessWidget {
                 child: OutlinedButton(
                   onPressed: busy ? null : onDeny,
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: NotelColors.error,
-                    side: BorderSide(
-                        color: NotelColors.error.withValues(alpha: 0.4)),
+                    foregroundColor: NotelColors.textSecondary,
+                    side: const BorderSide(color: NotelColors.divider),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
                   ),
                   child: Text(denyLabel,
                       style: const TextStyle(
-                          fontSize: 12, fontWeight: FontWeight.w600)),
+                          fontSize: 14, fontWeight: FontWeight.w600)),
                 ),
               ),
               const SizedBox(width: 8),
@@ -3906,7 +4028,7 @@ class _ProposalCard extends StatelessWidget {
                   ),
                   child: Text(approveLabel,
                       style: const TextStyle(
-                          fontSize: 12, fontWeight: FontWeight.bold)),
+                          fontSize: 14, fontWeight: FontWeight.bold)),
                 ),
               ),
             ],

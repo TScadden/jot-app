@@ -40,7 +40,11 @@ class CoachMemoryFact {
 
   static CoachMemoryFact? fromJson(dynamic raw) {
     if (raw is! Map) return null;
-    final text = '${raw['text'] ?? ''}'.trim();
+    // Round 55 fix pass (Vera LOW): stored facts are cleaned on
+    // the way in too — whitespace collapsed and the char cap
+    // applied — so a hand-edited or legacy blob cannot smuggle
+    // an oversized or control-laden fact into the context.
+    final text = CoachMemoryStore.cleanFactText('${raw['text'] ?? ''}');
     if (text.isEmpty) return null;
     final ts = raw['createdAt'];
     return CoachMemoryFact(
@@ -126,11 +130,30 @@ class CoachMemoryStore {
   String? _mirrorOwner;
   bool _mirrorLoaded = false;
   Future<List<CoachMemoryFact>>? _loading;
+  String? _loadingEmail;
+
+  // Round 55 fix pass (Vera): ownership epoch. clear() bumps it;
+  // an in-flight disk load that observes a different epoch after
+  // an await discards its result instead of resurrecting a prior
+  // account's facts into the mirror.
+  int _epoch = 0;
 
   /// The facts currently mirrored in memory (empty until the first
   /// [load] lands). Synchronous and never throws.
   List<CoachMemoryFact> get cachedFacts =>
       _mirrorLoaded ? _mirror : const [];
+
+  /// The mirrored facts ONLY when the mirror is verified to
+  /// belong to [email] (normalized). Any other owner — or an
+  /// unverified owner — yields an empty list, so callers building
+  /// per-account output never read another account's facts from
+  /// an unguarded mirror.
+  List<CoachMemoryFact> cachedFactsFor(String? email) {
+    final expected = normalizeEmail(email);
+    if (!_mirrorLoaded) return const [];
+    if (_mirrorOwner != expected) return const [];
+    return _mirror;
+  }
 
   static List<CoachMemoryFact> _dedupeCap(List<CoachMemoryFact> facts) {
     final seen = <String>{};
@@ -169,13 +192,28 @@ class CoachMemoryStore {
     _mirror = _dedupeCap([fact, ..._mirror]);
     _mirrorLoaded = true;
     _mirrorOwner = normalizeEmail(email) ?? _mirrorOwner;
+    // Round 55 fix pass (Vera): persist a SNAPSHOT captured at
+    // record time (merged with this caller's own load result),
+    // never the live mirror at persist time — after an account
+    // switch the live mirror holds another account's facts, and
+    // writing those under this caller's owner would leak them
+    // across accounts. A clear/switch since record time (epoch
+    // change) skips the deferred persist entirely.
+    final snapshot = List<CoachMemoryFact>.of(_mirror);
+    final epochAtRecord = _epoch;
     final loading = _loading;
     if (loading != null) {
-      unawaited(loading.then((_) => _persist(_mirror, email)));
+      unawaited(loading.then((loaded) {
+        if (_epoch != epochAtRecord) return;
+        unawaited(_persist(_dedupeCap([...snapshot, ...loaded]), email));
+      }));
     } else if (_diskLoaded) {
-      unawaited(_persist(_mirror, email));
+      unawaited(_persist(snapshot, email));
     } else {
-      unawaited(load(email).then((_) => _persist(_mirror, email)));
+      unawaited(load(email).then((loaded) {
+        if (_epoch != epochAtRecord) return;
+        unawaited(_persist(_dedupeCap([...snapshot, ...loaded]), email));
+      }));
     }
     return _mirror;
   }
@@ -191,20 +229,40 @@ class CoachMemoryStore {
     if (_mirrorLoaded && _diskLoaded && _mirrorOwner == expected) {
       return Future.value(_mirror);
     }
+    // Round 55 fix pass (Vera): the in-flight future is keyed by
+    // normalized email — it is only ever shared with a caller for
+    // the SAME account. A load for a different account supersedes
+    // it (epoch bump, so the stale load discards its result).
     final inFlight = _loading;
-    if (inFlight != null) return inFlight;
+    if (inFlight != null) {
+      if (_loadingEmail == expected) return inFlight;
+      _epoch++;
+    }
     late final Future<List<CoachMemoryFact>> future;
     future = _loadFromDisk(email).whenComplete(() {
-      if (identical(_loading, future)) _loading = null;
+      if (identical(_loading, future)) {
+        _loading = null;
+        _loadingEmail = null;
+      }
     });
     _loading = future;
+    _loadingEmail = expected;
     return future;
   }
 
   Future<List<CoachMemoryFact>> _loadFromDisk(String? email) async {
     final expected = normalizeEmail(email);
+    final epochAtStart = _epoch;
+    final mirrorAtStart = _mirror;
+    final ownerAtStart = _mirrorOwner;
+    // A result captured before a clear/switch is stale: return
+    // only what was already this caller's at capture time and
+    // mutate nothing.
+    List<CoachMemoryFact> discard() =>
+        ownerAtStart == expected ? mirrorAtStart : const [];
     try {
       final raw = await _read(storageKey);
+      if (epochAtStart != _epoch) return discard();
       List<CoachMemoryFact> disk = const [];
       if (raw != null && raw.isNotEmpty) {
         final decoded = jsonDecode(raw);
@@ -252,10 +310,23 @@ class CoachMemoryStore {
       _diskLoaded = true;
       return _mirror;
     } catch (_) {
+      if (epochAtStart != _epoch) return discard();
+      // Round 55 fix pass (Vera): on a read failure the mirror is
+      // only trustworthy when it already belongs to this caller
+      // (or to no one). Another account's mirror is never
+      // returned: the result is empty and ownership moves to the
+      // expected account.
+      if (_mirrorOwner == expected || _mirrorOwner == null) {
+        _mirrorLoaded = true;
+        _mirrorOwner = expected;
+        _diskLoaded = true;
+        return _mirror;
+      }
+      _mirror = const [];
       _mirrorLoaded = true;
       _mirrorOwner = expected;
       _diskLoaded = true;
-      return _mirror;
+      return const [];
     }
   }
 
@@ -317,6 +388,9 @@ class CoachMemoryStore {
   /// session expiry exactly like the other account-bound caches.
   /// Never throws.
   Future<void> clear() async {
+    _epoch++;
+    _loading = null;
+    _loadingEmail = null;
     _mirror = const [];
     _mirrorLoaded = false;
     _mirrorOwner = null;
@@ -332,6 +406,13 @@ class CoachMemoryStore {
   Future<bool> clearIfOwnerMismatch(String? email) async {
     final expected = normalizeEmail(email);
     if (expected == null) return false;
+    // Round 55 fix pass (Vera): a non-null mirror owner that
+    // mismatches wipes regardless of what disk holds — the mirror
+    // is what the UI reads, so a stale mirror alone is a leak.
+    if (_mirrorOwner != null && _mirrorOwner != expected) {
+      await clear();
+      return true;
+    }
     try {
       final raw = await _read(storageKey);
       if (raw == null || raw.isEmpty) return false;
