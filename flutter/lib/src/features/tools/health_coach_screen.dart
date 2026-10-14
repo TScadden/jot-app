@@ -2,12 +2,14 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/data/coach_memory_store.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/reminder_alarm_sync.dart';
+import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
@@ -555,6 +557,8 @@ Use 'isPresent' as 'true' if the user is currently taking the medication, or 'fa
 Dates should look like "Jun 2026", "2025-12-05", "Dec 2025" or similar based on context.
 Example for multiple medications: [PROPOSE_MEDICATION:Pyridostigmine|Jun 2026||true;Metoprolol|Jan 2025|May 2026|false]
 
+MEMORY: When the user states a durable health or goal fact or a decision (what they are trying, what helped, or what they stopped), end your reply with exactly one line in the form REMEMBER: followed by one short factual sentence capturing it. Include at most one REMEMBER line per reply, and only when there is a durable fact or decision to remember.
+
 $calendarInstructions
 
 Only include ONE action tag per response. (Note: For multiple medications, combine them into a single [PROPOSE_MEDICATION:...] tag separated by semicolons as shown above). Do not include markdown formatting inside the brackets.''';
@@ -983,6 +987,118 @@ String buildCoachHealthContext({
   return result;
 }
 
+// ── Round 55 Step 2: coach memory (device-local v1) ─────────────────────────
+//
+// Memory is device-local only: no synced storage exists for it
+// (the sync profile is a server column whitelist and unknown keys
+// are dropped), so facts live in CoachMemoryStore on this device
+// and the UI says so plainly. Capture has exactly two sources:
+// deterministic events this client itself performs (approved or
+// dismissed proposals, below) and a single trailing REMEMBER line
+// the model is instructed to emit — extracted before display and
+// before persistence, so neither the rendered text nor the stored
+// coach message ever contains it.
+
+/// Extracts a trailing REMEMBER line from a coach reply. Returns
+/// the reply with that line stripped, and the fact text (null when
+/// there is no usable trailing line). Only a TRAILING line is
+/// stripped — a REMEMBER mention mid-reply is left alone.
+(String, String?) extractCoachRememberLine(String reply) {
+  final lines = reply.split('\n');
+  var end = lines.length;
+  while (end > 0 && lines[end - 1].trim().isEmpty) {
+    end--;
+  }
+  if (end == 0) return (reply, null);
+  final last = lines[end - 1].trim();
+  final m = RegExp(r'^REMEMBER:\s*(.+)$', caseSensitive: false).firstMatch(last);
+  if (m == null) return (reply, null);
+  final fact = m.group(1)!.trim();
+  if (fact.isEmpty) return (reply, null);
+  final clean = lines.sublist(0, end - 1).join('\n').trim();
+  return (clean, fact);
+}
+
+/// The memory section injected into the enriched context, newest
+/// first, physically adjacent to the fresh health sections (it is
+/// passed as the memoryContext of coachEnrichedUserContext, which
+/// places it directly after the health block). This is also the
+/// follow-through mechanism: the coach is told to check prior
+/// items against the fresh data above it.
+String buildCoachMemoryContext(List<CoachMemoryFact> facts) {
+  if (facts.isEmpty) return '';
+  final lines = <String>[];
+  for (final f in facts) {
+    final text = coachPlainText(f.text);
+    if (text.isEmpty) continue;
+    final hasDatePrefix =
+        RegExp(r'^\d{4}-\d{2}-\d{2}:').hasMatch(text);
+    if (hasDatePrefix) {
+      lines.add('- $text');
+    } else if (f.createdAt > 0) {
+      final d = DateTime.fromMillisecondsSinceEpoch(f.createdAt);
+      lines.add('- ${_coachDateStr(d)}: $text');
+    } else {
+      lines.add('- $text');
+    }
+  }
+  if (lines.isEmpty) return '';
+  return 'FROM EARLIER SESSIONS (coach memory, this device):\n'
+      '${lines.join('\n')}\n'
+      'You may reference these facts, and you should check prior '
+      'items in them against the fresh health data above.';
+}
+
+String _coachMemoryDate(DateTime now) => _coachDateStr(now);
+
+String _coachTruncateFact(String text) {
+  final t = text.trim().replaceAll(RegExp(r'\s+'), ' ');
+  return t.length > 80 ? '${t.substring(0, 77)}...' : t;
+}
+
+/// The deterministic memory event for one proposal resolution —
+/// written only for events this client itself performed (an
+/// approval that actually saved, or a dismissal). Null for kinds
+/// with nothing durable to remember.
+String? coachMemoryEventForProposal(
+  String kind, {
+  required bool approve,
+  required CoachParsedContent parsed,
+  required DateTime now,
+}) {
+  final date = _coachMemoryDate(now);
+  if (!approve) {
+    final topic = switch (kind) {
+      'note' => parsed.noteText,
+      'file' => parsed.fileName,
+      'list' => parsed.listName,
+      'reminder' => parsed.reminderTitle,
+      'medication' => parsed.medications.isNotEmpty
+          ? parsed.medications.map((m) => m.name).join(', ')
+          : null,
+      'calendar' => parsed.calendarTitle,
+      'calendarDelete' => parsed.calendarDeleteTitle,
+      _ => null,
+    };
+    final topicText =
+        (topic == null || topic.trim().isEmpty) ? '' : ' "${_coachTruncateFact(topic)}"';
+    return '$date: Dismissed a $kind proposal$topicText from Coach.';
+  }
+  return switch (kind) {
+    'note' =>
+      '$date: Logged an entry from Coach: "${_coachTruncateFact(parsed.noteText ?? '')}" (approved from Coach).',
+    'file' =>
+      '$date: Saved the document "${_coachTruncateFact(parsed.fileName ?? '')}" to the Tabs database (approved from Coach).',
+    'list' =>
+      '$date: Created the list "${parsed.listName ?? ''}" with ${parsed.listItems.length} items (approved from Coach).',
+    'reminder' =>
+      '$date: Set a reminder "${parsed.reminderTitle ?? ''}"${parsed.reminderTime != null && parsed.reminderTime!.trim().isNotEmpty ? ' at ${parsed.reminderTime!.trim()}' : ''} (approved from Coach).',
+    'medication' =>
+      '$date: Added medications: ${parsed.medications.map((m) => m.name).join(', ')} (approved from Coach).',
+    _ => null,
+  };
+}
+
 /// Round 48 fix round (Vera F6) — decodes a profile blob into its
 /// RAW JSON rows, preserving every row exactly as stored: non-Map
 /// rows (plain strings, numbers) stay as they are, and Map rows
@@ -1130,8 +1246,17 @@ class HealthCoachScreen extends StatefulWidget {
   /// the alarm reconcile against it. Null in production.
   final ReminderNotificationService? notificationService;
 
+  /// Injectable coach-memory store + account binding (Round 55
+  /// Step 2). Null in production.
+  final CoachMemoryStore? coachMemoryStore;
+  final String? accountEmail;
+
   const HealthCoachScreen(
-      {super.key, this.backend, this.notificationService});
+      {super.key,
+      this.backend,
+      this.notificationService,
+      this.coachMemoryStore,
+      this.accountEmail});
 
   @override
   State<HealthCoachScreen> createState() => _HealthCoachScreenState();
@@ -1145,6 +1270,8 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
   List<CoachSessionSummary> _sessions = const [];
   Map<String, List<CoachChatMessage>> _messagesBySession = const {};
   Map<String, dynamic>? _pull;
+  List<CoachMemoryFact> _memoryFacts = const [];
+  String? _resolvedAccountEmail;
   bool _loading = true;
   String? _error;
   String? _actionError;
@@ -1178,6 +1305,20 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
             ? 'Could not verify membership. Check your connection and try again.'
             : null;
       });
+      if (unlimited) {
+        try {
+          _resolvedAccountEmail = widget.accountEmail ??
+              await SessionStore().readEmail();
+        } catch (_) {
+          _resolvedAccountEmail = widget.accountEmail;
+        }
+        try {
+          final facts = await (widget.coachMemoryStore ??
+                  CoachMemoryStore.instance)
+              .load(_resolvedAccountEmail);
+          if (mounted) setState(() => _memoryFacts = facts);
+        } catch (_) {}
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -1198,6 +1339,8 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
         builder: (_) => CoachChatScreen(
           backend: _backend,
           notificationService: widget.notificationService,
+          coachMemoryStore: widget.coachMemoryStore,
+          accountEmail: _resolvedAccountEmail ?? widget.accountEmail,
           sessionId: session?.id,
           sessionTitle: session?.title ?? 'New Chat',
           sessionCreatedAt: session?.createdAt ?? 0,
@@ -1227,6 +1370,71 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
     final raw = _pull?['categories'];
     if (raw is! List) return const [];
     return [for (final c in raw) if (c is Map<String, dynamic>) c];
+  }
+
+  Widget _coachMemoryTile() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: InkWell(
+        onTap: _openCoachMemory,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: NotelColors.surfaceHigh,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.psychology_outlined,
+                  color: NotelColors.primary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Coach memory',
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: NotelColors.textPrimary)),
+                    const SizedBox(height: 2),
+                    Text(
+                        _memoryFacts.isEmpty
+                            ? 'Stored on this device'
+                            : '${_memoryFacts.length} ${_memoryFacts.length == 1 ? 'fact' : 'facts'} stored on this device',
+                        style: const TextStyle(
+                            fontSize: 12,
+                            color: NotelColors.textSecondary)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right,
+                  color: NotelColors.textSecondary),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openCoachMemory() async {
+    await Navigator.of(context).push(
+      SlidePageRoute<void>(
+        reducedMotion: animationsDisabled(context),
+        builder: (_) => CoachMemoryScreen(
+          store: widget.coachMemoryStore ?? CoachMemoryStore.instance,
+          accountEmail: _resolvedAccountEmail ?? widget.accountEmail,
+          initialFacts: _memoryFacts,
+        ),
+      ),
+    );
+    try {
+      final facts = await (widget.coachMemoryStore ??
+              CoachMemoryStore.instance)
+          .load(_resolvedAccountEmail ?? widget.accountEmail);
+      if (mounted) setState(() => _memoryFacts = facts);
+    } catch (_) {}
   }
 
   /// Native `CoachHistoryViewModel.deleteSession`: local removal +
@@ -1326,29 +1534,39 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
       );
     }
     if (_sessions.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.chat_bubble_outline,
-                  size: 64, color: NotelColors.textSecondary),
-              SizedBox(height: 16),
-              Text('No chats yet.',
-                  style: TextStyle(
-                      fontSize: 16, color: NotelColors.textSecondary)),
-              SizedBox(height: 4),
-              Text('Tap the + button to start a conversation.',
-                  style: TextStyle(
-                      fontSize: 14, color: NotelColors.textSecondary)),
-            ],
+      return Column(
+        children: [
+          _coachMemoryTile(),
+          const Expanded(
+            child: Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 32),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.chat_bubble_outline,
+                        size: 64, color: NotelColors.textSecondary),
+                    SizedBox(height: 16),
+                    Text('No chats yet.',
+                        style: TextStyle(
+                            fontSize: 16,
+                            color: NotelColors.textSecondary)),
+                    SizedBox(height: 4),
+                    Text('Tap the + button to start a conversation.',
+                        style: TextStyle(
+                            fontSize: 14,
+                            color: NotelColors.textSecondary)),
+                  ],
+                ),
+              ),
+            ),
           ),
-        ),
+        ],
       );
     }
     return Column(
       children: [
+        _coachMemoryTile(),
         if (_actionError != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -1435,6 +1653,193 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
   }
 }
 
+/// Round 55 Step 2 — the Coach memory control screen: every stored
+/// fact, per-item delete, and Clear all, with the honest device-local
+/// line. Reached from the Coach History screen's Coach memory entry.
+class CoachMemoryScreen extends StatefulWidget {
+  final CoachMemoryStore store;
+  final String? accountEmail;
+  final List<CoachMemoryFact> initialFacts;
+
+  const CoachMemoryScreen({
+    super.key,
+    required this.store,
+    this.accountEmail,
+    this.initialFacts = const [],
+  });
+
+  @override
+  State<CoachMemoryScreen> createState() => _CoachMemoryScreenState();
+}
+
+class _CoachMemoryScreenState extends State<CoachMemoryScreen> {
+  late List<CoachMemoryFact> _facts;
+
+  @override
+  void initState() {
+    super.initState();
+    _facts = List.of(widget.initialFacts);
+    _reload();
+  }
+
+  Future<void> _reload() async {
+    final facts = await widget.store.load(widget.accountEmail);
+    if (mounted) setState(() => _facts = facts);
+  }
+
+  Future<void> _deleteAt(int index) async {
+    final facts = await widget.store.deleteAt(index, widget.accountEmail);
+    if (mounted) setState(() => _facts = facts);
+  }
+
+  Future<void> _clearAll() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: NotelColors.surface,
+        title: const Text('Clear coach memory',
+            style: TextStyle(color: NotelColors.textPrimary)),
+        content: const Text(
+            'Delete every fact the coach has remembered on this device? This cannot be undone.',
+            style: TextStyle(color: NotelColors.textSecondary)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel',
+                style: TextStyle(color: NotelColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Clear all',
+                style: TextStyle(
+                    color: NotelColors.error, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await widget.store.clearAll(widget.accountEmail);
+    if (mounted) setState(() => _facts = const []);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: NotelColors.background,
+      appBar: AppBar(
+        backgroundColor: NotelColors.background,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back,
+              color: NotelColors.textPrimary, semanticLabel: 'Back'),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: const Text(
+          'Coach memory',
+          style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: NotelColors.textPrimary),
+        ),
+        actions: [
+          if (_facts.isNotEmpty)
+            TextButton(
+              onPressed: _clearAll,
+              child: const Text('Clear all',
+                  style: TextStyle(color: NotelColors.error)),
+            ),
+        ],
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: Text(
+              'Coach memory is stored on this device. It is not synced to your other devices.',
+              style: TextStyle(
+                  fontSize: 13,
+                  height: 1.4,
+                  color: NotelColors.textSecondary),
+            ),
+          ),
+          Expanded(
+            child: _facts.isEmpty
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 32),
+                      child: Text(
+                        'No coach memory yet. Facts the coach remembers from your chats and approved actions will appear here.',
+                        style: TextStyle(
+                            fontSize: 14,
+                            height: 1.5,
+                            color: NotelColors.textSecondary),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                    itemCount: _facts.length,
+                    separatorBuilder: (context, _) =>
+                        const SizedBox(height: 10),
+                    itemBuilder: (context, i) {
+                      final fact = _facts[i];
+                      final dateLabel = fact.createdAt > 0
+                          ? formatCoachDate(fact.createdAt)
+                          : '';
+                      return Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: NotelColors.surfaceHigh,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  Text(fact.text,
+                                      style: const TextStyle(
+                                          fontSize: 14,
+                                          height: 1.4,
+                                          color:
+                                              NotelColors.textPrimary)),
+                                  if (dateLabel.isNotEmpty) ...[
+                                    const SizedBox(height: 4),
+                                    Text(dateLabel,
+                                        style: const TextStyle(
+                                            fontSize: 11,
+                                            color: NotelColors
+                                                .textSecondary)),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline,
+                                  size: 20,
+                                  color: NotelColors.error,
+                                  semanticLabel: 'Delete memory'),
+                              onPressed: () => _deleteAt(i),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _LockedCoachView extends StatelessWidget {
   final String message;
 
@@ -1498,6 +1903,14 @@ class CoachChatScreen extends StatefulWidget {
   /// Null in production (a default [HealthConnectService] is used).
   final HealthConnectService? healthConnectService;
 
+  /// Injectable coach-memory store (Round 55 Step 2). Null in
+  /// production (the shared device-local instance is used).
+  final CoachMemoryStore? coachMemoryStore;
+
+  /// The account email the memory store is bound to. Null resolves
+  /// from the stored session at first use.
+  final String? accountEmail;
+
   final String? sessionId;
   final String sessionTitle;
   final int sessionCreatedAt;
@@ -1511,6 +1924,8 @@ class CoachChatScreen extends StatefulWidget {
     this.backend,
     this.notificationService,
     this.healthConnectService,
+    this.coachMemoryStore,
+    this.accountEmail,
     this.sessionId,
     this.sessionTitle = 'New Chat',
     this.sessionCreatedAt = 0,
@@ -1547,6 +1962,43 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
   // its section and never blocks a send.
   String? _cachedHealthContext;
   String? _cachedBodyLoadHistory;
+  List<CoachMemoryFact> _memoryFacts = const [];
+  String _cachedMemoryContext = '';
+  String? _resolvedAccountEmail;
+
+  CoachMemoryStore get _memoryStore =>
+      widget.coachMemoryStore ?? CoachMemoryStore.instance;
+
+  Future<String?> _accountEmail() async {
+    if (_resolvedAccountEmail != null) return _resolvedAccountEmail;
+    if (widget.accountEmail != null) {
+      _resolvedAccountEmail = widget.accountEmail;
+      return _resolvedAccountEmail;
+    }
+    try {
+      _resolvedAccountEmail = await SessionStore().readEmail();
+    } catch (_) {
+      _resolvedAccountEmail = null;
+    }
+    return _resolvedAccountEmail;
+  }
+
+  /// Captures one memory fact (both Round 55 sources funnel here)
+  /// and refreshes the injected memory section for later sends in
+  /// this session. Storage failures are silent — memory must never
+  /// break a chat or an approval.
+  Future<void> _captureMemory(String text, String source) async {
+    try {
+      final email = await _accountEmail();
+      final facts = await _memoryStore.addFact(
+        text: text,
+        source: source,
+        email: email,
+      );
+      _memoryFacts = facts;
+      _cachedMemoryContext = buildCoachMemoryContext(facts);
+    } catch (_) {}
+  }
 
   @override
   void initState() {
@@ -1776,6 +2228,14 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
       widget.pullCategories,
       now: DateTime.now(),
     );
+    try {
+      final email = await _accountEmail();
+      _memoryFacts = await _memoryStore.load(email);
+      _cachedMemoryContext = buildCoachMemoryContext(_memoryFacts);
+    } catch (_) {
+      _memoryFacts = const [];
+      _cachedMemoryContext = '';
+    }
   }
 
   Future<void> _send() async {
@@ -1870,6 +2330,7 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
         widget.profile?['userContext']?.toString(),
         now: DateTime.now(),
         healthContext: _cachedHealthContext ?? '',
+        memoryContext: _cachedMemoryContext,
       ),
       'knowledgeBase': kb.isEmpty ? null : kb,
       'bodyLoadHistory': _cachedBodyLoadHistory ?? '',
@@ -1893,11 +2354,29 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
         .where((m) => !(m.role == 'coach' && m.content.isEmpty))
         .toList();
     if (reply is String && reply.trim().isNotEmpty) {
+      // Round 55 Step 2: a trailing REMEMBER line is extracted
+      // BEFORE the message is displayed or persisted, so neither
+      // the rendered text nor the stored message contains it.
+      final (cleanReply, rememberedFact) = extractCoachRememberLine(reply);
+      if (rememberedFact != null) {
+        await _captureMemory(rememberedFact, 'coach');
+      }
+      if (cleanReply.isEmpty) {
+        // The reply was ONLY a memory line: there is no visible
+        // coach text to show or store. The fact is captured above;
+        // nothing is fabricated in its place.
+        setState(() {
+          _sending = false;
+          _messages = withoutLoading;
+        });
+        _scrollToBottom();
+        return;
+      }
       final coachMsg = CoachChatMessage(
         id: newUuid(),
         sessionId: _sessionId,
         role: 'coach',
-        content: reply,
+        content: cleanReply,
         timestamp: DateTime.now().millisecondsSinceEpoch,
       );
       setState(() {
@@ -2068,6 +2547,19 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
       _scrollToBottom();
       final persisted = await _persistMessages(toPersist);
       if (!persisted) _notifySyncFailure();
+      // Round 55 Step 2: deterministic memory capture — only for a
+      // resolution this client actually performed (an approval
+      // reaches here only after its write succeeded; a dismissal
+      // always reaches here).
+      final memoryEvent = coachMemoryEventForProposal(
+        kind,
+        approve: approve,
+        parsed: parsed,
+        now: DateTime.now(),
+      );
+      if (memoryEvent != null) {
+        await _captureMemory(memoryEvent, 'coach-action');
+      }
     } finally {
       if (mounted) setState(() => _actionBusy = false);
     }

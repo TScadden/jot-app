@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/auth_api.dart';
+import 'package:tabs_lab/src/data/coach_memory_store.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
@@ -337,6 +338,9 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
     // clear is independently best-effort, like the two above.
     unawaited(TodaySummaryCache.instance.clear());
     unawaited(TodayPlanStore.instance.clear());
+    // Round 55: coach memory is account-bound too — session expiry
+    // wipes it like the other caches.
+    unawaited(CoachMemoryStore.instance.clear());
     // Round 52 — single widget-clear funnel: HomeDataCache.clear()
     // above IS the widget clear (it fire-and-forgets
     // WidgetSync.clear()); the Round 50 duplicate explicit call
@@ -369,6 +373,7 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
     // the shell mounts for the new account.
     unawaited(TodaySummaryCache.instance.clearIfOwnerMismatch(email));
     unawaited(TodayPlanStore.instance.clearIfOwnerMismatch(email));
+    unawaited(CoachMemoryStore.instance.clearIfOwnerMismatch(email));
     // Round 32 — native parity: email login and Google sign-in (both
     // modes) mark onboarding complete (LoginViewModel.login /
     // loginWithGoogleAccount call setOnboardingComplete(true)), and
@@ -404,6 +409,7 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
     // as login (see _onLoginSuccess).
     unawaited(TodaySummaryCache.instance.clearIfOwnerMismatch(email));
     unawaited(TodayPlanStore.instance.clearIfOwnerMismatch(email));
+    unawaited(CoachMemoryStore.instance.clearIfOwnerMismatch(email));
     unawaited(_stampFreshAccountOnboarding());
     setState(() {
       _loggedInEmail = email;

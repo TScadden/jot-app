@@ -1,3 +1,4 @@
+import 'package:tabs_lab/src/data/coach_memory_store.dart';
 import 'package:tabs_lab/src/data/heart_data_cache.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
@@ -64,6 +65,11 @@ class AccountActions {
     } catch (_) {}
     try {
       await TodayPlanStore.instance.clear();
+    } catch (_) {}
+    // Round 55: coach memory is account-bound device-local data —
+    // the same wipe covers it.
+    try {
+      await CoachMemoryStore.instance.clear();
     } catch (_) {}
     // Round 52 — single widget-clear funnel: the HomeDataCache
     // clear at the top of this sequence IS the widget clear (it
