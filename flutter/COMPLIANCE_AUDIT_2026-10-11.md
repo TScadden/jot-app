@@ -60,6 +60,15 @@ No analytics, crash-reporting, or ad SDKs in `pubspec.yaml`. No `print`/`debugPr
 
 **Round 16 extension:** when the hosted policy is next updated, also note the on-device encrypted caching of home-screen health values (one `flutter_secure_storage` JSON blob: today's vitals + streaks, stale-while-revalidate, no network transmission). The policy's §1b currently describes health data as backend-stored only.
 
+**Round 54 (Oct 13, 2026) — production ledger additions (Juno P1–P6):** Round 54 gave the Health Coach real Google Calendar access (CalendarContract bridge: upcoming-events context, approve-time permission gate with in-app disclosure, writable-calendar insert / exact-title delete). The following are required before production; none block Lab phone builds.
+
+- **P1:** MF-4 addition required before production: replace/augment §1f with a new item reading exactly: "Calendar (Health Coach): If you connect Google Calendar and grant calendar permission, the Health Coach reads the titles and start times of your events for today and the next 14 days and transmits them to our backend and the Google Gemini API as context for your Coach conversations. The Coach may propose calendar events and deletions, and it adds or deletes an event only after you tap Approve on the proposal. Disconnecting Google Calendar in Settings > Connected Apps stops this access, and you can revoke calendar permission at any time in Android system settings."
+- **P2:** Play Console — READ/WRITE_CALENDAR permissions declaration + Data Safety update (calendar/appointments data collected and shared with the AI processor; app functionality; not sold; not advertising). Founder/Console action.
+- **P3:** At production, move/duplicate the A1 disclosure to the Connected Apps connect moment (approve-time-only disclosure is Lab-acceptable; a manual system-settings grant bypasses it).
+- **P4:** At production, make the upcoming-events context permission-aware (currently a SecurityException yields "No events found." instead of native's "Calendar events are unavailable right now.").
+- **P5:** Before production, revisit "your Google Calendar" wording in confirmations — insert target is the best writable DEVICE calendar (connected-email preferred), not necessarily Google.
+- **P6:** Verify the backend does not separately retain/log the userContext payload beyond chat history (it now carries calendar titles).
+
 ---
 
 ## 4. WATCH LIST (bake into upcoming rounds)
