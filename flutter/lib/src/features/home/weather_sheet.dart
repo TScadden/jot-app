@@ -245,7 +245,7 @@ class _WeatherSheetState extends State<_WeatherSheet> {
           const _WeatherSkeletonRow(),
           if (i < 4)
             const Divider(
-              color: Color(0x66152040),
+              color: NotelColors.legacyDarkHairlineFaint,
               thickness: 0.5,
               height: 0.5,
             ),
@@ -451,7 +451,7 @@ class _WeatherSheetState extends State<_WeatherSheet> {
 
   Widget _rowDivider() {
     return const Divider(
-      color: Color(0x66152040),
+      color: NotelColors.legacyDarkHairlineFaint,
       thickness: 0.5,
       height: 0.5,
     );
