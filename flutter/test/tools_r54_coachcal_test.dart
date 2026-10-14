@@ -30,6 +30,7 @@ class FakeCalendarBridge {
   int deleteRows = 1;
   List<dynamic> upcoming = const [];
   bool throwOnInsert = false;
+  bool throwInvalidArgsOnInsert = false;
 
   final List<MethodCall> calls = [];
 
@@ -52,6 +53,11 @@ class FakeCalendarBridge {
         }
         return {'read': readGranted, 'write': writeGranted};
       case 'insertEvent':
+        if (throwInvalidArgsOnInsert) {
+          throw PlatformException(
+              code: 'INVALID_ARGS',
+              message: 'Calendar event title must not be null or blank.');
+        }
         if (throwOnInsert) {
           throw PlatformException(code: 'CALENDAR_INSERT_FAILED');
         }
@@ -180,6 +186,23 @@ void main() {
         'description': 'Checkup',
         'connectedEmail': 'me@example.com',
       });
+    });
+
+    test('insert INVALID_ARGS (blank title rejected natively) '
+        'surfaces as CalendarException with that code', () async {
+      final bridge = FakeCalendarBridge()..throwInvalidArgsOnInsert = true;
+      final service = serviceFor(bridge);
+      await expectLater(
+        service.insertEvent(
+          title: '',
+          date: '2026-10-20',
+          time: '02:30 PM',
+          description: 'Checkup',
+          connectedEmail: 'me@example.com',
+        ),
+        throwsA(isA<CalendarException>()
+            .having((e) => e.code, 'code', 'INVALID_ARGS')),
+      );
     });
 
     test('upcoming-events formatting mirrors native', () {
@@ -383,6 +406,74 @@ void main() {
       expect(
           find.text('Calendar permissions are required to manage events.'),
           findsOneWidget); // snackbar
+    });
+
+    testWidgets('permission missing → disclosure → "Not now" → '
+        'zero bridge writes, proposal still pending, no success',
+        (tester) async {
+      final bridge = FakeCalendarBridge(
+          readGranted: false, writeGranted: false, grantOnRequest: true);
+      await pumpChat(tester, bridge: bridge, messages: const [_addMsg]);
+      await tester.tap(find.text('Approve & Add'));
+      await tester.pumpAndSettle();
+      expect(find.text('Calendar access needed'), findsOneWidget);
+      expect(find.text(coachCalendarPermissionDisclosure), findsOneWidget);
+
+      await tester.tap(find.text('Not now'));
+      await tester.pumpAndSettle();
+
+      expect(bridge.callsTo('requestPermissions'), isEmpty);
+      expect(bridge.callsTo('insertEvent'), isEmpty);
+      expect(bridge.callsTo('deleteEvents'), isEmpty);
+      expect(find.text('Approve & Add'), findsOneWidget); // pending
+      expect(find.text('✓ Event Scheduled & Added to Calendar'),
+          findsNothing);
+      expect(find.textContaining('has been added to your Google Calendar'),
+          findsNothing);
+    });
+
+    testWidgets('permission missing → disclosure → barrier dismiss → '
+        'zero bridge writes, proposal still pending, no success',
+        (tester) async {
+      final bridge = FakeCalendarBridge(
+          readGranted: false, writeGranted: false, grantOnRequest: true);
+      await pumpChat(tester, bridge: bridge, messages: const [_addMsg]);
+      await tester.tap(find.text('Approve & Add'));
+      await tester.pumpAndSettle();
+      expect(find.text('Calendar access needed'), findsOneWidget);
+
+      // Tap outside the dialog to dismiss it via the barrier.
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Calendar access needed'), findsNothing);
+      expect(bridge.callsTo('requestPermissions'), isEmpty);
+      expect(bridge.callsTo('insertEvent'), isEmpty);
+      expect(bridge.callsTo('deleteEvents'), isEmpty);
+      expect(find.text('Approve & Add'), findsOneWidget); // pending
+      expect(find.text('✓ Event Scheduled & Added to Calendar'),
+          findsNothing);
+      expect(find.textContaining('has been added to your Google Calendar'),
+          findsNothing);
+    });
+
+    testWidgets('insert INVALID_ARGS → proposal stays pending with '
+        'honest error, no added confirmation', (tester) async {
+      final bridge = FakeCalendarBridge()
+        ..throwInvalidArgsOnInsert = true;
+      await pumpChat(tester, bridge: bridge, messages: const [_addMsg]);
+      await tester.tap(find.text('Approve & Add'));
+      await tester.pumpAndSettle();
+      expect(bridge.callsTo('insertEvent'), hasLength(1));
+      expect(
+          find.text('I could not add that to your calendar. Want me '
+              'to try again? [INVALID_ARGS]'),
+          findsOneWidget);
+      expect(find.text('Approve & Add'), findsOneWidget); // pending
+      expect(find.text('✓ Event Scheduled & Added to Calendar'),
+          findsNothing);
+      expect(find.textContaining('has been added to your Google Calendar'),
+          findsNothing);
     });
 
     testWidgets('no writable calendar → honest failure posted, '

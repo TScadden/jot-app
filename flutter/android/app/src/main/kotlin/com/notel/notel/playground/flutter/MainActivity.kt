@@ -1451,6 +1451,16 @@ class MainActivity : FlutterFragmentActivity() {
         connectedEmail: String?,
         result: MethodChannel.Result
     ) {
+        // Vera R54: a null/blank title must refuse, never insert an
+        // untitled event and report "inserted".
+        if (title.isNullOrBlank()) {
+            result.error(
+                "INVALID_ARGS",
+                "Calendar event title must not be null or blank.",
+                null
+            )
+            return
+        }
         Thread {
             var failure: Exception? = null
             var outcome = "inserted"
@@ -1554,6 +1564,16 @@ class MainActivity : FlutterFragmentActivity() {
         date: String?,
         result: MethodChannel.Result
     ) {
+        // Vera R54: a null/blank title must refuse, never widen to a
+        // delete for TITLE = '' (every empty-title event).
+        if (title.isNullOrBlank()) {
+            result.error(
+                "INVALID_ARGS",
+                "Calendar event title must not be null or blank.",
+                null
+            )
+            return
+        }
         Thread {
             var failure: Exception? = null
             var rowsDeleted = 0
