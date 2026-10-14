@@ -6,6 +6,7 @@ import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/skeleton.dart';
 
 /// Where a blood pressure reading came from.
 enum BpSource { manual, healthConnect }
@@ -1015,13 +1016,26 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
         child: const Icon(Icons.add, semanticLabel: 'Log Blood Pressure'),
       ),
       body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(color: NotelColors.primary))
+          ? const SkeletonGroup(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(16, 16, 16, 110),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SkeletonBox(height: 190, radius: 20),
+                    SizedBox(height: 16),
+                    SkeletonBox(height: 72, radius: 16),
+                    SizedBox(height: 16),
+                    SkeletonBox(height: 72, radius: 16),
+                  ],
+                ),
+              ),
+            )
           : RefreshIndicator(
               color: NotelColors.primary,
               onRefresh: () => _load(isRefresh: true),
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
                 children: [
                   if (_hcNotice != null) _noticeBanner(_hcNotice!),
                   _latestCard(latest),
@@ -1032,7 +1046,7 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
                       const Text(
                         'History',
                         style: TextStyle(
-                            fontSize: 18,
+                            fontSize: 16,
                             fontWeight: FontWeight.bold,
                             color: NotelColors.textPrimary),
                       ),
@@ -1095,7 +1109,7 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
   Widget _errorBanner(String text) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: NotelColors.error.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),
@@ -1126,16 +1140,16 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
               Text('Latest Reading',
                   style: TextStyle(
                       fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: NotelColors.textSecondary)),
+                      fontWeight: FontWeight.bold,
+                      color: NotelColors.textPrimary)),
             ],
           ),
           const SizedBox(height: 12),
           if (latest == null) ...[
             const Text('-- / --',
                 style: TextStyle(
-                    fontSize: 36,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 42,
+                    fontWeight: FontWeight.w900,
                     color: NotelColors.textSecondary)),
             const SizedBox(height: 4),
             const Text('No readings logged yet',
@@ -1149,17 +1163,27 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
               child: const Text('Log Reading'),
             ),
           ] else ...[
-            Text(
-                '${latest.record.systolic} / ${latest.record.diastolic}',
-                style: const TextStyle(
-                    fontSize: 42,
-                    fontWeight: FontWeight.w900,
-                    color: NotelColors.textPrimary)),
-            const Text('mmHg',
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: NotelColors.textSecondary)),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                    '${latest.record.systolic} / ${latest.record.diastolic}',
+                    style: const TextStyle(
+                        fontSize: 42,
+                        fontWeight: FontWeight.w900,
+                        color: NotelColors.textPrimary)),
+                const SizedBox(width: 6),
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 4),
+                  child: Text('mmHg',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: NotelColors.textSecondary)),
+                ),
+              ],
+            ),
             const SizedBox(height: 8),
             Row(
               mainAxisSize: MainAxisSize.min,
@@ -1168,7 +1192,7 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
                     style: TextStyle(
                         fontSize: 12,
                         color:
-                            NotelColors.textSecondary.withValues(alpha: 0.8))),
+                            NotelColors.textSecondary)),
                 const SizedBox(width: 6),
                 _sourceChip(latest.source),
               ],
@@ -1201,12 +1225,23 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '${item.record.systolic} / ${item.record.diastolic} mmHg',
-                    style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: NotelColors.textPrimary),
+                  Text.rich(
+                    TextSpan(
+                      text:
+                          '${item.record.systolic} / ${item.record.diastolic}',
+                      style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: NotelColors.textPrimary),
+                      children: const [
+                        TextSpan(
+                            text: ' mmHg',
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: NotelColors.textSecondary)),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -1224,7 +1259,7 @@ class _BloodPressureToolScreenState extends State<BloodPressureToolScreen> {
                     const SizedBox(width: 8),
                     IconButton(
                       icon: const Icon(Icons.delete,
-                          size: 20,
+                          size: 18,
                           color: NotelColors.textSecondary,
                           semanticLabel: 'Delete record'),
                       constraints: const BoxConstraints(

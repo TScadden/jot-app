@@ -14,6 +14,7 @@ import 'package:tabs_lab/src/features/tools/reminders_screen.dart'
         runReminderCreatePermissionGate;
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/skeleton.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
 
 /// Round 48 (Team C) — Health Coach, full Flutter port of native
@@ -877,8 +878,21 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
 
   Widget _buildBody() {
     if (_loading) {
-      return const Center(
-          child: CircularProgressIndicator(color: NotelColors.primary));
+      return const SkeletonGroup(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 110),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SkeletonBox(height: 72, radius: 16),
+              SizedBox(height: 16),
+              SkeletonBox(height: 72, radius: 16),
+              SizedBox(height: 16),
+              SkeletonBox(height: 72, radius: 16),
+            ],
+          ),
+        ),
+      );
     }
     if (_unlocked == false) {
       return _LockedCoachView(
@@ -943,7 +957,7 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
           ),
         Expanded(
           child: ListView.separated(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 110),
             itemCount: _sessions.length,
             separatorBuilder: (context, _) => const SizedBox(height: 12),
             itemBuilder: (context, i) {
@@ -985,7 +999,7 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
                         onPressed: () => _deleteSession(session),
                       ),
                       const Icon(Icons.chevron_right,
-                          color: NotelColors.textSecondary),
+                          size: 20, color: NotelColors.textSecondary),
                     ],
                   ),
                 ),

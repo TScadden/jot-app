@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/skeleton.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Round 48 (Team B) — Project Focus tool, FULL port of native
@@ -845,22 +846,21 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
         ],
       ),
       body: _loading
-          ? const Center(
+          ? const SkeletonGroup(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 110),
               child: Column(
-                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  CircularProgressIndicator(color: NotelColors.primary),
+                  SkeletonBox(height: 150, radius: 20),
                   SizedBox(height: 16),
-                  Text(
-                    'Syncing your projects…',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: NotelColors.textSecondary,
-                    ),
-                  ),
+                  SkeletonBox(height: 110, radius: 20),
+                  SizedBox(height: 16),
+                  SkeletonBox(height: 110, radius: 20),
                 ],
               ),
-            )
+            ),
+          )
           : _subView == 'details' && _selected != null
               ? _detailsView(_selected!)
               : _creationFlow(),
@@ -873,7 +873,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
   /// direction).
   Widget _creationFlow() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -886,7 +886,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
               color: const Color(0x590A0A0E),
-              borderRadius: BorderRadius.circular(28),
+              borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: Colors.white.withValues(alpha: 0.08),
               ),
@@ -930,7 +930,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
         Container(
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.03),
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: Colors.white.withValues(alpha: 0.08),
             ),
@@ -1380,7 +1380,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
   Widget _detailsView(FocusTest test) {
     final isCompleted = test.isCompleted;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 90),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 110),
       children: [
         if (_tests.length > 1) _testSelector(),
         if (_tests.length > 1) const SizedBox(height: 16),
@@ -1558,7 +1558,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
           color: selected
               ? NotelColors.primary.withValues(alpha: 0.20)
               : Colors.white.withValues(alpha: 0.03),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: selected
                 ? NotelColors.primary
@@ -1624,7 +1624,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
             Colors.transparent,
           ],
         ),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: NotelColors.primary.withValues(alpha: 0.4),
           width: 2,
@@ -1638,7 +1638,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
             children: [
               Container(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 4),
+                    horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: badgeColor.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(8),

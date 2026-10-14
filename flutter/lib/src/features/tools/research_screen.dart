@@ -6,6 +6,7 @@ import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/skeleton.dart';
 import 'package:tabs_lab/src/theme/slide_page_route.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -231,7 +232,7 @@ class _ResearchToolScreenState extends State<ResearchToolScreen> {
       body: Column(
         children: [
           _disclaimerBanner(),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           Expanded(child: _body()),
         ],
       ),
@@ -241,7 +242,7 @@ class _ResearchToolScreenState extends State<ResearchToolScreen> {
   Widget _disclaimerBanner() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: NotelColors.warning.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),
@@ -270,8 +271,21 @@ class _ResearchToolScreenState extends State<ResearchToolScreen> {
 
   Widget _body() {
     if (_loading) {
-      return const Center(
-          child: CircularProgressIndicator(color: NotelColors.primary));
+      return const SkeletonGroup(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 110),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SkeletonBox(height: 56, radius: 16),
+              SizedBox(height: 16),
+              SkeletonBox(height: 110, radius: 16),
+              SizedBox(height: 16),
+              SkeletonBox(height: 110, radius: 16),
+            ],
+          ),
+        ),
+      );
     }
     if (_error != null) {
       return ListView(
@@ -280,13 +294,13 @@ class _ResearchToolScreenState extends State<ResearchToolScreen> {
       );
     }
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 110),
       children: [
         if (_conditions.isEmpty)
           _noConditionsCard()
         else ...[
           _conditionSelector(),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           if (_visible.isEmpty)
             _nothingHereCard()
           else
@@ -337,7 +351,7 @@ class _ResearchToolScreenState extends State<ResearchToolScreen> {
             style: TextStyle(
                 fontSize: 13, height: 1.4, color: NotelColors.textSecondary),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           ElevatedButton(
             onPressed: _goToConditions,
             style: ElevatedButton.styleFrom(
@@ -423,7 +437,7 @@ class _ResearchToolScreenState extends State<ResearchToolScreen> {
 
   Widget _errorBanner(String text) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: NotelColors.error.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),
@@ -515,25 +529,28 @@ class _ResearchToolScreenState extends State<ResearchToolScreen> {
                 InkWell(
                   borderRadius: BorderRadius.circular(8),
                   onTap: () => _openSource(entry.sourceUrl),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.open_in_new,
-                            size: 12, color: NotelColors.textSecondary),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 48),
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.open_in_new,
+                              size: 16, color: NotelColors.textSecondary),
                         SizedBox(width: 4),
-                        Text('Source',
-                            style: TextStyle(
-                                fontSize: 12,
-                                color: NotelColors.textSecondary)),
-                      ],
+                          Text('Source',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: NotelColors.textSecondary)),
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ],
               if (expanded && entry.detail.isNotEmpty) ...[
-                const Divider(color: NotelColors.divider),
+                const Divider(height: 1, color: NotelColors.divider),
                 const SizedBox(height: 12),
                 Text(entry.detail,
                     style: const TextStyle(

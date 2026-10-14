@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/skeleton.dart';
 
 export 'package:tabs_lab/src/data/medications.dart';
 
@@ -450,13 +451,23 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
         ],
       ),
       body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(
-                color: NotelColors.primary,
+          ? const SkeletonGroup(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 110),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SkeletonBox(height: 100, radius: 20),
+                  SizedBox(height: 16),
+                  SkeletonBox(height: 110, radius: 20),
+                  SizedBox(height: 16),
+                  SkeletonBox(height: 110, radius: 20),
+                ],
               ),
-            )
+            ),
+          )
           : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 110),
               children: [
                 const Text(
                   'Manage your active prescriptions and log doses to track body side-effects in real time.',
@@ -472,7 +483,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                 const Text(
                   'Active Prescriptions',
                   style: TextStyle(
-                    fontSize: 17,
+                    fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: NotelColors.textPrimary,
                   ),
@@ -525,7 +536,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                   const Text(
                     'Quick Actions',
                     style: TextStyle(
-                      fontSize: 17,
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
                       color: NotelColors.textPrimary,
                     ),
@@ -730,7 +741,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                         child: Text(
                           med.name,
                           style: TextStyle(
-                            fontSize: 17,
+                            fontSize: 16,
                             fontWeight: FontWeight.bold,
                             color: isArchived
                                 ? NotelColors.textSecondary
@@ -742,8 +753,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                       Icon(
                         Icons.edit,
                         size: 14,
-                        color:
-                            NotelColors.textSecondary.withValues(alpha: 0.5),
+                        color: NotelColors.textSecondary,
                       ),
                     ],
                   ),
@@ -785,7 +795,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                           horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
                         color: NotelColors.primary.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(5),
+                        borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
                         'Started ${med.startedDate}',
@@ -883,8 +893,10 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
       onTap: () => setState(() => _showArchived = !_showArchived),
       child: Padding(
         padding: const EdgeInsets.only(top: 12),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Row(
               children: [
@@ -897,7 +909,7 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
                 Text(
                   'Archived Medications ($count)',
                   style: const TextStyle(
-                    fontSize: 17,
+                    fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: NotelColors.textSecondary,
                   ),
@@ -908,7 +920,8 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
               _showArchived ? Icons.expand_less : Icons.expand_more,
               color: NotelColors.textSecondary,
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );

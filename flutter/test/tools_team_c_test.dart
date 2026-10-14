@@ -377,7 +377,7 @@ void main() {
       // resting HR + calories show honest empty states.
       await pumpScreen(tester, KeyMetricsScreen(backend: backend, healthConnect: _FakeHc()));
       expect(find.text('78'), findsOneWidget);
-      expect(find.text('BPM'), findsWidgets);
+      expect(find.text('bpm'), findsWidgets); // R53 B12: unit typeset lowercase per Mira rulings §8
       expect(find.text('154'), findsOneWidget); // 70kg → lbs
       // The tile grid is lazy. With HC disconnected the night
       // metrics (Breathing Rate, Blood Oxygen, HRV) show their

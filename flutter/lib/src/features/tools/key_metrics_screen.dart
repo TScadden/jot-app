@@ -3,6 +3,7 @@ import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
+import 'package:tabs_lab/src/theme/skeleton.dart';
 
 /// Key Metrics — Flutter port of the native `KeyMetricsScreen.kt`.
 ///
@@ -587,8 +588,21 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
 
   Widget _buildBody() {
     if (_loading) {
-      return const Center(
-          child: CircularProgressIndicator(color: NotelColors.primary));
+      return const SkeletonGroup(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 110),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SkeletonBox(height: 48, radius: 12),
+              SizedBox(height: 16),
+              SkeletonBox(height: 150, radius: 20),
+              SizedBox(height: 16),
+              SkeletonBox(height: 150, radius: 20),
+            ],
+          ),
+        ),
+      );
     }
     if (_error != null) {
       return Center(
@@ -644,7 +658,7 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
         Expanded(
           child: GridView.count(
             crossAxisCount: 2,
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
             mainAxisSpacing: 16,
             crossAxisSpacing: 16,
             childAspectRatio: 0.78,
@@ -652,7 +666,7 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
               MetricTile(
                 title: 'Heart Rate',
                 value: d.avgHr == null ? null : '${d.avgHr}',
-                unit: 'BPM',
+                unit: 'bpm',
                 icon: Icons.favorite,
                 color: NotelColors.primary,
                 isLoading: false,
@@ -686,7 +700,7 @@ class _KeyMetricsScreenState extends State<KeyMetricsScreen> {
               MetricTile(
                 title: 'Resting HR',
                 value: d.restingHr == null ? null : '${d.restingHr}',
-                unit: 'BPM',
+                unit: 'bpm',
                 icon: Icons.bedtime,
                 color: const Color(0xFFBA68C8),
                 subtitle: 'Last daily reading',
@@ -817,9 +831,9 @@ class MetricTile extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: NotelColors.surface.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: NotelColors.legacyDarkHairlineFaint),
+        color: NotelColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: NotelColors.cardBorder),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -842,8 +856,7 @@ class MetricTile extends StatelessWidget {
                     style: TextStyle(
                         fontSize: 11,
                         height: 1.35,
-                        color:
-                            NotelColors.textSecondary.withValues(alpha: 0.7)))
+                        color: NotelColors.textSecondary))
               else
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -856,13 +869,13 @@ class MetricTile extends StatelessWidget {
                           fontWeight:
                               (!hasValue) ? FontWeight.normal : FontWeight.w900,
                           color: (!hasValue)
-                              ? NotelColors.textSecondary.withValues(alpha: 0.6)
+                              ? NotelColors.textSecondary
                               : NotelColors.textPrimary,
                         ),
                       ),
                     ),
                     if (hasValue) ...[
-                      const SizedBox(width: 4),
+                      SizedBox(width: unit == '%' ? 0 : 4),
                       Padding(
                         padding: const EdgeInsets.only(bottom: 6),
                         child: Text(unit,
@@ -883,10 +896,8 @@ class MetricTile extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
                   child: Text(subtitle!,
-                      style: TextStyle(
-                          fontSize: 10,
-                          color:
-                              NotelColors.textSecondary.withValues(alpha: 0.5))),
+                      style: const TextStyle(
+                          fontSize: 11, color: NotelColors.textSecondary)),
                 ),
             ],
           ),
