@@ -222,6 +222,20 @@ void main() {
           'CALENDAR EVENTS (today + next 14 days): No events found.');
     });
 
+    test('permission disclosure is Juno A1 verbatim', () {
+      expect(
+          coachCalendarPermissionDisclosure,
+          'Tabs Coach needs read and write access to your calendar. '
+          'When Google Calendar is connected, the Coach reads the '
+          'titles and times of your events for today and the next 14 '
+          'days and sends them to the Tabs AI service so it can '
+          'answer with your schedule in context. The Coach can also '
+          'add events to, and delete events from, your calendar, only '
+          'for proposals you tap Approve on. Nothing is added or '
+          'deleted without your approval. Tap Continue to allow '
+          'calendar access.');
+    });
+
     test('native outcome copy is verbatim', () {
       expect(
           coachCalendarAddedConfirmation('Dentist', '2026-10-20', '02:30 PM'),
@@ -234,6 +248,10 @@ void main() {
       expect(coachCalendarDeletedConfirmation('Dentist', '2026-10-20'),
           'Successfully deleted "Dentist" scheduled for 2026-10-20 '
           'from your Google Calendar!');
+      // Juno A2: the plural (rows > 1) confirmation, verbatim.
+      expect(coachCalendarDeletedPluralConfirmation(2, 'Dentist', '2026-10-20'),
+          'Successfully deleted 2 events titled "Dentist" scheduled '
+          'for 2026-10-20 from your Google Calendar!');
       expect(coachCalendarDeleteNotFoundMessage('Dentist'),
           'Could not find "Dentist" on your Google Calendar to delete.');
       expect(coachCalendarNoWritableMessage,
@@ -334,11 +352,16 @@ void main() {
           findsOneWidget);
     });
 
-    testWidgets('approve delete → rows>0 success confirmation',
+    testWidgets('approve delete → rows=2 plural confirmation (Juno A2)',
         (tester) async {
       final bridge = FakeCalendarBridge(deleteRows: 2);
       await pumpChat(tester, bridge: bridge, messages: const [_deleteMsg]);
       expect(find.text('Approve & Delete'), findsOneWidget);
+      // Juno A2: the connected pending card states the delete scope.
+      expect(
+          find.text('This deletes every event with this exact title '
+              'on this date, across all your calendars.'),
+          findsOneWidget);
       await tester.tap(find.text('Approve & Delete'));
       await tester.pumpAndSettle();
       final deletes = bridge.callsTo('deleteEvents');
@@ -347,10 +370,43 @@ void main() {
       expect(args['title'], 'Dentist');
       expect(args['date'], '2026-10-20');
       expect(
+          find.text('Successfully deleted 2 events titled "Dentist" '
+              'scheduled for 2026-10-20 from your Google Calendar!'),
+          findsOneWidget);
+      expect(
+          find.text('Successfully deleted "Dentist" scheduled for '
+              '2026-10-20 from your Google Calendar!'),
+          findsNothing);
+      expect(find.text('✓ Event Deleted from Calendar'), findsOneWidget);
+    });
+
+    testWidgets('approve delete → rows=1 keeps native singular '
+        'confirmation verbatim', (tester) async {
+      final bridge = FakeCalendarBridge(deleteRows: 1);
+      await pumpChat(tester, bridge: bridge, messages: const [_deleteMsg]);
+      await tester.tap(find.text('Approve & Delete'));
+      await tester.pumpAndSettle();
+      expect(bridge.callsTo('deleteEvents'), hasLength(1));
+      expect(
           find.text('Successfully deleted "Dentist" scheduled for '
               '2026-10-20 from your Google Calendar!'),
           findsOneWidget);
       expect(find.text('✓ Event Deleted from Calendar'), findsOneWidget);
+    });
+
+    testWidgets('flag-off deletion card → R48 limitation, NO scope '
+        'notice (Juno A2)', (tester) async {
+      final bridge = FakeCalendarBridge();
+      await pumpChat(tester,
+          bridge: bridge, messages: const [_deleteMsg], connected: false);
+      expect(find.text('Native App Required'), findsOneWidget);
+      expect(find.text(coachCalendarCardLimitation), findsOneWidget);
+      expect(
+          find.text('This deletes every event with this exact title '
+              'on this date, across all your calendars.'),
+          findsNothing);
+      expect(find.text(coachCalendarDeleteScopeNotice), findsNothing);
+      expect(bridge.calls, isEmpty);
     });
 
     testWidgets('approve delete → rows=0 not-found message, still '
@@ -378,6 +434,18 @@ void main() {
       // Disclosure FIRST: no system request yet, no insert.
       expect(find.text('Calendar access needed'), findsOneWidget);
       expect(find.text(coachCalendarPermissionDisclosure), findsOneWidget);
+      // Juno A1: the dialog renders the disclosure string verbatim.
+      expect(
+          find.text('Tabs Coach needs read and write access to your '
+              'calendar. When Google Calendar is connected, the Coach '
+              'reads the titles and times of your events for today and '
+              'the next 14 days and sends them to the Tabs AI service '
+              'so it can answer with your schedule in context. The '
+              'Coach can also add events to, and delete events from, '
+              'your calendar, only for proposals you tap Approve on. '
+              'Nothing is added or deleted without your approval. Tap '
+              'Continue to allow calendar access.'),
+          findsOneWidget);
       expect(bridge.callsTo('requestPermissions'), isEmpty);
       expect(bridge.callsTo('insertEvent'), isEmpty);
 

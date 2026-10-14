@@ -110,9 +110,17 @@ const String coachCalendarPermissionDeniedMessage =
 /// bare at first approve; the disclosure is this build's deliberate
 /// addition and changes none of native's outcomes.
 const String coachCalendarPermissionDisclosure =
-    'Tabs Coach needs calendar access to add and delete the '
-    'events you approve, and to show your upcoming events in the '
-    'chat. Tap Continue to allow calendar access.';
+    'Tabs Coach needs read and write access to your calendar. When Google Calendar is connected, the Coach reads the titles and times of your events for today and the next 14 days and sends them to the Tabs AI service so it can answer with your schedule in context. The Coach can also add events to, and delete events from, your calendar, only for proposals you tap Approve on. Nothing is added or deleted without your approval. Tap Continue to allow calendar access.';
+
+/// Round 54 fix round (Juno A2) — scope notice shown ON a pending
+/// calendar-DELETION proposal card in the connected state only:
+/// the bridge deletes every exact-title match in the day window,
+/// and the card must say so before the user taps Approve. Display
+/// only — the delete selection itself is unchanged. When the flag
+/// is off the card keeps the Round 48 limitation instead.
+const String coachCalendarDeleteScopeNotice =
+    'This deletes every event with this exact title on this date, '
+    'across all your calendars.';
 
 /// Round 48 fix round (Juno F2) — honest reason shown when a
 /// Coach reminder approval stops at the permission gate. The
@@ -655,21 +663,30 @@ class CoachApprovalOutcome {
   /// flipped either way on failure.
   final bool errorAsCoachMessage;
 
-  const CoachApprovalOutcome.success()
+  /// Round 54 fix round (Juno A2) — for a successful calendar
+  /// DELETE approval, how many rows the bridge actually deleted.
+  /// The confirmation copy is count-aware: 1 keeps native's
+  /// verbatim singular string, >1 uses the plural string. Null
+  /// for every other outcome.
+  final int? deletedRows;
+
+  const CoachApprovalOutcome.success({this.deletedRows})
       : ok = true,
         error = null,
         errorAsCoachMessage = false;
 
   const CoachApprovalOutcome.failure([this.error])
       : ok = false,
-        errorAsCoachMessage = false;
+        errorAsCoachMessage = false,
+        deletedRows = null;
 
   /// A failure whose [error] is posted into the chat as a coach
   /// message (Round 54 calendar outcomes, native parity).
   const CoachApprovalOutcome.failureAsMessage(String message)
       : ok = false,
         error = message,
-        errorAsCoachMessage = true;
+        errorAsCoachMessage = true,
+        deletedRows = null;
 }
 
 /// The typed-shortcut decision native `sendMessage` makes when the
@@ -1613,8 +1630,14 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
               parsed.calendarTitle!,
               parsed.calendarDate,
               parsed.calendarTime),
-          'calendarDelete' => coachCalendarDeletedConfirmation(
-              parsed.calendarDeleteTitle!, parsed.calendarDeleteDate),
+          'calendarDelete' => (outcome.deletedRows ?? 1) > 1
+              ? coachCalendarDeletedPluralConfirmation(
+                  outcome.deletedRows!,
+                  parsed.calendarDeleteTitle!,
+                  parsed.calendarDeleteDate)
+              : coachCalendarDeletedConfirmation(
+                  parsed.calendarDeleteTitle!,
+                  parsed.calendarDeleteDate),
           _ => null,
         };
       } else {
@@ -1764,8 +1787,10 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
 
   /// Native `approveProposedCalendarDeleteEvent`: the bridge
   /// deletes every exact-title match in the day window. rows > 0
-  /// succeeds; 0 posts native's not-found message and the
-  /// proposal stays pending (native flips the tag only on
+  /// succeeds and carries the row count so the confirmation is
+  /// count-aware (Juno A2: 1 = native's verbatim singular, >1 =
+  /// the plural string); 0 posts native's not-found message and
+  /// the proposal stays pending (native flips the tag only on
   /// success).
   Future<CoachApprovalOutcome> _approveCalendarDelete(
       CoachParsedContent parsed) async {
@@ -1774,7 +1799,9 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
         title: parsed.calendarDeleteTitle!,
         date: parsed.calendarDeleteDate,
       );
-      if (rows > 0) return const CoachApprovalOutcome.success();
+      if (rows > 0) {
+        return CoachApprovalOutcome.success(deletedRows: rows);
+      }
       return CoachApprovalOutcome.failureAsMessage(
           coachCalendarDeleteNotFoundMessage(
               parsed.calendarDeleteTitle!));
@@ -2481,6 +2508,9 @@ class _ChatBubble extends StatelessWidget {
     // label); not connected keeps the Round 48 (Juno F1)
     // treatment: limitation ON the card, approve disabled and
     // labelled accordingly. Dismiss works fully either way.
+    // Round 54 fix round (Juno A2): connected pending cards also
+    // carry the delete-scope notice in the card's notice slot
+    // (display only); the flag-off limitation is untouched.
     if (parsed.calendarDeleteTitle != null) {
       switch (parsed.calendarDeleteStatus) {
         case CoachProposalStatus.pending:
@@ -2492,7 +2522,9 @@ class _ChatBubble extends StatelessWidget {
                 ? 'Approve & Delete'
                 : 'Native App Required',
             approveEnabled: calendarConnected,
-            notice: calendarConnected ? null : coachCalendarCardLimitation,
+            notice: calendarConnected
+                ? coachCalendarDeleteScopeNotice
+                : coachCalendarCardLimitation,
             denyLabel: 'Dismiss',
             busy: actionBusy,
             onApprove: () => onProposal('calendarDelete', true),

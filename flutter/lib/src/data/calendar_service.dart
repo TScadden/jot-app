@@ -323,6 +323,16 @@ String coachCalendarDeletedConfirmation(String title, String? date) {
       'Google Calendar!';
 }
 
+/// Round 54 fix round (Juno A2) — count-aware delete confirmation
+/// for when the bridge deleted MORE THAN ONE exact-title match:
+/// the singular native string would understate what happened.
+/// Display only — what gets deleted is unchanged.
+String coachCalendarDeletedPluralConfirmation(
+    int rows, String title, String? date) {
+  return 'Successfully deleted $rows events titled "$title" '
+      'scheduled for $date from your Google Calendar!';
+}
+
 /// Native's delete not-found message (CoachViewModel.kt:987-993).
 String coachCalendarDeleteNotFoundMessage(String title) =>
     'Could not find "$title" on your Google Calendar to delete.';
