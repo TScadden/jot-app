@@ -125,6 +125,26 @@ const String coachNotePullFailedMessage =
 /// approval with no "📄 Uploaded file:" source message in this
 /// session: the file was never attached in this app, so retrying
 /// the save cannot help.
+/// Round 55 Step 3 — honest failure for a LOG_ENTRY approval whose
+/// category name does not resolve against the pull's categories:
+/// nothing is logged and the proposal stays pending.
+const String coachLogEntryUnknownCategoryMessage =
+    'That category was not found in your categories, so that entry '
+    'was not logged. The proposal is still pending.';
+
+/// Round 55 Step 3 — honest failure for a LOG_ENTRY approval whose
+/// re-pull failed (same discipline as the note flow: abort before
+/// any id math, never the id-1 overwrite).
+const String coachLogEntryPullFailedMessage =
+    'Could not load your existing history, so that entry was not '
+    'logged. Check your connection and try again.';
+
+/// Round 55 Step 3 — honest failure for a COUNTER approval whose
+/// date does not parse as yyyy-MM-dd.
+const String coachCounterInvalidDateMessage =
+    'That counter date could not be read, so the counter was not '
+    'created. The proposal is still pending.';
+
 const String coachFileNotAttachedMessage =
     'That file was not attached in this app, so there is nothing '
     'to save from here.';
@@ -241,11 +261,19 @@ class CoachMedProposal {
   final String endDate;
   final bool isPresent;
 
+  /// Round 55 Step 3: dose/frequency from the extended 6-field
+  /// grammar. Empty for legacy 4-field tags (approvals then keep
+  /// the historical placeholders).
+  final String dose;
+  final String frequency;
+
   const CoachMedProposal({
     required this.name,
     required this.startDate,
     required this.endDate,
     required this.isPresent,
+    this.dose = '',
+    this.frequency = '',
   });
 }
 
@@ -273,6 +301,12 @@ class CoachParsedContent {
   final CoachProposalStatus calendarDeleteStatus;
   final List<CoachMedProposal> medications;
   final CoachProposalStatus medicationStatus;
+  final String? logEntryCategory;
+  final String? logEntryText;
+  final CoachProposalStatus logEntryStatus;
+  final String? counterName;
+  final String? counterDate;
+  final CoachProposalStatus counterStatus;
 
   const CoachParsedContent({
     required this.cleanContent,
@@ -296,6 +330,12 @@ class CoachParsedContent {
     this.calendarDeleteStatus = CoachProposalStatus.none,
     this.medications = const [],
     this.medicationStatus = CoachProposalStatus.none,
+    this.logEntryCategory,
+    this.logEntryText,
+    this.logEntryStatus = CoachProposalStatus.none,
+    this.counterName,
+    this.counterDate,
+    this.counterStatus = CoachProposalStatus.none,
   });
 }
 
@@ -324,22 +364,62 @@ class CoachParsedContent {
   return (content, null, CoachProposalStatus.none);
 }
 
+/// Whether [v] reads as a present flag (the legacy grammar's
+/// 4th field / the extended grammar's 6th field).
+bool _isPresentFlag(String v) {
+  final t = v.trim().toLowerCase();
+  return t == 'true' || t == 'false';
+}
+
+/// Round 55 Step 3 — medication tag disambiguation rule (documented
+/// per the round brief):
+/// - 6 or more fields: the EXTENDED grammar
+///   Name|Dose|Frequency|StartDate|EndDate|isPresent.
+/// - 4 or fewer fields: the LEGACY grammar
+///   Name|StartDate|EndDate|isPresent (dose/frequency stay empty,
+///   so approvals keep the historical placeholders).
+/// - Exactly 5 fields is ambiguous, so field 4 decides: when the
+///   4th field parses as a present flag it is the legacy grammar
+///   (any 5th field is ignored, exactly as pre-Round-55 tags with
+///   trailing data behaved); otherwise the 5th field is the flag
+///   and the tag is the extended grammar with an empty EndDate
+///   (Name|Dose|Frequency|StartDate|isPresent).
 List<CoachMedProposal> _parseMedicationString(String raw) {
   final out = <CoachMedProposal>[];
   for (final item in raw.split(';')) {
     final parts = item.split('|');
     final name = (parts.isNotEmpty ? parts[0] : '').trim();
     if (name.isEmpty) continue;
-    final startDate = parts.length > 1 ? parts[1].trim() : '';
-    var endDate = parts.length > 2 ? parts[2].trim() : '';
-    final isPresent =
-        parts.length > 3 && parts[3].trim().toLowerCase() == 'true';
+    String dose = '';
+    String frequency = '';
+    String startDate;
+    var endDate = '';
+    bool isPresent;
+    if (parts.length >= 6) {
+      dose = parts[1].trim();
+      frequency = parts[2].trim();
+      startDate = parts[3].trim();
+      endDate = parts[4].trim();
+      isPresent = parts[5].trim().toLowerCase() == 'true';
+    } else if (parts.length == 5 && !_isPresentFlag(parts[3])) {
+      dose = parts[1].trim();
+      frequency = parts[2].trim();
+      startDate = parts[3].trim();
+      isPresent = parts[4].trim().toLowerCase() == 'true';
+    } else {
+      startDate = parts.length > 1 ? parts[1].trim() : '';
+      endDate = parts.length > 2 ? parts[2].trim() : '';
+      isPresent =
+          parts.length > 3 && parts[3].trim().toLowerCase() == 'true';
+    }
     if (isPresent) endDate = 'Present';
     out.add(CoachMedProposal(
       name: name,
       startDate: startDate,
       endDate: endDate,
       isPresent: isPresent,
+      dose: dose,
+      frequency: frequency,
     ));
   }
   return out;
@@ -436,6 +516,36 @@ CoachParsedContent parseCoachMessageContent(String rawContent) {
     }
   }
 
+  String? logEntryCategory;
+  String? logEntryText;
+  var logEntryStatus = CoachProposalStatus.none;
+  String? logEntryRaw;
+  (clean, logEntryRaw, logEntryStatus) = _takeTag(clean, 'LOG_ENTRY');
+  if (logEntryRaw != null) {
+    final idx = logEntryRaw.indexOf('|');
+    if (idx >= 0) {
+      logEntryCategory = logEntryRaw.substring(0, idx).trim();
+      logEntryText = logEntryRaw.substring(idx + 1).trim();
+    } else {
+      logEntryCategory = '';
+      logEntryText = logEntryRaw.trim();
+    }
+    if (logEntryCategory.isEmpty) logEntryCategory = null;
+    if (logEntryText.isEmpty) logEntryText = null;
+  }
+
+  String? counterName;
+  String? counterDate;
+  var counterStatus = CoachProposalStatus.none;
+  String? counterRaw;
+  (clean, counterRaw, counterStatus) = _takeTag(clean, 'COUNTER');
+  if (counterRaw != null) {
+    final parts = counterRaw.split('|');
+    counterName = parts.first.trim();
+    counterDate = parts.length > 1 ? parts[1].trim() : null;
+    if (counterName.isEmpty) counterName = null;
+  }
+
   return CoachParsedContent(
     cleanContent: clean,
     noteText: noteText,
@@ -458,6 +568,12 @@ CoachParsedContent parseCoachMessageContent(String rawContent) {
     calendarDeleteStatus: calendarDeleteStatus,
     medications: medications,
     medicationStatus: medicationStatus,
+    logEntryCategory: logEntryCategory,
+    logEntryText: logEntryText,
+    logEntryStatus: logEntryStatus,
+    counterName: counterName,
+    counterDate: counterDate,
+    counterStatus: counterStatus,
   );
 }
 
@@ -550,12 +666,19 @@ REMINDERS: If the user mentions wanting to be reminded of something, wanting to 
 Use 24-hour format for the time. Example: [PROPOSE_REMINDER:Take medication|08:00]
 If no specific time is mentioned, suggest a reasonable time based on context.
 
+LOG ENTRIES: If the user asks you to log, record, or note an entry in one of their existing log categories, propose logging it. Format: [PROPOSE_LOG_ENTRY:CategoryName|Entry text]
+Use the exact name of one of the user's existing categories (they are named in the recent logs context above). Example: [PROPOSE_LOG_ENTRY:Symptoms|Headache started after lunch]
+
+EVENT COUNTERS: If the user wants to track how many days it has been since an event, or how many days remain until an event, propose an event counter. Format: [PROPOSE_COUNTER:Counter name|yyyy-MM-dd]
+Example: [PROPOSE_COUNTER:Last migraine|2026-10-01]
+
 MEDICATIONS: You MUST actively inspect the user's message and the contents of any uploaded files/documents (indicated by "📄 Uploaded file: [filename]\\n\\n[contents]") for medications. If the user mentions starting, taking, stopping, or updating medications, or if the uploaded document says the user is taking or was taking any medications, you MUST propose adding them.
 Format: Propose ALL found medications in a single tag by separating them with a semicolon.
-Each medication format: Name|StartDate|EndDate|isPresent
+Each medication format: Name|Dose|Frequency|StartDate|EndDate|isPresent
+Include the dose (for example "60 mg") and frequency (for example "3 times daily") when the user or the document states them; leave them empty when they are not stated.
 Use 'isPresent' as 'true' if the user is currently taking the medication, or 'false' if they have stopped. If they are currently taking it, the EndDate should be empty.
 Dates should look like "Jun 2026", "2025-12-05", "Dec 2025" or similar based on context.
-Example for multiple medications: [PROPOSE_MEDICATION:Pyridostigmine|Jun 2026||true;Metoprolol|Jan 2025|May 2026|false]
+Example for multiple medications: [PROPOSE_MEDICATION:Pyridostigmine|60 mg|3 times daily|Jun 2026||true;Metoprolol|25 mg|Once daily|Jan 2025|May 2026|false]
 
 MEMORY: When the user states a durable health or goal fact or a decision (what they are trying, what helped, or what they stopped), end your reply with exactly one line in the form REMEMBER: followed by one short factual sentence capturing it. Include at most one REMEMBER line per reply, and only when there is a durable fact or decision to remember.
 
@@ -1078,6 +1201,8 @@ String? coachMemoryEventForProposal(
           : null,
       'calendar' => parsed.calendarTitle,
       'calendarDelete' => parsed.calendarDeleteTitle,
+      'logEntry' => parsed.logEntryText,
+      'counter' => parsed.counterName,
       _ => null,
     };
     final topicText =
@@ -1095,6 +1220,10 @@ String? coachMemoryEventForProposal(
       '$date: Set a reminder "${parsed.reminderTitle ?? ''}"${parsed.reminderTime != null && parsed.reminderTime!.trim().isNotEmpty ? ' at ${parsed.reminderTime!.trim()}' : ''} (approved from Coach).',
     'medication' =>
       '$date: Added medications: ${parsed.medications.map((m) => m.name).join(', ')} (approved from Coach).',
+    'logEntry' =>
+      '$date: Logged an entry from Coach: "${_coachTruncateFact(parsed.logEntryText ?? '')}" (approved from Coach).',
+    'counter' =>
+      '$date: Created an event counter "${parsed.counterName ?? ''}" for ${parsed.counterDate ?? ''} (approved from Coach).',
     _ => null,
   };
 }
@@ -1204,6 +1333,23 @@ String? coachTextShortcut(String kind, String text) {
         return 'deny';
       }
       return null;
+    case 'logEntry':
+      // Mirrors the note shortcuts (it is a log write, like a note).
+      if (saveApprove.contains(lower)) return 'approve';
+      if (saveDeny.contains(lower)) return 'deny';
+      return null;
+    case 'counter':
+      // Mirrors the list shortcuts (it creates a named thing).
+      if (saveApprove.contains(lower) ||
+          {'create', 'create it', 'create that'}.contains(lower)) {
+        return 'approve';
+      }
+      if ({'deny', 'no', "don't save", "don't create", 'cancel',
+              "no don't create"}
+          .contains(lower)) {
+        return 'deny';
+      }
+      return null;
   }
   return null;
 }
@@ -1231,6 +1377,16 @@ String? pendingProposalKind(CoachParsedContent parsed) {
   if (parsed.medicationStatus == CoachProposalStatus.pending &&
       parsed.medications.isNotEmpty) {
     return 'medication';
+  }
+  // Round 55 kinds, checked after the native five so the native
+  // priority order is unchanged.
+  if (parsed.logEntryStatus == CoachProposalStatus.pending &&
+      parsed.logEntryText != null) {
+    return 'logEntry';
+  }
+  if (parsed.counterStatus == CoachProposalStatus.pending &&
+      parsed.counterName != null) {
+    return 'counter';
   }
   return null;
 }
@@ -2442,6 +2598,8 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
     'list': 'LIST',
     'reminder': 'REMINDER',
     'medication': 'MEDICATION',
+    'logEntry': 'LOG_ENTRY',
+    'counter': 'COUNTER',
     'calendar': 'CALENDAR_EVENT',
     'calendarDelete': 'DELETE_CALENDAR_EVENT',
   };
@@ -2481,6 +2639,8 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
           'list' => await _approveList(parsed),
           'reminder' => await _approveReminder(parsed),
           'medication' => await _approveMedications(parsed.medications),
+          'logEntry' => await _approveLogEntry(parsed),
+          'counter' => await _approveCounter(parsed),
           _ => const CoachApprovalOutcome.failure(),
         };
         if (!outcome.ok) {
@@ -2502,6 +2662,10 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
             'Done! I\'ve set a reminder for "${parsed.reminderTitle}"${_reminderTimeLabel(parsed.reminderTime)}.',
           'medication' =>
             'Added medications: ${_medicationSummary(parsed.medications)}.',
+          'logEntry' =>
+            'Great! I\'ve logged that entry${parsed.logEntryCategory != null ? ' in ${parsed.logEntryCategory}' : ''}.',
+          'counter' =>
+            'Done! I\'ve created the event counter "${parsed.counterName}".',
           _ => null,
         };
       } else {
@@ -2510,6 +2674,8 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
           'file' => "Okay, I won't save that file to the database.",
           'list' => "Okay, I won't create that list.",
           'reminder' => "Okay, I won't set that reminder.",
+          'logEntry' => "Okay, I won't log that entry.",
+          'counter' => "Okay, I won't create that counter.",
           'calendar' => "Okay, I won't add that to your calendar.",
           'calendarDelete' => "Okay, I won't delete that event.",
           // Native's medication deny inserts no confirmation.
@@ -2629,6 +2795,128 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
           timestamp: now,
         ),
       ]);
+      return saved
+          ? const CoachApprovalOutcome.success()
+          : const CoachApprovalOutcome.failure();
+    } catch (_) {
+      return const CoachApprovalOutcome.failure();
+    }
+  }
+
+  /// Round 55 Step 3 — approves a LOG_ENTRY proposal: resolves the
+  /// category by name from the pull's categories (case-insensitive;
+  /// unknown category fails honestly and the proposal stays
+  /// pending), then upserts the entry with the note flow's
+  /// discipline — a failed re-pull aborts before any id math, and
+  /// the new id is max(existing) + 1.
+  Future<CoachApprovalOutcome> _approveLogEntry(
+      CoachParsedContent parsed) async {
+    try {
+      final wanted = (parsed.logEntryCategory ?? '').trim().toLowerCase();
+      int? categoryId;
+      if (wanted.isNotEmpty) {
+        for (final c in widget.pullCategories) {
+          if ('${c['name'] ?? ''}'.trim().toLowerCase() == wanted) {
+            final id = _asIntOr(c['id'], -999);
+            if (id != -999) categoryId = id;
+            break;
+          }
+        }
+      }
+      if (categoryId == null) {
+        return const CoachApprovalOutcome.failure(
+            coachLogEntryUnknownCategoryMessage);
+      }
+      _backend.invalidateSyncPull();
+      final pull = await _backend.fetchSyncPull();
+      if (pull == null) {
+        return const CoachApprovalOutcome.failure(
+            coachLogEntryPullFailedMessage);
+      }
+      final entries = pull['entries'];
+      var maxId = 0;
+      if (entries is List) {
+        for (final e in entries) {
+          if (e is Map) {
+            final id = _asIntOr(e['id'], 0);
+            if (id > maxId) maxId = id;
+          }
+        }
+      }
+      final saved = await _backend.postLogEntries([
+        QuickLogEntry(
+          id: maxId + 1,
+          categoryId: categoryId,
+          body: parsed.logEntryText ?? '',
+          chips: '',
+          manualText: '',
+          timestamp: DateTime.now().millisecondsSinceEpoch,
+        ),
+      ]);
+      return saved
+          ? const CoachApprovalOutcome.success()
+          : const CoachApprovalOutcome.failure();
+    } catch (_) {
+      return const CoachApprovalOutcome.failure();
+    }
+  }
+
+  /// Round 55 Step 3 — approves a COUNTER proposal: appends one
+  /// event-counter row to the profile eventCounters blob, splicing
+  /// the blob's RAW rows (the list approval's pattern) and building
+  /// the new row through EventCounterItem.toMap so its shape is
+  /// field-for-field the row Settings creates. Settings' create
+  /// values are mirrored: the id is the creation time in epoch ms,
+  /// duplicate names gain a (2), (3) suffix, and isFavorite is true
+  /// only when this is the first counter. isUp is set when the
+  /// target day is already past, so the counter reads as days-since
+  /// immediately; a future target reads as days-until.
+  Future<CoachApprovalOutcome> _approveCounter(
+      CoachParsedContent parsed) async {
+    try {
+      final rawDate = (parsed.counterDate ?? '').trim();
+      final parsedDate = DateTime.tryParse(rawDate);
+      if (parsedDate == null ||
+          !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(rawDate)) {
+        return const CoachApprovalOutcome.failure(
+            coachCounterInvalidDateMessage);
+      }
+      _backend.invalidateSyncPull();
+      final profile = await _backend.fetchProfile();
+      if (profile == null) {
+        return const CoachApprovalOutcome.failure();
+      }
+      final rows = decodeCoachProfileBlobRaw(profile['eventCounters']);
+      final names = <String>{
+        for (final row in rows)
+          if (coachRawRowMap(row) != null)
+            '${coachRawRowMap(row)!['name'] ?? ''}',
+      };
+      var unique = (parsed.counterName ?? '').trim();
+      if (unique.isEmpty) {
+        return const CoachApprovalOutcome.failure();
+      }
+      var suffix = 2;
+      final baseName = unique;
+      while (names.contains(unique)) {
+        unique = '$baseName ($suffix)';
+        suffix++;
+      }
+      final now = DateTime.now();
+      final targetDay = DateTime(parsedDate.year, parsedDate.month, parsedDate.day);
+      final today = DateTime(now.year, now.month, now.day);
+      final item = EventCounterItem(
+        id: '${now.millisecondsSinceEpoch}',
+        name: unique,
+        targetDate: targetDay.millisecondsSinceEpoch,
+        isUp: targetDay.isBefore(today),
+        autoUp: false,
+        isFavorite: rows.isEmpty,
+        isArchived: false,
+      );
+      rows.add(item.toMap());
+      final saved = await _backend
+          .postSyncProfile({'eventCounters': jsonEncode(rows)});
       return saved
           ? const CoachApprovalOutcome.success()
           : const CoachApprovalOutcome.failure();
@@ -2833,8 +3121,12 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
           'startDate': med.startDate,
           'endDate': med.isPresent ? 'Present' : med.endDate,
           'isPresent': med.isPresent,
-          'dose': 'As prescribed',
-          'frequency': 'Daily',
+          // Round 55 Step 3: the extended grammar carries real
+          // dose/frequency — write those. The placeholders remain
+          // only for legacy-shape tags that carry neither.
+          'dose': med.dose.trim().isNotEmpty ? med.dose.trim() : 'As prescribed',
+          'frequency':
+              med.frequency.trim().isNotEmpty ? med.frequency.trim() : 'Daily',
           'updatedAt': now,
           'isDeleted': false,
         });
@@ -3308,6 +3600,98 @@ class _ChatBubble extends StatelessWidget {
       }
     }
 
+    // Log entry — Round 55 Step 3.
+    if (parsed.logEntryText != null) {
+      switch (parsed.logEntryStatus) {
+        case CoachProposalStatus.pending:
+          addCard(_ProposalCard(
+            emoji: '📝',
+            title: 'Log entry',
+            approveLabel: 'Approve',
+            denyLabel: 'Deny',
+            busy: actionBusy,
+            onApprove: () => onProposal('logEntry', true),
+            onDeny: () => onProposal('logEntry', false),
+            children: [
+              if (parsed.logEntryCategory != null &&
+                  parsed.logEntryCategory!.isNotEmpty)
+                Text(parsed.logEntryCategory!,
+                    style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: NotelColors.textSecondary)),
+              const SizedBox(height: 4),
+              Text('"${parsed.logEntryText}"',
+                  style: const TextStyle(
+                      fontSize: 14,
+                      fontStyle: FontStyle.italic,
+                      height: 1.4,
+                      color: NotelColors.textPrimary)),
+            ],
+          ));
+        case CoachProposalStatus.approved:
+          addCard(const _ProposalBadge(
+              text: '✓ Entry Logged', color: NotelColors.success));
+        case CoachProposalStatus.denied:
+          addCard(const _ProposalBadge(
+              text: '✗ Log Entry Dismissed', color: NotelColors.error));
+        case CoachProposalStatus.none:
+          break;
+      }
+    }
+
+    // Event counter — Round 55 Step 3.
+    if (parsed.counterName != null) {
+      switch (parsed.counterStatus) {
+        case CoachProposalStatus.pending:
+          final target = parsed.counterDate == null
+              ? null
+              : DateTime.tryParse(parsed.counterDate!);
+          final daysLabel = target == null
+              ? (parsed.counterDate ?? '')
+              : EventCounterItem(
+                  id: '',
+                  name: parsed.counterName!,
+                  targetDate: DateTime(target.year, target.month, target.day)
+                      .millisecondsSinceEpoch,
+                  isUp: DateTime(target.year, target.month, target.day)
+                      .isBefore(DateTime(DateTime.now().year,
+                          DateTime.now().month, DateTime.now().day)),
+                ).daysLabel();
+          addCard(_ProposalCard(
+            emoji: '⏳',
+            title: 'Event counter',
+            approveLabel: 'Approve',
+            denyLabel: 'Deny',
+            busy: actionBusy,
+            onApprove: () => onProposal('counter', true),
+            onDeny: () => onProposal('counter', false),
+            children: [
+              Text(parsed.counterName!,
+                  style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: NotelColors.textPrimary)),
+              if ((parsed.counterDate ?? '').isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text('${parsed.counterDate} — $daysLabel',
+                    style: const TextStyle(
+                        fontSize: 13,
+                        color: NotelColors.textSecondary)),
+              ],
+            ],
+          ));
+        case CoachProposalStatus.approved:
+          addCard(const _ProposalBadge(
+              text: '✓ Counter Created', color: NotelColors.success));
+        case CoachProposalStatus.denied:
+          addCard(const _ProposalBadge(
+              text: '✗ Counter Dismissed', color: NotelColors.error));
+        case CoachProposalStatus.none:
+          break;
+      }
+    }
+
     // Medications — native card copy ("Approve & Add" / "Dismiss").
     if (parsed.medications.isNotEmpty) {
       switch (parsed.medicationStatus) {
@@ -3337,6 +3721,18 @@ class _ChatBubble extends StatelessWidget {
                       fontSize: 12,
                       color: NotelColors.textSecondary),
                 ),
+                if (med.dose.trim().isNotEmpty ||
+                    med.frequency.trim().isNotEmpty)
+                  Text(
+                    [
+                      if (med.dose.trim().isNotEmpty) med.dose.trim(),
+                      if (med.frequency.trim().isNotEmpty)
+                        med.frequency.trim(),
+                    ].join(' • '),
+                    style: const TextStyle(
+                        fontSize: 12,
+                        color: NotelColors.textSecondary),
+                  ),
                 const SizedBox(height: 8),
               ],
             ],
