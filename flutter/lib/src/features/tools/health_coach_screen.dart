@@ -2,7 +2,9 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/data/calendar_service.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
+import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/reminder_alarm_sync.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -47,18 +49,21 @@ import 'package:tabs_lab/src/theme/slide_page_route.dart';
 /// BLOCKED (no Flutter bridge, documented for the parent): attaching
 /// a NEW file from this app (native uses the Android file picker +
 /// `POST api/ai/process-document` extraction; the Flutter app has no
-/// file-picker plugin), and APPROVING calendar proposals (native
-/// writes to the device calendar via CalendarContract; no calendar
-/// bridge exists in the Flutter app). Round 48 fix round (Juno F1):
-/// the prompt now carries native's NOT-connected calendar
-/// instruction — this build has no Google Calendar connection, so
-/// the AI is told to guide the user to connect it and NOT to emit
-/// calendar tags — and calendar cards that arrive from synced
-/// native-created sessions still parse and render, with the
-/// limitation stated ON the card, a disabled approve control, and
-/// a working deny/dismiss. Google Calendar event CONTEXT (native
-/// reads upcoming events into the prompt) is likewise unavailable,
-/// so no schedule rule depending on event data is sent either.
+/// file-picker plugin).
+///
+/// Round 54 — real Google Calendar access: the CalendarContract
+/// bridge (calendar_service.dart + MainActivity.kt) ports native's
+/// calendar paths. When the SettingsStore flag says Google Calendar
+/// is connected (native's sign-in-based flag), the prompt carries
+/// native's CONNECTED branch with the live upcoming-events context,
+/// calendar cards enable Approve, and approvals run native's flow:
+/// permission re-check at approve (disclosure first, then the
+/// system READ+WRITE request; a grant replays the pending approve),
+/// writable-calendar insert / exact-title delete in the bridge, and
+/// native's exact confirmation/error messages. When the flag is
+/// off, Round 48's honest treatment stays exactly as-is: the
+/// NOT-connected prompt instruction, the limitation stated ON the
+/// card, a disabled approve control, and a working deny/dismiss.
 ///
 /// Membership-gated like native: a non-unlimited account sees an
 /// honest locked state (no paywall built). AI failures show a
@@ -92,6 +97,22 @@ const String coachCalendarCardLimitation =
 const String coachCalendarUnavailableMessage =
     'Calendar changes require the native Tabs app. '
     'Open the native Tabs app to add or delete calendar events.';
+
+/// Round 54 — native's Toast on calendar permission denial
+/// (CoachScreen.kt:106), shown here as a snackbar (the Flutter
+/// equivalent) while the proposal stays pending.
+const String coachCalendarPermissionDeniedMessage =
+    CalendarService.permissionDeniedMessage;
+
+/// Round 54 — the disclosure shown BEFORE the system calendar
+/// permission request at a calendar approval (MF-3 discipline:
+/// explain in-app first, request only from Continue). Native asks
+/// bare at first approve; the disclosure is this build's deliberate
+/// addition and changes none of native's outcomes.
+const String coachCalendarPermissionDisclosure =
+    'Tabs Coach needs calendar access to add and delete the '
+    'events you approve, and to show your upcoming events in the '
+    'chat. Tap Continue to allow calendar access.';
 
 /// Round 48 fix round (Juno F2) — honest reason shown when a
 /// Coach reminder approval stops at the permission gate. The
@@ -505,24 +526,52 @@ String formatCoachDateOnly(DateTime now) =>
 
 /// The enriched user context native `CoachViewModel.sendMessage`
 /// sends: the profile's base context plus the action-proposal
-/// instructions (lists, reminders, medications). Calendar handling
-/// follows native's branch for a NOT-connected account (Round 48
-/// fix round, Juno F1 — BLOCKING): native sends its calendar
-/// proposal formats and event-reading rules ONLY when Google
-/// Calendar is connected, together with the event data it reads
-/// from the device. This build has no calendar connection and
-/// receives no event data, so — exactly like native's
-/// not-connected branch — the AI is guided to send the user to
-/// Settings -> Connected Apps to connect Google Calendar first
-/// and is explicitly told NOT to output calendar proposal or
-/// deletion tags. No schedule rule that depends on the absent
-/// event data is included. (Tags arriving from synced
-/// native-created sessions still parse and render in the UI.)
+/// instructions (lists, reminders, medications) and native's
+/// calendar branch (CoachViewModel.kt:1364-1392).
+///
+/// NOT connected (native :1390-1392, mirrored by Round 48 with this
+/// build's CURRENT TIME line and an explicit delete-tag ban): the
+/// AI is guided to send the user to Settings -> Connected Apps to
+/// connect Google Calendar first and NOT to output calendar tags.
+///
+/// CONNECTED (Round 54, native :1364-1388 verbatim): the CURRENT
+/// TIME line, the IMPORTANT DATE RESOLUTION RULES block, the live
+/// upcoming-events context ([calendarEventsContext] — native's
+/// `getUpcomingCalendarEvents` output), the two proposal tag
+/// formats, and the CRITICAL RULES FOR READING & SCHEDULING
+/// EVENTS 1-3.
 String coachEnrichedUserContext(String? baseUserContext,
-    {required DateTime now}) {
+    {required DateTime now,
+    bool calendarConnected = false,
+    String calendarEventsContext = coachCalendarNotConnectedContext}) {
   final todayStr = formatCoachNow(now);
   final todayDateOnly = formatCoachDateOnly(now);
-  final calendarInstructions = '''
+  final calendarInstructions = calendarConnected
+      ? '''
+CURRENT TIME: The user's current local date and time is $todayStr. Today's date is $todayDateOnly.
+
+IMPORTANT DATE RESOLUTION RULES:
+- "today" = $todayDateOnly
+- "tomorrow" = the day after $todayDateOnly
+- "next [weekday]" = the next occurrence of that weekday after today
+- If the user says "add an event for today" or "schedule something today", use $todayDateOnly as the date — do NOT ask what day they want.
+- If the user says "add an event" without specifying a day, infer the date from context or use today ($todayDateOnly) as default.
+
+$calendarEventsContext
+
+CALENDAR EVENTS: Since Google Calendar is connected, you can propose scheduling events, setting appointments, calendar updates, or deletions.
+Format for Proposing Event: [PROPOSE_CALENDAR_EVENT:Event Title|YYYY-MM-DD|hh:mm AM/PM|Description]
+Use 12-hour format with AM/PM for the time (e.g. 02:30 PM). Suggest a reasonable date, time, and description based on context if not fully specified.
+If the user wants changes, simply generate a new revised [PROPOSE_CALENDAR_EVENT:...] tag.
+
+Format for Deleting Event: [PROPOSE_DELETE_CALENDAR_EVENT:Event Title|YYYY-MM-DD]
+If the user wants to cancel or delete an event, propose it using this tag.
+
+CRITICAL RULES FOR READING & SCHEDULING EVENTS:
+1. When discussing or listing read-only calendar events (like those in the context above), DO NOT ALTER THEIR TITLES OR APPEND APP-SPECIFIC PHRASES. Use their exact names (e.g. if the event is "Physical therapy", call it "Physical therapy", not "Physical therapy for ehlers danlos syndrome").
+2. Use normal 12-hour time format with AM/PM (e.g., "02:30 PM") in your conversational responses.
+3. When asked "what do I have today", include ALL events on $todayDateOnly regardless of whether they are past or future — the user wants the full day's schedule.'''
+      : '''
 CURRENT TIME: The user's current local date and time is $todayStr. Today's date is $todayDateOnly.
 
 CALENDAR EVENTS: Since Google Calendar is NOT connected yet, if the user asks you to schedule a calendar event or appointment, politely guide them to connect their Google Calendar first in Settings -> Connected Apps. Do NOT output a [PROPOSE_CALENDAR_EVENT:...] tag. Do NOT output a [PROPOSE_DELETE_CALENDAR_EVENT:...] tag.''';
@@ -599,11 +648,28 @@ class CoachApprovalOutcome {
   final bool ok;
   final String? error;
 
+  /// Round 54 — when true, a failure's [error] is appended as a
+  /// coach message (and persisted), mirroring native's calendar
+  /// handlers, which post their outcome messages into the chat
+  /// instead of only flashing them. The proposal tag is NOT
+  /// flipped either way on failure.
+  final bool errorAsCoachMessage;
+
   const CoachApprovalOutcome.success()
       : ok = true,
-        error = null;
+        error = null,
+        errorAsCoachMessage = false;
 
-  const CoachApprovalOutcome.failure([this.error]) : ok = false;
+  const CoachApprovalOutcome.failure([this.error])
+      : ok = false,
+        errorAsCoachMessage = false;
+
+  /// A failure whose [error] is posted into the chat as a coach
+  /// message (Round 54 calendar outcomes, native parity).
+  const CoachApprovalOutcome.failureAsMessage(String message)
+      : ok = false,
+        error = message,
+        errorAsCoachMessage = true;
 }
 
 /// The typed-shortcut decision native `sendMessage` makes when the
@@ -699,8 +765,21 @@ class HealthCoachScreen extends StatefulWidget {
   /// the alarm reconcile against it. Null in production.
   final ReminderNotificationService? notificationService;
 
+  /// Injectable calendar bridge (Round 54), forwarded to the chat
+  /// screen. Null in production.
+  final CalendarService? calendarService;
+
+  /// Injectable settings store (Round 54): the source of the
+  /// Google Calendar connected flag + email (native's sign-in
+  /// based state). Null in production.
+  final SettingsStore? settingsStore;
+
   const HealthCoachScreen(
-      {super.key, this.backend, this.notificationService});
+      {super.key,
+      this.backend,
+      this.notificationService,
+      this.calendarService,
+      this.settingsStore});
 
   @override
   State<HealthCoachScreen> createState() => _HealthCoachScreenState();
@@ -708,6 +787,13 @@ class HealthCoachScreen extends StatefulWidget {
 
 class _HealthCoachScreenState extends State<HealthCoachScreen> {
   TabsBackend get _backend => widget.backend ?? TabsBackend();
+
+  late final CalendarService _calendar =
+      widget.calendarService ?? CalendarService();
+  late final SettingsStore _settingsStore =
+      widget.settingsStore ?? SettingsStore();
+  bool _calConnected = false;
+  String _calEmail = '';
 
   bool? _unlocked;
   String? _gateError;
@@ -721,7 +807,26 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
   @override
   void initState() {
     super.initState();
+    _loadCalendarFlag();
     _load();
+  }
+
+  /// Round 54 — the calendar flag is on-device state (native
+  /// keeps it in DataStore only). It loads on its OWN path, never
+  /// blocking the history load (the R51 Connected Apps pattern);
+  /// a failed read leaves it off, which is native's default and
+  /// the honest state.
+  Future<void> _loadCalendarFlag() async {
+    try {
+      final calConnected =
+          await _settingsStore.getGoogleCalendarConnected();
+      final calEmail = await _settingsStore.getGoogleCalendarEmail();
+      if (!mounted) return;
+      setState(() {
+        _calConnected = calConnected;
+        _calEmail = calEmail;
+      });
+    } catch (_) {}
   }
 
   Future<void> _load() async {
@@ -761,6 +866,9 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
         builder: (_) => CoachChatScreen(
           backend: _backend,
           notificationService: widget.notificationService,
+          calendarService: _calendar,
+          calendarConnected: _calConnected,
+          calendarEmail: _calEmail,
           sessionId: session?.id,
           sessionTitle: session?.title ?? 'New Chat',
           sessionCreatedAt: session?.createdAt ?? 0,
@@ -1057,6 +1165,20 @@ class CoachChatScreen extends StatefulWidget {
   /// notifications service is used).
   final ReminderNotificationService? notificationService;
 
+  /// Injectable calendar bridge (Round 54). Null in production.
+  final CalendarService? calendarService;
+
+  /// Native's sign-in-based Google Calendar flag (SettingsStore).
+  /// False (the default) keeps Round 48's not-connected treatment
+  /// exactly; true enables the connected prompt branch, live
+  /// upcoming-events context, and calendar approvals.
+  final bool calendarConnected;
+
+  /// The connected calendar account email (SettingsStore), passed
+  /// to the bridge so its insert selection can prefer the calendar
+  /// owned by this account, exactly like native.
+  final String calendarEmail;
+
   final String? sessionId;
   final String sessionTitle;
   final int sessionCreatedAt;
@@ -1069,6 +1191,9 @@ class CoachChatScreen extends StatefulWidget {
     super.key,
     this.backend,
     this.notificationService,
+    this.calendarService,
+    this.calendarConnected = false,
+    this.calendarEmail = '',
     this.sessionId,
     this.sessionTitle = 'New Chat',
     this.sessionCreatedAt = 0,
@@ -1086,6 +1211,7 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
   TabsBackend get _backend => widget.backend ?? TabsBackend();
 
   late final ReminderNotificationService _notifs;
+  late final CalendarService _calendar;
 
   late final String _sessionId;
   late String _title;
@@ -1103,6 +1229,7 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
     super.initState();
     _notifs =
         widget.notificationService ?? LocalReminderNotificationService();
+    _calendar = widget.calendarService ?? CalendarService();
     _sessionId = widget.sessionId ?? newUuid();
     _title = widget.sessionTitle;
     _createdAt = widget.sessionCreatedAt;
@@ -1260,11 +1387,30 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
         .map((m) => m.toJson())
         .toList();
     final kb = '${widget.profile?['knowledgeBase'] ?? ''}'.trim();
+    // Round 54 — native computes the upcoming-events context on
+    // every send (CoachViewModel.kt:1363). Connected: the live
+    // bridge read, formatted exactly like native; a bridge failure
+    // mirrors native's outer catch ("Calendar events are
+    // unavailable right now."). Not connected: native's own
+    // not-connected return (unused by the not-connected branch).
+    var calendarEventsContext = coachCalendarNotConnectedContext;
+    if (widget.calendarConnected) {
+      try {
+        final events = await _calendar.getUpcomingEvents();
+        calendarEventsContext = formatUpcomingCalendarEvents(events);
+      } on CalendarException {
+        calendarEventsContext = calendarEventsUnavailableContext;
+      } catch (_) {
+        calendarEventsContext = calendarEventsUnavailableContext;
+      }
+    }
     final body = {
       'messages': history,
       'userContext': coachEnrichedUserContext(
         widget.profile?['userContext']?.toString(),
         now: DateTime.now(),
+        calendarConnected: widget.calendarConnected,
+        calendarEventsContext: calendarEventsContext,
       ),
       'knowledgeBase': kb.isEmpty ? null : kb,
       'recentEntries': [
@@ -1375,13 +1521,14 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
     if (_actionBusy) return;
     final parsed = message.parsed;
 
-    if (approve && (kind == 'calendar' || kind == 'calendarDelete')) {
-      // No device-calendar bridge exists in this build, so a
-      // calendar write cannot be performed or faked. The card
-      // itself already states this limitation and disables its
-      // approve control (Juno F1); this guard is the backstop for
-      // any other entry into the resolution path. The proposal
-      // stays pending (denying still works).
+    if (approve &&
+        (kind == 'calendar' || kind == 'calendarDelete') &&
+        !widget.calendarConnected) {
+      // Not connected: a calendar write cannot be performed or
+      // faked. The card itself already states this limitation and
+      // disables its approve control (Juno F1); this guard is the
+      // backstop for any other entry into the resolution path.
+      // The proposal stays pending (denying still works).
       _snack(coachCalendarUnavailableMessage);
       return;
     }
@@ -1390,15 +1537,60 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
     try {
       String? confirmation;
       if (approve) {
+        // Round 54 — native's ask moment: calendar approvals first
+        // re-check READ+WRITE permission (CoachScreen.kt:193-230).
+        // Missing permission runs the disclosure-then-request gate;
+        // denial leaves the proposal pending with native's message
+        // and performs zero writes.
+        if (kind == 'calendar' || kind == 'calendarDelete') {
+          bool granted;
+          try {
+            granted = await _runCalendarPermissionGate();
+          } on CalendarException catch (e) {
+            _snack('$coachCalendarPermissionDeniedMessage '
+                '[${e.code}]');
+            return;
+          } catch (_) {
+            _snack(coachCalendarPermissionDeniedMessage);
+            return;
+          }
+          if (!granted) {
+            _snack(coachCalendarPermissionDeniedMessage);
+            return;
+          }
+          if (!mounted) return;
+        }
         final outcome = switch (kind) {
           'note' => await _approveNote(parsed.noteText!),
           'file' => await _approveFile(parsed.fileName!),
           'list' => await _approveList(parsed),
           'reminder' => await _approveReminder(parsed),
           'medication' => await _approveMedications(parsed.medications),
+          'calendar' => await _approveCalendarEvent(parsed),
+          'calendarDelete' => await _approveCalendarDelete(parsed),
           _ => const CoachApprovalOutcome.failure(),
         };
         if (!outcome.ok) {
+          // Round 54 — native's calendar handlers post their
+          // failure messages INTO the chat (the proposal stays
+          // pending and nothing is flipped); mirror that for
+          // calendar outcomes flagged errorAsCoachMessage.
+          if (outcome.errorAsCoachMessage && outcome.error != null) {
+            final errMsg = CoachChatMessage(
+              id: newUuid(),
+              sessionId: _sessionId,
+              role: 'coach',
+              content: outcome.error!,
+              timestamp: DateTime.now().millisecondsSinceEpoch,
+            );
+            if (!mounted) return;
+            setState(() => _messages = [..._messages, errMsg]);
+            _scrollToBottom();
+            if (!await _persistMessages([errMsg])) {
+              _notifySyncFailure();
+            }
+            return;
+          }
           // A specific honest reason wins (permission denied,
           // failed re-pull, file never attached here); only a
           // genuine save failure gets the generic message.
@@ -1417,6 +1609,12 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
             'Done! I\'ve set a reminder for "${parsed.reminderTitle}"${_reminderTimeLabel(parsed.reminderTime)}.',
           'medication' =>
             'Added medications: ${_medicationSummary(parsed.medications)}.',
+          'calendar' => coachCalendarAddedConfirmation(
+              parsed.calendarTitle!,
+              parsed.calendarDate,
+              parsed.calendarTime),
+          'calendarDelete' => coachCalendarDeletedConfirmation(
+              parsed.calendarDeleteTitle!, parsed.calendarDeleteDate),
           _ => null,
         };
       } else {
@@ -1483,6 +1681,110 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
         .map((m) =>
             '${m.name} (Started: ${m.startDate}${m.isPresent ? ', Present' : ', Ended: ${m.endDate}'})')
         .join(', ');
+  }
+
+  /// Round 54 — native's approve-time permission flow
+  /// (CoachScreen.kt:89-113, :193-230): when READ+WRITE are
+  /// already granted, proceed immediately. Otherwise show the
+  /// in-app disclosure FIRST (MF-3 discipline) and fire the
+  /// system request only from its Continue button; a grant lets
+  /// the caller replay the pending approve, a denial (or a
+  /// dismissed disclosure) returns false and the caller writes
+  /// nothing. Bridge failures throw [CalendarException] so the
+  /// caller can surface the visible error code.
+  Future<bool> _runCalendarPermissionGate() async {
+    final status = await _calendar.getPermissionStatus();
+    if (status.granted) return true;
+    if (!mounted) return false;
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: NotelColors.surface,
+        title: const Text('Calendar access needed',
+            style: TextStyle(color: NotelColors.textPrimary)),
+        content: const Text(coachCalendarPermissionDisclosure,
+            style: TextStyle(color: NotelColors.textSecondary)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Not now',
+                style: TextStyle(color: NotelColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Continue',
+                style: TextStyle(
+                    color: NotelColors.primary,
+                    fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    if (proceed != true || !mounted) return false;
+    final after = await _calendar.requestPermissions();
+    return after.granted;
+  }
+
+  /// Native `approveProposedCalendarEvent`: the bridge performs
+  /// native's writable-calendar selection, date/time parsing, and
+  /// insert. Outcomes map to native's exact messages; every
+  /// failure is flagged so the message is posted into the chat
+  /// (native parity) with the proposal left pending.
+  Future<CoachApprovalOutcome> _approveCalendarEvent(
+      CoachParsedContent parsed) async {
+    try {
+      final outcome = await _calendar.insertEvent(
+        title: parsed.calendarTitle!,
+        date: parsed.calendarDate,
+        time: parsed.calendarTime,
+        description: parsed.calendarDesc,
+        connectedEmail: widget.calendarEmail,
+      );
+      return switch (outcome) {
+        CalendarInsertOutcome.inserted =>
+          const CoachApprovalOutcome.success(),
+        CalendarInsertOutcome.noWritableCalendar =>
+          const CoachApprovalOutcome.failureAsMessage(
+              coachCalendarNoWritableMessage),
+        CalendarInsertOutcome.nullUri =>
+          const CoachApprovalOutcome.failureAsMessage(
+              coachCalendarNullUriMessage),
+      };
+    } on CalendarException catch (e) {
+      // Native's outer catch posts FriendlyErrors
+      // .coachCalendarAddFailure; the visible code is appended so
+      // a screenshot still diagnoses the bridge failure (LESSONS).
+      return CoachApprovalOutcome.failureAsMessage(
+          '$coachCalendarAddFailureMessage [${e.code}]');
+    } catch (_) {
+      return const CoachApprovalOutcome.failureAsMessage(
+          coachCalendarAddFailureMessage);
+    }
+  }
+
+  /// Native `approveProposedCalendarDeleteEvent`: the bridge
+  /// deletes every exact-title match in the day window. rows > 0
+  /// succeeds; 0 posts native's not-found message and the
+  /// proposal stays pending (native flips the tag only on
+  /// success).
+  Future<CoachApprovalOutcome> _approveCalendarDelete(
+      CoachParsedContent parsed) async {
+    try {
+      final rows = await _calendar.deleteEvents(
+        title: parsed.calendarDeleteTitle!,
+        date: parsed.calendarDeleteDate,
+      );
+      if (rows > 0) return const CoachApprovalOutcome.success();
+      return CoachApprovalOutcome.failureAsMessage(
+          coachCalendarDeleteNotFoundMessage(
+              parsed.calendarDeleteTitle!));
+    } on CalendarException catch (e) {
+      return CoachApprovalOutcome.failureAsMessage(
+          '$coachCalendarDeleteFailureMessage [${e.code}]');
+    } catch (_) {
+      return const CoachApprovalOutcome.failureAsMessage(
+          coachCalendarDeleteFailureMessage);
+    }
   }
 
   /// Native `handleCoachNote`: classify into a category
@@ -1815,6 +2117,7 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
               itemBuilder: (context, i) => _ChatBubble(
                 message: _messages[i],
                 actionBusy: _actionBusy,
+                calendarConnected: widget.calendarConnected,
                 onProposal: (kind, approve) => _resolveProposal(
                     _messages[i], kind,
                     approve: approve),
@@ -1859,11 +2162,17 @@ class _DisclaimerBanner extends StatelessWidget {
 class _ChatBubble extends StatelessWidget {
   final CoachChatMessage message;
   final bool actionBusy;
+
+  /// Round 54 — when Google Calendar is connected, calendar cards
+  /// offer the real approve (native's labels); when not, they keep
+  /// Round 48's limitation treatment.
+  final bool calendarConnected;
   final void Function(String kind, bool approve) onProposal;
 
   const _ChatBubble({
     required this.message,
     required this.actionBusy,
+    this.calendarConnected = false,
     required this.onProposal,
   });
 
@@ -2098,20 +2407,22 @@ class _ChatBubble extends StatelessWidget {
       }
     }
 
-    // Calendar event — native card copy, except the approval
-    // affordance (Juno F1): the limitation is stated ON the card
-    // and the approve control is disabled and labelled
-    // accordingly — calendar changes require the native Tabs app.
-    // Dismiss works fully.
+    // Calendar event — native card copy. Round 54: when Google
+    // Calendar is connected the approve control is live with
+    // native's label ('Approve & Add'); when not connected, the
+    // Round 48 (Juno F1) treatment stays: the limitation stated ON
+    // the card and the approve control disabled and labelled
+    // accordingly. Dismiss works fully either way.
     if (parsed.calendarTitle != null) {
       switch (parsed.calendarStatus) {
         case CoachProposalStatus.pending:
           addCard(_ProposalCard(
             emoji: '📅',
             title: 'Proposed Calendar Event',
-            approveLabel: 'Native App Required',
-            approveEnabled: false,
-            notice: coachCalendarCardLimitation,
+            approveLabel:
+                calendarConnected ? 'Approve & Add' : 'Native App Required',
+            approveEnabled: calendarConnected,
+            notice: calendarConnected ? null : coachCalendarCardLimitation,
             denyLabel: 'Dismiss',
             busy: actionBusy,
             onApprove: () => onProposal('calendar', true),
@@ -2165,9 +2476,11 @@ class _ChatBubble extends StatelessWidget {
       }
     }
 
-    // Calendar deletion — native card copy, except the approval
-    // affordance (Juno F1): limitation ON the card, approve
-    // disabled and labelled accordingly; Dismiss works fully.
+    // Calendar deletion — native card copy. Round 54: connected
+    // enables the real approve ('Approve & Delete', native's
+    // label); not connected keeps the Round 48 (Juno F1)
+    // treatment: limitation ON the card, approve disabled and
+    // labelled accordingly. Dismiss works fully either way.
     if (parsed.calendarDeleteTitle != null) {
       switch (parsed.calendarDeleteStatus) {
         case CoachProposalStatus.pending:
@@ -2175,9 +2488,11 @@ class _ChatBubble extends StatelessWidget {
             emoji: '📅',
             title: 'Proposed Calendar Deletion',
             titleColor: NotelColors.error,
-            approveLabel: 'Native App Required',
-            approveEnabled: false,
-            notice: coachCalendarCardLimitation,
+            approveLabel: calendarConnected
+                ? 'Approve & Delete'
+                : 'Native App Required',
+            approveEnabled: calendarConnected,
+            notice: calendarConnected ? null : coachCalendarCardLimitation,
             denyLabel: 'Dismiss',
             busy: actionBusy,
             onApprove: () => onProposal('calendarDelete', true),

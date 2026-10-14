@@ -1,12 +1,16 @@
 package com.notel.notel.playground.flutter
 
+import android.Manifest
 import android.content.ContentValues
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.provider.CalendarContract
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
 import android.os.SystemClock
 import android.speech.RecognizerIntent
+import androidx.core.content.ContextCompat
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.health.connect.client.HealthConnectClient
@@ -65,6 +69,7 @@ class MainActivity : FlutterFragmentActivity() {
         const val HC_CHANNEL = "com.notel.notel.playground.flutter/health_connect"
         const val VOICE_CHANNEL = "com.notel.notel.playground.flutter/voice"
         const val FILE_PICKER_CHANNEL = "com.notel.notel.playground.flutter/file_picker"
+        const val CALENDAR_CHANNEL = "com.notel.notel.playground.flutter/calendar"
         // Round 48: BP CSV import cap, same as native MAX_CSV_FILE_BYTES.
         private const val MAX_CSV_FILE_BYTES = 5 * 1024 * 1024
         const val HC_PROVIDER_PACKAGE = "com.google.android.apps.healthdata"
@@ -110,6 +115,13 @@ class MainActivity : FlutterFragmentActivity() {
     // pickable; the Dart-side parser validates the content).
     private lateinit var csvPickerLauncher: ActivityResultLauncher<String>
     private var pendingCsvResult: MethodChannel.Result? = null
+
+    // Round 54: calendar permission launcher for the Health Coach
+    // (native CoachScreen.kt:89-113 requests READ+WRITE together at
+    // first approve). Registered in onCreate like the HC launcher.
+    private lateinit var calendarPermissionLauncher: ActivityResultLauncher<Array<String>>
+    private var pendingCalendarResult: MethodChannel.Result? = null
+    private var pendingCalendarSince: Long = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -222,6 +234,19 @@ class MainActivity : FlutterFragmentActivity() {
                 }
             }.start()
         }
+        calendarPermissionLauncher = activityResultRegistry.register(
+            "calendar_permission_launcher",
+            ActivityResultContracts.RequestMultiplePermissions()
+        ) { _ ->
+            val r = pendingCalendarResult
+            pendingCalendarResult = null
+            if (r == null) return@register // stale (timed out / cancelled / superseded)
+            try {
+                r.success(calendarPermissionStatusMap())
+            } catch (_: Exception) {
+                // Result already consumed — nothing to do.
+            }
+        }
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -283,6 +308,32 @@ class MainActivity : FlutterFragmentActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "pickCsvText" -> pickCsvText(result)
+                    else -> result.notImplemented()
+                }
+            }
+        // Round 54: device calendar bridge for the Health Coach
+        // (native CoachViewModel calendar paths, ported below).
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CALENDAR_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getPermissionStatus" -> result.success(calendarPermissionStatusMap())
+                    "requestPermissions" -> requestCalendarPermissions(result)
+                    "cancelRequest" -> cancelPendingCalendarRequest(result)
+                    "listWritableCalendars" -> listWritableCalendars(result)
+                    "insertEvent" -> insertCalendarEvent(
+                        call.argument<String>("title"),
+                        call.argument<String>("date"),
+                        call.argument<String>("time"),
+                        call.argument<String>("description"),
+                        call.argument<String>("connectedEmail"),
+                        result
+                    )
+                    "deleteEvents" -> deleteCalendarEvents(
+                        call.argument<String>("title"),
+                        call.argument<String>("date"),
+                        result
+                    )
+                    "getUpcomingEvents" -> getUpcomingCalendarEvents(result)
                     else -> result.notImplemented()
                 }
             }
@@ -1243,5 +1294,397 @@ class MainActivity : FlutterFragmentActivity() {
         } catch (_: Exception) {
             result.error("CSV_EXPORT_FAILED", "Could not export the CSV file.", null)
         }
+    }
+    // ── Round 54: calendar bridge (native CoachViewModel ports) ─────────
+    // Every failure path returns a visible error code — never a silent
+    // no-op and never a fabricated success (team lesson). ContentResolver
+    // work runs off the main thread; results are delivered on it.
+
+    private fun calendarPermissionStatusMap(): Map<String, Boolean> {
+        val read = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.READ_CALENDAR
+        ) == PackageManager.PERMISSION_GRANTED
+        val write = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.WRITE_CALENDAR
+        ) == PackageManager.PERMISSION_GRANTED
+        return mapOf("read" to read, "write" to write)
+    }
+
+    /// Native CoachScreen.kt:89-113: at first approve, request
+    /// WRITE_CALENDAR + READ_CALENDAR together; the result replays
+    /// the pending approve on the Dart side. Same stuck-request
+    /// discipline as the HC launcher: a stale in-flight request is
+    /// superseded, never stacked.
+    private fun requestCalendarPermissions(result: MethodChannel.Result) {
+        val now = SystemClock.elapsedRealtime()
+        val pending = pendingCalendarResult
+        if (pending != null) {
+            if (now - pendingCalendarSince < REQUEST_TIMEOUT_MS) {
+                result.error(
+                    "IN_FLIGHT",
+                    "A calendar permission request is already in progress.",
+                    null
+                )
+                return
+            }
+            try {
+                pending.error("SUPERSEDED", "Superseded by a newer request.", null)
+            } catch (_: Exception) {
+            }
+            pendingCalendarResult = null
+        }
+        if (!::calendarPermissionLauncher.isInitialized) {
+            result.error("NO_LAUNCHER", "Permission launcher is not registered.", null)
+            return
+        }
+        pendingCalendarResult = result
+        pendingCalendarSince = now
+        try {
+            calendarPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.WRITE_CALENDAR,
+                    Manifest.permission.READ_CALENDAR
+                )
+            )
+        } catch (e: Exception) {
+            pendingCalendarResult = null
+            result.error("LAUNCH_FAILED", e.message, null)
+        }
+    }
+
+    private fun cancelPendingCalendarRequest(result: MethodChannel.Result) {
+        val pending = pendingCalendarResult
+        pendingCalendarResult = null
+        if (pending != null) {
+            try {
+                pending.error("CANCELLED", "Request cancelled.", null)
+            } catch (_: Exception) {
+            }
+        }
+        result.success(true)
+    }
+
+    /// Writable calendars (CALENDAR_ACCESS_LEVEL >= 500), provider
+    /// order — the candidate set native's insert selection considers
+    /// (CoachViewModel.kt:782-818).
+    private fun listWritableCalendars(result: MethodChannel.Result) {
+        Thread {
+            try {
+                val calendars = queryWritableCalendars()
+                runOnUiThread {
+                    try {
+                        result.success(calendars.map {
+                            mapOf(
+                                "id" to it.id,
+                                "accountName" to it.accountName,
+                                "accountType" to it.accountType,
+                                "accessLevel" to it.accessLevel
+                            )
+                        })
+                    } catch (_: Exception) {
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    try {
+                        result.error("CALENDAR_LIST_FAILED", e.message, null)
+                    } catch (_: Exception) {
+                    }
+                }
+            }
+        }.start()
+    }
+
+    private data class CalInfo(
+        val id: Long,
+        val accountName: String,
+        val accountType: String,
+        val accessLevel: Int
+    )
+
+    /// Native's inline calendar query (CoachViewModel.kt:789-815):
+    /// query failures are caught and logged natively, leaving an
+    /// empty candidate list (which then aborts as "no writable
+    /// calendar"); mirrored here.
+    private fun queryWritableCalendars(): List<CalInfo> {
+        val projection = arrayOf(
+            CalendarContract.Calendars._ID,
+            CalendarContract.Calendars.ACCOUNT_NAME,
+            CalendarContract.Calendars.ACCOUNT_TYPE,
+            CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL
+        )
+        val candidates = mutableListOf<CalInfo>()
+        try {
+            contentResolver.query(
+                CalendarContract.Calendars.CONTENT_URI,
+                projection, null, null, null
+            )?.use { cursor ->
+                val idCol = cursor.getColumnIndex(CalendarContract.Calendars._ID)
+                val accNameCol = cursor.getColumnIndex(CalendarContract.Calendars.ACCOUNT_NAME)
+                val accTypeCol = cursor.getColumnIndex(CalendarContract.Calendars.ACCOUNT_TYPE)
+                val accessCol = cursor.getColumnIndex(CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL)
+                while (cursor.moveToNext()) {
+                    val id = if (idCol != -1) cursor.getLong(idCol) else continue
+                    val accName = if (accNameCol != -1) cursor.getString(accNameCol) ?: "" else ""
+                    val accType = if (accTypeCol != -1) cursor.getString(accTypeCol) ?: "" else ""
+                    val access = if (accessCol != -1) cursor.getInt(accessCol) else 0
+                    if (access >= 500) candidates.add(CalInfo(id, accName, accType, access))
+                }
+            }
+        } catch (_: Exception) {
+            // Native logs and continues with no candidates.
+        }
+        return candidates
+    }
+
+    /// Port of native `approveProposedCalendarEvent`
+    /// (CoachViewModel.kt:778-908), minus its UI/persistence: returns
+    /// "inserted", "noWritableCalendar", or "nullUri" so Dart can
+    /// post native's exact outcome messages; a thrown failure comes
+    /// back as CALENDAR_INSERT_FAILED (native's outer catch posts
+    /// FriendlyErrors.coachCalendarAddFailure, which Dart mirrors).
+    private fun insertCalendarEvent(
+        title: String?,
+        date: String?,
+        timeStr: String?,
+        desc: String?,
+        connectedEmail: String?,
+        result: MethodChannel.Result
+    ) {
+        Thread {
+            var failure: Exception? = null
+            var outcome = "inserted"
+            try {
+                val targetEmail = connectedEmail ?: ""
+
+                // 1. Best writable calendar (native inline logic —
+                //    NOT the dead getBestWritableCalendarId helper).
+                val candidates = queryWritableCalendars()
+                val best = candidates.firstOrNull {
+                    it.accountName.equals(targetEmail, ignoreCase = true)
+                } ?: candidates.firstOrNull()
+
+                if (best == null) {
+                    outcome = "noWritableCalendar"
+                } else {
+                    // 2. Parse date+time to epoch milliseconds
+                    //    (native :830-851).
+                    var startMillis = System.currentTimeMillis()
+                    if (!date.isNullOrBlank() && !timeStr.isNullOrBlank()) {
+                        try {
+                            val parsed = try {
+                                val format12 = java.text.SimpleDateFormat(
+                                    "yyyy-MM-dd hh:mm a", java.util.Locale.US
+                                ).apply {
+                                    timeZone = java.util.TimeZone.getDefault()
+                                }
+                                format12.parse("$date $timeStr")
+                            } catch (_: Exception) {
+                                val format24 = java.text.SimpleDateFormat(
+                                    "yyyy-MM-dd HH:mm", java.util.Locale.US
+                                ).apply {
+                                    timeZone = java.util.TimeZone.getDefault()
+                                }
+                                format24.parse("$date $timeStr")
+                            }
+                            if (parsed != null) {
+                                startMillis = parsed.time
+                            }
+                        } catch (_: Exception) {
+                            // Native logs and keeps the "now" default.
+                        }
+                    }
+                    val endMillis = startMillis + 60 * 60 * 1000
+
+                    // 3. Insert with native's field mapping and the
+                    //    sync-adapter URI parameters (native :852-872).
+                    val eventValues = ContentValues().apply {
+                        put(CalendarContract.Events.DTSTART, startMillis)
+                        put(CalendarContract.Events.DTEND, endMillis)
+                        put(CalendarContract.Events.TITLE, title)
+                        put(CalendarContract.Events.DESCRIPTION, desc ?: "")
+                        put(CalendarContract.Events.CALENDAR_ID, best.id)
+                        put(
+                            CalendarContract.Events.EVENT_TIMEZONE,
+                            java.util.TimeZone.getDefault().id
+                        )
+                    }
+                    val eventUri = contentResolver.insert(
+                        CalendarContract.Events.CONTENT_URI
+                            .buildUpon()
+                            .appendQueryParameter(
+                                CalendarContract.CALLER_IS_SYNCADAPTER, "false"
+                            )
+                            .appendQueryParameter(
+                                CalendarContract.Calendars.ACCOUNT_NAME,
+                                best.accountName
+                            )
+                            .appendQueryParameter(
+                                CalendarContract.Calendars.ACCOUNT_TYPE,
+                                best.accountType
+                            )
+                            .build(),
+                        eventValues
+                    )
+                    if (eventUri == null) outcome = "nullUri"
+                }
+            } catch (e: Exception) {
+                failure = e
+            }
+            runOnUiThread {
+                try {
+                    val f = failure
+                    if (f != null) {
+                        result.error("CALENDAR_INSERT_FAILED", f.message, null)
+                    } else {
+                        result.success(outcome)
+                    }
+                } catch (_: Exception) {
+                }
+            }
+        }.start()
+    }
+
+    /// Port of native `approveProposedCalendarDeleteEvent`
+    /// (CoachViewModel.kt:941-1003), minus UI/persistence: TITLE = ?
+    /// across ALL calendars, plus the parsed date's day window when
+    /// the date parses. Returns the number of rows deleted.
+    private fun deleteCalendarEvents(
+        title: String?,
+        date: String?,
+        result: MethodChannel.Result
+    ) {
+        Thread {
+            var failure: Exception? = null
+            var rowsDeleted = 0
+            try {
+                var selection = "${CalendarContract.Events.TITLE} = ?"
+                val selectionArgs = mutableListOf(title ?: "")
+                if (!date.isNullOrBlank()) {
+                    try {
+                        val format = java.text.SimpleDateFormat(
+                            "yyyy-MM-dd", java.util.Locale.US
+                        ).apply {
+                            timeZone = java.util.TimeZone.getDefault()
+                        }
+                        val parsed = format.parse(date)
+                        if (parsed != null) {
+                            val startOfDay = parsed.time
+                            val endOfDay = startOfDay + 24 * 60 * 60 * 1000
+                            selection += " AND ${CalendarContract.Events.DTSTART} >= ? AND ${CalendarContract.Events.DTSTART} < ?"
+                            selectionArgs.add(startOfDay.toString())
+                            selectionArgs.add(endOfDay.toString())
+                        }
+                    } catch (_: Exception) {
+                        // Native logs and deletes by title alone.
+                    }
+                }
+                rowsDeleted = contentResolver.delete(
+                    CalendarContract.Events.CONTENT_URI,
+                    selection,
+                    selectionArgs.toTypedArray()
+                )
+            } catch (e: Exception) {
+                failure = e
+            }
+            runOnUiThread {
+                try {
+                    val f = failure
+                    if (f != null) {
+                        result.error("CALENDAR_DELETE_FAILED", f.message, null)
+                    } else {
+                        result.success(rowsDeleted)
+                    }
+                } catch (_: Exception) {
+                }
+            }
+        }.start()
+    }
+
+    /// Port of native `getUpcomingCalendarEvents`' query
+    /// (CoachViewModel.kt:1461-1546): all calendars, not-deleted,
+    /// from the earlier of local/UTC midnight today through local
+    /// midnight + 15 days, DTSTART ascending. Dart formats the rows
+    /// into native's exact context string. A query failure is
+    /// caught natively and yields an empty list; mirrored here.
+    private fun getUpcomingCalendarEvents(result: MethodChannel.Result) {
+        Thread {
+            val events = mutableListOf<Map<String, Any?>>()
+            try {
+                val localMidnight = java.util.Calendar.getInstance().apply {
+                    set(java.util.Calendar.HOUR_OF_DAY, 0)
+                    set(java.util.Calendar.MINUTE, 0)
+                    set(java.util.Calendar.SECOND, 0)
+                    set(java.util.Calendar.MILLISECOND, 0)
+                }.timeInMillis
+                val utcMidnight =
+                    java.util.Calendar.getInstance(
+                        java.util.TimeZone.getTimeZone("UTC")
+                    ).apply {
+                        set(java.util.Calendar.HOUR_OF_DAY, 0)
+                        set(java.util.Calendar.MINUTE, 0)
+                        set(java.util.Calendar.SECOND, 0)
+                        set(java.util.Calendar.MILLISECOND, 0)
+                    }.timeInMillis
+                val queryStart = minOf(localMidnight, utcMidnight)
+                val queryEnd = localMidnight + 15 * 24 * 60 * 60 * 1000L
+
+                val eventProjection = arrayOf(
+                    CalendarContract.Events.TITLE,
+                    CalendarContract.Events.DTSTART,
+                    CalendarContract.Events.ALL_DAY
+                )
+                val selection =
+                    "${CalendarContract.Events.DTSTART} >= ? AND ${CalendarContract.Events.DTSTART} <= ? AND ${CalendarContract.Events.DELETED} != 1"
+                val selectionArgs = arrayOf(queryStart.toString(), queryEnd.toString())
+                try {
+                    contentResolver.query(
+                        CalendarContract.Events.CONTENT_URI,
+                        eventProjection,
+                        selection,
+                        selectionArgs,
+                        "${CalendarContract.Events.DTSTART} ASC"
+                    )?.use { cursor ->
+                        val titleCol = cursor.getColumnIndex(CalendarContract.Events.TITLE)
+                        val startCol = cursor.getColumnIndex(CalendarContract.Events.DTSTART)
+                        val allDayCol = cursor.getColumnIndex(CalendarContract.Events.ALL_DAY)
+                        if (titleCol != -1 && startCol != -1) {
+                            while (cursor.moveToNext()) {
+                                events.add(
+                                    mapOf(
+                                        "title" to cursor.getString(titleCol),
+                                        "dtstart" to cursor.getLong(startCol),
+                                        "allDay" to (allDayCol != -1 && cursor.getInt(allDayCol) == 1)
+                                    )
+                                )
+                            }
+                        }
+                    }
+                } catch (_: Exception) {
+                    // Native logs and continues with an empty list.
+                }
+            } catch (_: Exception) {
+                // Native's outer catch returns the "unavailable"
+                // string; the bridge signals that with an error code
+                // and Dart substitutes native's exact string.
+                runOnUiThread {
+                    try {
+                        result.error(
+                            "CALENDAR_READ_FAILED",
+                            "Could not read calendar events.",
+                            null
+                        )
+                    } catch (_: Exception) {
+                    }
+                }
+                return@Thread
+            }
+            runOnUiThread {
+                try {
+                    result.success(events)
+                } catch (_: Exception) {
+                }
+            }
+        }.start()
     }
 }

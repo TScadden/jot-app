@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:tabs_lab/src/data/calendar_service.dart';
 import 'package:tabs_lab/src/data/common_conditions.dart';
 import 'package:tabs_lab/src/data/google_sign_in_service.dart';
 import 'package:tabs_lab/src/data/medications.dart';
@@ -88,6 +89,11 @@ class SettingsScreen extends StatefulWidget {
   /// Injectable for tests (Round 30 Google linking flows).
   final GoogleSignInService? googleSignInService;
 
+  /// Injectable calendar bridge (Round 54) for the connect-time
+  /// usability check on the Google Calendar row. Null in
+  /// production.
+  final CalendarService? calendarService;
+
   /// Injectable for tests (native opens these in the system browser).
   final Future<bool> Function(Uri uri)? urlLauncher;
 
@@ -107,6 +113,7 @@ class SettingsScreen extends StatefulWidget {
     this.healthConnectService,
     this.notificationService,
     this.googleSignInService,
+    this.calendarService,
     this.urlLauncher,
     this.openEventCounters = false,
   });
@@ -2526,6 +2533,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _gCalConnected = true;
         _gCalEmail = identity.email;
       });
+      // Round 54 — verify usability at connect time WITHOUT
+      // nagging: check the calendar permission state and, only
+      // when permission is already granted, that a writable
+      // calendar resolves. No prompt is ever fired from Settings
+      // (native's ask moment is the first coach approve), and the
+      // row stays connected either way — the flag is sign-in-based
+      // (native parity); truth-telling happens at approve time.
+      // The check is advisory only: any failure is swallowed.
+      try {
+        final calendar = widget.calendarService ?? CalendarService();
+        final status = await calendar.getPermissionStatus();
+        if (status.granted) {
+          await calendar.listWritableCalendars();
+        }
+      } catch (_) {
+        // Advisory check only — never blocks or un-connects.
+      }
     } on GoogleSignInOutcome catch (e) {
       if (e.kind == GoogleSignInOutcomeKind.cancelled) return;
       _snack(e.message);

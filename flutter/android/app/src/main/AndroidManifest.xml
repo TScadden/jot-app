@@ -40,6 +40,12 @@
     <uses-permission android:name="android.permission.health.READ_POWER" />
     <uses-permission android:name="android.permission.health.READ_BLOOD_PRESSURE" />
     <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_HISTORY" />
+    <!-- Round 54: device calendar for the Health Coach, matching the
+         native app's manifest. Both are requested together, at
+         runtime only, at the first calendar proposal approval
+         (native CoachScreen.kt:89-113) — never at startup. -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
     <application
         android:label="Tabs Lab"
         android:name="${applicationName}"
