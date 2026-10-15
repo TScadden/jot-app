@@ -232,21 +232,31 @@ class TabsBackend {
   /// Now concurrent callers for the SAME session join the first
   /// caller's in-flight request instead of duplicating it.
   ///
-  /// The scope key is (baseUrl, token) — hashed, the token itself
-  /// is never retained as a key or logged. Scoping matters: a
-  /// caller with NO session (or a different one) must never be
-  /// handed another session's in-flight result — an unscoped slot
-  /// let a tokenless instance's null result swallow a signed-in
-  /// instance's pull at Home mount (caught by the round-21 feeling
-  /// tests). In production every instance reads the same stored
-  /// token, so the dedupe is total there.
+  /// The scope key is the (baseUrl, token) pair itself, as a Dart
+  /// record: structural equality decides, the hash only buckets.
+  /// (Round 60 fix, Juno blocker: the first cut keyed the map by
+  /// the `Object.hash(baseUrl, token)` INT alone and never compared
+  /// the pair for equality — Dart's hash contract permits unequal
+  /// pairs to share a hash code, so two different sessions whose
+  /// hashes collided would have shared one in-flight pull, health
+  /// data body included. The guarantee now holds by construction,
+  /// not probabilistically.) The token string is held in the key
+  /// in memory only, for exactly the in-flight lifetime — the
+  /// entry is removed on completion — and is never logged or
+  /// persisted. Scoping matters: a caller with NO session (or a
+  /// different one) must never be handed another session's
+  /// in-flight result — an unscoped slot let a tokenless instance's
+  /// null result swallow a signed-in instance's pull at Home mount
+  /// (caught by the round-21 feeling tests). In production every
+  /// instance reads the same stored token, so the dedupe is total
+  /// there.
   ///
   /// The slot carries NO result past completion: a caller that
   /// arrives after the fetch lands makes its own request (or hits
   /// its per-instance TTL cache first, in [fetchSyncPull]), so no
   /// stale body can ever be served from here.
-  static final Map<int, Future<Map<String, dynamic>?>> _syncPullInFlight =
-      {};
+  static final Map<(String, String?), Future<Map<String, dynamic>?>>
+      _syncPullInFlight = {};
 
   Future<Map<String, dynamic>?> _fetchSyncPullShared() async {
     String? token;
@@ -257,7 +267,7 @@ class TabsBackend {
       // (the read inside _sendAuthed surfaces the same outcome).
       return _getJson('/api/sync/pull');
     }
-    final key = Object.hash(_baseUrl, token);
+    final key = (_baseUrl, token);
     final inFlight = _syncPullInFlight[key];
     if (inFlight != null) return inFlight;
     late final Future<Map<String, dynamic>?> future;

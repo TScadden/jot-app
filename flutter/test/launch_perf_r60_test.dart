@@ -209,6 +209,61 @@ void main() {
     });
 
     test(
+        'regression (Juno): two tokens that COLLIDED under the old '
+        'hash-only key still get separate pulls and separate bodies',
+        () async {
+      // Fixture found offline by brute force over fake tokens:
+      // 'fake-token-45020' and 'fake-token-49835' are distinct
+      // strings with the SAME String.hashCode (883558361).
+      // Object.hash combines only its arguments' hashCodes (plus a
+      // per-process seed shared by both calls), so this pair
+      // collided under the old `Object.hash(_baseUrl, token)` int
+      // key in every process — verified across repeated runs. With
+      // the int key, the second backend below would have joined the
+      // first's in-flight pull and been handed ITS sync-pull body
+      // (health data): 1 wire request, streak 12 for both. The
+      // record key compares the pair for equality, so the pulls
+      // stay separate. First pins prove the fixture really is a
+      // colliding pair in this process too.
+      const tokenA = 'fake-token-45020';
+      const tokenB = 'fake-token-49835';
+      expect(tokenA, isNot(tokenB));
+      expect(tokenA.hashCode, tokenB.hashCode);
+      expect(Object.hash(TabsBackend.defaultBaseUrl, tokenA),
+          Object.hash(TabsBackend.defaultBaseUrl, tokenB));
+
+      var pulls = 0;
+      TabsBackend backendFor(String token, int streak) {
+        final store = FakeSessionStore()..token = token;
+        return TabsBackend(
+          client: MockClient((request) async {
+            pulls++;
+            await Future<void>.delayed(
+                const Duration(milliseconds: 100));
+            return http.Response(
+              jsonEncode({
+                'entries': <dynamic>[],
+                'profile': {'currentStreak': streak, 'bestStreak': 1},
+              }),
+              200,
+            );
+          }),
+          sessionStore: store,
+        );
+      }
+
+      final results = await Future.wait([
+        backendFor(tokenA, 12).fetchStreak(),
+        backendFor(tokenB, 99).fetchStreak(),
+      ]);
+      expect(pulls, 2,
+          reason: 'colliding hashes must NOT merge two sessions '
+              'into one in-flight pull');
+      expect(results[0].current, 12);
+      expect(results[1].current, 99);
+    });
+
+    test(
         'the single-flight slot serves nothing stale: a consumer '
         'arriving AFTER completion fetches fresh', () async {
       var pulls = 0;
