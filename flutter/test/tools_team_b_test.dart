@@ -227,10 +227,10 @@ void main() {
       );
       expect(find.text('Sleep Profile'), findsOneWidget);
       expect(find.text('Time Asleep Today'), findsOneWidget);
-      expect(find.text('7h 30m'), findsWidgets);
-      expect(find.text('Deficit: -1h 30m'), findsOneWidget);
+      expect(find.text('7h30m'), findsWidgets);
+      expect(find.text('Deficit: -1h30m'), findsOneWidget);
       expect(find.text('Recent Nights'), findsOneWidget);
-      expect(find.text('7-Day Average: 7h 30m'), findsOneWidget);
+      expect(find.text('7-Day Average: 7h30m'), findsOneWidget);
     });
 
     testWidgets('HC not connected → "--", never invented', (tester) async {
@@ -275,7 +275,7 @@ void main() {
         ),
       );
       // Hero falls back to today's HC read; deficit unknown → "--".
-      expect(find.text('7h 30m'), findsWidgets);
+      expect(find.text('7h30m'), findsWidgets);
       expect(find.text('Deficit: --'), findsOneWidget);
     });
   });

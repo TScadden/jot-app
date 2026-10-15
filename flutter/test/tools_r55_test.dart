@@ -243,9 +243,9 @@ void main() {
       expect(ctx, contains('2 heart rate spikes today'));
       expect(ctx, contains('sleep debt about 3h'));
       // Health Connect sections.
-      expect(ctx, contains('avg 6h 48m'));
-      expect(ctx, contains('last night 7h 6m'));
-      expect(ctx, contains('sleep debt about 3h 30m'));
+      expect(ctx, contains('avg 6h48m'));
+      expect(ctx, contains('last night 7h6m'));
+      expect(ctx, contains('sleep debt about 3h30m'));
       expect(ctx, contains('resting heart rate 62 bpm'));
       expect(ctx, contains('daytime heart rate today (7am to 11pm) '
           'average 88 bpm'));

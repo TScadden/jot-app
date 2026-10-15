@@ -213,7 +213,7 @@ void main() {
       expect(data.points[6].value, 8.0);
       expect(data.points[5].value, 7.5);
       expect(data.points[4].value, isNull);
-      expect(data.averageOrTotalText, '7-Day Avg: 7h 45m');
+      expect(data.averageOrTotalText, '7-Day Avg: 7h45m');
       expect(data.emptyMessage, isNull);
 
       final empty = buildSleepMetric(dateStrs, labels, const {});
@@ -531,7 +531,7 @@ void main() {
       final data = await repo.loadSnapshot(SnapshotMetric.sleepHours);
       expect(data.metric, SnapshotMetric.sleepHours);
       expect(data.points, hasLength(7));
-      expect(data.averageOrTotalText, '7-Day Avg: 8h 0m');
+      expect(data.averageOrTotalText, '7-Day Avg: 8h0m');
     });
 
     test('loadSnapshot logs → real counts from the backend', () async {

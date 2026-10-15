@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/skeleton.dart';
 
@@ -43,24 +44,21 @@ bool isValidFriendTag(String input) {
   return RegExp(r'^\d{5}$').hasMatch(digits);
 }
 
-/// Native friend-detail stat formatting (FriendDetailDialog):
-/// sleep minutes → "2h 5m" / "45m"; null → "·".
+/// Friend-detail stat formatting (FriendDetailDialog):
+/// sleep minutes → compact "2h5m" / "45m" via the shared
+/// [formatSleepMinutes] (R61 — founder ruling, Oct 15, 2026);
+/// null → "·".
 String formatFriendSleep(int? mins) {
   if (mins == null) return '·';
-  final h = mins ~/ 60;
-  final m = mins % 60;
-  return h > 0 ? '${h}h ${m}m' : '${m}m';
+  return formatSleepMinutes(mins);
 }
 
-/// Native sleep-debt formatting: 0 → "None"; otherwise the absolute
-/// value prefixed with "-" (native formats it exactly this way).
+/// Sleep-debt formatting: 0 → "None"; otherwise the absolute value
+/// prefixed with "-", formatted by the shared [formatSleepMinutes].
 String formatFriendSleepDebt(int? debt) {
   if (debt == null) return '·';
   if (debt == 0) return 'None';
-  final abs = debt.abs();
-  final h = abs ~/ 60;
-  final m = abs % 60;
-  return h > 0 ? '-${h}h ${m}m' : '-${m}m';
+  return '-${formatSleepMinutes(debt.abs())}';
 }
 
 /// Native HR-spikes formatting: 1 → "1 spike", else "N spikes".

@@ -246,11 +246,11 @@ void main() {
     });
 
     test('friend detail stat formatting mirrors native', () {
-      expect(formatFriendSleep(125), '2h 5m');
+      expect(formatFriendSleep(125), '2h5m');
       expect(formatFriendSleep(45), '45m');
       expect(formatFriendSleep(null), '·');
       expect(formatFriendSleepDebt(0), 'None');
-      expect(formatFriendSleepDebt(-90), '-1h 30m');
+      expect(formatFriendSleepDebt(-90), '-1h30m');
       expect(formatFriendSleepDebt(null), '·');
       expect(formatFriendSpikes(1), '1 spike');
       expect(formatFriendSpikes(3), '3 spikes');
@@ -403,7 +403,7 @@ void main() {
       await tester.tap(find.text('Sam').first);
       await tester.pumpAndSettle();
       expect(find.text('TODAY'), findsOneWidget);
-      expect(find.text('7h 0m'), findsOneWidget); // sleep 420m
+      expect(find.text('7h0m'), findsOneWidget); // sleep 420m
       expect(find.text('88 bpm'), findsOneWidget);
       expect(find.text('1 spike'), findsOneWidget);
       expect(find.text('12 pts'), findsOneWidget);

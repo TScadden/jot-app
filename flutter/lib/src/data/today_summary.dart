@@ -9,6 +9,7 @@ import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/today_plan_store.dart';
+import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 
 /// Round 35 — the Home "Today Summary" data layer: a content-for-content
 /// port of the native implementation.
@@ -791,9 +792,11 @@ List<TrendComparison> buildTrendComparisons({
             : 'Close to your seven-day average.';
     out.add(TrendComparison(
       metricName: 'Sleep Duration',
-      currentPeriod: '${todaySleep ~/ 60}h ${todaySleep % 60}m today',
+      // R61 — compact sleep format via the single shared formatter
+      // (founder ruling, Oct 15, 2026: `7h6m` everywhere).
+      currentPeriod: '${formatSleepMinutes(todaySleep)} today',
       comparisonPeriod:
-          '7-day avg (${(avgSleep / 60).toInt()}h ${(avgSleep % 60).toInt()}m)',
+          '7-day avg (${formatSleepMinutes(avgSleep.toInt())})',
       differenceText: 'Sleep was $diffText',
       dataSource: 'Health Connect',
       lastUpdatedTime: 'Today',

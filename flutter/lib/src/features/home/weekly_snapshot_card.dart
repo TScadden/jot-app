@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/weekly_snapshot.dart';
+import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
@@ -260,9 +261,13 @@ class _WeeklySnapshotCardState extends State<WeeklySnapshotCard> {
     }
     if (pt.value != null) {
       if (data.metric.unit == 'h') {
+        // Only Sleep Hours carries unit 'h'. R61 — compact sleep format
+        // via the single shared formatter (founder ruling, Oct 15, 2026:
+        // `7h6m` everywhere); the h/m split keeps the native truncation
+        // semantics for the double-hours value.
         final h = pt.value!.toInt();
         final m = ((pt.value! - h) * 60).toInt();
-        return '${h}h ${m}m';
+        return formatSleepMinutes(h * 60 + m);
       } else if (data.metric.unit == '%') {
         return '${pt.value!.toInt()}%';
       }

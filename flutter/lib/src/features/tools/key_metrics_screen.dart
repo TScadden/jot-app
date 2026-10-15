@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/skeleton.dart';
 
@@ -966,7 +967,9 @@ String centerPadCsv(String text, int width) {
   return '${' ' * left}$text${' ' * right}';
 }
 
-String _csvMins(int mins) => '${mins ~/ 60}h ${mins % 60}m';
+/// R61 — CSV sleep/deep-sleep durations use the single shared compact
+/// formatter (founder ruling, Oct 15, 2026: `7h6m` everywhere).
+String _csvMins(int mins) => formatSleepMinutes(mins);
 
 /// Builds the native biometrics CSV: header
 /// `Date,Average HR (BPM),Sleep Duration,Deep Sleep,Spikes (count)`,

@@ -666,8 +666,8 @@ void main() {
       // avg prev = 401.25 → diff = 18 (truncated) → longer.
       expect(sleep.differenceText,
           'Sleep was 18 minutes longer than your seven-day average.');
-      expect(sleep.currentPeriod, '7h 0m today');
-      expect(sleep.comparisonPeriod, '7-day avg (6h 41m)');
+      expect(sleep.currentPeriod, '7h0m today');
+      expect(sleep.comparisonPeriod, '7-day avg (6h41m)');
       expect(sleep.dataSource, 'Health Connect');
     });
 

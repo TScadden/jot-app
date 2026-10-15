@@ -18,7 +18,7 @@ import 'test_helpers.dart';
 ///
 /// - F4 Sleep: a selected date whose 10-night window has no real
 ///   night at or before it gets a null debt ("Deficit: --"), never a
-///   fabricated "-0h 0m", even when recent nights populate history.
+///   fabricated "-0m", even when recent nights populate history.
 /// - F5 Key Metrics: a failed / timed-out history read aborts the
 ///   CSV export (nothing written or shared, visible error), while a
 ///   genuinely-empty history still exports "No data"; a per-date
@@ -264,7 +264,7 @@ void main() {
       expect(sleepDebtMinsOrNull({d2: 420}, d2), -60);
     });
 
-    testWidgets('pre-history night shows Deficit: --, never -0h 0m',
+    testWidgets('pre-history night shows Deficit: --, never -0m',
         (tester) async {
       _bigSurface(tester);
       final now = DateTime.now();
@@ -287,7 +287,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Daily Time Asleep'), findsOneWidget);
       expect(find.text('Deficit: --'), findsOneWidget);
-      expect(find.text('Deficit: -0h 0m'), findsNothing);
+      expect(find.text('Deficit: -0m'), findsNothing);
     });
   });
 

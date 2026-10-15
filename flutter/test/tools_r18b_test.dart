@@ -156,8 +156,8 @@ void main() {
       expect(out, isNotNull);
       expect(out, isNot(contains('{')));
       expect(out, isNot(contains('73.29897959183671')));
-      expect(out, contains('Sleep 7h 13m'));
-      expect(out, contains('Deep 1h 16m'));
+      expect(out, contains('Sleep 7h13m'));
+      expect(out, contains('Deep 1h16m'));
       expect(out, contains('Avg HR 58'));
       expect(out, contains('HRV 73.3'));
       expect(out, contains('2271 cal'));
@@ -521,12 +521,12 @@ void main() {
           ),
         ),
       );
-      expect(find.text('8h 42m'), findsWidgets);
-      expect(find.text('REM: 2h'), findsOneWidget);
+      expect(find.text('8h42m'), findsWidgets);
+      expect(find.text('REM: 2h0m'), findsOneWidget);
       expect(find.text('Efficiency: 91%'), findsOneWidget);
       // Deep/Light stage cards show real values, not "--".
-      expect(find.text('1h 16m'), findsOneWidget); // deep 76m
-      expect(find.text('4h'), findsOneWidget); // light 240m
+      expect(find.text('1h16m'), findsOneWidget); // deep 76m
+      expect(find.text('4h0m'), findsOneWidget); // light 240m
     });
 
     testWidgets('null stages → "--", never invented', (tester) async {
@@ -556,8 +556,8 @@ void main() {
           healthConnect: _FakeHcWithStages(minutes: const {}),
         ),
       );
-      // Native renders "Deficit: -Xh Ym" when sleep exceeds the target.
-      expect(find.text('Deficit: -0h 53m'), findsOneWidget);
+      // R61: renders "Deficit: -Xm" (compact) when sleep exceeds the target.
+      expect(find.text('Deficit: -53m'), findsOneWidget);
     });
   });
 }

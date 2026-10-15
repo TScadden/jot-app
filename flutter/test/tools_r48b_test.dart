@@ -139,8 +139,8 @@ void main() {
     });
 
     test('hero format always shows hours and minutes (native)', () {
-      expect(formatSleepHeroMins(480), '8h 0m');
-      expect(formatSleepHeroMins(450), '7h 30m');
+      expect(formatSleepHeroMins(480), '8h0m');
+      expect(formatSleepHeroMins(450), '7h30m');
     });
   });
 
@@ -161,7 +161,7 @@ void main() {
         ),
       );
       expect(find.text('Time Asleep Today'), findsOneWidget);
-      expect(find.text('7h 30m'), findsWidgets);
+      expect(find.text('7h30m'), findsWidgets);
       expect(find.text('Recent Nights'), findsOneWidget);
       expect(find.text('Loading Sleep Data...'), findsNothing);
     });
@@ -184,7 +184,7 @@ void main() {
       await tester.tap(find.text('OK'));
       await tester.pumpAndSettle();
       expect(find.text('Daily Comparison'), findsOneWidget);
-      expect(find.text('Difference: +0h 0m'), findsOneWidget);
+      expect(find.text('Difference: +0m'), findsOneWidget);
       // Clear button removes the card.
       await tester.tap(find.byIcon(Icons.close));
       await tester.pumpAndSettle();
@@ -452,7 +452,7 @@ void main() {
       expect(lines[0],
           'Date,Average HR (BPM),Sleep Duration,Deep Sleep,Spikes (count)');
       expect(lines[1],
-          '2026-10-13,        72        ,    7h 30m    ,  2h 0m   ,      0       ');
+          '2026-10-13,        72        ,    7h30m     ,   2h0m   ,      0       ');
       expect(lines[2],
           '2026-10-12,     No data      ,   No data    , No data  ,      3       ');
       // Zero biometrics are failed reads → "No data" everywhere.
@@ -517,7 +517,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(hc.exportedFileName, 'jot_metrics_30d.csv');
       expect(hc.exportedContent, contains('Date,Average HR (BPM)'));
-      expect(hc.exportedContent, contains('7h 30m'));
+      expect(hc.exportedContent, contains('7h30m'));
     });
   });
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 import 'package:tabs_lab/src/theme/skeleton.dart';
 
@@ -41,16 +42,13 @@ import 'package:tabs_lab/src/theme/skeleton.dart';
 /// cleared and `pumpAndSettle` timed out. A timed-out read now lands
 /// in the honest empty state instead.
 
-String _formatMins(int mins) {
-  final h = mins ~/ 60;
-  final m = mins % 60;
-  if (h > 0 && m > 0) return '${h}h ${m}m';
-  if (h > 0) return '${h}h';
-  return '${m}m';
-}
+/// R61 — founder ruling (Oct 15, 2026): sleep durations read compact
+/// (`7h6m`) everywhere, through the single shared [formatSleepMinutes].
+/// Exact-hour values now render both parts (`8h0m`, previously `8h`).
+String _formatMins(int mins) => formatSleepMinutes(mins);
 
-/// Native hero format: always both parts ("7h 30m", "8h 0m").
-String formatSleepHeroMins(int mins) => '${mins ~/ 60}h ${mins % 60}m';
+/// Hero format: the same shared compact formatter (`7h30m`, `8h0m`).
+String formatSleepHeroMins(int mins) => formatSleepMinutes(mins);
 
 /// Native `FitbitViewModel.calculateDebtAtDate`, ported exactly:
 /// [history] is (dateStr → minutes) for nights with REAL data (zero /
@@ -598,7 +596,7 @@ class _SleepScreenState extends State<SleepScreen> {
                 const SizedBox(width: 8),
                 Text(
                   debt != null
-                      ? 'Deficit: -${debt.abs() ~/ 60}h ${debt.abs() % 60}m'
+                      ? 'Deficit: -${formatSleepMinutes(debt.abs())}'
                       : 'Deficit: --',
                   style: const TextStyle(
                     fontSize: 15,
@@ -704,7 +702,7 @@ class _SleepScreenState extends State<SleepScreen> {
         : (_selectedMins ?? 0);
     final diff = currentMins - compare.mins;
     final diffStr =
-        '${diff >= 0 ? '+' : '-'}${diff.abs() ~/ 60}h ${diff.abs() % 60}m';
+        '${diff >= 0 ? '+' : '-'}${formatSleepMinutes(diff.abs())}';
     final parsed = DateTime.tryParse(compare.dateStr);
     final monthDay = parsed != null
         ? '${_monthFull(parsed.month)} ${parsed.day}'

@@ -1,4 +1,5 @@
 import 'package:tabs_lab/src/data/weekly_snapshot.dart';
+import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 
 /// Round 13 — pure health-data logic: no platform channel, fully testable.
 ///
@@ -275,7 +276,11 @@ WeeklySnapshotMetricData buildSleepMetric(
     final avg = valid.reduce((a, b) => a + b) / valid.length;
     final h = avg.toInt();
     final m = ((avg - h) * 60).toInt();
-    avgText = '7-Day Avg: ${h}h ${m}m';
+    // R61 — compact sleep format via the single shared formatter
+    // (founder ruling, Oct 15, 2026: `7h6m` everywhere). The h/m split
+    // above keeps the native truncation semantics for the double-hours
+    // average; only the rendering changed.
+    avgText = '7-Day Avg: ${formatSleepMinutes(h * 60 + m)}';
   } else {
     avgText = 'Not enough sleep data yet';
     emptyMsg = 'Not enough sleep data yet';

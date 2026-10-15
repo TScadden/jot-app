@@ -14,6 +14,7 @@ import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/reminder_alarm_sync.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/home/feeling_checkin_card.dart';
+import 'package:tabs_lab/src/features/home/vitals_strip.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/features/tools/habits_screen.dart'
     show habitStreak;
@@ -820,13 +821,10 @@ double? _coachPositiveDouble(dynamic v) {
   return (n != null && n > 0) ? n : null;
 }
 
-String _coachFmtMins(int mins) {
-  final h = mins ~/ 60;
-  final m = mins % 60;
-  if (h > 0 && m > 0) return '${h}h ${m}m';
-  if (h > 0) return '${h}h';
-  return '${m}m';
-}
+/// R61 — sleep minutes in coach context use the single shared compact
+/// formatter (founder ruling, Oct 15, 2026: `7h6m` everywhere).
+/// Exact-hour values now render both parts (`8h0m`, previously `8h`).
+String _coachFmtMins(int mins) => formatSleepMinutes(mins);
 
 String _coachFmtHours(double hours) {
   final mins = (hours * 60).round();
