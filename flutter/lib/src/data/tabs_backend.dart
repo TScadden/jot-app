@@ -220,6 +220,37 @@ class TabsBackend {
     return const _RefreshDefinitive();
   }
 
+  /// Round 60 — app-wide single-flight for the sync-pull NETWORK
+  /// fetch (the same pattern as the Round 31 refresh slot, and for
+  /// the same reason): the app constructs many [TabsBackend]
+  /// instances over ONE stored session, and at cold start several
+  /// of them — plus the direct pull readers ([fetchStreak],
+  /// [fetchLogEntries], [fetchManualBpLogs], which deliberately
+  /// bypass the TTL cache) — used to fire CONCURRENT IDENTICAL
+  /// `GET /api/sync/pull` requests (measured at base: 5 consumers
+  /// in flight → 5 requests; a cold Home mount → 4). Now the first
+  /// caller's request is the only one on the wire and every
+  /// concurrent caller joins its future. The slot carries NO result
+  /// past completion: a caller that arrives after the fetch lands
+  /// makes its own request (or hits its per-instance TTL cache
+  /// first, in [fetchSyncPull]), so no stale body can ever be
+  /// served from here and no cross-session reuse is possible beyond
+  /// the in-flight window itself.
+  static Future<Map<String, dynamic>?>? _syncPullNetworkInFlight;
+
+  Future<Map<String, dynamic>?> _fetchSyncPullShared() {
+    final inFlight = _syncPullNetworkInFlight;
+    if (inFlight != null) return inFlight;
+    late final Future<Map<String, dynamic>?> future;
+    future = _getJson('/api/sync/pull').whenComplete(() {
+      if (identical(_syncPullNetworkInFlight, future)) {
+        _syncPullNetworkInFlight = null;
+      }
+    });
+    _syncPullNetworkInFlight = future;
+    return future;
+  }
+
   /// Round 18 — the full sync-pull body, cached in memory for
   /// [syncPullTtl]. Null on any failure.
   Future<Map<String, dynamic>?> fetchSyncPull() async {
@@ -230,7 +261,7 @@ class TabsBackend {
         DateTime.now().difference(at) < syncPullTtl) {
       return cached;
     }
-    final body = await _getJson('/api/sync/pull');
+    final body = await _fetchSyncPullShared();
     if (body != null) {
       _syncPullCache = body;
       _syncPullAt = DateTime.now();
@@ -587,7 +618,10 @@ class TabsBackend {
   /// Current/best streak from `/api/sync/pull`. Nulls on any failure —
   /// the streak row renders "--".
   Future<({int? current, int? best})> fetchStreak() async {
-    final body = await _getJson('/api/sync/pull');
+    // Round 60 — joins the app-wide in-flight pull (see
+    // _fetchSyncPullShared); still uncached, so a call made when no
+    // pull is in flight fetches fresh exactly as before.
+    final body = await _fetchSyncPullShared();
     final profile = body?['profile'];
     if (profile is! Map<String, dynamic>) {
       return (current: null, best: null);
@@ -600,7 +634,8 @@ class TabsBackend {
 
   /// Log-entry timestamps (epoch ms) from `/api/sync/pull` `entries`.
   Future<List<int>> fetchLogEntries() async {
-    final body = await _getJson('/api/sync/pull');
+    // Round 60 — shared in-flight pull; see fetchStreak.
+    final body = await _fetchSyncPullShared();
     final entries = body?['entries'];
     if (entries is! List) return const [];
     final out = <int>[];
@@ -650,7 +685,8 @@ class TabsBackend {
   /// of `[{systolic, diastolic, timeEpochMs, ...}]`. Tolerates null, blank,
   /// and malformed content (→ empty); never throws.
   Future<List<BpRecord>> fetchManualBpLogs() async {
-    final body = await _getJson('/api/sync/pull');
+    // Round 60 — shared in-flight pull; see fetchStreak.
+    final body = await _fetchSyncPullShared();
     final profile = body?['profile'];
     if (profile is! Map<String, dynamic>) return const [];
     final raw = profile['manualBloodPressureLogs'];
