@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
+import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -66,6 +67,29 @@ import 'package:tabs_lab/src/theme/slide_page_route.dart';
 /// to POST before that point, so no caller can weaken the gate.
 /// Round 19's rule stands: no interaction until fresh membership
 /// arrives; 19c only lets the tray *render* in the meantime.
+/// Round 63 — Quick Log's active (non-archived) medication names,
+/// derived from the profile `medications` blob through the ONE
+/// shared model ([MedicationEntry.fromBlobRow] + [MedicationEntry.isArchived]),
+/// never a raw `isArchived` key test on the blob row: the blob
+/// carries no such key in either stored generation, so the raw
+/// test classified every archived med as active. Rows are kept
+/// only when the parsed entry is neither archived nor deleted;
+/// names are lowercased to match [recentSuggestions]' body match.
+/// Top-level (not a State method) so fixture tests can exercise
+/// the exact computation the screen runs.
+Set<String> activeMedicationNamesFromProfile(
+    Map<String, dynamic>? profile) {
+  final decoded = TabsBackend.decodeProfileList(profile?['medications']);
+  final out = <String>{};
+  for (final row in decoded) {
+    final entry = MedicationEntry.fromBlobRow(row);
+    if (entry == null || entry.isDeleted || entry.isArchived) continue;
+    final name = entry.name.trim().toLowerCase();
+    if (name.isNotEmpty) out.add(name);
+  }
+  return out;
+}
+
 class QuickLogScreen extends StatefulWidget {
   final TabsBackend? backend;
   final WeatherApiClient? weatherApi;
@@ -267,17 +291,11 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
 
   /// Active (non-archived) medication names from the profile
   /// `medications` blob — mirrors the native recent-suggestions filter.
-  Set<String> _activeMedicationNames(Map<String, dynamic>? profile) {
-    final raw = profile?['medications'];
-    final decoded = TabsBackend.decodeProfileList(raw);
-    final out = <String>{};
-    for (final m in decoded) {
-      if (m['isArchived'] == true) continue;
-      final name = '${m['name'] ?? ''}'.trim().toLowerCase();
-      if (name.isNotEmpty) out.add(name);
-    }
-    return out;
-  }
+  /// Round 63: delegates to [activeMedicationNamesFromProfile],
+  /// which classifies rows through the shared [MedicationEntry]
+  /// model (see its doc) instead of a raw blob-key test.
+  Set<String> _activeMedicationNames(Map<String, dynamic>? profile) =>
+      activeMedicationNamesFromProfile(profile);
 
   // ── Suggestions ───────────────────────────────────────────────────
 
