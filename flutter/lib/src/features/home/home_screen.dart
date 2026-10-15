@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
+import 'package:tabs_lab/src/data/launch_trace.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
@@ -203,26 +204,42 @@ class _HomeScreenState extends State<HomeScreen> {
     // day counts recompute from the target dates at render time, so
     // a cached counter never shows a stale count.
     if (cached.countersLoaded) _counters = cached.counters;
-    // Round 50 — push the cached snapshot to the home-screen widget
-    // on load, so the widget matches what the strip shows even
-    // before the background refresh completes. Signed-in when this
-    // Home is account-bound (session email or a cache owner) or the
-    // cache actually holds a completed load; a completely empty,
-    // unbound cache pushes the signed-out payload instead, so a
-    // previous account's numbers never linger. The refresh below
-    // re-pushes through HomeDataCache.persist() when it lands.
-    unawaited(WidgetSync.pushSnapshot(
-      cached,
-      signedIn: widget.email != null ||
-          cached.ownerEmail != null ||
-          cached.vitalsLoaded ||
-          cached.streakLoaded,
-    ));
+    // Round 60 — launch milestone: Home's first frame is seeded
+    // from the on-device snapshot (the paint-before-network proof
+    // lives in launch_perf_r60_test.dart: this seed is synchronous
+    // and the refresh below is entirely behind it).
+    if (cached.vitalsLoaded || cached.streakLoaded || cached.countersLoaded) {
+      LaunchTrace.instance.mark(LaunchTrace.homeSeededFromCache);
+    }
     _resolveCountUpGate();
-    _loadWeather();
     _loadHealthData();
     _loadFeelingState();
     _loadCounters();
+    // Round 60 — non-essentials defer until AFTER the first frame:
+    // the widget publish and the weather fetch never compete with
+    // first paint. Both were already fire-and-forget; they now also
+    // START after the frame. (Round 59 discipline holds: the widget
+    // push still goes through WidgetSync's serialized latest-wins
+    // drain, and the refresh re-pushes through
+    // HomeDataCache.persist() when it lands.)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // Round 50 — push the cached snapshot to the home-screen
+      // widget, so the widget matches what the strip shows even
+      // before the background refresh completes. Signed-in when
+      // this Home is account-bound (session email or a cache owner)
+      // or the cache actually holds a completed load; a completely
+      // empty, unbound cache pushes the signed-out payload instead,
+      // so a previous account's numbers never linger.
+      unawaited(WidgetSync.pushSnapshot(
+        cached,
+        signedIn: widget.email != null ||
+            cached.ownerEmail != null ||
+            cached.vitalsLoaded ||
+            cached.streakLoaded,
+      ));
+      _loadWeather();
+    });
   }
 
   /// Round 34 — loads the ACTIVE event counters from the sync pull's
@@ -376,6 +393,17 @@ class _HomeScreenState extends State<HomeScreen> {
   /// (round 15c) already fired for this view, so CountUp renders
   /// instantly.
   Future<void> _loadHealthData() async {
+    // Round 60 — the streak load (a backend sync pull) is
+    // INDEPENDENT of the Health Connect status/vitals chain, so its
+    // future starts FIRST and runs concurrently with them. At base
+    // it ran strictly after the vitals load completed — and because
+    // this method set state only once at the end, the already-landed
+    // vitals were held hostage behind the streak's second pull
+    // (measured: fresh values at ~2× the pull latency; now ~1×).
+    // The pull itself is single-flight app-wide (TabsBackend), so
+    // this future, the counters load, the feeling load, and the
+    // vitals log-count all share ONE network request.
+    final streakFuture = _healthRepo.loadStreak();
     final hc = _healthRepo.hc;
     // Round 23 — track the full status enum, not just connected/not.
     // A bridge failure is handled visibly, never silently wedged
@@ -394,12 +422,16 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     final connected = status == HealthConnectStatus.connected;
     final vitals = await _healthRepo.loadTodayVitals(connected: connected);
-    final streak = await _healthRepo.loadStreak();
+    final streak = await streakFuture;
     final cache = HomeDataCache.instance;
     final changed = cache.applyVitals(vitals) |
         cache.applyStreak(streak.current, streak.best);
     // Persist in the background; never block the UI on storage.
     unawaited(cache.persist());
+    // Round 60 — launch milestone: the background refresh has landed
+    // (this fires on every Home load, but LaunchTrace keeps the
+    // first mark only — the cold-start one).
+    LaunchTrace.instance.mark(LaunchTrace.homeFreshData);
     if (!mounted) return;
     // Round 23 — a status-only change (e.g. the fresh load found the
     // same empty vitals the cache already held, but now we KNOW the

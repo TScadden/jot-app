@@ -66,28 +66,32 @@ class HealthRepository {
   /// state); the log count still comes from the backend when logged in.
   /// Never throws.
   Future<TodayVitals> loadTodayVitals({required bool connected}) async {
-    int logCountToday = 0;
-    try {
-      final today = _dateStr(DateTime.now());
-      final entries = await backend.fetchLogEntries();
-      logCountToday = entries
-          .where((t) =>
-              _dateStr(DateTime.fromMillisecondsSinceEpoch(t)) == today)
-          .length;
-    } catch (_) {
-      // 0 stays the fallback.
+    // Round 60 — every source here is independent, so they run in
+    // PARALLEL (measured at base: the log-count pull, then the HR,
+    // calories, and sleep bridge reads ran one after another —
+    // 4 × 150ms fakes = ~658ms; parallel lands at the max, ~150ms).
+    // The log-count future starts FIRST and is awaited LAST so it
+    // overlaps the Health Connect reads instead of gating them.
+    final logCountFuture = _todayLogCount();
+    if (!connected) {
+      return TodayVitals(logCountToday: await logCountFuture);
     }
-    if (!connected) return TodayVitals(logCountToday: logCountToday);
 
     int? heartRate;
     int? activeCalories;
     int? sleepMinutes;
     try {
       final today = _dateStr(DateTime.now());
-      heartRate = daytimeHeartRateAvg(await hc.readHeartRateSamples(today));
-      final cal = await hc.readActiveCalories(today);
+      final reads = await Future.wait<Object?>([
+        hc.readHeartRateSamples(today),
+        hc.readActiveCalories(today),
+        hc.readSleepMinutes(today),
+      ]);
+      heartRate = daytimeHeartRateAvg(reads[0] as List<HrSample>);
+      final cal = reads[1] as int?;
+      // Biometric 0 = failed read → null, never shown/averaged.
       activeCalories = (cal != null && cal > 0) ? cal : null;
-      final sleep = await hc.readSleepMinutes(today);
+      final sleep = reads[2] as int?;
       sleepMinutes = (sleep != null && sleep > 0) ? sleep : null;
     } catch (_) {
       // Nulls stand — the UI shows "--".
@@ -96,8 +100,23 @@ class HealthRepository {
       heartRate: heartRate,
       activeCalories: activeCalories,
       sleepMinutes: sleepMinutes,
-      logCountToday: logCountToday,
+      logCountToday: await logCountFuture,
     );
+  }
+
+  /// Today's log count from the backend pull (0 on any failure —
+  /// the honest fallback the pre-Round-60 sequential code used).
+  Future<int> _todayLogCount() async {
+    try {
+      final today = _dateStr(DateTime.now());
+      final entries = await backend.fetchLogEntries();
+      return entries
+          .where((t) =>
+              _dateStr(DateTime.fromMillisecondsSinceEpoch(t)) == today)
+          .length;
+    } catch (_) {
+      return 0;
+    }
   }
 
   /// 7-day snapshot for one metric, oldest → today, device-local dates.
@@ -117,10 +136,15 @@ class HealthRepository {
     try {
       switch (metric) {
         case SnapshotMetric.sleepHours:
+          // Round 60 — the 7 per-day reads are independent: parallel
+          // (was a sequential loop, 7 × bridge latency at cold start).
+          final sleepReads = await Future.wait([
+            for (final d in dateStrs) hc.readSleepMinutes(d),
+          ]);
           final mins = <String, int>{};
-          for (final d in dateStrs) {
-            final m = await hc.readSleepMinutes(d);
-            if (m != null && m > 0) mins[d] = m;
+          for (var i = 0; i < dateStrs.length; i++) {
+            final m = sleepReads[i];
+            if (m != null && m > 0) mins[dateStrs[i]] = m;
           }
           return buildSleepMetric(dateStrs, labels, mins);
         case SnapshotMetric.restingHeartRate:
@@ -128,11 +152,15 @@ class HealthRepository {
           return buildRestingHrMetric(
               dateStrs, labels, {for (final h in history) h.date: h.bpm});
         case SnapshotMetric.hrSpikes:
+          // Round 60 — same parallelization as sleepHours.
+          final spikeReads = await Future.wait([
+            for (final d in dateStrs) hc.readHeartRateSamples(d),
+          ]);
           final counts = <String, int>{};
-          for (final d in dateStrs) {
+          for (var i = 0; i < dateStrs.length; i++) {
             final summary =
-                computeDailyHrSummary(d, await hc.readHeartRateSamples(d));
-            counts[d] = summary?.spikeCount ?? 0;
+                computeDailyHrSummary(dateStrs[i], spikeReads[i]);
+            counts[dateStrs[i]] = summary?.spikeCount ?? 0;
           }
           return buildSpikesMetric(dateStrs, labels, counts);
         case SnapshotMetric.calories:

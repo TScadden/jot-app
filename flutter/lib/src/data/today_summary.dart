@@ -1145,11 +1145,21 @@ class TodaySummaryLoader {
     try {
       final profile = await backend.fetchProfile();
       if (profile != null) {
-        final entries = await backend.fetchLogEntryDtos();
-        final categories = await backend.fetchLogCategories();
-        final habits = await backend.fetchHabits();
-        final localState =
-            await planStore.load(email: email, todayStr: todayStr);
+        // Round 60 — the four reads behind the profile are
+        // independent (entries/categories resolve through the pull
+        // this loader just cached; habits is its own endpoint; the
+        // plan store is a local read), so they run in PARALLEL
+        // instead of four sequential awaits.
+        final reads = await Future.wait<Object?>([
+          backend.fetchLogEntryDtos(),
+          backend.fetchLogCategories(),
+          backend.fetchHabits(),
+          planStore.load(email: email, todayStr: todayStr),
+        ]);
+        final entries = reads[0] as List<QuickLogEntry>;
+        final categories = reads[1] as List<QuickLogCategory>;
+        final habits = reads[2] as List<HabitDto>;
+        final localState = reads[3] as TodayPlanLocalState;
         final medCategoryId = resolveSummaryCategoryId(categories,
             name: 'Medication', fallbackId: 8);
         final goalsCategoryId = resolveSummaryCategoryId(categories,
