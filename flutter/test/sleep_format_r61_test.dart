@@ -98,7 +98,7 @@ void main() {
             .last,
       );
       await tester.pumpAndSettle();
-      expect(find.textContaining(': 7h30m'), findsOneWidget);
+      expect(find.textContaining('): 7h30m'), findsOneWidget);
       expect(find.textContaining('7h 30m'), findsNothing);
     });
   });
