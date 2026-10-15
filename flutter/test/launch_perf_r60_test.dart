@@ -167,6 +167,48 @@ void main() {
     });
 
     test(
+        'single-flight is scoped per session: two DIFFERENT tokens '
+        'never share a request or a result', () async {
+      // Regression pin for the unscoped-slot failure the round-21
+      // feeling tests caught: a tokenless/default instance racing a
+      // signed-in instance at Home mount must not swallow the
+      // signed-in pull (or vice versa).
+      var pulls = 0;
+      TabsBackend backendFor(String? token, int streak) {
+        final store = FakeSessionStore()..token = token;
+        return TabsBackend(
+          client: MockClient((request) async {
+            pulls++;
+            await Future<void>.delayed(
+                const Duration(milliseconds: 100));
+            return http.Response(
+              jsonEncode({
+                'entries': <dynamic>[],
+                'profile': {'currentStreak': streak, 'bestStreak': 1},
+              }),
+              200,
+            );
+          }),
+          sessionStore: store,
+        );
+      }
+
+      final results = await Future.wait([
+        backendFor('fake-token-a', 12).fetchStreak(),
+        backendFor('fake-token-b', 99).fetchStreak(),
+        backendFor(null, 55).fetchStreak(),
+      ]);
+      expect(pulls, 2,
+          reason: 'the two tokened sessions fetch separately; the '
+              'tokenless caller makes no request at all');
+      expect(results[0].current, 12);
+      expect(results[1].current, 99);
+      // No token → no request is even attempted by that instance's
+      // own path, and it must NOT receive another session's body.
+      expect(results[2].current, isNull);
+    });
+
+    test(
         'the single-flight slot serves nothing stale: a consumer '
         'arriving AFTER completion fetches fresh', () async {
       var pulls = 0;

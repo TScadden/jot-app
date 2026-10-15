@@ -220,34 +220,53 @@ class TabsBackend {
     return const _RefreshDefinitive();
   }
 
-  /// Round 60 — app-wide single-flight for the sync-pull NETWORK
-  /// fetch (the same pattern as the Round 31 refresh slot, and for
-  /// the same reason): the app constructs many [TabsBackend]
-  /// instances over ONE stored session, and at cold start several
-  /// of them — plus the direct pull readers ([fetchStreak],
-  /// [fetchLogEntries], [fetchManualBpLogs], which deliberately
-  /// bypass the TTL cache) — used to fire CONCURRENT IDENTICAL
-  /// `GET /api/sync/pull` requests (measured at base: 5 consumers
-  /// in flight → 5 requests; a cold Home mount → 4). Now the first
-  /// caller's request is the only one on the wire and every
-  /// concurrent caller joins its future. The slot carries NO result
-  /// past completion: a caller that arrives after the fetch lands
-  /// makes its own request (or hits its per-instance TTL cache
-  /// first, in [fetchSyncPull]), so no stale body can ever be
-  /// served from here and no cross-session reuse is possible beyond
-  /// the in-flight window itself.
-  static Future<Map<String, dynamic>?>? _syncPullNetworkInFlight;
+  /// Round 60 — single-flight for the sync-pull NETWORK fetch,
+  /// scoped per session (the same pattern as the Round 31 refresh
+  /// slot, and for the same reason): the app constructs many
+  /// [TabsBackend] instances over ONE stored session, and at cold
+  /// start several of them — plus the direct pull readers
+  /// ([fetchStreak], [fetchLogEntries], [fetchManualBpLogs], which
+  /// deliberately bypass the TTL cache) — used to fire CONCURRENT
+  /// IDENTICAL `GET /api/sync/pull` requests (measured at base:
+  /// 5 consumers in flight → 5 requests; a cold Home mount → 4).
+  /// Now concurrent callers for the SAME session join the first
+  /// caller's in-flight request instead of duplicating it.
+  ///
+  /// The scope key is (baseUrl, token) — hashed, the token itself
+  /// is never retained as a key or logged. Scoping matters: a
+  /// caller with NO session (or a different one) must never be
+  /// handed another session's in-flight result — an unscoped slot
+  /// let a tokenless instance's null result swallow a signed-in
+  /// instance's pull at Home mount (caught by the round-21 feeling
+  /// tests). In production every instance reads the same stored
+  /// token, so the dedupe is total there.
+  ///
+  /// The slot carries NO result past completion: a caller that
+  /// arrives after the fetch lands makes its own request (or hits
+  /// its per-instance TTL cache first, in [fetchSyncPull]), so no
+  /// stale body can ever be served from here.
+  static final Map<int, Future<Map<String, dynamic>?>> _syncPullInFlight =
+      {};
 
-  Future<Map<String, dynamic>?> _fetchSyncPullShared() {
-    final inFlight = _syncPullNetworkInFlight;
+  Future<Map<String, dynamic>?> _fetchSyncPullShared() async {
+    String? token;
+    try {
+      token = await _sessionStore.readToken();
+    } catch (_) {
+      // Unreadable store → behave exactly as the pre-Round-60 code
+      // (the read inside _sendAuthed surfaces the same outcome).
+      return _getJson('/api/sync/pull');
+    }
+    final key = Object.hash(_baseUrl, token);
+    final inFlight = _syncPullInFlight[key];
     if (inFlight != null) return inFlight;
     late final Future<Map<String, dynamic>?> future;
     future = _getJson('/api/sync/pull').whenComplete(() {
-      if (identical(_syncPullNetworkInFlight, future)) {
-        _syncPullNetworkInFlight = null;
+      if (identical(_syncPullInFlight[key], future)) {
+        _syncPullInFlight.remove(key);
       }
     });
-    _syncPullNetworkInFlight = future;
+    _syncPullInFlight[key] = future;
     return future;
   }
 
