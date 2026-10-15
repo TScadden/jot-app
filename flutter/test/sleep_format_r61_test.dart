@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
-import 'package:tabs_lab/src/data/weekly_snapshot.dart';
 import 'package:tabs_lab/src/features/home/weekly_snapshot_card.dart';
 import 'package:tabs_lab/src/features/tools/community_screen.dart';
 import 'package:tabs_lab/src/features/tools/key_metrics_screen.dart';
