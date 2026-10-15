@@ -5,6 +5,7 @@ import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/coach_memory_store.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
+import 'package:tabs_lab/src/data/launch_trace.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
@@ -23,6 +24,9 @@ import 'package:tabs_lab/src/features/splash/splash_screen.dart';
 import 'package:tabs_lab/src/theme/notel_theme.dart';
 
 void main() async {
+  // Round 60 — launch timeline starts here (see launch_trace.dart;
+  // in-memory only, printed only under --dart-define=LAUNCH_TRACE).
+  LaunchTrace.instance.mark(LaunchTrace.processStart);
   // Round 16 — warm the home-data cache before the first frame so a
   // cold start shows last-known numbers instantly instead of "--".
   // Never throws; a missing/corrupt cache just starts empty.
@@ -40,10 +44,20 @@ void main() async {
   } catch (_) {
     sessionEmail = null;
   }
-  await HomeDataCache.instance.warmFromDisk(currentEmail: sessionEmail);
-  // Round 19c — same warm for Quick Log: cold starts seed last-known
-  // categories / recents / count / membership instead of skeletons.
-  await QuickLogCache.instance.warmFromDisk(currentEmail: sessionEmail);
+  // Round 60 — the two cache warms are independent disk reads (each
+  // bound to the same already-read session email), so they run in
+  // PARALLEL: pre-frame warm time is the max of the two reads, not
+  // their sum. The warm itself stays pre-frame on purpose — it is
+  // the snapshot-first paint mechanism (Round 16/19c): Home's first
+  // frame renders these values, so they must be in memory before
+  // runApp. Both warms never throw.
+  await Future.wait([
+    HomeDataCache.instance.warmFromDisk(currentEmail: sessionEmail),
+    // Round 19c — same warm for Quick Log: cold starts seed last-known
+    // categories / recents / count / membership instead of skeletons.
+    QuickLogCache.instance.warmFromDisk(currentEmail: sessionEmail),
+  ]);
+  LaunchTrace.instance.mark(LaunchTrace.cachesWarmed);
   // Round 52 — re-publish the widget on EVERY app start, once,
   // unawaited: a signed-in snapshot when a session exists and the
   // warmed cache holds one, the signed-out payload otherwise. This
@@ -56,6 +70,10 @@ void main() async {
     snapshot: HomeDataCache.instance.snapshot,
   ));
   runApp(const TabsLabApp());
+  LaunchTrace.instance.mark(LaunchTrace.runAppCalled);
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    LaunchTrace.instance.mark(LaunchTrace.firstFrame);
+  });
 }
 
 class TabsLabApp extends StatelessWidget {
@@ -218,49 +236,72 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
   // session came through login/Google). Legacy sessions therefore
   // keep Round 31's straight-to-home landing and are backfilled
   // complete, instead of dropping an existing user into onboarding.
+  // Round 60 — the display-only email read, isolated in its own
+  // try/catch (Round 31 fix pass, Vera NIT 2): a storage failure
+  // reading it must not abort a restore backed by a valid token, so
+  // route on with a null email.
+  Future<String?> _readEmailOrNull() async {
+    try {
+      return await _sessionStore.readEmail();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // Round 60 — the Round 32 onboarding gate as one future, so the
+  // restore can run it CONCURRENTLY with the email read instead of
+  // behind it. Same semantics as the sequential chain it replaces:
+  // local reads only, no network; any failure → Round 31 behavior
+  // (hasState false, no resume step, straight home). The three flag
+  // reads are independent of each other, so they also run in
+  // parallel inside the gate (sequential sum → parallel max).
+  Future<({bool hasState, OnboardingStep? resumeStep})>
+      _readOnboardingGate() async {
+    try {
+      final hasState = await _onboardingStore.hasAnyState();
+      if (!hasState) return (hasState: false, resumeStep: null);
+      final flags = await Future.wait([
+        _onboardingStore.getHasConsented(),
+        _onboardingStore.getIntroConsultationSeen(),
+        _onboardingStore.getOnboardingComplete(),
+      ]);
+      final OnboardingStep? resumeStep = !flags[0]
+          ? OnboardingStep.consent
+          : !flags[1]
+              ? OnboardingStep.consultationIntro
+              : !flags[2]
+                  ? OnboardingStep.profileSetup
+                  : null;
+      return (hasState: true, resumeStep: resumeStep);
+    } catch (_) {
+      // Unreadable flags → Round 31 behavior (home).
+      return (hasState: false, resumeStep: null);
+    }
+  }
+
   Future<void> _restoreSession() async {
     try {
       final token = await _sessionStore.readToken();
       if (token == null || token.trim().isEmpty) return;
       // Round 31 fix pass (Vera NIT 2): the email read is isolated
-      // in its own try/catch. The email is display-only — a storage
-      // failure reading it must not abort a restore backed by a
-      // valid token, so route on with a null email. A TOKEN-read
-      // failure keeps the outer behavior: fall to welcome, without
-      // clearing anything.
-      String? email;
-      try {
-        email = await _sessionStore.readEmail();
-      } catch (_) {
-        email = null;
-      }
-      // Round 32 gate: resolve the native resume step from the
-      // stored flags (local reads only — same store, no network).
-      OnboardingStep? resumeStep;
-      var hasState = false;
-      try {
-        hasState = await _onboardingStore.hasAnyState();
-        if (hasState) {
-          final hasConsented = await _onboardingStore.getHasConsented();
-          final introSeen =
-              await _onboardingStore.getIntroConsultationSeen();
-          final complete = await _onboardingStore.getOnboardingComplete();
-          if (!hasConsented) {
-            resumeStep = OnboardingStep.consent;
-          } else if (!introSeen) {
-            resumeStep = OnboardingStep.consultationIntro;
-          } else if (!complete) {
-            resumeStep = OnboardingStep.profileSetup;
-          }
-        }
-      } catch (_) {
-        // Unreadable flags → Round 31 behavior (home).
-        resumeStep = null;
-        hasState = false;
-      }
+      // (see _readEmailOrNull). A TOKEN-read failure keeps the outer
+      // behavior: fall to welcome, without clearing anything.
+      //
+      // Round 60 — email ∥ onboarding gate: both are local storage
+      // reads off the same token decision and neither depends on the
+      // other, so they run concurrently. Session validation remains
+      // exactly what Round 31 made it: stored-session PRESENCE only,
+      // no network round-trip at launch, ever.
+      final emailFuture = _readEmailOrNull();
+      final gateFuture = _readOnboardingGate();
+      final email = await emailFuture;
+      final gate = await gateFuture;
+      final hasState = gate.hasState;
+      final resumeStep = gate.resumeStep;
       // If the user already moved past welcome (or the widget is
       // gone), the restore has nothing to do.
       if (!mounted || _stage != _FlowStage.welcome) return;
+      LaunchTrace.instance.mark(LaunchTrace.sessionRestored);
       if (!hasState) {
         // Legacy (pre-Round-32) session: backfill the flags complete,
         // mirroring native's login/pull marking (see the header).
@@ -275,7 +316,7 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
         unawaited(_reconcileOnboardingFromServer());
         setState(() {
           _loggedInEmail = email;
-          _onboardingStep = resumeStep!;
+          _onboardingStep = resumeStep;
           _stage = _FlowStage.onboarding;
         });
       } else {
