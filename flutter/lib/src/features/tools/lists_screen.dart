@@ -571,7 +571,7 @@ class _ListsScreenState extends State<ListsScreen> {
               onPressed: _load,
               style: FilledButton.styleFrom(
                   backgroundColor: NotelColors.primary),
-              child: const Text('Retry'),
+              child: const Text('Try again'),
             ),
           ],
         ),

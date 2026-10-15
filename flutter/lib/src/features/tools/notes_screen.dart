@@ -688,7 +688,7 @@ class _NotesScreenState extends State<NotesScreen> {
               onPressed: _load,
               style: FilledButton.styleFrom(
                   backgroundColor: NotelColors.primary),
-              child: const Text('Retry'),
+              child: const Text('Try again'),
             ),
           ],
         ),

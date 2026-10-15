@@ -426,7 +426,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
                 onPressed: _load,
                 style: FilledButton.styleFrom(
                     backgroundColor: NotelColors.primary),
-                child: const Text('Retry'),
+                child: const Text('Try again'),
               ),
             ],
           ),

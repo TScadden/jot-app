@@ -802,7 +802,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
               onPressed: _load,
               style: FilledButton.styleFrom(
                   backgroundColor: NotelColors.primary),
-              child: const Text('Retry'),
+              child: const Text('Try again'),
             ),
           ],
         ),
