@@ -90,10 +90,12 @@ void main() {
       // Tap the chart → tooltip for the tapped day renders via the
       // same shared formatter (was "7h 30m").
       await tester.tap(
-        find.descendant(
-          of: find.byType(WeeklySnapshotCard),
-          matching: find.byType(CustomPaint),
-        ),
+        find
+            .descendant(
+              of: find.byType(WeeklySnapshotCard),
+              matching: find.byType(CustomPaint),
+            )
+            .last,
       );
       await tester.pumpAndSettle();
       expect(find.textContaining(': 7h30m'), findsOneWidget);
@@ -128,16 +130,21 @@ void main() {
         formatSleepHeroMins(426),
         formatFriendSleep(426),
         formatFriendSleepDebt(-426),
-        buildSleepMetric(
-          const ['2026-10-15'],
-          const ['Thu'],
-          const {'2026-10-15': 426},
-        ).averageOrTotalText,
       ];
       for (final s in rendered) {
         expect(s, isNot(contains('7h 6m')), reason: s);
         expect(s, contains('7h6m'), reason: s);
       }
+      // buildSleepMetric averages in double hours with the native
+      // truncation split, so its pinned value uses an exact-hours
+      // input: 450m renders "7h30m", never the spaced "7h 30m".
+      final avg = buildSleepMetric(
+        const ['2026-10-15'],
+        const ['Thu'],
+        const {'2026-10-15': 450},
+      ).averageOrTotalText;
+      expect(avg, contains('7h30m'));
+      expect(avg, isNot(contains('7h 30m')));
     });
   });
 }
