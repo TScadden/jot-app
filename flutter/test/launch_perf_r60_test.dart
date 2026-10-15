@@ -260,6 +260,28 @@ void main() {
               'source (~150ms), not the sum (~600ms)');
     });
 
+    // Round 60 fix pin (Vera blocker) — per-read error isolation:
+    // a read that THROWS (not a null failure) must degrade to its
+    // own empty value only. With a single shared try/catch around
+    // the Future.wait, the sleep throw landed before any assignment
+    // and HR/calories were lost too; the sequential base kept each
+    // value as it landed.
+    test(
+        'one THROWING read (sleep) does not poison the others: '
+        'HR and calories still land, sleep is null', () async {
+      final repo = HealthRepository(
+        hc: _ThrowingSleepHc(),
+        backend: _delayedBackend(
+            onPull: () {},
+            pullDelay: const Duration(milliseconds: 10)),
+      );
+      final vitals = await repo.loadTodayVitals(connected: true);
+      expect(vitals.heartRate, 72);
+      expect(vitals.activeCalories, 300);
+      expect(vitals.sleepMinutes, isNull);
+      expect(vitals.logCountToday, 1);
+    });
+
     test('biometric 0 in the parallel path is a failed read → null',
         () async {
       final repo = HealthRepository(
@@ -488,6 +510,29 @@ void main() {
           isTrue);
     });
   });
+}
+
+/// Health Connect fake whose sleep read THROWS (a non-null
+/// failure — e.g. a bridge type/parse error) while HR and calories
+/// succeed. Pins the per-read error isolation in loadTodayVitals.
+class _ThrowingSleepHc extends HealthConnectService {
+  @override
+  Future<HealthConnectStatus> getStatus() async =>
+      HealthConnectStatus.connected;
+
+  @override
+  Future<List<HrSample>> readHeartRateSamples(String dateStr) async {
+    final now = DateTime.now();
+    final noon = DateTime(now.year, now.month, now.day, 12);
+    return [HrSample(timeMs: noon.millisecondsSinceEpoch, bpm: 72)];
+  }
+
+  @override
+  Future<int?> readActiveCalories(String dateStr) async => 300;
+
+  @override
+  Future<int?> readSleepMinutes(String dateStr) async =>
+      throw StateError('fake bridge parse failure');
 }
 
 class _StalledHc extends HealthConnectService {

@@ -82,10 +82,19 @@ class HealthRepository {
     int? sleepMinutes;
     try {
       final today = _dateStr(DateTime.now());
+      // Round 60 fix (Vera blocker) — each read enters the wait
+      // through its OWN error-isolating wrapper, so the wait itself
+      // cannot fail: a read that THROWS (not a null failure — a
+      // parse/type error in the bridge's sample loop, an
+      // invokeMethod type mismatch, a throwing HC implementation)
+      // degrades to its honest empty value ([] / null) and the
+      // other two reads still land, exactly as the sequential base
+      // assigned each value as it arrived. Without the wrappers,
+      // one throw poisoned all three assignments after the await.
       final reads = await Future.wait<Object?>([
-        hc.readHeartRateSamples(today),
-        hc.readActiveCalories(today),
-        hc.readSleepMinutes(today),
+        _hrSamplesOrEmpty(today),
+        _caloriesOrNull(today),
+        _sleepOrNull(today),
       ]);
       heartRate = daytimeHeartRateAvg(reads[0] as List<HrSample>);
       final cal = reads[1] as int?;
@@ -102,6 +111,33 @@ class HealthRepository {
       sleepMinutes: sleepMinutes,
       logCountToday: await logCountFuture,
     );
+  }
+
+  /// Round 60 fix (Vera blocker) — per-read error isolation for the
+  /// parallel vitals reads: a throwing read becomes its honest
+  /// empty value instead of failing the whole [Future.wait].
+  Future<List<HrSample>> _hrSamplesOrEmpty(String today) async {
+    try {
+      return await hc.readHeartRateSamples(today);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<int?> _caloriesOrNull(String today) async {
+    try {
+      return await hc.readActiveCalories(today);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<int?> _sleepOrNull(String today) async {
+    try {
+      return await hc.readSleepMinutes(today);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Today's log count from the backend pull (0 on any failure —
