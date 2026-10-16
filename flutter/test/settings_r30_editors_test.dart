@@ -239,6 +239,10 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('delete_protocol_0')));
       await tester.pumpAndSettle();
       expect(backend.profilePushes.last['professionalUpdates'], 'u2');
+      // Round 65: Extracted Facts is collapsed by default, exactly
+      // like native — expand it before editing a fact.
+      await tester.tap(find.byKey(const ValueKey('facts_toggle')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('edit_fact_1')));
       await tester.pumpAndSettle();
       await tester.enterText(

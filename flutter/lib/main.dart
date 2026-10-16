@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/coach_memory_store.dart';
+import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/launch_trace.dart';
@@ -382,6 +383,8 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
     // Round 55: coach memory is account-bound too — session expiry
     // wipes it like the other caches.
     unawaited(CoachMemoryStore.instance.clear());
+    // Round 65: cached extracted document text is account-bound too.
+    unawaited(KnowledgeExtractionStore.instance.clear());
     // Round 52 — single widget-clear funnel: HomeDataCache.clear()
     // above IS the widget clear (it fire-and-forgets
     // WidgetSync.clear()); the Round 50 duplicate explicit call
@@ -415,6 +418,8 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
     unawaited(TodaySummaryCache.instance.clearIfOwnerMismatch(email));
     unawaited(TodayPlanStore.instance.clearIfOwnerMismatch(email));
     unawaited(CoachMemoryStore.instance.clearIfOwnerMismatch(email));
+    unawaited(
+        KnowledgeExtractionStore.instance.clearIfOwnerMismatch(email));
     // Round 32 — native parity: email login and Google sign-in (both
     // modes) mark onboarding complete (LoginViewModel.login /
     // loginWithGoogleAccount call setOnboardingComplete(true)), and
@@ -451,6 +456,8 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
     unawaited(TodaySummaryCache.instance.clearIfOwnerMismatch(email));
     unawaited(TodayPlanStore.instance.clearIfOwnerMismatch(email));
     unawaited(CoachMemoryStore.instance.clearIfOwnerMismatch(email));
+    unawaited(
+        KnowledgeExtractionStore.instance.clearIfOwnerMismatch(email));
     unawaited(_stampFreshAccountOnboarding());
     setState(() {
       _loggedInEmail = email;

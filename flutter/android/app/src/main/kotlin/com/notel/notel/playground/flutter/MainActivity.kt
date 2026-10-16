@@ -72,6 +72,8 @@ class MainActivity : FlutterFragmentActivity() {
         const val CALENDAR_CHANNEL = "com.notel.notel.playground.flutter/calendar"
         // Round 48: BP CSV import cap, same as native MAX_CSV_FILE_BYTES.
         private const val MAX_CSV_FILE_BYTES = 5 * 1024 * 1024
+        // Round 65: knowledge-document pick cap (see doc picker).
+        private const val MAX_DOC_FILE_BYTES = 15 * 1024 * 1024
         const val HC_PROVIDER_PACKAGE = "com.google.android.apps.healthdata"
         const val SETTINGS_ACTION = "android.health.connect.action.HEALTH_HOME_SETTINGS"
         private const val REQUEST_TIMEOUT_MS = 5 * 60 * 1000L
@@ -115,6 +117,16 @@ class MainActivity : FlutterFragmentActivity() {
     // pickable; the Dart-side parser validates the content).
     private lateinit var csvPickerLauncher: ActivityResultLauncher<String>
     private var pendingCsvResult: MethodChannel.Result? = null
+
+    // Round 65: document picker for Digital Knowledge Extraction.
+    // A second GetContent launcher (native SettingsScreen launches
+    // GetContent "*/*" for the same flow); its callback returns the
+    // picked file's display name, MIME type, and base64 bytes —
+    // the triple native ingestFile derives from the Uri. The CSV
+    // launcher above returns decoded text only, which would
+    // destroy PDFs/images before extraction.
+    private lateinit var docPickerLauncher: ActivityResultLauncher<String>
+    private var pendingDocResult: MethodChannel.Result? = null
 
     // Round 54: calendar permission launcher for the Health Coach
     // (native CoachScreen.kt:89-113 requests READ+WRITE together at
@@ -234,6 +246,96 @@ class MainActivity : FlutterFragmentActivity() {
                 }
             }.start()
         }
+        docPickerLauncher = activityResultRegistry.register(
+            "doc_picker_launcher",
+            ActivityResultContracts.GetContent()
+        ) { uri ->
+            val r = pendingDocResult
+            pendingDocResult = null
+            if (r == null) return@register // stale (superseded)
+            if (uri == null) {
+                // User cancelled — a null success, not an error.
+                try { r.success(null) } catch (_: Exception) { }
+                return@register
+            }
+            // Resolve name/MIME exactly like native ingestFile:
+            // display name from the content resolver, MIME from
+            // getType with the same "application/pdf" fallback.
+            val mimeType = contentResolver.getType(uri) ?: "application/pdf"
+            var displayName = "unknown_file"
+            try {
+                contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (idx >= 0 && cursor.moveToFirst()) {
+                        displayName = cursor.getString(idx) ?: displayName
+                    }
+                }
+            } catch (_: Exception) { }
+            // Read off the main thread with a 15 MB cap (Gemini's
+            // inline-data requests are the real ceiling; a file
+            // past this cap could never be extracted, so failing
+            // visibly here beats a doomed upload).
+            Thread {
+                var failureCode: String? = null
+                var failureMessage: String? = null
+                var base64: String? = null
+                try {
+                    val stream = contentResolver.openInputStream(uri)
+                    if (stream == null) {
+                        failureCode = "READ_FAILED"
+                        failureMessage = "Couldn't read this file. Please try a different file."
+                    } else {
+                        stream.use { input ->
+                            val buf = ByteArray(8192)
+                            var total = 0
+                            val out = java.io.ByteArrayOutputStream()
+                            var tooLarge = false
+                            while (true) {
+                                val n = input.read(buf)
+                                if (n == -1) break
+                                total += n
+                                if (total > MAX_DOC_FILE_BYTES) {
+                                    tooLarge = true
+                                    break
+                                }
+                                out.write(buf, 0, n)
+                            }
+                            if (tooLarge) {
+                                failureCode = "TOO_LARGE"
+                                failureMessage = "This file is too large to add. The limit is 15 MB."
+                            } else {
+                                base64 = android.util.Base64.encodeToString(
+                                    out.toByteArray(), android.util.Base64.NO_WRAP)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    failureCode = "READ_FAILED"
+                    failureMessage = "Couldn't read this file. Please try a different file."
+                }
+                val nameSnapshot = displayName
+                runOnUiThread {
+                    val code = failureCode
+                    val b64 = base64
+                    try {
+                        if (code != null) {
+                            r.error(code, failureMessage, null)
+                        } else if (b64 == null) {
+                            r.error("READ_FAILED",
+                                "Couldn't read this file. Please try a different file.", null)
+                        } else {
+                            r.success(mapOf(
+                                "name" to nameSnapshot,
+                                "mimeType" to mimeType,
+                                "base64Data" to b64
+                            ))
+                        }
+                    } catch (_: Exception) {
+                        // Result already consumed — nothing to do.
+                    }
+                }
+            }.start()
+        }
         calendarPermissionLauncher = activityResultRegistry.register(
             "calendar_permission_launcher",
             ActivityResultContracts.RequestMultiplePermissions()
@@ -308,6 +410,9 @@ class MainActivity : FlutterFragmentActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "pickCsvText" -> pickCsvText(result)
+                    // Round 65: knowledge-document pick (name/MIME/
+                    // base64) for Digital Knowledge Extraction.
+                    "pickDocumentFile" -> pickDocumentFile(result)
                     else -> result.notImplemented()
                 }
             }
@@ -343,6 +448,27 @@ class MainActivity : FlutterFragmentActivity() {
     /// picked file's text to Dart (null when the user cancels).
     /// Every failure path returns a visible error code — never a
     /// silent no-op.
+    /// Round 65: launches the system document picker for Digital
+    /// Knowledge Extraction. Every failure path returns a visible
+    /// error code — never a silent no-op.
+    private fun pickDocumentFile(result: MethodChannel.Result) {
+        if (pendingDocResult != null) {
+            result.error("IN_FLIGHT", "A file pick is already in progress", null)
+            return
+        }
+        if (!::docPickerLauncher.isInitialized) {
+            result.error("UNAVAILABLE", "Couldn't open the file picker.", null)
+            return
+        }
+        pendingDocResult = result
+        try {
+            docPickerLauncher.launch("*/*")
+        } catch (e: Exception) {
+            pendingDocResult = null
+            result.error("LAUNCH_FAILED", "Couldn't open the file picker.", null)
+        }
+    }
+
     private fun pickCsvText(result: MethodChannel.Result) {
         if (pendingCsvResult != null) {
             result.error("IN_FLIGHT", "A file pick is already in progress", null)

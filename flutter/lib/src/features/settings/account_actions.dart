@@ -1,4 +1,5 @@
 import 'package:tabs_lab/src/data/coach_memory_store.dart';
+import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/heart_data_cache.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
 import 'package:tabs_lab/src/data/quick_log_cache.dart';
@@ -70,6 +71,11 @@ class AccountActions {
     // the same wipe covers it.
     try {
       await CoachMemoryStore.instance.clear();
+    } catch (_) {}
+    // Round 65: cached extracted document text is account-bound
+    // device-local medical text — the same wipe covers it.
+    try {
+      await KnowledgeExtractionStore.instance.clear();
     } catch (_) {}
     // Round 52 — single widget-clear funnel: the HomeDataCache
     // clear at the top of this sequence IS the widget clear (it

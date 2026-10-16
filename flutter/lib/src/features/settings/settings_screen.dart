@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:tabs_lab/src/data/calendar_service.dart';
 import 'package:tabs_lab/src/data/common_conditions.dart';
+import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/google_sign_in_service.dart';
 import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
@@ -94,6 +95,13 @@ class SettingsScreen extends StatefulWidget {
   /// production.
   final CalendarService? calendarService;
 
+  /// Injectable document picker (Round 65) for Digital Knowledge
+  /// Extraction. Null in production (the SAF bridge picker).
+  final KnowledgeDocumentPicker? knowledgePicker;
+
+  /// Injectable extracted-text store (Round 65). Null in production.
+  final KnowledgeExtractionStore? knowledgeStore;
+
   /// Injectable for tests (native opens these in the system browser).
   final Future<bool> Function(Uri uri)? urlLauncher;
 
@@ -114,6 +122,8 @@ class SettingsScreen extends StatefulWidget {
     this.notificationService,
     this.googleSignInService,
     this.calendarService,
+    this.knowledgePicker,
+    this.knowledgeStore,
     this.urlLauncher,
     this.openEventCounters = false,
   });
@@ -139,6 +149,9 @@ enum _Page {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   late final TabsBackend _backend;
+  late final KnowledgeExtractionStore _kStore;
+  late final KnowledgeDocumentService _kService;
+  late final KnowledgeDocumentPicker _kPicker;
   late final SettingsStore _store;
   late final AccountActions _actions;
   late final ReminderNotificationService _notifs;
@@ -180,6 +193,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   HealthConnectStatus? _hcStatus;
   String? _hcErrorCode;
 
+  // Round 65 — Digital Knowledge Extraction state. _kProcessing is
+  // native's isProcessingFile (the add buttons swap for the
+  // "Gemini is reading your files..." row); _kError is native's
+  // processError line; per-document extraction states live in the
+  // KnowledgeExtractionStore (ready / pending / failed).
+  bool _kProcessing = false;
+  String? _kError;
+  bool _factsExpanded = false;
+  bool _docsExpanded = false;
+  final Set<int> _expandedFacts = {};
+  final Set<String> _kBusyDocs = {};
+
   String _selectedPlan = 'monthly';
   bool _syncing = false;
   bool _recovering = false;
@@ -210,6 +235,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _notifs = widget.notificationService ?? LocalReminderNotificationService();
     _google = widget.googleSignInService ?? GoogleSignInService();
     _hc = widget.healthConnectService ?? HealthConnectService();
+    _kStore = widget.knowledgeStore ?? KnowledgeExtractionStore.instance;
+    _kPicker = widget.knowledgePicker ?? KnowledgeDocumentPicker();
+    _kService = KnowledgeDocumentService(backend: _backend, store: _kStore);
     _load();
   }
 
@@ -245,6 +273,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _contextSeeded = true;
       }
     });
+    // Round 65 — load the account-bound extracted-text cache, then
+    // backfill any document that has no cached text (native
+    // SettingsViewModel.init → backfillDocumentExtractions). The
+    // account email comes from the session (widget email first,
+    // then the backend's stored email); any failure here leaves an
+    // empty cache — documents still list from the pull, and their
+    // extraction state reads pending instead of crashing the page.
+    try {
+      var email = widget.email;
+      if (email == null || email.isEmpty) {
+        try {
+          email = await _backend.readEmail();
+        } catch (_) {}
+      }
+      await _kStore.load(email);
+      if (mounted) setState(() {});
+      unawaited(_backfillKnowledgeDocs());
+    } catch (_) {}
     // Round 51 — Connected Apps state loads on its OWN path, never
     // inside the Future.wait above: that wait fails atomically, so
     // one throwing read (the real backend's pull starts with an
@@ -2113,6 +2159,575 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _pushProfile({'knowledgeBase': raw});
   }
 
+  // ── Round 65 — Digital Knowledge Extraction flows ─────────────
+  //
+  // Native order (LogRepository.ingestDocumentFile): the document
+  // is SAVED first (here: verified server save through
+  // KnowledgeDocumentService), extraction runs after; a failed
+  // extraction leaves the document listed with an honest failed
+  // state — never a fake "AI read".
+
+  /// Native backfill: extract every listed document that has no
+  /// cached text yet, one at a time, refreshing the tiles as each
+  /// lands. Failures land in the store as the failed state.
+  Future<void> _backfillKnowledgeDocs() async {
+    for (final doc in _data.documents) {
+      if (_kStore.stateFor(doc.id) == KnowledgeExtractionState.ready) {
+        continue;
+      }
+      if (_kBusyDocs.contains(doc.id)) continue;
+      _kBusyDocs.add(doc.id);
+      try {
+        await _kService.backfill(doc);
+      } catch (_) {
+        await _kStore.markFailed(doc.id);
+      } finally {
+        _kBusyDocs.remove(doc.id);
+      }
+      if (!mounted) return;
+      setState(() {});
+    }
+  }
+
+  Future<void> _refreshDocumentsFromPull() async {
+    try {
+      final docs = await _kService.freshDocuments();
+      if (!mounted) return;
+      setState(() => _data = _data.copyWith(documents: docs));
+    } on KnowledgeSyncException {
+      rethrow;
+    }
+  }
+
+  /// "Select Document / PDF" (native ingestFile → ingestDocumentFile).
+  Future<void> _pickAndAddDocument() async {
+    setState(() => _kError = null);
+    PickedKnowledgeFile? picked;
+    try {
+      picked = await _kPicker.pickDocument();
+    } on KnowledgePickException catch (e) {
+      if (!mounted) return;
+      setState(() => _kError =
+          '${e.message ?? "Couldn't open the file picker."} [${e.code}]');
+      return;
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _kError = "Couldn't open the file picker. [UNKNOWN]");
+      return;
+    }
+    if (picked == null || !mounted) return; // user cancelled
+    setState(() => _kProcessing = true);
+    try {
+      final doc = await _kService.addDocument(
+        name: picked.name,
+        mimeType: picked.mimeType,
+        base64Data: picked.base64Data,
+      );
+      await _refreshDocumentsFromPull();
+      if (!mounted) return;
+      setState(() => _kProcessing = false);
+      // Extraction after the verified save, like native's
+      // background extraction task.
+      _kBusyDocs.add(doc.id);
+      final state = await _kService.extractFromBytes(doc, picked.base64Data);
+      _kBusyDocs.remove(doc.id);
+      if (!mounted) return;
+      setState(() {
+        if (state == KnowledgeExtractionState.failed) {
+          _kError =
+              'Saved, but Gemini could not extract text from ${doc.name}. You can retry from the document list.';
+        }
+      });
+    } on KnowledgeSyncException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _kProcessing = false;
+        _kError = 'Could not save the document. [${e.code}]';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _kProcessing = false;
+        _kError = 'Could not save the document. [UNKNOWN]';
+      });
+    }
+  }
+
+  /// "Add Text Note" dialog (native copy): Title (Optional) +
+  /// "Note content / Text message", Process saves the note as a
+  /// text/plain document (native ingestTextNote) and extracts it —
+  /// for plain text the extraction call transcribes the note
+  /// itself, exactly as native's process-document call does.
+  Future<void> _showTextNoteDialog() async {
+    final titleC = TextEditingController();
+    final bodyC = TextEditingController();
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: NotelColors.surface,
+          title: const Text('Add Text Note',
+              style: TextStyle(
+                  color: NotelColors.textPrimary,
+                  fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                key: const ValueKey('note_title_field'),
+                controller: titleC,
+                onChanged: (_) => setLocal(() {}),
+                style: const TextStyle(color: NotelColors.textPrimary),
+                decoration:
+                    const InputDecoration(labelText: 'Title (Optional)'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                key: const ValueKey('note_body_field'),
+                controller: bodyC,
+                minLines: 3,
+                maxLines: 6,
+                onChanged: (_) => setLocal(() {}),
+                style: const TextStyle(color: NotelColors.textPrimary),
+                decoration: const InputDecoration(
+                    labelText: 'Note content / Text message'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel',
+                  style: TextStyle(color: NotelColors.textSecondary)),
+            ),
+            TextButton(
+              key: const ValueKey('note_process_button'),
+              onPressed: bodyC.text.trim().isEmpty
+                  ? null
+                  : () => Navigator.of(ctx).pop(),
+              child: const Text('Process',
+                  style: TextStyle(color: NotelColors.primary)),
+            ),
+          ],
+        ),
+      ),
+    );
+    final body = bodyC.text;
+    final title = titleC.text.trim().isEmpty ? 'Text Note' : titleC.text.trim();
+    // Controllers intentionally not disposed — the dialog's exit
+    // animation still rebuilds its fields (see the nickname
+    // dialog note at _showEditJoinedEntryDialog).
+    if (body.trim().isEmpty || !mounted) return;
+    setState(() {
+      _kError = null;
+      _kProcessing = true;
+    });
+    try {
+      final b64 = base64Encode(utf8.encode(body));
+      final doc = await _kService.addDocument(
+        name: title,
+        mimeType: 'text/plain',
+        base64Data: b64,
+      );
+      await _refreshDocumentsFromPull();
+      if (!mounted) return;
+      setState(() => _kProcessing = false);
+      _kBusyDocs.add(doc.id);
+      final state = await _kService.extractFromBytes(doc, b64);
+      _kBusyDocs.remove(doc.id);
+      if (!mounted) return;
+      setState(() {
+        if (state == KnowledgeExtractionState.failed) {
+          _kError =
+              'Saved, but Gemini could not extract text from $title. You can retry from the document list.';
+        }
+      });
+    } on KnowledgeSyncException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _kProcessing = false;
+        _kError = 'Could not save the note. [${e.code}]';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _kProcessing = false;
+        _kError = 'Could not save the note. [UNKNOWN]';
+      });
+    }
+  }
+
+  Future<void> _retryExtraction(KnowledgeDocumentMeta doc) async {
+    if (_kBusyDocs.contains(doc.id)) return;
+    setState(() {
+      _kError = null;
+      _kBusyDocs.add(doc.id);
+    });
+    try {
+      // Clear the failed marker by attempting fresh: backfill goes
+      // through the server file data like native's retry path.
+      final state = await _kService.backfill(doc);
+      if (!mounted) return;
+      setState(() {
+        if (state == KnowledgeExtractionState.failed) {
+          _kError =
+              'Gemini could not extract text from ${doc.name}. [EXTRACTION_FAILED]';
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _kError =
+          'Gemini could not extract text from ${doc.name}. [EXTRACTION_FAILED]');
+    } finally {
+      _kBusyDocs.remove(doc.id);
+      if (mounted) setState(() {});
+    }
+  }
+
+  /// Per-document delete (native DocumentTile confirm dialog).
+  Future<void> _confirmDeleteDocument(KnowledgeDocumentMeta doc) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: NotelColors.surface,
+        title: const Text('Trash File?',
+            style: TextStyle(
+                color: NotelColors.textPrimary,
+                fontWeight: FontWeight.bold)),
+        content: Text(
+            "Are you sure you want to permanently delete '${doc.name}'?",
+            style: const TextStyle(color: NotelColors.textSecondary)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel',
+                style: TextStyle(color: NotelColors.textSecondary)),
+          ),
+          TextButton(
+            key: ValueKey('confirm_delete_doc_${doc.id}'),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete',
+                style: TextStyle(
+                    color: NotelColors.error, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await _kService.deleteDocument(doc.id);
+      await _refreshDocumentsFromPull();
+      if (!mounted) return;
+      setState(() => _kError = null);
+    } on KnowledgeSyncException catch (e) {
+      if (!mounted) return;
+      setState(
+          () => _kError = 'Could not delete ${doc.name}. [${e.code}]');
+    } catch (_) {
+      if (!mounted) return;
+      setState(
+          () => _kError = 'Could not delete ${doc.name}. [UNKNOWN]');
+    }
+  }
+
+  /// "Clear All Files" (native confirm dialog copy).
+  Future<void> _confirmClearAllDocuments() async {
+    final docs = _data.documents;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: NotelColors.surface,
+        title: const Text('Clear All Files?',
+            style: TextStyle(
+                color: NotelColors.textPrimary,
+                fontWeight: FontWeight.bold)),
+        content: Text(
+            'This will permanently delete all ${docs.length} uploaded files. This cannot be undone.',
+            style: const TextStyle(color: NotelColors.textSecondary)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel',
+                style: TextStyle(color: NotelColors.textSecondary)),
+          ),
+          TextButton(
+            key: const ValueKey('confirm_clear_all_docs'),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete All',
+                style: TextStyle(
+                    color: NotelColors.error, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await _kService.clearAllDocuments();
+      await _refreshDocumentsFromPull();
+      if (!mounted) return;
+      setState(() => _kError = null);
+    } on KnowledgeSyncException catch (e) {
+      if (!mounted) return;
+      setState(() => _kError = 'Could not clear all files. [${e.code}]');
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _kError = 'Could not clear all files. [UNKNOWN]');
+    }
+  }
+
+  /// The document viewer (native FileViewerScreen): file name, the
+  /// honest preview for the MIME family, and the AI Extracted
+  /// Content panel with its states and the extracted-text editor.
+  /// PDF raster preview is native PdfRenderer — no Dart/bridge
+  /// equivalent exists in this app, so PDFs show native's own
+  /// fallback line for unpreviewable types plus the extracted
+  /// panel (see the round report's STOPPED item).
+  Future<void> _openDocument(KnowledgeDocumentMeta doc) async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          final state = _kStore.stateFor(doc.id);
+          final text = _kStore.textFor(doc.id);
+          return AlertDialog(
+            key: ValueKey('doc_viewer_${doc.id}'),
+            backgroundColor: NotelColors.surface,
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(doc.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: NotelColors.textPrimary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15)),
+                if (state == KnowledgeExtractionState.ready)
+                  const Text('AI read · tap below to view or edit',
+                      style: TextStyle(
+                          color: NotelColors.success, fontSize: 10)),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (doc.mimeType == 'text/plain')
+                    FutureBuilder<String?>(
+                      future: _backend.fetchDocumentData(doc.id),
+                      builder: (ctx2, snap) {
+                        final raw = snap.data;
+                        String shown;
+                        if (raw != null) {
+                          try {
+                            shown = utf8.decode(base64Decode(raw));
+                          } catch (_) {
+                            shown = 'Could not read file.';
+                          }
+                        } else if (snap.connectionState ==
+                            ConnectionState.done) {
+                          shown = 'Could not read file.';
+                        } else {
+                          shown = '';
+                        }
+                        return Text(shown,
+                            style: const TextStyle(
+                                color: NotelColors.textSecondary,
+                                fontSize: 13,
+                                height: 1.5));
+                      },
+                    )
+                  else if (doc.mimeType.startsWith('image/'))
+                    FutureBuilder<String?>(
+                      future: _backend.fetchDocumentData(doc.id),
+                      builder: (ctx2, snap) {
+                        final raw = snap.data;
+                        if (raw == null) {
+                          return const Text('Preview not available for this file type.',
+                              style: TextStyle(
+                                  color: NotelColors.textSecondary));
+                        }
+                        try {
+                          return Image.memory(base64Decode(raw),
+                              fit: BoxFit.contain);
+                        } catch (_) {
+                          return const Text('Preview not available for this file type.',
+                              style: TextStyle(
+                                  color: NotelColors.textSecondary));
+                        }
+                      },
+                    )
+                  else ...[
+                    const Text('Preview not available for this file type.',
+                        style:
+                            TextStyle(color: NotelColors.textSecondary)),
+                    Text('Type: ${doc.mimeType}',
+                        style: const TextStyle(
+                            color: NotelColors.textSecondary,
+                            fontSize: 12)),
+                  ],
+                  const SizedBox(height: 16),
+                  const Row(
+                    children: [
+                      Icon(Icons.auto_awesome,
+                          color: NotelColors.primary, size: 18),
+                      SizedBox(width: 8),
+                      Text('AI Extracted Content',
+                          style: TextStyle(
+                              color: NotelColors.textPrimary,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14)),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    switch (state) {
+                      KnowledgeExtractionState.ready =>
+                        '${text?.length ?? 0} characters extracted',
+                      KnowledgeExtractionState.failed =>
+                        'No content could be extracted',
+                      KnowledgeExtractionState.pending =>
+                        'Processing… check back shortly',
+                    },
+                    style: TextStyle(
+                        color: state == KnowledgeExtractionState.ready
+                            ? NotelColors.success
+                            : NotelColors.textSecondary,
+                        fontSize: 11),
+                  ),
+                  const SizedBox(height: 8),
+                  if (state == KnowledgeExtractionState.pending) ...[
+                    const Row(
+                      children: [
+                        SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: NotelColors.primary),
+                        ),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Gemini is reading this file…',
+                                  style: TextStyle(
+                                      color: NotelColors.textPrimary,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500)),
+                              Text(
+                                  'This happens once. Pull down to refresh after a moment.',
+                                  style: TextStyle(
+                                      color: NotelColors.textSecondary,
+                                      fontSize: 11)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton(
+                      key: ValueKey('doc_extract_now_${doc.id}'),
+                      onPressed: () async {
+                        await _retryExtraction(doc);
+                        setLocal(() {});
+                      },
+                      child: const Text('Extract now',
+                          style: TextStyle(color: NotelColors.primary)),
+                    ),
+                  ] else if (state == KnowledgeExtractionState.failed) ...[
+                    const Text('No readable content was found in this file.',
+                        style:
+                            TextStyle(color: NotelColors.textSecondary, fontSize: 13)),
+                    const SizedBox(height: 8),
+                    TextButton(
+                      key: ValueKey('doc_retry_extract_${doc.id}'),
+                      onPressed: () async {
+                        await _retryExtraction(doc);
+                        setLocal(() {});
+                      },
+                      child: const Text('Retry extraction',
+                          style: TextStyle(color: NotelColors.primary)),
+                    ),
+                  ] else ...[
+                    Text(text ?? '',
+                        key: ValueKey('doc_extracted_text_${doc.id}'),
+                        style: const TextStyle(
+                            color: NotelColors.textPrimary,
+                            fontSize: 13,
+                            height: 1.4)),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              if (state == KnowledgeExtractionState.ready)
+                TextButton(
+                  key: ValueKey('doc_edit_extract_${doc.id}'),
+                  onPressed: () async {
+                    final editC =
+                        TextEditingController(text: text ?? '');
+                    final saved = await showDialog<bool>(
+                      context: ctx,
+                      builder: (ectx) => AlertDialog(
+                        backgroundColor: NotelColors.surface,
+                        title: const Text('Edit extracted text',
+                            style: TextStyle(
+                                color: NotelColors.textPrimary,
+                                fontWeight: FontWeight.bold)),
+                        content: TextField(
+                          key: ValueKey('doc_edit_field_${doc.id}'),
+                          controller: editC,
+                          minLines: 4,
+                          maxLines: 10,
+                          style: const TextStyle(
+                              color: NotelColors.textPrimary),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () =>
+                                Navigator.of(ectx).pop(false),
+                            child: const Text('Cancel',
+                                style: TextStyle(
+                                    color: NotelColors.textSecondary)),
+                          ),
+                          TextButton(
+                            key: ValueKey('doc_edit_save_${doc.id}'),
+                            onPressed: () =>
+                                Navigator.of(ectx).pop(true),
+                            child: const Text('Save',
+                                style: TextStyle(
+                                    color: NotelColors.primary)),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (saved == true) {
+                      await _kStore.saveEditedText(doc.id, editC.text);
+                      setLocal(() {});
+                      if (mounted) setState(() {});
+                    }
+                    // Controller intentionally not disposed (exit
+                    // animation rebuilds the field — see above).
+                  },
+                  child: const Text('Edit',
+                      style: TextStyle(color: NotelColors.primary)),
+                ),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Close',
+                    style: TextStyle(color: NotelColors.textSecondary)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _showAddUpdateDialog() async {
     final noteC = TextEditingController();
     await showDialog<void>(
@@ -2841,58 +3456,337 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ],
       _sectionLabel('FILE KNOWLEDGE BASE'),
       _card([
-        const Text('Digital Knowledge Extraction',
-            style: TextStyle(
-                color: NotelColors.textPrimary, fontWeight: FontWeight.w500)),
-        const SizedBox(height: 8),
-        if (facts.isEmpty)
-          const Text('No extracted facts yet.',
+        // Native card header (:1787): title + "On-device" badge.
+        // The badge is native's copy; extraction itself is a
+        // server Gemini call (see the trace) — the copy is kept
+        // verbatim because native source is the spec for copy.
+        const Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Digital Knowledge Extraction',
+                style: TextStyle(
+                    color: NotelColors.textPrimary,
+                    fontWeight: FontWeight.w500)),
+            Row(
+              children: [
+                Icon(Icons.storage, size: 12, color: NotelColors.textSecondary),
+                SizedBox(width: 4),
+                Text('On-device',
+                    style: TextStyle(
+                        color: NotelColors.textSecondary,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500)),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        const Text(
+            'Upload notes or PDFs to extract permanent knowledge (patterns, triggers, facts) that Gemini will remember.',
+            style:
+                TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
+        const SizedBox(height: 16),
+        if (_kProcessing)
+          const Row(
+            children: [
+              SizedBox(
+                width: 32,
+                height: 32,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: NotelColors.primary),
+              ),
+              SizedBox(width: 12),
+              Text('Gemini is reading your files...',
+                  style: TextStyle(
+                      color: NotelColors.textPrimary, fontSize: 14)),
+            ],
+          )
+        else ...[
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              key: const ValueKey('select_document_button'),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: NotelColors.surfaceHigh,
+                  foregroundColor: NotelColors.textPrimary),
+              onPressed: _pickAndAddDocument,
+              icon: const Icon(Icons.upload_file, color: NotelColors.primary),
+              label: const Text('Select Document / PDF'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              key: const ValueKey('add_text_note_button'),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: NotelColors.surfaceHigh,
+                  foregroundColor: NotelColors.textPrimary),
+              onPressed: _showTextNoteDialog,
+              icon: const Icon(Icons.post_add, color: NotelColors.primary),
+              label: const Text('Add Text Note'),
+            ),
+          ),
+        ],
+        if (_kError != null) ...[
+          const SizedBox(height: 8),
+          Text(_kError!,
+              key: const ValueKey('knowledge_process_error'),
               style:
-                  TextStyle(color: NotelColors.textSecondary, fontSize: 12))
-        else
-          ...facts.asMap().entries.map((e) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(e.value,
-                          style: const TextStyle(
-                              color: NotelColors.textPrimary, fontSize: 13)),
-                    ),
-                    IconButton(
-                      key: ValueKey('edit_fact_${e.key}'),
-                      icon: const Icon(Icons.edit,
-                          size: 18, color: NotelColors.textSecondary),
-                      onPressed: () => _showEditJoinedEntryDialog(
-                        title: 'Edit Fact',
-                        initial: e.value,
-                        fieldKey: 'fact_edit_field',
-                        saveKey: 'fact_edit_save',
-                        onSave: (text) {
-                          final list = [...facts];
-                          list[e.key] = text;
-                          _saveKnowledgeBase(list);
-                        },
+                  const TextStyle(color: NotelColors.error, fontSize: 12)),
+        ],
+        // Extracted Facts (native: only when knowledgeBase non-blank).
+        if (facts.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          InkWell(
+            key: const ValueKey('facts_toggle'),
+            onTap: () => setState(() => _factsExpanded = !_factsExpanded),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Extracted Facts',
+                    style: TextStyle(
+                        color: NotelColors.primary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold)),
+                Icon(
+                    _factsExpanded
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    color: NotelColors.primary),
+              ],
+            ),
+          ),
+          if (_factsExpanded) ...[
+            const SizedBox(height: 8),
+            ...facts.asMap().entries.map((e) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text('Extraction ${e.key + 1}',
+                                style: const TextStyle(
+                                    color: NotelColors.primary,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600)),
+                          ),
+                          IconButton(
+                            key: ValueKey('edit_fact_${e.key}'),
+                            icon: const Icon(Icons.edit,
+                                size: 16, color: NotelColors.primary),
+                            onPressed: () => _showEditJoinedEntryDialog(
+                              title: 'Edit Extracted Fact',
+                              initial: e.value,
+                              fieldKey: 'fact_edit_field',
+                              saveKey: 'fact_edit_save',
+                              onSave: (text) {
+                                final list = [...facts];
+                                list[e.key] = text;
+                                _saveKnowledgeBase(list);
+                              },
+                            ),
+                          ),
+                          IconButton(
+                            key: ValueKey('delete_fact_${e.key}'),
+                            icon: const Icon(Icons.delete,
+                                size: 16, color: NotelColors.error),
+                            onPressed: () {
+                              final list = [...facts]..removeAt(e.key);
+                              _saveKnowledgeBase(list);
+                            },
+                          ),
+                        ],
                       ),
-                    ),
-                    IconButton(
-                      key: ValueKey('delete_fact_${e.key}'),
-                      icon: const Icon(Icons.delete,
-                          size: 18, color: NotelColors.error),
-                      onPressed: () {
-                        final list = [...facts]..removeAt(e.key);
-                        _saveKnowledgeBase(list);
-                      },
-                    ),
+                      InkWell(
+                        onTap: () => setState(() {
+                          if (_expandedFacts.contains(e.key)) {
+                            _expandedFacts.remove(e.key);
+                          } else {
+                            _expandedFacts.add(e.key);
+                          }
+                        }),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(e.value.trim(),
+                                maxLines:
+                                    _expandedFacts.contains(e.key) ? null : 3,
+                                overflow: _expandedFacts.contains(e.key)
+                                    ? TextOverflow.visible
+                                    : TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    color: NotelColors.textPrimary,
+                                    fontSize: 13,
+                                    height: 18 / 13)),
+                            if (!_expandedFacts.contains(e.key)) ...[
+                              const SizedBox(height: 4),
+                              const Text('Tap to expand',
+                                  style: TextStyle(
+                                      color: NotelColors.textSecondary,
+                                      fontSize: 11)),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                key: const ValueKey('clear_knowledge_button'),
+                onPressed: () => _saveKnowledgeBase(const []),
+                child: const Text('Clear Knowledge Base',
+                    style:
+                        TextStyle(color: NotelColors.error, fontSize: 12)),
+              ),
+            ),
+          ],
+        ],
+        // Original Documents (native: only when documents exist).
+        if (d.documents.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          const Divider(color: NotelColors.divider, thickness: 0.5),
+          const SizedBox(height: 12),
+          InkWell(
+            key: const ValueKey('documents_toggle'),
+            onTap: () => setState(() => _docsExpanded = !_docsExpanded),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.folder,
+                        color: NotelColors.primary, size: 16),
+                    const SizedBox(width: 6),
+                    Text('Original Documents (${d.documents.length})',
+                        style: const TextStyle(
+                            color: NotelColors.primary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold)),
                   ],
                 ),
-              )),
-        const SizedBox(height: 8),
-        const Text(
-            'Uploading documents and text notes for extraction runs in the native app and is not available in the Flutter Lab yet.',
-            style:
-                TextStyle(color: NotelColors.textSecondary, fontSize: 11)),
+                Icon(
+                    _docsExpanded
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    color: NotelColors.primary),
+              ],
+            ),
+          ),
+          if (_docsExpanded) ...[
+            const SizedBox(height: 8),
+            ...d.documents.map((doc) {
+              final state = _kStore.stateFor(doc.id);
+              final busy = _kBusyDocs.contains(doc.id);
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: InkWell(
+                  key: ValueKey('doc_tile_${doc.id}'),
+                  onTap: () => _openDocument(doc),
+                  child: Row(
+                    children: [
+                      Stack(
+                        children: [
+                          Icon(
+                            doc.mimeType == 'application/pdf'
+                                ? Icons.picture_as_pdf
+                                : (doc.mimeType.startsWith('image/')
+                                    ? Icons.image
+                                    : Icons.description),
+                            color: NotelColors.primary,
+                            size: 28,
+                          ),
+                          if (state == KnowledgeExtractionState.ready)
+                            const Positioned(
+                              right: 0,
+                              top: 0,
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                    color: NotelColors.success,
+                                    shape: BoxShape.circle),
+                                child: SizedBox(width: 10, height: 10),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(doc.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    color: NotelColors.textPrimary,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500)),
+                            Row(
+                              children: [
+                                Text(doc.typeLabel,
+                                    style: const TextStyle(
+                                        color: NotelColors.textSecondary,
+                                        fontSize: 10)),
+                                const SizedBox(width: 6),
+                                if (busy || state == KnowledgeExtractionState.pending)
+                                  const Text('• Extracting…',
+                                      style: TextStyle(
+                                          color: NotelColors.textSecondary,
+                                          fontSize: 10))
+                                else if (state == KnowledgeExtractionState.ready)
+                                  const Text('• AI read',
+                                      style: TextStyle(
+                                          color: NotelColors.success,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w500))
+                                else
+                                  const Text('• Extraction failed',
+                                      style: TextStyle(
+                                          color: NotelColors.error,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w500)),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        key: ValueKey('delete_doc_${doc.id}'),
+                        icon: const Icon(Icons.delete,
+                            size: 18, color: NotelColors.error),
+                        onPressed: () => _confirmDeleteDocument(doc),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+            InkWell(
+              key: const ValueKey('clear_all_docs_button'),
+              onTap: _confirmClearAllDocuments,
+              child: const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.delete_sweep,
+                        color: NotelColors.error, size: 14),
+                    SizedBox(width: 4),
+                    Text('Clear All Files',
+                        style: TextStyle(
+                            color: NotelColors.error,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
       ]),
       const SizedBox(height: 24),
       _sectionLabel('AI CONFIGURATION'),

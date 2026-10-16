@@ -596,9 +596,59 @@ class TabsBackend {
 
   /// Round 48 — push knowledge documents, mirroring native
   /// `SyncManager.syncDocuments` → `POST api/sync/documents` with
-  /// `SyncDocumentsRequest{documents}` (JotApi.kt). True on HTTP 200.
-  Future<bool> syncDocuments(List<Map<String, dynamic>> documents) =>
-      _postJson('/api/sync/documents', {'documents': documents});
+  /// `SyncDocumentsRequest{documents}` (JotApi.kt).
+  ///
+  /// Round 65 — upgraded to the Round 57 verified pattern: true
+  /// only when the restored handler's `{synced: n}` accounts for
+  /// EVERY row sent. The handler counts rows an idempotent retry
+  /// already stored, so an exact match is the honest success test;
+  /// a 200 without a usable count (or a partial count) fails
+  /// closed — the pre-R65 status-only check could report a save
+  /// the server never stored.
+  Future<bool> syncDocuments(List<Map<String, dynamic>> documents) async {
+    final res =
+        await _postJsonMap('/api/sync/documents', {'documents': documents});
+    return _syncedAll(res, documents.length);
+  }
+
+  /// Round 65 — delete one knowledge document, mirroring native
+  /// `LogRepository.deleteDocument` → `DELETE api/sync/documents/{id}`
+  /// (JotApi.kt). True on HTTP 200.
+  Future<bool> deleteDocument(String id) =>
+      _delete('/api/sync/documents/${Uri.encodeComponent(id)}');
+
+  /// Round 65 — fetch one document's base64 file data, mirroring
+  /// native's restore read `GET api/sync/documents/{id}` decoded as
+  /// `AiResponse<String>` (JotApi.kt). The restored handler carries
+  /// the bytes under BOTH `result` (the field native reads) and
+  /// `fileData`; either is accepted. Null on any failure.
+  Future<String?> fetchDocumentData(String id) async {
+    final res =
+        await _getJson('/api/sync/documents/${Uri.encodeComponent(id)}');
+    if (res == null) return null;
+    final result = res['result'];
+    if (result is String && result.isNotEmpty) return result;
+    final fileData = res['fileData'];
+    if (fileData is String && fileData.isNotEmpty) return fileData;
+    return null;
+  }
+
+  /// Round 65 — extraction, mirroring native
+  /// `GeminiService.processDocumentFile` → `POST api/ai/process-document`
+  /// with `ProcessDocumentRequest{mimeType, base64Data}` (JotApi.kt)
+  /// → `AiResponse<String>.result`: the Gemini transcription of the
+  /// document, produced server-side. Returns the text (possibly
+  /// empty when nothing readable was found), or null on any failure
+  /// (transport, non-200, malformed body) — callers surface the
+  /// failure as an honest extraction state, never a fake ready.
+  Future<String?> processDocument(String mimeType, String base64Data) async {
+    final res = await postAi('/api/ai/process-document', {
+      'mimeType': mimeType,
+      'base64Data': base64Data,
+    });
+    final result = res?['result'];
+    return result is String ? result : null;
+  }
 
   /// Authenticated POST returning the decoded JSON body on HTTP 200,
   /// null on any failure (transport, non-200, malformed body).

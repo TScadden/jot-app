@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/calendar_service.dart';
 import 'package:tabs_lab/src/data/coach_memory_store.dart';
+import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/medications.dart';
@@ -970,10 +971,22 @@ String buildCoachHealthContext({
   List<Map<String, dynamic>> entries = const [],
   List<Map<String, dynamic>> categories = const [],
   CoachHealthSnapshot? health,
+  String knowledgeDocumentsText = '',
   required DateTime now,
 }) {
   final p = profile ?? const <String, dynamic>{};
   var logLines = coachLogDigestLines(entries, categories, now: now);
+  // Round 65: extracted document texts (native's report path joins
+  // them into the AI context the same way). They ride as the
+  // LOWEST-priority section: chunks (split on the "\n\n" joins) are
+  // dropped from the end before anything else is truncated, so the
+  // extracted text can never displace clinician updates or the
+  // fresh health sections under the budget below.
+  var docChunks = knowledgeDocumentsText
+      .split('\n\n')
+      .map((s) => s.trim())
+      .where((s) => s.isNotEmpty)
+      .toList();
   // A 0-minute night is a failed read, never a real night — the
   // assembler enforces it too, not just the loader.
   var nights = [
@@ -1174,11 +1187,23 @@ String buildCoachHealthContext({
       sections.add(
           'Recent logs, last 14 days, most relevant first:\n${logLines.join('\n')}');
     }
+
+    // Round 65: knowledge documents LAST (lowest priority — see
+    // the docChunks note at the top of this function).
+    if (docChunks.isNotEmpty) {
+      sections.add(
+          'Knowledge documents (extracted):\n${docChunks.join('\n\n')}');
+    }
     return sections.join('\n\n');
   }
 
   var result = assemble();
-  // Budget: truncate the log digest first.
+  // Budget: drop extracted-document chunks first (Round 65), then
+  // truncate the log digest, then the oldest sleep nights.
+  while (result.length > coachHealthContextBudget && docChunks.isNotEmpty) {
+    docChunks = docChunks.sublist(0, docChunks.length - 1);
+    result = assemble();
+  }
   while (result.length > coachHealthContextBudget && logLines.isNotEmpty) {
     logLines = logLines.sublist(0, logLines.length - 1);
     result = assemble();
@@ -1526,6 +1551,11 @@ class HealthCoachScreen extends StatefulWidget {
   /// Injectable coach-memory store + account binding (Round 55
   /// Step 2). Null in production.
   final CoachMemoryStore? coachMemoryStore;
+
+  /// Injectable extracted-text store (Round 65), warmed here so the
+  /// chat's send path can read its mirror synchronously. Null in
+  /// production.
+  final KnowledgeExtractionStore? knowledgeStore;
   final String? accountEmail;
   /// Injectable calendar bridge (Round 54), forwarded to the chat
   /// screen. Null in production.
@@ -1541,6 +1571,7 @@ class HealthCoachScreen extends StatefulWidget {
       this.backend,
       this.notificationService,
       this.coachMemoryStore,
+      this.knowledgeStore,
       this.accountEmail,
       this.calendarService,
       this.settingsStore});
@@ -1635,6 +1666,14 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
             if (mounted) setState(() => _memoryFacts = facts);
           }));
         } catch (_) {}
+        // Round 65: warm the extracted-text mirror the same way,
+        // so a chat opened from here can include document text
+        // without the send path awaiting storage IO.
+        try {
+          final kStore =
+              widget.knowledgeStore ?? KnowledgeExtractionStore.instance;
+          unawaited(kStore.load(_resolvedAccountEmail));
+        } catch (_) {}
       }
     } catch (_) {
       if (!mounted) return;
@@ -1657,6 +1696,7 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
           backend: _backend,
           notificationService: widget.notificationService,
           coachMemoryStore: widget.coachMemoryStore,
+          knowledgeStore: widget.knowledgeStore,
           accountEmail: _resolvedAccountEmail ?? widget.accountEmail,
           calendarService: _calendar,
           calendarConnected: _calConnected,
@@ -1672,6 +1712,7 @@ class _HealthCoachScreenState extends State<HealthCoachScreen> {
               : null,
           pullEntries: _pullEntries(),
           pullCategories: _pullCategories(),
+          pullDocuments: KnowledgeDocumentMeta.listFromPull(_pull),
         ),
       ),
     );
@@ -2263,6 +2304,14 @@ class CoachChatScreen extends StatefulWidget {
   /// production (the shared device-local instance is used).
   final CoachMemoryStore? coachMemoryStore;
 
+  /// Injectable extracted-text store (Round 65). Null in
+  /// production (the shared device-local instance is used).
+  final KnowledgeExtractionStore? knowledgeStore;
+
+  /// Knowledge documents from the pull (Round 65), newest first —
+  /// their cached extracted texts join the coach context.
+  final List<KnowledgeDocumentMeta> pullDocuments;
+
   /// The account email the memory store is bound to. Null resolves
   /// from the stored session at first use.
   final String? accountEmail;
@@ -2294,6 +2343,7 @@ class CoachChatScreen extends StatefulWidget {
     this.notificationService,
     this.healthConnectService,
     this.coachMemoryStore,
+    this.knowledgeStore,
     this.accountEmail,
     this.calendarService,
     this.calendarConnected = false,
@@ -2305,6 +2355,7 @@ class CoachChatScreen extends StatefulWidget {
     this.profile,
     this.pullEntries = const [],
     this.pullCategories = const [],
+    this.pullDocuments = const [],
   });
 
   @override
@@ -2589,11 +2640,32 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
     } catch (_) {
       snapshot = const CoachHealthSnapshot();
     }
+    // Round 65: the extracted document texts join through the
+    // SAME R55 assembler (lowest-priority section — see
+    // buildCoachHealthContext), never a second path. The store is
+    // owner-bound; a load failure simply omits the section. The
+    // top-level knowledgeBase request field stays exactly native
+    // (the profile facts string, CoachViewModel.kt:1418).
+    var knowledgeDocsText = '';
+    try {
+      final store = widget.knowledgeStore ?? KnowledgeExtractionStore.instance;
+      final email = await _accountEmail();
+      // Synchronous owner-gated mirror ONLY — the send path never
+      // awaits storage IO (the CoachMemoryStore contract, R55).
+      // The mirror is warmed by the History screen's load before
+      // any chat opens and by Settings' loads.
+      knowledgeDocsText =
+          store.joinedCachedTextsFor(email, widget.pullDocuments);
+      unawaited(store.load(email));
+    } catch (_) {
+      knowledgeDocsText = '';
+    }
     _cachedHealthContext = buildCoachHealthContext(
       profile: widget.profile,
       entries: widget.pullEntries,
       categories: widget.pullCategories,
       health: snapshot,
+      knowledgeDocumentsText: knowledgeDocsText,
       now: DateTime.now(),
     );
     _cachedBodyLoadHistory = buildCoachBodyLoadHistory(
@@ -3390,15 +3462,35 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
       final sep = uploadMsg.content.indexOf('\n\n');
       final extracted =
           sep >= 0 ? uploadMsg.content.substring(sep + 2) : '';
+      final docId = newUuid();
+      // Round 65: syncDocuments now verifies the server's
+      // `{synced: n}` accounts for the row (R57 pattern), so a
+      // success here is a verified save, not a status-only 200.
       final saved = await _backend.syncDocuments([
         {
-          'id': newUuid(),
+          'id': docId,
           'name': fileName,
           'mimeType': 'text/plain',
           'fileData': base64Encode(utf8.encode(extracted)),
           'createdAt': DateTime.now().millisecondsSinceEpoch,
         },
       ]);
+      if (saved && extracted.trim().isNotEmpty) {
+        // Native ingestPreExtractedDocumentFile stores the
+        // already-extracted text ON the document (local Room);
+        // the Lab's equivalent is the account-bound extraction
+        // cache, so the approved file shows "AI read" in Settings
+        // and feeds the coach context like any other document.
+        try {
+          final store =
+              widget.knowledgeStore ?? KnowledgeExtractionStore.instance;
+          await store.load(await _accountEmail());
+          await store.saveText(docId, extracted);
+        } catch (_) {
+          // The document itself is saved and verified; a local
+          // cache failure only means a later backfill re-extracts.
+        }
+      }
       return saved
           ? const CoachApprovalOutcome.success()
           : const CoachApprovalOutcome.failure();

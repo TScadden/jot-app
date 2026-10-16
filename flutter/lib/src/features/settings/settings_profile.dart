@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 
@@ -43,6 +44,12 @@ class SettingsProfileData {
   final String conditionsRaw;
   final List<QuickLogInsight> insights;
 
+  /// Round 65 — knowledge documents from the pull's top-level
+  /// `documents` field (metadata only; file bytes move through
+  /// GET /api/sync/documents/{id}), newest first — native's
+  /// `knowledgeDocuments` flow (Room ORDER BY createdAt DESC).
+  final List<KnowledgeDocumentMeta> documents;
+
   const SettingsProfileData({
     this.isUnlimited = false,
     this.isAdmin = false,
@@ -69,6 +76,7 @@ class SettingsProfileData {
     this.medicationsRaw = '',
     this.conditionsRaw = '',
     this.insights = const [],
+    this.documents = const [],
   });
 
   /// Native membership copy derivation (SettingsScreen.kt:634-651).
@@ -115,6 +123,7 @@ class SettingsProfileData {
     String? counterHistoryRaw,
     String? medicationsRaw,
     String? conditionsRaw,
+    List<KnowledgeDocumentMeta>? documents,
   }) {
     return SettingsProfileData(
       isUnlimited: isUnlimited,
@@ -142,6 +151,7 @@ class SettingsProfileData {
       counterHistoryRaw: counterHistoryRaw ?? this.counterHistoryRaw,
       medicationsRaw: medicationsRaw ?? this.medicationsRaw,
       conditionsRaw: conditionsRaw ?? this.conditionsRaw,
+      documents: documents ?? this.documents,
       insights: insights,
     );
   }
@@ -189,6 +199,7 @@ class SettingsProfileData {
       counterHistoryRaw: _asRaw(p['counterHistory']),
       medicationsRaw: _asRaw(p['medications']),
       conditionsRaw: _asRaw(p['conditions']),
+      documents: KnowledgeDocumentMeta.listFromPull(body),
       insights: insights,
     );
   }
