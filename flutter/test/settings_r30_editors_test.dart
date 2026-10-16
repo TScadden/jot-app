@@ -233,6 +233,9 @@ void main() {
           'knowledgeBase': 'fact one\n\nfact two',
         });
       await pumpAi(tester, backend);
+      // Round 64 — Past Updates starts collapsed; expand it first.
+      await tester.tap(find.byKey(const ValueKey('past_updates_header')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('delete_protocol_0')));
       await tester.pumpAndSettle();
       expect(backend.profilePushes.last['professionalUpdates'], 'u2');

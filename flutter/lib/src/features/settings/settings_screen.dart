@@ -185,6 +185,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _recovering = false;
   bool _showInsights = false;
   bool _privacyExpanded = false;
+
+  // Round 64 — Past Professional Updates starts COLLAPSED on every
+  // open of the AI & Clinical Advocate page (founder directive),
+  // mirroring Today Summary's collapsed-by-default rule
+  // (today_summary_card.dart: `bool _expanded = false`). View state
+  // only: never persisted, and reset whenever the page is entered,
+  // so it never survives a fresh open of the screen.
+  bool _pastUpdatesExpanded = false;
   String? _deleteError;
 
   final _contextController = TextEditingController();
@@ -513,6 +521,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     setState(() {
       _page = _page == _Page.progressReports ? _Page.aiKnowledge : _Page.main;
+      // Round 64 — entering the AI page fresh always starts with
+      // Past Professional Updates minimized.
+      if (_page == _Page.aiKnowledge) _pastUpdatesExpanded = false;
     });
   }
 
@@ -893,7 +904,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return InkWell(
       key: key,
       onTap: () {
-        setState(() => _page = page);
+        setState(() {
+          _page = page;
+          // Round 64 — entering the AI page fresh always starts
+          // with Past Professional Updates minimized.
+          if (page == _Page.aiKnowledge) _pastUpdatesExpanded = false;
+        });
         // Round 51 — opening Connected Apps re-reads its rows'
         // state, so connections made elsewhere (Google sign-in,
         // the Data Connections screen, another Settings visit's
@@ -2707,50 +2723,118 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           if (updates.isNotEmpty) ...[
             const SizedBox(height: 12),
-            Text('Past $_professionalType Updates',
-                style: const TextStyle(
-                    color: NotelColors.primary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold)),
-            ...updates.asMap().entries.map((e) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Text(e.value,
-                            style: const TextStyle(
-                                color: NotelColors.textPrimary,
-                                fontSize: 13)),
+            // Round 64 — collapsible Past Updates list, collapsed by
+            // default (founder directive). Header pattern mirrors
+            // Today Summary (today_summary_card.dart): a tappable
+            // header row with title + chevron IconButton toggling an
+            // AnimatedSize body; the Add button above stays visible
+            // without expanding anything.
+            InkWell(
+              key: const ValueKey('past_updates_header'),
+              onTap: () => setState(
+                  () => _pastUpdatesExpanded = !_pastUpdatesExpanded),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 48),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Text('Past $_professionalType Updates',
+                              style: const TextStyle(
+                                  color: NotelColors.primary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold)),
+                          const SizedBox(width: 6),
+                          Text('(${updates.length})',
+                              key: const ValueKey('past_updates_count'),
+                              style: const TextStyle(
+                                  color: NotelColors.textSecondary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold)),
+                        ],
                       ),
-                      IconButton(
-                        key: ValueKey('edit_protocol_${e.key}'),
-                        icon: const Icon(Icons.edit,
-                            size: 18, color: NotelColors.textSecondary),
-                        onPressed: () => _showEditJoinedEntryDialog(
-                          title: 'Edit $_professionalType Update',
-                          initial: e.value,
-                          fieldKey: 'protocol_edit_field',
-                          saveKey: 'protocol_edit_save',
-                          onSave: (text) {
-                            final list = [...updates];
-                            list[e.key] = text;
-                            _saveProfessionalUpdates(list);
-                          },
-                        ),
+                    ),
+                    IconButton(
+                      key: const ValueKey('past_updates_toggle'),
+                      onPressed: () => setState(() =>
+                          _pastUpdatesExpanded = !_pastUpdatesExpanded),
+                      tooltip: _pastUpdatesExpanded
+                          ? 'Collapse Past $_professionalType Updates'
+                          : 'Expand Past $_professionalType Updates',
+                      icon: Icon(
+                        _pastUpdatesExpanded
+                            ? Icons.keyboard_arrow_up
+                            : Icons.keyboard_arrow_down,
+                        size: 26,
+                        color: NotelColors.primary,
                       ),
-                      IconButton(
-                        key: ValueKey('delete_protocol_${e.key}'),
-                        icon: const Icon(Icons.delete,
-                            size: 18, color: NotelColors.error),
-                        onPressed: () {
-                          final list = [...updates]..removeAt(e.key);
-                          _saveProfessionalUpdates(list);
-                        },
-                      ),
-                    ],
-                  ),
-                )),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeInOut,
+              child: _pastUpdatesExpanded
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: updates
+                          .asMap()
+                          .entries
+                          .map((e) => Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 4),
+                                child: Row(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: Text(e.value,
+                                          style: const TextStyle(
+                                              color:
+                                                  NotelColors.textPrimary,
+                                              fontSize: 13)),
+                                    ),
+                                    IconButton(
+                                      key: ValueKey('edit_protocol_${e.key}'),
+                                      icon: const Icon(Icons.edit,
+                                          size: 18,
+                                          color: NotelColors.textSecondary),
+                                      onPressed: () =>
+                                          _showEditJoinedEntryDialog(
+                                        title:
+                                            'Edit $_professionalType Update',
+                                        initial: e.value,
+                                        fieldKey: 'protocol_edit_field',
+                                        saveKey: 'protocol_edit_save',
+                                        onSave: (text) {
+                                          final list = [...updates];
+                                          list[e.key] = text;
+                                          _saveProfessionalUpdates(list);
+                                        },
+                                      ),
+                                    ),
+                                    IconButton(
+                                      key:
+                                          ValueKey('delete_protocol_${e.key}'),
+                                      icon: const Icon(Icons.delete,
+                                          size: 18,
+                                          color: NotelColors.error),
+                                      onPressed: () {
+                                        final list = [...updates]
+                                          ..removeAt(e.key);
+                                        _saveProfessionalUpdates(list);
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ))
+                          .toList(),
+                    )
+                  : const SizedBox.shrink(),
+            ),
           ],
         ]),
         const SizedBox(height: 24),
