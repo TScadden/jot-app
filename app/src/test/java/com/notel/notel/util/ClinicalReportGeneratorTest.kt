@@ -44,6 +44,64 @@ class ClinicalReportGeneratorTest {
     }
 
     @Test
+    fun heartRateCoveredDates_reflectActualSeriesNotNominalRange() {
+        // Nominal range is 180 days, but the series only holds 14 days: the
+        // covered dates must say so (the Oct 16, 2026 honest-window fix).
+        val start = System.currentTimeMillis() - (180L * 24 * 60 * 60 * 1000)
+        val snapshot = ClinicalReportData(
+            range = ClinicalReportRange(ClinicalReportRangeType.FULL, start, start + (180L * 24 * 60 * 60 * 1000)),
+            heartRateSeries = listOf(
+                "2026-10-16" to 77,
+                "2026-10-03" to 74,
+                "2026-10-10" to 76
+            )
+        )
+        assertEquals("2026-10-03", snapshot.heartRateCoveredStartDate)
+        assertEquals("2026-10-16", snapshot.heartRateCoveredEndDate)
+    }
+
+    @Test
+    fun heartRateCoveredDates_ignoreZeroValues_asFailedReads() {
+        val snapshot = ClinicalReportData(
+            range = ClinicalReportRange(ClinicalReportRangeType.FULL, 0L, 1000L),
+            heartRateSeries = listOf(
+                "2026-04-19" to 0, // failed read — must not extend coverage
+                "2026-10-03" to 74,
+                "2026-10-16" to 77
+            )
+        )
+        assertEquals("2026-10-03", snapshot.heartRateCoveredStartDate)
+        assertEquals("2026-10-16", snapshot.heartRateCoveredEndDate)
+    }
+
+    @Test
+    fun hrSpikesCoveredDates_comeFromSpikeSummaries() {
+        val summary = { date: String ->
+            com.notel.notel.data.healthconnect.DailyHeartRateSummary(
+                date = date, avg = 0, max = 0, min = 0, baseline = 0,
+                spikeCount = 4, maxDelta = 0, totalReadings = 0
+            )
+        }
+        val snapshot = ClinicalReportData(
+            range = ClinicalReportRange(ClinicalReportRangeType.FULL, 0L, 1000L),
+            heartRateSpikes = listOf(summary("2026-09-30"), summary("2026-04-28"), summary("2026-10-16"))
+        )
+        assertEquals("2026-04-28", snapshot.hrSpikesCoveredStartDate)
+        assertEquals("2026-10-16", snapshot.hrSpikesCoveredEndDate)
+    }
+
+    @Test
+    fun coveredDates_areNull_whenNoHeartRateData() {
+        val snapshot = ClinicalReportData(
+            range = ClinicalReportRange(ClinicalReportRangeType.FULL, 0L, 1000L)
+        )
+        assertNull(snapshot.heartRateCoveredStartDate)
+        assertNull(snapshot.heartRateCoveredEndDate)
+        assertNull(snapshot.hrSpikesCoveredStartDate)
+        assertNull(snapshot.hrSpikesCoveredEndDate)
+    }
+
+    @Test
     fun sectionMetadata_tracksPartialFailuresCorrectly() {
         val metadata = mapOf(
             "sleep" to SectionMetadata("sleep", DataSourceStatus.SUCCESS, recordCount = 30),

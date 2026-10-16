@@ -311,6 +311,12 @@ class GeminiService @Inject constructor(
                 if (snapshot.heartRateSeries.isNotEmpty()) {
                     val avgHr = snapshot.heartRateSeries.map { it.second }.average().toInt()
                     append("Avg Heart Rate: $avgHr bpm across ${snapshot.heartRateSeries.size} days. ")
+                    // Anchor the model to the ACTUAL covered range, not the
+                    // nominal report range: the HR cache may cover fewer
+                    // days than the report window.
+                    if (snapshot.heartRateCoveredStartDate != null && snapshot.heartRateCoveredEndDate != null) {
+                        append("Heart rate data covers ${snapshot.heartRateCoveredStartDate} to ${snapshot.heartRateCoveredEndDate}. ")
+                    }
                 }
                 if (snapshot.sleepSeries.isNotEmpty()) {
                     val avgSleepHours = snapshot.sleepSeries.map { it.second / 60f }.average()
@@ -319,6 +325,9 @@ class GeminiService @Inject constructor(
                 if (snapshot.heartRateSpikes.isNotEmpty()) {
                     val totalSpikes = snapshot.heartRateSpikes.sumOf { it.spikeCount }
                     append("Total HR Spikes: $totalSpikes recorded. ")
+                    if (snapshot.hrSpikesCoveredStartDate != null && snapshot.hrSpikesCoveredEndDate != null) {
+                        append("HR spike data covers ${snapshot.hrSpikesCoveredStartDate} to ${snapshot.hrSpikesCoveredEndDate}. ")
+                    }
                 }
                 if (snapshot.bloodPressureSeries.isNotEmpty()) {
                     val sysAvg = snapshot.bloodPressureSeries.map { it.systolic }.average().toInt()
@@ -346,7 +355,22 @@ class GeminiService @Inject constructor(
                 }
             }
 
-            val enrichedContext = "${snapshot.userContext}\n\n$dateSpanText\n$profileText"
+            // Explicit HR coverage line: the report payload must carry the
+            // actual covered date range for HR (first/last dates present in
+            // the data), so the model's "across N days" phrasing is anchored
+            // to real coverage instead of the nominal report range.
+            val hrCoverageText = if (snapshot.heartRateCoveredStartDate != null && snapshot.heartRateCoveredEndDate != null) {
+                buildString {
+                    append("HEART RATE DATA COVERAGE: ${snapshot.heartRateCoveredStartDate} to ${snapshot.heartRateCoveredEndDate}")
+                    append(" (${snapshot.heartRateSeries.count { it.second > 0 }} days with heart-rate data)")
+                    if (snapshot.hrSpikesCoveredStartDate != null && snapshot.hrSpikesCoveredEndDate != null) {
+                        append("; HR spikes cover ${snapshot.hrSpikesCoveredStartDate} to ${snapshot.hrSpikesCoveredEndDate}")
+                    }
+                    append(". State heart-rate findings against this covered range, not the full report range.\n")
+                }
+            } else ""
+
+            val enrichedContext = "${snapshot.userContext}\n\n$dateSpanText\n$hrCoverageText$profileText"
 
             // Authoritative per-metric availability so the report model never
             // invents statistics for metrics whose data could not be retrieved.
@@ -363,7 +387,19 @@ class GeminiService @Inject constructor(
                 }
                 val status = if (meta.status == com.notel.notel.data.model.DataSourceStatus.SUCCESS)
                     "Available (${meta.recordCount} records)" else "Unavailable"
-                "$label: $status"
+                // HR sections carry their actual covered dates so the model
+                // (and the reader, via the same metadata in the PDF) can see
+                // the real window instead of assuming the report range.
+                val coverage = if (meta.status == com.notel.notel.data.model.DataSourceStatus.SUCCESS) {
+                    when (key) {
+                        "heartRate" -> if (snapshot.heartRateCoveredStartDate != null)
+                            ", covering ${snapshot.heartRateCoveredStartDate} to ${snapshot.heartRateCoveredEndDate}" else ""
+                        "hrSpikes" -> if (snapshot.hrSpikesCoveredStartDate != null)
+                            ", covering ${snapshot.hrSpikesCoveredStartDate} to ${snapshot.hrSpikesCoveredEndDate}" else ""
+                        else -> ""
+                    }
+                } else ""
+                "$label: $status$coverage"
             }
             
             // Privacy-safe telemetry logging

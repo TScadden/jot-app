@@ -126,6 +126,9 @@ fun SettingsScreen(
     // Tabs Lab: daily check-in reminder toggle state
     val checkInReminderEnabled by viewModel.checkInReminderEnabled.collectAsState()
     val userContextHidden by viewModel.userContextHidden.collectAsState()
+    // Medication entries already on-device (active ∪ archived), used only by
+    // the Personal Context known-names hint below. Never written from here.
+    val contextMedicationEntries by viewModel.medications.collectAsState()
     val userNickname by viewModel.userNickname.collectAsState()
     val userTag by viewModel.userTag.collectAsState()
     val shareDataWithFriends by viewModel.shareDataWithFriends.collectAsState()
@@ -365,6 +368,10 @@ fun SettingsScreen(
     var showProfileDialog by remember { mutableStateOf(false) }
     
     var isContextFocused by remember { mutableStateOf(false) }
+    // Dismissal for the Personal Context medication hint, keyed by the exact
+    // set of mentioned names: dismissing hides that set, and the hint returns
+    // if the mentioned set changes. UI state only — no data is touched.
+    var dismissedContextHintKey by remember { mutableStateOf<String?>(null) }
     var contextInput by remember { mutableStateOf("") }
     LaunchedEffect(userContext) {
         if (!isContextFocused) {
@@ -932,7 +939,11 @@ fun SettingsScreen(
                             }
                         }
                         Spacer(Modifier.height(2.dp))
-                        Text("Tell Tabs about your goals (e.g. 'training for a marathon').", color = NotelTextSecondary, fontSize = 12.sp)
+                        Text(
+                            "This text is quoted word for word as background in your clinical reports and is sent to the Health Coach. " +
+                                "Your medication list is the authoritative record for medications, so keep any medication mentions here in sync with that list.",
+                            color = NotelTextSecondary, fontSize = 12.sp
+                        )
                         Spacer(Modifier.height(8.dp))
                         
                         Box(
@@ -987,6 +998,65 @@ fun SettingsScreen(
                                             fontSize = 11.sp
                                         )
                                     }
+                                }
+                            }
+                        }
+
+                        // Known-names contradiction hint (UI only, never a data
+                        // change): medication names that already exist as
+                        // entries (active ∪ archived, not deleted) and are also
+                        // mentioned in this text. The medication list is
+                        // authoritative; stale prose here is how outdated
+                        // medication claims reached past reports.
+                        val knownMedEntries = contextMedicationEntries.filter { !it.isDeleted }
+                        val mentionedMedNames = com.notel.notel.util.ContextMedicationHints.findMentionedMedicationNames(
+                            contextInput,
+                            knownMedEntries.map { it.name }
+                        )
+                        val mentionedHintKey = mentionedMedNames.joinToString(",") { it.lowercase() }
+                        // Never surface names derived from the context while it
+                        // is hidden for privacy — the hint stays hidden too.
+                        if (!userContextHidden && mentionedMedNames.isNotEmpty() && dismissedContextHintKey != mentionedHintKey) {
+                            val endedMentioned = mentionedMedNames.filter { name ->
+                                knownMedEntries.any { it.name.equals(name, ignoreCase = true) && !it.isPresent }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(NotelSurfaceHigh, RoundedCornerShape(12.dp))
+                                    .padding(start = 12.dp, top = 8.dp, end = 4.dp, bottom = 8.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        "Mentioned here: ${mentionedMedNames.joinToString(", ")}",
+                                        color = NotelTextPrimary,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 12.sp
+                                    )
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(
+                                        buildString {
+                                            append("These medications are also on your medication list, which is the version reports and the coach treat as correct. If this text says something different, update the text or the list so they agree.")
+                                            if (endedMentioned.isNotEmpty()) {
+                                                append(" Ended on your list: ${endedMentioned.joinToString(", ")}.")
+                                            }
+                                        },
+                                        color = NotelTextSecondary,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { dismissedContextHintKey = mentionedHintKey },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = "Dismiss medication mention hint",
+                                        tint = NotelTextSecondary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
                                 }
                             }
                         }

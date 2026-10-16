@@ -58,6 +58,26 @@ data class ClinicalReportData(
     val bodyLoadHistory: String = "",
     val sectionMetadata: Map<String, SectionMetadata> = emptyMap()
 ) {
+    /**
+     * Actual covered date range for heart rate, derived from the series the
+     * report really holds — NOT the nominal report range. Dates are
+     * yyyy-MM-dd, so lexicographic min/max is chronological. Zero values are
+     * failed reads, never data, so they do not extend the covered range.
+     * Null when there is no heart-rate data at all.
+     */
+    val heartRateCoveredStartDate: String?
+        get() = heartRateSeries.filter { it.second > 0 }.map { it.first }.minOrNull()
+
+    val heartRateCoveredEndDate: String?
+        get() = heartRateSeries.filter { it.second > 0 }.map { it.first }.maxOrNull()
+
+    /** Actual covered date range for the per-day HR spike summaries. */
+    val hrSpikesCoveredStartDate: String?
+        get() = heartRateSpikes.map { it.date }.minOrNull()
+
+    val hrSpikesCoveredEndDate: String?
+        get() = heartRateSpikes.map { it.date }.maxOrNull()
+
     val hasAnyData: Boolean
         get() = logEntries.isNotEmpty() ||
                 heartRateSeries.isNotEmpty() ||

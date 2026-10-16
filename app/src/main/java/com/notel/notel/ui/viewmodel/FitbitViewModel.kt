@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.notel.notel.data.healthconnect.HealthConnectManager
 import com.notel.notel.data.healthconnect.DailyHeartRateSummary
+import com.notel.notel.data.healthconnect.HrHistoryCacheMerge
 import com.notel.notel.data.preferences.NotelPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
@@ -229,43 +230,6 @@ class FitbitViewModel @Inject constructor(
         }
     }
 
-    fun navigateToWorstSpikeDay() {
-        viewModelScope.launch {
-            try {
-                _state.update { it.copy(isLoading = true) }
-                // Do a quick 14-day fetch for worst spike navigation
-                val freshSpikes = healthConnectManager.readHistoricalHeartRateWithSpikes(14)
-                if (freshSpikes.isNotEmpty()) {
-                    // Save updated data to DataStore as a side effect
-                    preferences.setHistoricalHrSpikes(
-                        kotlinx.serialization.json.Json.encodeToString(
-                            kotlinx.serialization.serializer<List<DailyHeartRateSummary>>(), freshSpikes
-                        )
-                    )
-                    _state.update { it.copy(historicalSpikes = freshSpikes, isLoading = false) }
-                    val currentDate = _state.value.selectedHeartRateDate
-                    val worstDay = freshSpikes
-                        .filter { it.date != currentDate }
-                        .maxByOrNull { it.spikeCount }
-                    if (worstDay != null && worstDay.spikeCount > 0) {
-                        fetchHeartRateForDate(worstDay.date)
-                    }
-                } else {
-                    _state.update { it.copy(isLoading = false) }
-                }
-            } catch (e: Exception) {
-                // Fallback to cached data
-                _state.update { it.copy(isLoading = false) }
-                val cached = _state.value.historicalSpikes
-                val currentDate = _state.value.selectedHeartRateDate
-                val worstDay = cached.filter { it.date != currentDate }.maxByOrNull { it.spikeCount }
-                if (worstDay != null && worstDay.spikeCount > 0) {
-                    fetchHeartRateForDate(worstDay.date)
-                }
-            }
-        }
-    }
-
     fun sync(force: Boolean = false) {
         if (!force && _state.value.isLoading) return
         
@@ -403,10 +367,31 @@ class FitbitViewModel @Inject constructor(
 
                       // Background persistence
                       val json = Json { ignoreUnknownKeys = true }
-                      preferences.setHistoricalHeartRate(json.encodeToString(histHrAwakeAvg14.map { BiomarkerPoint(it.first, it.second) }))
+                      // MERGE the 14-day refresh into the existing HR / spikes
+                      // caches before writing — never overwrite. These caches
+                      // are the clinical report's HR window (up to 180 days,
+                      // maintained incrementally by LogRepository); writing
+                      // only the fresh 14 days here shrank that window to
+                      // 14 days between report runs (Oct 16, 2026). The fetch
+                      // still refreshes the days it covers: fresh rows win.
+                      // See HrHistoryCacheMerge for the shared semantics.
+                      val existingHrPoints = try {
+                          val raw = preferences.historicalHeartRate.first()
+                          if (raw.isNotBlank()) json.decodeFromString<List<BiomarkerPoint>>(raw) else emptyList()
+                      } catch (e: Exception) { emptyList() }
+                      val mergedHrPoints = HrHistoryCacheMerge.mergeHeartRatePoints(
+                          existingHrPoints,
+                          histHrAwakeAvg14.map { BiomarkerPoint(it.first, it.second) }
+                      )
+                      preferences.setHistoricalHeartRate(json.encodeToString(mergedHrPoints))
                       preferences.setHistoricalSleep(json.encodeToString(histSleep14.map { BiomarkerPoint(it.first, it.second) }))
                       preferences.setHistoricalCalories(json.encodeToString(histCal14.map { BiomarkerPoint(it.first, it.second) }))
-                      preferences.setHistoricalHrSpikes(json.encodeToString(histSpikes14))
+                      val existingHrSpikes = try {
+                          val raw = preferences.historicalHrSpikes.first()
+                          if (raw.isNotBlank()) json.decodeFromString<List<DailyHeartRateSummary>>(raw) else emptyList()
+                      } catch (e: Exception) { emptyList() }
+                      val mergedHrSpikes = HrHistoryCacheMerge.mergeHrSpikes(existingHrSpikes, histSpikes14)
+                      preferences.setHistoricalHrSpikes(json.encodeToString(mergedHrSpikes))
                   } catch(e: Exception) {
                       _state.update { it.copy(isSpikesLoading = false) }
                       android.util.Log.e("FitbitViewModel", "Historical sync failed: ${e.message}")
