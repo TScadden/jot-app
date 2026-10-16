@@ -230,43 +230,6 @@ class FitbitViewModel @Inject constructor(
         }
     }
 
-    fun navigateToWorstSpikeDay() {
-        viewModelScope.launch {
-            try {
-                _state.update { it.copy(isLoading = true) }
-                // Do a quick 14-day fetch for worst spike navigation
-                val freshSpikes = healthConnectManager.readHistoricalHeartRateWithSpikes(14)
-                if (freshSpikes.isNotEmpty()) {
-                    // Save updated data to DataStore as a side effect
-                    preferences.setHistoricalHrSpikes(
-                        kotlinx.serialization.json.Json.encodeToString(
-                            kotlinx.serialization.serializer<List<DailyHeartRateSummary>>(), freshSpikes
-                        )
-                    )
-                    _state.update { it.copy(historicalSpikes = freshSpikes, isLoading = false) }
-                    val currentDate = _state.value.selectedHeartRateDate
-                    val worstDay = freshSpikes
-                        .filter { it.date != currentDate }
-                        .maxByOrNull { it.spikeCount }
-                    if (worstDay != null && worstDay.spikeCount > 0) {
-                        fetchHeartRateForDate(worstDay.date)
-                    }
-                } else {
-                    _state.update { it.copy(isLoading = false) }
-                }
-            } catch (e: Exception) {
-                // Fallback to cached data
-                _state.update { it.copy(isLoading = false) }
-                val cached = _state.value.historicalSpikes
-                val currentDate = _state.value.selectedHeartRateDate
-                val worstDay = cached.filter { it.date != currentDate }.maxByOrNull { it.spikeCount }
-                if (worstDay != null && worstDay.spikeCount > 0) {
-                    fetchHeartRateForDate(worstDay.date)
-                }
-            }
-        }
-    }
-
     fun sync(force: Boolean = false) {
         if (!force && _state.value.isLoading) return
         
