@@ -92,7 +92,7 @@ class ReportGenerator @Inject constructor(
 
         val effectiveSummary = when {
             !aiSummary.isNullOrBlank() -> aiSummary
-            isRawFallback -> "[SECTION] RAW CLINICAL LOG SUMMARY\n[BOLD]Notice:[BOLD] AI summary generation was unavailable or non-responsive. The following report compiles raw longitudinal patient entries and measured biometrics snapshot directly.\n\n[SECTION] PATIENT OVERVIEW\n• Total Recorded Entries: ${snapshot.logEntries.size}\n• Active Conditions: ${if (snapshot.conditions.isNotEmpty()) snapshot.conditions.joinToString(", ") else "None listed"}\n• Active Medications: ${if (snapshot.medications.isNotEmpty()) snapshot.medications.joinToString(", ") { "${it.name} ${it.dose}" } else "None listed"}"
+            isRawFallback -> "[SECTION] RAW CLINICAL LOG SUMMARY\n[BOLD]Notice:[BOLD] AI summary generation was unavailable or non-responsive. The following report compiles raw longitudinal patient entries and measured biometrics snapshot directly.\n\n[SECTION] PATIENT OVERVIEW\n• Total Recorded Entries: ${snapshot.logEntries.size}\n• Active Conditions: ${if (snapshot.conditions.isNotEmpty()) snapshot.conditions.joinToString(", ") else "None listed"}\n• Active Medications: ${snapshot.medications.filter { !it.isArchived }.let { active -> if (active.isNotEmpty()) active.joinToString(", ") { "${it.name} ${it.dose}" } else "None listed" }}"
             else -> "Clinical summary unavailable. Analysis based on raw snapshot data."
         }
 

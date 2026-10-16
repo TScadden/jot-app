@@ -92,29 +92,7 @@ class ClinicalReportDataCollector @Inject constructor(
             try {
                 val medsStr = preferences.medications.first()
                 val meds = if (medsStr.isNotBlank()) {
-                    // The DataStore JSON is always written with the
-                    // com.notel.notel.ui.viewmodel.Medication serializer (id is a UUID
-                    // String) — never the Room entity serializer. Decoding it as the
-                    // entity type threw on the String->Long id coercion, which surfaced
-                    // as a spurious "Medications: Unavailable" with real data behind it.
-                    kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-                        .decodeFromString<List<com.notel.notel.ui.viewmodel.Medication>>(medsStr)
-                        .filter { !it.isDeleted && it.isPresent }
-                        .map { vm ->
-                            Medication(
-                                uuid = vm.id,
-                                name = vm.name,
-                                dose = vm.dose,
-                                frequency = vm.frequency,
-                                startedDate = vm.startDate.ifBlank { null },
-                                endedDate = if (vm.isPresent || vm.endDate.isBlank()
-                                    || vm.endDate.equals("Present", ignoreCase = true)
-                                ) null else vm.endDate,
-                                isArchived = false,
-                                updatedAt = vm.updatedAt,
-                                isDeleted = vm.isDeleted
-                            )
-                        }
+                    decodeProfileMedications(medsStr)
                 } else emptyList()
                 metadataMap["medications"] = SectionMetadata("medications", DataSourceStatus.SUCCESS, meds.size)
                 meds
@@ -569,3 +547,40 @@ private data class ProfileTuple(
     val weight: Float,
     val gender: String
 )
+
+/**
+ * Decodes the DataStore profile-medication JSON into report entities.
+ *
+ * Current AND discontinued entries are carried through, with dates: the
+ * clinical report's structured medications channel (see GeminiService /
+ * AiRequest.medications) splits them server-side into "Current regimen" vs
+ * "Discontinued (with end dates)". Filtering to present-only here — as this
+ * mapping previously did — erased discontinued medications (and every start
+ * date) before the payload was built, which is how a medication ended on
+ * Oct 16, 2026 could be narrated as the current regimen.
+ *
+ * The DataStore JSON is always written with the
+ * com.notel.notel.ui.viewmodel.Medication serializer (id is a UUID String) —
+ * never the Room entity serializer. Decoding it as the entity type threw on
+ * the String->Long id coercion, which surfaced as a spurious
+ * "Medications: Unavailable" with real data behind it.
+ */
+fun decodeProfileMedications(medsStr: String): List<Medication> =
+    kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        .decodeFromString<List<com.notel.notel.ui.viewmodel.Medication>>(medsStr)
+        .filter { !it.isDeleted }
+        .map { vm ->
+            Medication(
+                uuid = vm.id,
+                name = vm.name,
+                dose = vm.dose,
+                frequency = vm.frequency,
+                startedDate = vm.startDate.ifBlank { null },
+                endedDate = if (vm.isPresent || vm.endDate.isBlank()
+                    || vm.endDate.equals("Present", ignoreCase = true)
+                ) null else vm.endDate,
+                isArchived = !vm.isPresent,
+                updatedAt = vm.updatedAt,
+                isDeleted = vm.isDeleted
+            )
+        }
