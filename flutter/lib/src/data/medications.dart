@@ -249,6 +249,66 @@ List<MedicationEntry> archivedMedicationEntries(
         List<MedicationEntry> entries) =>
     entries.where((e) => !e.isDeleted && e.isArchived).toList();
 
+/// Workstream 3 (Oct 16, 2026) — the known-names Personal Context
+/// scan behind the Settings contradiction hint.
+///
+/// Returns the names of medication ENTRIES — active ∪ archived
+/// (every non-deleted entry; deleted tombstones are no longer
+/// entries on the profile) — that [contextText] mentions, in
+/// entry order, deduplicated case-insensitively, each name in
+/// its entry's own casing.
+///
+/// Matching is NAME MATCHING ONLY, deliberately narrow (the
+/// report-assessment §(c)2 rule): a name counts as mentioned
+/// when the text contains it case-insensitively as a whole
+/// phrase — bounded on both sides by a non-alphanumeric
+/// character or the edge of the text — so "Iron" does not fire
+/// inside "ironing" and "D3" does not fire inside "D30". There
+/// is NO drug lexicon (a drug with no entry is never flagged),
+/// NO fuzzy matching, and NO dose/form inference. The result
+/// drives a dismissible UI hint only; nothing here reads or
+/// writes the context text or the medication data.
+List<String> medicationNamesMentionedInContext(
+    String contextText, List<MedicationEntry> entries) {
+  if (contextText.isEmpty) return const [];
+  final lowerText = contextText.toLowerCase();
+  final seen = <String>{};
+  final mentioned = <String>[];
+  for (final entry in entries) {
+    if (entry.isDeleted) continue;
+    final name = entry.name.trim();
+    if (name.isEmpty) continue;
+    final lowerName = name.toLowerCase();
+    if (!seen.add(lowerName)) continue;
+    if (_contextMentionsName(lowerText, lowerName)) {
+      mentioned.add(name);
+    }
+  }
+  return mentioned;
+}
+
+/// Whole-phrase containment for [medicationNamesMentionedInContext]:
+/// [lowerName] occurs in [lowerText] with a non-alphanumeric
+/// boundary (or the text edge) on both sides. Both inputs are
+/// already lowercased; digits count as word characters so a
+/// short name cannot match inside a longer alphanumeric token.
+bool _contextMentionsName(String lowerText, String lowerName) {
+  bool isWordChar(int codeUnit) =>
+      (codeUnit >= 0x30 && codeUnit <= 0x39) || // 0-9
+      (codeUnit >= 0x61 && codeUnit <= 0x7A); // a-z
+  var from = 0;
+  while (true) {
+    final i = lowerText.indexOf(lowerName, from);
+    if (i < 0) return false;
+    final end = i + lowerName.length;
+    final beforeOk = i == 0 || !isWordChar(lowerText.codeUnitAt(i - 1));
+    final afterOk =
+        end >= lowerText.length || !isWordChar(lowerText.codeUnitAt(end));
+    if (beforeOk && afterOk) return true;
+    from = i + 1;
+  }
+}
+
 /// Tolerant parse of a stored medication date string — native's
 /// edit dialog uses FREE-TEXT date fields, so real blob rows vary:
 /// "Oct 13, 2026", "October 6,2026", "April 2026". Returns null

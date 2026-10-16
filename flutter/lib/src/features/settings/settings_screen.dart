@@ -68,6 +68,20 @@ const _chipInk = Color(0xFF0A0A0E);
 /// — see [_loadConnectionState]. All Round 30 write flows
 /// (link/disconnect/connect) are unchanged.
 ///
+/// Workstream 3 (Oct 16, 2026) — Personal Context surfacing: the
+/// editor's caption now discloses, in plain language, that the
+/// text is quoted word for word as background in clinical
+/// reports and sent to the Health Coach with every message, and
+/// that the medication list is authoritative for reports. Under
+/// the editor, a dismissible hint names any medication ENTRY
+/// (active ∪ archived, from the profile list this screen already
+/// holds) the text mentions — known names only, via
+/// `medicationNamesMentionedInContext` in medications.dart. The
+/// hint is UI-only: it never edits the text or the data, and it
+/// never renders while the context is privacy-hidden (it would
+/// leak the very names the hide toggle conceals). The editor's
+/// save behavior (debounced push via tabs_backend) is unchanged.
+///
 /// Honest unavailable states (native presentation kept, flagged in
 /// the round report): Play purchase flow, file/text-note knowledge
 /// ingestion + progress-report PDF (native on-device Room/Gemini
@@ -223,6 +237,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _contextController = TextEditingController();
   bool _contextSeeded = false;
   Timer? _contextDebounce;
+
+  // Workstream 3 — the dismissed state of the Personal Context
+  // medication-name hint, held as the signature (lowercased
+  // mentioned names, joined) of the mention set it was dismissed
+  // for. Dismissing hides the hint for THAT set only: if the
+  // text changes so a different set of entry names is mentioned,
+  // the hint returns. View state only — never persisted, never
+  // written to the profile.
+  String _contextMedHintDismissedKey = '';
 
   @override
   void initState() {
@@ -743,6 +766,72 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // ── MAIN ─────────────────────────────────────────────────────────
 
+  /// Workstream 3 — the Personal Context medication-name hint.
+  ///
+  /// Rebuilds off the context controller alone (a keystroke
+  /// rebuilds only this sliver, never the whole page), scanning
+  /// the LIVE editor text against the medication entries this
+  /// screen already holds (`_data.medications`, active ∪
+  /// archived) via [medicationNamesMentionedInContext] — known
+  /// names only, no lexicon, no fuzzy matching. Visible only
+  /// when at least one entry name is mentioned and the founder
+  /// has not dismissed the hint for exactly that mention set
+  /// (see [_contextMedHintDismissedKey]). UI hint only: it
+  /// never modifies the text, the entries, or any saved data.
+  Widget _contextMedNameHint() {
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: _contextController,
+      builder: (context, value, _) {
+        final entries = parseMedicationBlob(_data.medications);
+        final names =
+            medicationNamesMentionedInContext(value.text, entries);
+        if (names.isEmpty) return const SizedBox.shrink();
+        final signature = names.map((n) => n.toLowerCase()).join('|');
+        if (signature == _contextMedHintDismissedKey) {
+          return const SizedBox.shrink();
+        }
+        return Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Container(
+            key: const ValueKey('personal_context_med_hint'),
+            decoration: BoxDecoration(
+              color: NotelColors.surfaceHigh,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                  color: NotelColors.warning.withValues(alpha: 0.45)),
+            ),
+            padding: const EdgeInsets.only(left: 10, top: 4, bottom: 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Icon(Icons.medication_outlined,
+                    size: 18, color: NotelColors.warning),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Medication names in this text: ${names.join(', ')}. '
+                    'For reports, your medication list wins over this '
+                    'text, so keep the two in sync.',
+                    style: const TextStyle(
+                        color: NotelColors.textPrimary, fontSize: 12),
+                  ),
+                ),
+                IconButton(
+                  key: const ValueKey('personal_context_med_hint_dismiss'),
+                  icon: const Icon(Icons.close,
+                      size: 18, color: NotelColors.textSecondary),
+                  tooltip: 'Dismiss',
+                  onPressed: () => setState(
+                      () => _contextMedHintDismissedKey = signature),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   List<Widget> _mainPage() {
     return [
       // 1. Personal Context (native SettingsScreen.kt:915-993)
@@ -769,7 +858,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ],
         ),
-        const Text("Tell Tabs about your goals (e.g. 'training for a marathon').",
+        // Workstream 3 — disclosure caption (replaces the old
+        // goals framing, "Tell Tabs about your goals (e.g.
+        // 'training for a marathon')"): this text is not a
+        // private goals note. It is quoted word for word as
+        // background in clinical reports and sent to the Health
+        // Coach with every message, and the medication list —
+        // not this text — is what reports treat as authoritative
+        // for medications.
+        const Text(
+            'This text is quoted word for word as background in your '
+            'clinical reports and is sent to the Health Coach with '
+            'every message. Your medication list is authoritative '
+            'for reports, so keep any medications mentioned here in '
+            'sync with that list.',
+            key: ValueKey('personal_context_caption'),
             style: TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
         const SizedBox(height: 8),
         if (!_contextHidden || _data.userContext.isEmpty)
@@ -826,6 +929,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
+        // Workstream 3 — known-names contradiction hint. Same
+        // visibility gate as the editor itself: while the
+        // context is privacy-hidden the hint stays hidden too,
+        // because its text names medications.
+        if (!_contextHidden || _data.userContext.isEmpty)
+          _contextMedNameHint(),
       ]),
       const SizedBox(height: 16),
       // 2. Grouped menu (native :998-1113)
