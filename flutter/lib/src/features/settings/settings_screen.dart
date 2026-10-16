@@ -16,6 +16,7 @@ import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/connections/connections_screen.dart';
 import 'package:tabs_lab/src/features/settings/account_actions.dart';
+import 'package:tabs_lab/src/features/settings/progress_reports_page.dart';
 import 'package:tabs_lab/src/features/settings/settings_profile.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
@@ -70,9 +71,9 @@ const _chipInk = Color(0xFF0A0A0E);
 ///
 /// Honest unavailable states (native presentation kept, flagged in
 /// the round report): Play purchase flow, file/text-note knowledge
-/// ingestion + progress-report PDF (native on-device Room/Gemini
-/// pipelines with no Flutter equivalent), Tabs Live BLE, and
-/// Developer Terminal test notifications.
+/// ingestion, Tabs Live BLE, and Developer Terminal test
+/// notifications. (Progress Reports shipped in Round 66 —
+/// progress_reports_page.dart.)
 /// Native Settings does not link to Research (that is a Tools-screen
 /// destination, already built as ResearchToolScreen), so neither does
 /// this port.
@@ -613,8 +614,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
               'Tabs Live Beta streams live heart data from a connected band over Bluetooth. Bluetooth streaming is not available in the Flutter Lab yet.'),
           if (_page == _Page.debug) ..._unavailablePage(
               'The Developer Terminal fires test notifications from the native app. Test notifications are not available in the Flutter Lab yet.'),
-          if (_page == _Page.progressReports) ..._unavailablePage(
-              'Progress Reports build a PDF from your on-device log history in the native app. PDF report generation is not available in the Flutter Lab yet.'),
+          if (_page == _Page.progressReports)
+            ProgressReportsPage(
+              // Round 66 — the real Progress Reports page (native
+              // ProgressReportsScreen.kt port): type/range pickers,
+              // preview, PDF generation via the pure-Dart pdf
+              // package, share confirmation, appointment card.
+              profileData: _data,
+              backend: _backend,
+              store: _store,
+              healthConnectService: _hc,
+              notificationService: _notifs,
+              knowledgeStore: _kStore,
+            ),
         ],
       ),
     );
