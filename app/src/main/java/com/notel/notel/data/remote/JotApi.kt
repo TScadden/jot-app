@@ -17,6 +17,23 @@ data class FocusSuggestion(
     val desc: String
 )
 
+/**
+ * One structured profile-medication entry for the clinical report's
+ * dedicated medications channel. The server renders these as an
+ * authoritative block OUTSIDE <user_context>, split into current vs
+ * discontinued, and pins every dose/frequency/start-date statement in the
+ * narrative to them. Current AND archived entries are sent.
+ */
+@Serializable
+data class MedicationDto(
+    val name: String,
+    val dose: String = "",
+    val frequency: String = "",
+    val startDate: String? = null,
+    val endDate: String? = null,
+    val archived: Boolean = false
+)
+
 @Serializable
 data class AiRequest(
     val entries: List<LogEntryDtoModel> = emptyList(),
@@ -28,6 +45,7 @@ data class AiRequest(
     val habitData: String? = null,
     val dataAvailability: String? = null,
     val weatherContext: String? = null,
+    val medications: List<MedicationDto> = emptyList(),
     val documents: List<ProcessDocumentRequest> = emptyList()
 )
 

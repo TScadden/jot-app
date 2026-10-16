@@ -302,9 +302,12 @@ class GeminiService @Inject constructor(
                 if (snapshot.conditions.isNotEmpty()) {
                     append("Medical Conditions: ${snapshot.conditions.joinToString(", ")}\n")
                 }
-                if (snapshot.medications.isNotEmpty()) {
-                    append("Active Medications: ${snapshot.medications.joinToString(", ") { "${it.name} ${it.dose} (${it.frequency})" }}\n")
-                }
+                // Medications are NOT appended here anymore: they travel in
+                // the dedicated structured AiRequest.medications channel
+                // (current + discontinued, with dates), which the server
+                // renders as an authoritative block outside <user_context>.
+                // The old prose line buried the verified list inside the
+                // untrusted context blob, indistinguishable from stale text.
             }
 
             val healthSummary = buildString {
@@ -361,8 +364,18 @@ class GeminiService @Inject constructor(
                     "documents" -> "Documents (knowledge base)"
                     else -> key.replaceFirstChar { it.uppercase() }
                 }
-                val status = if (meta.status == com.notel.notel.data.model.DataSourceStatus.SUCCESS)
-                    "Available (${meta.recordCount} records)" else "Unavailable"
+                // The medications line reports current and discontinued
+                // counts truthfully — a single active-only record count
+                // erased discontinued entries from the model's view.
+                val status = when {
+                    meta.status != com.notel.notel.data.model.DataSourceStatus.SUCCESS -> "Unavailable"
+                    key == "medications" -> {
+                        val current = snapshot.medications.count { !it.isArchived }
+                        val discontinued = snapshot.medications.count { it.isArchived }
+                        "Available ($current current, $discontinued discontinued)"
+                    }
+                    else -> "Available (${meta.recordCount} records)"
+                }
                 "$label: $status"
             }
             
@@ -381,7 +394,17 @@ class GeminiService @Inject constructor(
                     userContext = enrichedContext,
                     knowledgeBase = snapshot.knowledgeDocuments.joinToString("\n\n").ifBlank { null },
                     fitbitData = healthSummary,
-                    dataAvailability = availabilityText.ifBlank { null }
+                    dataAvailability = availabilityText.ifBlank { null },
+                    medications = snapshot.medications.map {
+                        MedicationDto(
+                            name = it.name,
+                            dose = it.dose,
+                            frequency = it.frequency,
+                            startDate = it.startedDate,
+                            endDate = it.endedDate,
+                            archived = it.isArchived
+                        )
+                    }
                 )
             )
             val result = response.body()?.result
