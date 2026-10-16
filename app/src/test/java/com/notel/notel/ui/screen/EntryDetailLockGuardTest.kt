@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -120,7 +121,7 @@ class EntryDetailLockGuardTest {
 
         viewModel.updateText("hacked body", "hacked manual")
 
-        verify(logRepository, never()).updateEntry(any())
+        runBlocking { verify(logRepository, never()).updateEntry(any()) }
     }
 
     @Test
@@ -130,7 +131,7 @@ class EntryDetailLockGuardTest {
 
         viewModel.updateCategory(99)
 
-        verify(logRepository, never()).updateEntry(any())
+        runBlocking { verify(logRepository, never()).updateEntry(any()) }
     }
 
     @Test
@@ -141,7 +142,7 @@ class EntryDetailLockGuardTest {
         viewModel.updateText("Edited body", "Edited manual")
 
         val captor = argumentCaptor<LogEntry>()
-        verify(logRepository).updateEntry(captor.capture())
+        runBlocking { verify(logRepository).updateEntry(captor.capture()) }
         val saved = captor.firstValue
         assertEquals("Edited body", saved.body)
         assertEquals("Edited manual", saved.manualText)
@@ -158,7 +159,7 @@ class EntryDetailLockGuardTest {
         viewModel.updateCategory(9)
 
         val captor = argumentCaptor<LogEntry>()
-        verify(logRepository).updateEntry(captor.capture())
+        runBlocking { verify(logRepository).updateEntry(captor.capture()) }
         val saved = captor.firstValue
         assertEquals(9, saved.categoryId)
         assertEquals(normalEntry.body, saved.body)
@@ -172,7 +173,7 @@ class EntryDetailLockGuardTest {
         var done = false
         viewModel.deleteEntry(checkInEntry) { done = true }
 
-        verify(logRepository).deleteEntry(checkInEntry)
+        runBlocking { verify(logRepository).deleteEntry(checkInEntry) }
         assertTrue(done)
     }
 }

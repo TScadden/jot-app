@@ -63,7 +63,7 @@ class ClinicalReportDataCollectorBiometricsSpikesTest {
             val method = ClinicalReportDataCollector::class.java.declaredMethods
                 .first { it.name == "readBiometricsSpikes" }
             method.isAccessible = true
-            suspendCoroutineUninterceptedOrReturn { cont ->
+            suspendCoroutineUninterceptedOrReturn<List<DailyHeartRateSummary>> { cont ->
                 method.invoke(collector, minDate, cont)
             } as List<DailyHeartRateSummary>
         }
