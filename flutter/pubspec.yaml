@@ -65,9 +65,9 @@ dependencies:
   path_provider: ^2.1.5
   # Round 66 — printing's loose image constraint (>=4.1.0 <=5.0.0)
   # resolves image 4.11.0, whose PNG decoder calls an archive API
-  # (ZLibDecoder.decodeLazy) that the resolved archive 4.0.9 does
-  # not provide — the app fails to compile. Pin image to the last
-  # line that compiles against archive 4.0.9.
+  # (ZLibDecoder.decodeLazy) that the resolved archive 3.6.1 (per
+  # pubspec.lock) does not provide — the app fails to compile. Pin
+  # image to the last line that compiles against archive 3.6.1.
   image: 4.3.0
 
 dev_dependencies:

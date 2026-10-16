@@ -445,6 +445,21 @@ String buildDataAvailability(ReportSnapshot s) {
   }).join('; ');
 }
 
+/// Report-path entry serializer: identical to the sync shape
+/// EXCEPT `updatedAt`, which native's report `toDto()`
+/// (GeminiService) never sets — the DTO default is 0.
+/// `QuickLogEntry.toSyncJson()` stamps `DateTime.now()` per entry
+/// and must NOT be reused here.
+Map<String, dynamic> reportEntryJson(QuickLogEntry e) => {
+      'id': e.id,
+      'categoryId': e.categoryId,
+      'body': e.body,
+      'chips': e.chips,
+      'manualText': e.manualText,
+      'timestamp': e.timestamp,
+      'updatedAt': 0,
+    };
+
 /// The full `POST /api/ai/report` body (native `AiRequest` shape on
 /// the snapshot path: entries, categories, userContext,
 /// knowledgeBase, fitbitData, dataAvailability).
@@ -452,7 +467,7 @@ Map<String, dynamic> buildAiReportRequest(ReportSnapshot s) {
   final kb = s.knowledgeDocuments.join('\n\n');
   final availability = buildDataAvailability(s);
   return {
-    'entries': s.logEntries.map((e) => e.toSyncJson()).toList(),
+    'entries': s.logEntries.map(reportEntryJson).toList(),
     'categories': {
       for (final e in s.categoriesMap.entries) '${e.key}': e.value,
     },

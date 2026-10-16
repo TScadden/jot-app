@@ -65,7 +65,9 @@ class ProgressReportsPage extends StatefulWidget {
 }
 
 /// Native appointment-reminder notification id (NotificationHelper
-/// 770002) — its own disjoint block, per the R47 lesson.
+/// 770002). Note: 770002 sits INSIDE the event-counter hash range
+/// (700000–799998) — the same accepted exposure as check-in 770001,
+/// not its own disjoint block. Kept as native's id regardless.
 const appointmentReminderId = 770002;
 
 class _ProgressReportsPageState extends State<ProgressReportsPage> {
@@ -314,7 +316,14 @@ class _ProgressReportsPageState extends State<ProgressReportsPage> {
     );
     if (!mounted) return;
     setState(() => _pendingShare = null);
-    if (share != true) return;
+    if (share != true) {
+      // Saved-file transparency: the PDF is already saved in the
+      // app even when the user declines to share right now.
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'Report saved in the app. Export again any time to share it.')));
+      return;
+    }
     // Native marks the export when the share sheet is launched.
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     await widget.store.setReportLastExportMs(nowMs);
@@ -365,7 +374,8 @@ class _ProgressReportsPageState extends State<ProgressReportsPage> {
 
   /// Day-before 9:00 AM local reminder through the existing
   /// notification machinery (native AppointmentReminderScheduler),
-  /// id 770002 — native's own disjoint id.
+  /// id 770002 — native's id (inside the event-counter hash range;
+  /// see the note on [appointmentReminderId]).
   Future<void> _syncAppointmentReminder() async {
     final notifs = widget.notificationService;
     final iso = _appointmentDateIso;

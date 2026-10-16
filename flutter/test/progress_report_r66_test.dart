@@ -268,7 +268,28 @@ void main() {
       final body = buildAiReportRequest(fixtureSnapshot());
       expect(body['categories'], {'1': 'Symptoms', '5': 'Sleep'});
       expect(body['knowledgeBase'], isNull);
-      expect((body['entries'] as List).length, 2);
+      // Full entry maps, native report DTO shape: `updatedAt` is
+      // the DTO default 0 — never a fabricated DateTime.now() stamp.
+      expect(body['entries'], [
+        {
+          'id': 1,
+          'categoryId': 1,
+          'body': 'b1',
+          'chips': '',
+          'manualText': '',
+          'timestamp': 1000,
+          'updatedAt': 0,
+        },
+        {
+          'id': 2,
+          'categoryId': 5,
+          'body': 'b2',
+          'chips': '',
+          'manualText': '',
+          'timestamp': 2000,
+          'updatedAt': 0,
+        },
+      ]);
       expect(body['dataAvailability'], isNotNull);
     });
   });
@@ -613,9 +634,10 @@ void main() {
       expect(raw.length, greaterThan(3000));
     });
 
-    test('meta line: day-count parenthetical is Full Audit only', () {
+    test('meta line: day-count parenthetical is unconditional (native)',
+        () {
       expect(reportMetaLine(fixtureSnapshot()),
-          startsWith('Report Range: 30-Day Audit · Generated: '));
+          startsWith('Report Range: 30-Day Audit (30 Days) · Generated: '));
       expect(reportMetaLine(fixtureSnapshot(last30Days: false)),
           startsWith('Report Range: Full Audit (180 Days) · Generated: '));
     });
@@ -757,6 +779,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(shared, isFalse);
       expect(await store.getReportLastExportMs(), 0);
+      // Saved-file transparency: declining to share still tells the
+      // user the PDF is saved in the app.
+      expect(
+          find.text(
+              'Report saved in the app. Export again any time to share it.'),
+          findsOneWidget);
     });
 
     testWidgets('appointment save schedules day-before reminder id 770002',
@@ -781,6 +809,37 @@ void main() {
       await tester.tap(find.text('Clear'));
       await tester.pumpAndSettle();
       expect(h.notifs.cancelled, contains(appointmentReminderId));
+    });
+
+    testWidgets(
+        'appointment with a FUTURE date schedules day-before 9 AM reminder',
+        (tester) async {
+      final h = await pumpPage(tester);
+      await tester.ensureVisible(find.text('Pick a date'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pick a date'));
+      await tester.pumpAndSettle();
+      // Move one month ahead so the picked day is always in the
+      // future, whatever today's date is.
+      final now = DateTime.now();
+      final picked = DateTime(now.year, now.month + 1, 15);
+      await tester.tap(find.descendant(
+          of: find.byType(DatePickerDialog),
+          matching: find.byIcon(Icons.chevron_right)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.descendant(
+          of: find.byType(DatePickerDialog),
+          matching: find.text('${picked.day}')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Save appointment'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save appointment'));
+      await tester.pumpAndSettle();
+      // scheduleOnce actually fired, for the day before at 9:00 AM.
+      expect(h.notifs.once[appointmentReminderId],
+          DateTime(picked.year, picked.month, picked.day - 1, 9));
     });
   });
 }

@@ -388,11 +388,11 @@ pw.Widget _dotRow(String text, {required double width}) {
 /// for it (renders a notdef box), so the separator here is the
 /// Latin-1 middot — visually identical at 9pt.
 String reportMetaLine(ReportSnapshot snapshot) {
-  final rangeLabel = snapshot.last30Days
-      ? '30-Day Audit'
-      : 'Full Audit (${snapshot.durationDays} Days)';
-  return 'Report Range: $rangeLabel · Generated: '
-      '${formatPdfGenerated(snapshot.generationTimestampMs)}';
+  final rangeLabel = snapshot.last30Days ? '30-Day Audit' : 'Full Audit';
+  // Native ReportGenerator renders the day-count parenthetical
+  // UNCONDITIONALLY: "30-Day Audit (30 Days)" included.
+  return 'Report Range: $rangeLabel (${snapshot.durationDays} Days) '
+      '· Generated: ${formatPdfGenerated(snapshot.generationTimestampMs)}';
 }
 
 /// Builds the report PDF bytes. Mirrors native's page flow: summary
