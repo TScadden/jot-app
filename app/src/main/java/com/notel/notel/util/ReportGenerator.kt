@@ -153,7 +153,13 @@ class ReportGenerator @Inject constructor(
         
         val rangeLabel = if (snapshot.range.type == com.notel.notel.data.model.ClinicalReportRangeType.LAST_30_DAYS) "30-Day Audit" else "Full Audit"
         val genTimeStr = SimpleDateFormat("MMM dd, yyyy - hh:mm a", Locale.getDefault()).format(Date(snapshot.generationTimestamp))
-        canvas.drawText("Report Range: $rangeLabel (${snapshot.range.durationDays} Days) • Generated: $genTimeStr", margin, y, metaPaint)
+        // Print the real calendar range instead of a nominal day count
+        // ("180 Days") the underlying data may not actually cover. Per-metric
+        // coverage (e.g. heart rate) is stated in Data Availability below.
+        val rangeDateFmt = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
+        val rangeStartStr = rangeDateFmt.format(Date(snapshot.range.startEpochMs))
+        val rangeEndStr = rangeDateFmt.format(Date(snapshot.range.endEpochMs))
+        canvas.drawText("Report Range: $rangeLabel ($rangeStartStr – $rangeEndStr) • Generated: $genTimeStr", margin, y, metaPaint)
         y += 16f
 
         if (isRawFallback) {
@@ -261,7 +267,19 @@ class ReportGenerator @Inject constructor(
                 com.notel.notel.data.model.DataSourceStatus.TIMED_OUT -> "Unavailable. Data could not be retrieved."
                 com.notel.notel.data.model.DataSourceStatus.ERROR -> "Unavailable. Data could not be retrieved."
             }
-            canvas.drawText("• ${key.replaceFirstChar { it.uppercase() }}: $statusText", margin + 10f, y, bodyPaint)
+            // Heart-rate lines state the ACTUAL covered dates (first/last
+            // dates present in the data), so a shortened HR window is visible
+            // to the reader instead of hidden behind the nominal range.
+            val coverageText = if (meta.status == com.notel.notel.data.model.DataSourceStatus.SUCCESS) {
+                when (key) {
+                    "heartRate" -> coveredRangeText(snapshot.heartRateCoveredStartDate, snapshot.heartRateCoveredEndDate)
+                    "hrSpikes" -> coveredRangeText(snapshot.hrSpikesCoveredStartDate, snapshot.hrSpikesCoveredEndDate)
+                    else -> null
+                }
+            } else null
+            val lineText = "• ${key.replaceFirstChar { it.uppercase() }}: $statusText" +
+                (coverageText?.let { " • Covers $it" } ?: "")
+            canvas.drawText(lineText, margin + 10f, y, bodyPaint)
             y += 15f
         }
 
@@ -349,6 +367,20 @@ class ReportGenerator @Inject constructor(
         }
 
         return cacheFile
+    }
+
+    /**
+     * Formats an actual covered date range ("Apr 28, 2026 – Oct 16, 2026")
+     * from yyyy-MM-dd first/last dates, or null when either bound is missing.
+     */
+    private fun coveredRangeText(startDate: String?, endDate: String?): String? {
+        if (startDate == null || endDate == null) return null
+        val inFmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val outFmt = SimpleDateFormat("MMM d, yyyy", Locale.US)
+        fun fmt(d: String): String = try {
+            inFmt.parse(d)?.let { outFmt.format(it) } ?: d
+        } catch (e: Exception) { d }
+        return if (startDate == endDate) fmt(startDate) else "${fmt(startDate)} – ${fmt(endDate)}"
     }
 
     private fun drawLineChart(
