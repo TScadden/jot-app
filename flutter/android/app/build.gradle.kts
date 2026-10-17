@@ -4,6 +4,47 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// ---- Tabs production upload signing (TAKEOVER Phase 1) ----
+// Mirrors the native app's proven pattern (app/build.gradle.kts on main):
+// credentials come from Gradle properties OUTSIDE source control
+// (CI secrets -> runner-local gradle.properties, or a developer's
+// ~/.gradle/gradle.properties). Nothing secret is stored in this repo.
+// Expected properties:
+//   tabsUpload.storeFile      absolute path to the upload keystore
+//   tabsUpload.storePassword  keystore password
+//   tabsUpload.keyAlias       key alias (default: tabs-upload)
+//   tabsUpload.keyPassword    key password (default: the store password —
+//                             for this PKCS12 keystore the private key is
+//                             protected by the store password, verified
+//                             2026-09-29 on the native pipeline; the CI
+//                             workflow passes keyPassword == storePassword)
+val tabsUploadStoreFile: String? = findProperty("tabsUpload.storeFile") as String?
+val tabsUploadStorePassword: String? = findProperty("tabsUpload.storePassword") as String?
+val tabsUploadKeyAlias: String = (findProperty("tabsUpload.keyAlias") as String?) ?: "tabs-upload"
+val tabsUploadKeyPassword: String? =
+    (findProperty("tabsUpload.keyPassword") as String?) ?: tabsUploadStorePassword
+val hasTabsUploadSigning = !tabsUploadStoreFile.isNullOrBlank()
+    && !tabsUploadStorePassword.isNullOrBlank()
+    && !tabsUploadKeyPassword.isNullOrBlank()
+
+if (!hasTabsUploadSigning) {
+    logger.warn(
+        "tabsUpload.* signing properties not set — the prod flavor cannot " +
+            "be signed for Play. Lab builds are unaffected; production " +
+            "bundle tasks will FAIL (see the fail-closed guard below)."
+    )
+}
+
+// ---- Production version-code floor (TAKEOVER Phase 1) ----
+// Highest versionCode on Play for com.notel.notel is 10091 (closed
+// track, established in Phase 0 / Harbor's check). A production AAB at
+// or below that can never be uploaded, so 10092 is the permanent
+// minimum for a prod bundle. The CI workflow supplies the real code
+// per build via `flutter build appbundle --build-number=<code>`;
+// without that parameter flutter.versionCode falls back to the
+// pubspec value (1) and the guard below fails the build closed.
+val minProdVersionCode = 10092
+
 android {
     namespace = "com.notel.notel.playground.flutter"
     compileSdk = flutter.compileSdkVersion
@@ -19,7 +60,11 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
+        // Default identity is the Lab identity; the `prod` flavor below
+        // overrides applicationId/label/signing for production. The
+        // namespace (and therefore the Kotlin package, MethodChannel
+        // names, widget class and proguard keeps) deliberately does NOT
+        // change per flavor — flavors change applicationId only.
         applicationId = "com.notel.notel.playground.flutter"
         // Round 12: minSdk 26 — required by the Health Connect client
         // (matches the native app's minSdk).
@@ -32,6 +77,9 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // App label, consumed as ${appLabel} by the main manifest.
+        // Default is the Lab label; the prod flavor overrides it.
+        manifestPlaceholders["appLabel"] = "Tabs Lab"
     }
 
     signingConfigs {
@@ -44,12 +92,50 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        // Always created so the prod flavor can reference it. When the
+        // tabsUpload.* properties are absent its fields stay empty and
+        // any attempt to sign a prod variant with it fails — the prod
+        // flavor NEVER falls back to the debug (Lab) signing config.
+        create("tabsUpload") {
+            storeFile = tabsUploadStoreFile?.let { file(it) }
+            storePassword = tabsUploadStorePassword
+            keyAlias = tabsUploadKeyAlias
+            keyPassword = tabsUploadKeyPassword
+        }
+    }
+
+    flavorDimensions += "identity"
+
+    productFlavors {
+        // Lab FIRST: it is the default flavor, so every existing Lab
+        // build command and workflow keeps producing exactly today's
+        // identity (applicationId com.notel.notel.playground.flutter,
+        // label "Tabs Lab", committed debug-keystore signing).
+        create("lab") {
+            dimension = "identity"
+            applicationId = "com.notel.notel.playground.flutter"
+            manifestPlaceholders["appLabel"] = "Tabs Lab"
+            signingConfig = signingConfigs.getByName("debug")
+        }
+        // Production: the native app's package and label, signed with
+        // the Play upload key. See the fail-closed guard at the bottom
+        // of this file — bundleProd* tasks refuse to run without the
+        // signing properties and a versionCode >= minProdVersionCode.
+        create("prod") {
+            dimension = "identity"
+            applicationId = "com.notel.notel"
+            manifestPlaceholders["appLabel"] = "Tabs"
+            signingConfig = signingConfigs.getByName("tabsUpload")
+        }
     }
 
     buildTypes {
         release {
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Signing is assigned per flavor above (lab -> debug
+            // keystore, prod -> tabsUpload). Intentionally NO
+            // signingConfig in this block: a build-type signing config
+            // would apply to every flavor's release variant and could
+            // silently Lab-sign a production bundle.
             // Round 52: explicit R8 keep rules for the home-screen
             // widget receiver + home_widget classes (see the file —
             // a silently renamed manifest-facing class is the R51
@@ -60,6 +146,79 @@ android {
                 "proguard-rules.pro"
             )
         }
+    }
+}
+
+// ---- Production fail-closed guard (TAKEOVER Phase 1) ----
+// A misconfigured "production" build must be impossible, never
+// silently Lab-signed or built with the pubspec versionCode (1).
+// Two layers, same checks:
+//   1. Configuration time: any Gradle invocation whose requested
+//      tasks include a prod bundle task (e.g. bundleProdRelease,
+//      which `flutter build appbundle --flavor prod` runs) fails
+//      immediately when signing properties are missing, the keystore
+//      file does not exist, or flutter.versionCode (set by the
+//      --build-number parameter) is below the Play floor.
+//   2. A verifyProdReleaseConfig task wired as a dependency of every
+//      bundleProd* task, re-checking at execution time.
+fun prodConfigProblems(): List<String> {
+    val problems = mutableListOf<String>()
+    if (!hasTabsUploadSigning) {
+        problems += "tabsUpload.* signing properties are missing " +
+            "(need tabsUpload.storeFile and tabsUpload.storePassword; " +
+            "keyPassword defaults to the store password). Refusing to " +
+            "build a production bundle that could not be signed with " +
+            "the Play upload key."
+    } else {
+        val keystore = tabsUploadStoreFile?.let { file(it) }
+        if (keystore == null || !keystore.exists()) {
+            problems += "tabsUpload.storeFile does not exist: " +
+                (tabsUploadStoreFile ?: "<unset>")
+        }
+    }
+    if (flutter.versionCode < minProdVersionCode) {
+        problems += "versionCode is ${flutter.versionCode} but a " +
+            "production bundle needs >= $minProdVersionCode (highest " +
+            "code on Play is 10091). Pass it as a build parameter: " +
+            "flutter build appbundle --flavor prod " +
+            "--build-number=<code> --build-name=<name>."
+    }
+    return problems
+}
+
+val requestedTaskNames = gradle.startParameter.taskNames.joinToString(" ").lowercase()
+if ("bundleprod" in requestedTaskNames) {
+    val problems = prodConfigProblems()
+    if (problems.isNotEmpty()) {
+        throw GradleException(
+            "Refusing to build a production bundle:\n - " +
+                problems.joinToString("\n - ")
+        )
+    }
+}
+
+val verifyProdReleaseConfig by tasks.registering {
+    group = "verification"
+    description = "Fails closed if a production bundle would be built " +
+        "without upload signing or a Play-valid versionCode."
+    doLast {
+        val problems = prodConfigProblems()
+        if (problems.isNotEmpty()) {
+            throw GradleException(
+                "Production bundle configuration check failed:\n - " +
+                    problems.joinToString("\n - ")
+            )
+        }
+        logger.lifecycle(
+            "Production bundle config OK: tabsUpload signing present, " +
+                "versionCode ${flutter.versionCode} >= $minProdVersionCode."
+        )
+    }
+}
+
+tasks.configureEach {
+    if (name.startsWith("bundleProd")) {
+        dependsOn(verifyProdReleaseConfig)
     }
 }
 
