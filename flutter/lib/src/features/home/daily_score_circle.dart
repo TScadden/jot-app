@@ -21,8 +21,13 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///
 /// Scaling note (for Mira's pass): the concept pairs the circle
 /// with a large weather CARD; the real Home weather element is the
-/// small AppBar action, so the header face is 44dp beside it —
-/// concept language at the real layout's scale.
+/// small AppBar action, so the header face sits beside it at
+/// concept language at the real layout's scale. R72 (founder:
+/// "make the score icon and whatnot a little bit smaller"): the
+/// header face shrank 44 → 38dp with the pairing's gap and chip
+/// padding tightened proportionally (see [DailyScoreCircle]);
+/// the detail and history faces are NOT this pairing and did
+/// not change.
 ///
 /// A null score renders the cold-start baseline-building state:
 /// the empty ring/disc with a dash, NO liquid and NO number (a
@@ -268,7 +273,14 @@ class _DailyScoreCircleState extends State<DailyScoreCircle>
   Widget build(BuildContext context) {
     final score = widget.score;
     final band = score == null ? null : bandForScore(score);
-    final face = DailyScoreFace(score: score, size: 44);
+    // R72 size pass (Mira's measured constants, ~0.86× the R70
+    // pairing): face 44 → 38dp (the number auto-scales with it,
+    // 0.36·S ≈ 13.7sp, still clearly legible), face-to-label gap
+    // 6 → 5dp, band chip padding h8/v3 → h7/v2. The label and
+    // chip text stay 10sp — the legibility floor for secondary
+    // text — and the 48dp tap target below absorbs the shrink,
+    // so only the visuals get smaller, never the touch area.
+    final face = DailyScoreFace(score: score, size: 38);
     final pulsed = _pulse == null
         ? face
         : AnimatedBuilder(
@@ -295,7 +307,7 @@ class _DailyScoreCircleState extends State<DailyScoreCircle>
               mainAxisSize: MainAxisSize.min,
               children: [
                 pulsed,
-                const SizedBox(width: 6),
+                const SizedBox(width: 5),
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -311,7 +323,7 @@ class _DailyScoreCircleState extends State<DailyScoreCircle>
                     const SizedBox(height: 2),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 3),
+                          horizontal: 7, vertical: 2),
                       decoration: BoxDecoration(
                         color: band?.color ?? NotelColors.surfaceHigh,
                         // Chip radius 12 (closed scale §6; native
