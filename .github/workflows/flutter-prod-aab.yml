@@ -238,9 +238,31 @@ jobs:
           # insertion) before comparing. The comparison target stays
           # the pinned literal EXPECTED_LAB_CERT_SHA256 - never a value
           # derived from the repo's debug.keystore file.
-          LAB_DIGEST_HEX="$(printf '%s\n' "$LAB_CERTS" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1 | tr -d '[:space:]')"
+          # Extraction is prefix-tolerant (format drift, attempt 4,
+          # run 39050537983): build-tools 35.0.0 prints
+          # "Signer #1 certificate SHA-256 digest:", the runner's
+          # newer apksigner prints one line per scheme, e.g.
+          # "V2 Signer: certificate SHA-256 digest:". Accept BOTH
+          # families (legacy "Signer #<n>" and scheme-prefixed
+          # "V<x>[.<y>] Signer:", with an optional "#<n>" index on
+          # the scheme form), collect EVERY matching digest, and
+          # require exactly ONE distinct value: the same cert
+          # legitimately repeats across schemes (v2+v3) and dedupes
+          # to one, while two DISTINCT digests mean an ambiguous or
+          # changed signer set - fail closed below, never head -1.
+          # Deliberately NOT a catch-all ".*certificate" match: a
+          # "Source Stamp Signer:" line is a different certificate,
+          # not the app signer, and must never be picked up here.
+          LAB_ALL_DIGESTS="$(printf '%s\n' "$LAB_CERTS" | sed -n -e 's/^Signer #[0-9][0-9]* certificate SHA-256 digest: //p' -e 's/^V[0-9][0-9]*\(\.[0-9][0-9]*\)\{0,1\} Signer\( #[0-9][0-9]*\)\{0,1\}: certificate SHA-256 digest: //p' | sed 's/[[:space:]]//g' | tr '[:upper:]' '[:lower:]' | sort -u)"
+          LAB_DIGEST_COUNT="$(printf '%s\n' "$LAB_ALL_DIGESTS" | awk 'NF { n++ } END { print n + 0 }')"
+          LAB_DIGEST_HEX="$(printf '%s\n' "$LAB_ALL_DIGESTS" | head -1)"
           if [ -z "$LAB_DIGEST_HEX" ]; then
             echo "::error::Lab signer check extracted NO certificate digest from the APK (apksigner output had no signer line) - failing closed; this is not a cert mismatch."
+            exit 1
+          fi
+          if [ "$LAB_DIGEST_COUNT" -gt 1 ]; then
+            echo "::error::Lab signer check extracted MULTIPLE DISTINCT certificate digests from the APK - failing closed; the signer set is ambiguous or changed, and no single digest will be picked."
+            printf '%s\n' "$LAB_ALL_DIGESTS"
             exit 1
           fi
           if ! printf '%s' "$LAB_DIGEST_HEX" | grep -Eq '^[0-9A-Fa-f]{64}$'; then
