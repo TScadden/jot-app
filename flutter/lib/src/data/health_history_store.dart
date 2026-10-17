@@ -73,6 +73,36 @@ class DailyBiometrics {
   /// read exists; the collector issues one read per date).
   final double? hrvRmssdMs;
 
+  // ── R70 Daily Score fields (score engine ONLY) ───────────────
+  //
+  // Written exclusively by the Daily Score engine through
+  // [HealthHistoryStore.persistScore], which is write-once: once
+  // [dailyScore] is set it is never recomputed or rewritten, so
+  // later baseline drift never rewrites history. Captures and
+  // imports NEVER touch these fields: neither merge mode includes
+  // them in its field set (the merges carry the EXISTING values
+  // through untouched), and [sanitized] strips them from every
+  // incoming row, so even a hand-built row carrying scores cannot
+  // smuggle them in through a merge. 0 is a legitimate score here
+  // — the biometric zero rule does NOT apply to score fields.
+  // Which components contributed to a day's score is derived from
+  // which of the component fields are non-null.
+
+  /// The day's Daily Score, 0–100 (rounded whole number).
+  final int? dailyScore;
+
+  /// Sleep component score, 0–100, or null when the sleep
+  /// component did not contribute to [dailyScore].
+  final int? scoreSleep;
+
+  /// HRV component score, 0–100, or null when it did not
+  /// contribute.
+  final int? scoreHrv;
+
+  /// Resting-HR component score, 0–100, or null when it did not
+  /// contribute.
+  final int? scoreRestingHr;
+
   const DailyBiometrics({
     required this.date,
     this.restingHrBpm,
@@ -81,6 +111,10 @@ class DailyBiometrics {
     this.spikeCount,
     this.caloriesKcal,
     this.hrvRmssdMs,
+    this.dailyScore,
+    this.scoreSleep,
+    this.scoreHrv,
+    this.scoreRestingHr,
   });
 
   bool get hasAnyValue =>
@@ -89,7 +123,8 @@ class DailyBiometrics {
       deepSleepMinutes != null ||
       spikeCount != null ||
       caloriesKcal != null ||
-      hrvRmssdMs != null;
+      hrvRmssdMs != null ||
+      dailyScore != null;
 
   DailyBiometrics copyWith({
     int? restingHrBpm,
@@ -107,6 +142,35 @@ class DailyBiometrics {
         spikeCount: spikeCount ?? this.spikeCount,
         caloriesKcal: caloriesKcal ?? this.caloriesKcal,
         hrvRmssdMs: hrvRmssdMs ?? this.hrvRmssdMs,
+        dailyScore: dailyScore,
+        scoreSleep: scoreSleep,
+        scoreHrv: scoreHrv,
+        scoreRestingHr: scoreRestingHr,
+      );
+
+  /// A copy with the four score fields set EXACTLY as given
+  /// (nulls included — a non-contributing component stays null).
+  /// Used only by the score engine's write path
+  /// ([HealthHistoryStore.persistScore]); the biometric fields are
+  /// carried through untouched.
+  DailyBiometrics withScores({
+    required int? dailyScore,
+    required int? scoreSleep,
+    required int? scoreHrv,
+    required int? scoreRestingHr,
+  }) =>
+      DailyBiometrics(
+        date: date,
+        restingHrBpm: restingHrBpm,
+        sleepMinutes: sleepMinutes,
+        deepSleepMinutes: deepSleepMinutes,
+        spikeCount: spikeCount,
+        caloriesKcal: caloriesKcal,
+        hrvRmssdMs: hrvRmssdMs,
+        dailyScore: dailyScore,
+        scoreSleep: scoreSleep,
+        scoreHrv: scoreHrv,
+        scoreRestingHr: scoreRestingHr,
       );
 
   Map<String, dynamic> toJson() => {
@@ -117,6 +181,10 @@ class DailyBiometrics {
         if (spikeCount != null) 'spikeCount': spikeCount,
         if (caloriesKcal != null) 'caloriesKcal': caloriesKcal,
         if (hrvRmssdMs != null) 'hrvRmssdMs': hrvRmssdMs,
+        if (dailyScore != null) 'dailyScore': dailyScore,
+        if (scoreSleep != null) 'scoreSleep': scoreSleep,
+        if (scoreHrv != null) 'scoreHrv': scoreHrv,
+        if (scoreRestingHr != null) 'scoreRestingHr': scoreRestingHr,
       };
 
   /// Tolerant parse; applies the zero rule on the way in so a blob
@@ -141,6 +209,14 @@ class DailyBiometrics {
       return (n != null && n > 0) ? n : null;
     }
 
+    // Score fields: NO zero rule (0 is a real score), but bounded
+    // to the 0–100 range the engine writes. Blobs written before
+    // the Daily Score existed simply lack these keys → null.
+    int? asScore(dynamic v) {
+      final n = v is num ? v.toInt() : (v is String ? int.tryParse(v) : null);
+      return (n != null && n >= 0 && n <= 100) ? n : null;
+    }
+
     return DailyBiometrics(
       date: date,
       restingHrBpm: asPosInt(raw['restingHrBpm']),
@@ -149,12 +225,22 @@ class DailyBiometrics {
       spikeCount: asSpike(raw['spikeCount']),
       caloriesKcal: asPosInt(raw['caloriesKcal']),
       hrvRmssdMs: asPosDouble(raw['hrvRmssdMs']),
+      dailyScore: asScore(raw['dailyScore']),
+      scoreSleep: asScore(raw['scoreSleep']),
+      scoreHrv: asScore(raw['scoreHrv']),
+      scoreRestingHr: asScore(raw['scoreRestingHr']),
     );
   }
 
   /// The zero rule, applied to an incoming row before any merge:
   /// restingHr / sleep / deep / calories / HRV ≤ 0 become absent;
   /// a negative spike count becomes absent (0 stays — it is real).
+  ///
+  /// The score fields are also STRIPPED here (set to null): this
+  /// is the chokepoint every capture/import row passes through, so
+  /// no merge can ever write a score — the score engine's
+  /// [HealthHistoryStore.persistScore] is the only write path, and
+  /// it does not go through [sanitized].
   DailyBiometrics sanitized() => DailyBiometrics(
         date: date,
         restingHrBpm:
@@ -169,6 +255,8 @@ class DailyBiometrics {
             (caloriesKcal != null && caloriesKcal! > 0) ? caloriesKcal : null,
         hrvRmssdMs:
             (hrvRmssdMs != null && hrvRmssdMs! > 0) ? hrvRmssdMs : null,
+        // dailyScore / scoreSleep / scoreHrv / scoreRestingHr:
+        // deliberately null — see the doc above.
       );
 
   @override
@@ -180,11 +268,25 @@ class DailyBiometrics {
       other.deepSleepMinutes == deepSleepMinutes &&
       other.spikeCount == spikeCount &&
       other.caloriesKcal == caloriesKcal &&
-      other.hrvRmssdMs == hrvRmssdMs;
+      other.hrvRmssdMs == hrvRmssdMs &&
+      other.dailyScore == dailyScore &&
+      other.scoreSleep == scoreSleep &&
+      other.scoreHrv == scoreHrv &&
+      other.scoreRestingHr == scoreRestingHr;
 
   @override
-  int get hashCode => Object.hash(date, restingHrBpm, sleepMinutes,
-      deepSleepMinutes, spikeCount, caloriesKcal, hrvRmssdMs);
+  int get hashCode => Object.hash(
+      date,
+      restingHrBpm,
+      sleepMinutes,
+      deepSleepMinutes,
+      spikeCount,
+      caloriesKcal,
+      hrvRmssdMs,
+      dailyScore,
+      scoreSleep,
+      scoreHrv,
+      scoreRestingHr);
 
   @override
   String toString() => 'DailyBiometrics($date, hr=$restingHrBpm, '
@@ -425,6 +527,13 @@ class HealthHistoryStore {
         spikeCount: incoming.spikeCount ?? existing.spikeCount,
         caloriesKcal: incoming.caloriesKcal ?? existing.caloriesKcal,
         hrvRmssdMs: incoming.hrvRmssdMs ?? existing.hrvRmssdMs,
+        // Score fields are NOT part of this merge's field set: the
+        // existing day's scores are carried through untouched
+        // (incoming rows carry none — see [DailyBiometrics.sanitized]).
+        dailyScore: existing.dailyScore,
+        scoreSleep: existing.scoreSleep,
+        scoreHrv: existing.scoreHrv,
+        scoreRestingHr: existing.scoreRestingHr,
       );
       final changed = _fieldCountChanged(existing, merged);
       if (changed > 0) {
@@ -469,6 +578,13 @@ class HealthHistoryStore {
         spikeCount: existing.spikeCount ?? incoming.spikeCount,
         caloriesKcal: existing.caloriesKcal ?? incoming.caloriesKcal,
         hrvRmssdMs: existing.hrvRmssdMs ?? incoming.hrvRmssdMs,
+        // Score fields are NOT part of this merge's field set: the
+        // existing day's scores are carried through untouched
+        // (incoming rows carry none — see [DailyBiometrics.sanitized]).
+        dailyScore: existing.dailyScore,
+        scoreSleep: existing.scoreSleep,
+        scoreHrv: existing.scoreHrv,
+        scoreRestingHr: existing.scoreRestingHr,
       );
       final changed = _fieldCountChanged(existing, merged);
       if (changed > 0) {
@@ -484,6 +600,38 @@ class HealthHistoryStore {
         daysTouched: daysTouched);
   }
 
+  // ── Daily Score write path (score engine ONLY) ─────────────────
+
+  /// Write-once score persistence: sets the four score fields on
+  /// the stored day [date] and persists. Returns false — writing
+  /// nothing — when the day is not in the store or already holds a
+  /// score. A persisted score is NEVER recomputed or rewritten:
+  /// later baseline drift must not rewrite history, and a day
+  /// computed from a partial component set stays as computed.
+  Future<bool> persistScore(
+    String date, {
+    required int dailyScore,
+    int? scoreSleep,
+    int? scoreHrv,
+    int? scoreRestingHr,
+  }) async {
+    await _ensureWarmed();
+    final existing = _days[date];
+    if (existing == null || existing.dailyScore != null) return false;
+    _days[date] = existing.withScores(
+      dailyScore: dailyScore,
+      scoreSleep: scoreSleep,
+      scoreHrv: scoreHrv,
+      scoreRestingHr: scoreRestingHr,
+    );
+    await persist();
+    return true;
+  }
+
+  // NOTE: _fieldCount / _fieldCountChanged deliberately count the
+  // six biometric fields ONLY — merges never gain or lose a day
+  // because of score fields, and score writes go through
+  // [persistScore], never through a merge.
   static int _fieldCount(DailyBiometrics d) =>
       (d.restingHrBpm != null ? 1 : 0) +
       (d.sleepMinutes != null ? 1 : 0) +
