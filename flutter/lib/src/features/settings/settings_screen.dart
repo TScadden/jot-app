@@ -10,8 +10,10 @@ import 'package:tabs_lab/src/data/billing_service.dart';
 import 'package:tabs_lab/src/data/calendar_service.dart';
 import 'package:tabs_lab/src/data/common_conditions.dart';
 import 'package:tabs_lab/src/data/csv_file_picker.dart';
+import 'package:tabs_lab/src/data/first_run_sync.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/metrics_csv_import.dart';
+import 'package:tabs_lab/src/data/migration_bundle.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/google_sign_in_service.dart';
 import 'package:tabs_lab/src/data/medications.dart';
@@ -143,6 +145,13 @@ class SettingsScreen extends StatefulWidget {
   /// honest cannot-purchase state.
   final BillingService? billingService;
 
+  /// TAKEOVER Phase 4 — injectable migration bridge (Lab export /
+  /// production import). Null in production (real secure storage +
+  /// the SAF picker / share-sheet bridges).
+  final MigrationBundleService? migrationService;
+  final MigrationFilePicker? migrationPicker;
+  final MigrationShareService? migrationShare;
+
   /// Round 34 — open directly on the Event Counters page instead of
   /// the main menu (the Home counter slot pushes Settings this way).
   /// Back from that page pops the route (it was pushed as a
@@ -166,6 +175,9 @@ class SettingsScreen extends StatefulWidget {
     this.historyStore,
     this.urlLauncher,
     this.billingService,
+    this.migrationService,
+    this.migrationPicker,
+    this.migrationShare,
     this.openEventCounters = false,
   });
 
@@ -198,6 +210,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final ReminderNotificationService _notifs;
   late final GoogleSignInService _google;
   late final HealthConnectService _hc;
+  late final MigrationBundleService _migration;
+  late final MigrationFilePicker _migrationPicker;
+  late final MigrationShareService _migrationShare;
 
   late _Page _page;
   SettingsProfileData _data = const SettingsProfileData();
@@ -259,6 +274,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   bool _syncing = false;
   bool _recovering = false;
+
+  // TAKEOVER Phase 4 — migration export/import state. _migrationStatus
+  // is the plain-language outcome line under the two buttons (success
+  // and refusal alike — a refusal is an explanation, not a silent no).
+  bool _migrationBusy = false;
+  String? _migrationStatus;
   bool _showInsights = false;
   bool _privacyExpanded = false;
 
@@ -298,6 +319,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _kStore = widget.knowledgeStore ?? KnowledgeExtractionStore.instance;
     _kPicker = widget.knowledgePicker ?? KnowledgeDocumentPicker();
     _kService = KnowledgeDocumentService(backend: _backend, store: _kStore);
+    _migration = widget.migrationService ?? MigrationBundleService();
+    _migrationPicker = widget.migrationPicker ?? MigrationFilePicker();
+    _migrationShare = widget.migrationShare ?? MigrationShareService();
     _load();
   }
 
@@ -4828,7 +4852,196 @@ class _SettingsScreenState extends State<SettingsScreen> {
             style:
                 TextStyle(color: NotelColors.textSecondary, fontSize: 11)),
       ]),
+      const SizedBox(height: 24),
+      _sectionLabel('MOVE TO THE TABS APP'),
+      _card([
+        const Text(
+            'Some of your data lives only on this device: what your '
+            'Health Coach remembers about you, your health history, '
+            'the text extracted from your Knowledge Base documents, '
+            'your food-checker history, and settings like these. '
+            'Export it here in the Tabs Lab, '
+            'then open the Tabs app, sign in with the same account, '
+            'and choose Import from Tabs Lab on this same screen. '
+            'The file contains health information, so send it only '
+            'to yourself and delete it after importing.',
+            style:
+                TextStyle(color: NotelColors.textSecondary, fontSize: 12)),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            key: const ValueKey('migration_export_button'),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: NotelColors.primary,
+                foregroundColor: Colors.white),
+            onPressed: _migrationBusy ? null : _exportMigration,
+            icon: const Icon(Icons.ios_share, color: Colors.white),
+            label: Text(
+                _migrationBusy ? 'Working...' : 'Export data for the Tabs app',
+                style: const TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            key: const ValueKey('migration_import_button'),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: NotelColors.surfaceHigh,
+                foregroundColor: NotelColors.textPrimary),
+            onPressed: _migrationBusy ? null : _importMigration,
+            icon:
+                const Icon(Icons.file_download, color: NotelColors.primary),
+            label: const Text('Import from Tabs Lab',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ),
+        if (_migrationStatus != null) ...[
+          const SizedBox(height: 12),
+          Text(_migrationStatus!,
+              key: const ValueKey('migration_status'),
+              style: const TextStyle(
+                  color: NotelColors.textPrimary, fontSize: 12)),
+        ],
+      ]),
     ];
+  }
+
+  // ── TAKEOVER Phase 4 — migration export / import ─────────────────
+
+  /// The signed-in account for the migration checks: the widget's
+  /// email first, then the session's stored email (the same
+  /// resolution the knowledge load uses).
+  Future<String?> _migrationEmail() async {
+    var email = widget.email;
+    if (email == null || email.isEmpty) {
+      try {
+        email = await _backend.readEmail();
+      } catch (_) {}
+    }
+    return email;
+  }
+
+  /// Lab side: build the verbatim bundle and hand it to the share
+  /// sheet as a file. Every failure lands in the status line with
+  /// its code — never silent.
+  Future<void> _exportMigration() async {
+    setState(() {
+      _migrationBusy = true;
+      _migrationStatus = null;
+    });
+    try {
+      final email = await _migrationEmail();
+      final json = await _migration.buildExportJson(ownerEmail: email);
+      final launched = await _migrationShare.shareMigrationFile(
+        fileName: MigrationBundleService.fileName,
+        content: json,
+      );
+      if (!mounted) return;
+      setState(() => _migrationStatus = launched
+          ? 'Your export is ready. Send the file to yourself, then '
+              'open the Tabs app, sign in with the same account, and '
+              'choose Import from Tabs Lab on this screen.'
+          : 'Could not open the share sheet. Try again. '
+              '[SHARE_FAILED]');
+    } on MigrationException catch (e) {
+      if (!mounted) return;
+      setState(() => _migrationStatus = e.message);
+    } on MigrationFileException catch (e) {
+      if (!mounted) return;
+      setState(() => _migrationStatus =
+          'Could not share the export file. [${e.code}]');
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _migrationStatus =
+          'Export failed unexpectedly. Try again. [EXPORT_FAILED]');
+    } finally {
+      if (mounted) setState(() => _migrationBusy = false);
+    }
+  }
+
+  /// Production side: pick the file, validate it against the
+  /// signed-in account, and write the raw stores verbatim. ORDERING
+  /// (Ivy's trap): [MigrationBundleService.importBundleJson] writes
+  /// the blobs directly to secure storage, so no coach-memory load
+  /// can run against a half-imported state. STALE MIRRORS (Vera
+  /// BLOCK, Phase 4 fix): if Coach/History was opened earlier this
+  /// session, the coach (and knowledge) mirrors are already warmed
+  /// with pre-import state — the import invalidates those mirrors
+  /// after its writes complete, so the next load reads the imported
+  /// blob and no later persist can overwrite it from the stale
+  /// mirror. A refusal (owner mismatch, damaged file) writes
+  /// nothing and explains itself in the status line. After a
+  /// successful import the reminder schedules are rebuilt
+  /// immediately, so the imported check-in toggle takes effect
+  /// without another screen visit.
+  Future<void> _importMigration() async {
+    String? text;
+    try {
+      text = await _migrationPicker.pickMigrationText();
+    } on MigrationFileException catch (e) {
+      if (!mounted) return;
+      setState(() => _migrationStatus =
+          'Could not read that file. [${e.code}]');
+      return;
+    }
+    if (text == null) return; // user cancelled the picker
+    setState(() {
+      _migrationBusy = true;
+      _migrationStatus = null;
+    });
+    try {
+      final email = await _migrationEmail();
+      final result =
+          await _migration.importBundleJson(text, currentEmail: email);
+      // Refresh the local-only values this screen renders from the
+      // store the import just rewrote (check-in toggle above all —
+      // it is a reconcile input below).
+      try {
+        _checkInEnabled = await _store.getCheckInReminderEnabled();
+        _themeMode = await _store.getThemeMode();
+        _showNavLabels = await _store.getShowNavLabels();
+        _contextHidden = await _store.getUserContextHidden();
+      } catch (_) {}
+      await _reconcileAfterImport();
+      if (!mounted) return;
+      setState(() => _migrationStatus =
+          'Imported ${result.importedKeys.length} data '
+          '${result.importedKeys.length == 1 ? 'store' : 'stores'} '
+          'from your Tabs Lab export. Your coach memory, settings, '
+          'and history are now in this app, and your reminders have '
+          'been rescheduled.');
+    } on MigrationException catch (e) {
+      if (!mounted) return;
+      setState(() => _migrationStatus = e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _migrationStatus =
+          'Import failed unexpectedly. Nothing was changed. '
+          '[IMPORT_FAILED]');
+    } finally {
+      if (mounted) setState(() => _migrationBusy = false);
+    }
+  }
+
+  /// Post-import reminder rebuild: the same full resync the
+  /// first-run hook performs (syncAll + user-reminder reconcile),
+  /// driven by the freshly imported local settings + the server
+  /// profile. Failures surface through the notifications error
+  /// state, never as an import failure — the data already landed.
+  Future<void> _reconcileAfterImport() async {
+    try {
+      await performReminderResync(
+        backend: _backend,
+        settingsStore: _store,
+        notifications: _notifs,
+      );
+    } on NotificationServiceException catch (e) {
+      if (mounted) setState(() => _notifError = e.code);
+    } catch (_) {
+      if (mounted) setState(() => _notifError = 'SCHEDULE_FAILED');
+    }
   }
 
   /// Native manualSync = syncAllData (push + pull). The Lab's writes
