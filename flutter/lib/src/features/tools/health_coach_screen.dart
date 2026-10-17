@@ -124,9 +124,13 @@ const String coachCalendarPermissionDeniedMessage =
 /// permission request at a calendar approval (MF-3 discipline:
 /// explain in-app first, request only from Continue). Native asks
 /// bare at first approve; the disclosure is this build's deliberate
-/// addition and changes none of native's outcomes.
-const String coachCalendarPermissionDisclosure =
-    'Tabs Coach needs read and write access to your calendar. When Google Calendar is connected, the Coach reads the titles and times of your events for today and the next 14 days and sends them to the Tabs AI service so it can answer with your schedule in context. The Coach can also add events to, and delete events from, your calendar, only for proposals you tap Approve on. Nothing is added or deleted without your approval. Tap Continue to allow calendar access.';
+/// addition and changes none of native's outcomes. Takeover
+/// disclosures (audit P3): the canonical text now lives in
+/// calendar_service.dart ([calendarCoachDisclosure]) because
+/// Settings duplicates it at the Connected Apps connect moment;
+/// this name remains as an alias so existing callers/tests are
+/// unchanged.
+const String coachCalendarPermissionDisclosure = calendarCoachDisclosure;
 
 /// Round 54 fix round (Juno A2) — scope notice shown ON a pending
 /// calendar-DELETION proposal card in the connected state only:
@@ -2788,16 +2792,14 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
     // mirrors native's outer catch ("Calendar events are
     // unavailable right now."). Not connected: native's own
     // not-connected return (unused by the not-connected branch).
+    // Takeover disclosures (audit P4): the read is permission-aware
+    // via [CalendarService.upcomingEventsContext] — when calendar
+    // read permission is not granted the context is the unavailable
+    // string, NEVER "No events found." (that string now means a
+    // successful read that genuinely returned zero events).
     var calendarEventsContext = coachCalendarNotConnectedContext;
     if (widget.calendarConnected) {
-      try {
-        final events = await _calendar.getUpcomingEvents();
-        calendarEventsContext = formatUpcomingCalendarEvents(events);
-      } on CalendarException {
-        calendarEventsContext = calendarEventsUnavailableContext;
-      } catch (_) {
-        calendarEventsContext = calendarEventsUnavailableContext;
-      }
+      calendarEventsContext = await _calendar.upcomingEventsContext();
     }
     final body = {
       'messages': history,

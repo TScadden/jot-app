@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tabs_lab/src/data/calendar_service.dart';
 import 'package:tabs_lab/src/data/google_sign_in_service.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/features/settings/settings_screen.dart';
@@ -13,9 +14,11 @@ import 'test_helpers.dart';
 class FakeGoogle extends GoogleSignInService {
   GoogleAccountIdentity? identity;
   GoogleSignInOutcome? failure;
+  int signInCalls = 0;
 
   @override
   Future<GoogleAccountIdentity> signInForIdentity() async {
+    signInCalls++;
     final f = failure;
     if (f != null) throw f;
     return identity ??
@@ -170,14 +173,26 @@ void main() {
   });
 
   group('Google Calendar', () {
-    testWidgets('connect stores email locally; disconnect clears it',
-        (tester) async {
+    testWidgets('P3: connect shows the A1 disclosure BEFORE any '
+        'sign-in; Continue proceeds and stores email locally; '
+        'disconnect clears it', (tester) async {
       final backend = LinkBackend()..pullBody = r29.pull();
+      final google = FakeGoogle();
       final map = <String, String>{};
-      await pumpConnectedApps(tester, backend: backend, map: map);
+      await pumpConnectedApps(tester,
+          backend: backend, map: map, google: google);
       await tester
           .tap(find.byKey(const ValueKey('connect_calendar_button')));
       await tester.pumpAndSettle();
+      // Disclosure first: the A1 text is on screen, sign-in has
+      // NOT started, and nothing is connected yet.
+      expect(find.text(calendarCoachDisclosure), findsOneWidget);
+      expect(google.signInCalls, 0);
+      expect(map[SettingsStore.googleCalendarConnectedKey], isNull);
+      await tester.tap(
+          find.byKey(const ValueKey('calendar_disclosure_continue')));
+      await tester.pumpAndSettle();
+      expect(google.signInCalls, 1);
       expect(map[SettingsStore.googleCalendarConnectedKey], 'true');
       expect(map[SettingsStore.googleCalendarEmailKey],
           'person@example.com');
@@ -190,6 +205,29 @@ void main() {
       await tester.pumpAndSettle();
       expect(map[SettingsStore.googleCalendarConnectedKey], 'false');
       expect(find.text('Google Calendar Active'), findsNothing);
+    });
+
+    testWidgets('P3: "Not now" on the disclosure connects nothing '
+        'and never starts sign-in', (tester) async {
+      final backend = LinkBackend()..pullBody = r29.pull();
+      final google = FakeGoogle();
+      final map = <String, String>{};
+      await pumpConnectedApps(tester,
+          backend: backend, map: map, google: google);
+      await tester
+          .tap(find.byKey(const ValueKey('connect_calendar_button')));
+      await tester.pumpAndSettle();
+      expect(find.text(calendarCoachDisclosure), findsOneWidget);
+      await tester.tap(
+          find.byKey(const ValueKey('calendar_disclosure_not_now')));
+      await tester.pumpAndSettle();
+      expect(find.text(calendarCoachDisclosure), findsNothing);
+      expect(google.signInCalls, 0);
+      expect(map[SettingsStore.googleCalendarConnectedKey], isNull);
+      expect(find.text('Google Calendar Active'), findsNothing);
+      // The connect button is still offered.
+      expect(find.byKey(const ValueKey('connect_calendar_button')),
+          findsOneWidget);
     });
   });
 

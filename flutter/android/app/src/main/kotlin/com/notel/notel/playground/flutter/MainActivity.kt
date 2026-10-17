@@ -1752,10 +1752,17 @@ class MainActivity : FlutterFragmentActivity() {
     /// from the earlier of local/UTC midnight today through local
     /// midnight + 15 days, DTSTART ascending. Dart formats the rows
     /// into native's exact context string. A query failure is
-    /// caught natively and yields an empty list; mirrored here.
+    /// caught natively and yields an empty list; mirrored here —
+    /// with ONE deliberate exception (takeover disclosures, audit
+    /// P4): a SecurityException means calendar permission is not
+    /// granted, and it surfaces as a PERMISSION_DENIED error so
+    /// Dart substitutes native's "Calendar events are unavailable
+    /// right now." context. An empty success here must mean the
+    /// calendar is genuinely empty, never "permission missing".
     private fun getUpcomingCalendarEvents(result: MethodChannel.Result) {
         Thread {
             val events = mutableListOf<Map<String, Any?>>()
+            var permissionDenied = false
             try {
                 val localMidnight = java.util.Calendar.getInstance().apply {
                     set(java.util.Calendar.HOUR_OF_DAY, 0)
@@ -1806,6 +1813,10 @@ class MainActivity : FlutterFragmentActivity() {
                             }
                         }
                     }
+                } catch (_: SecurityException) {
+                    // P4 (see function doc): permission is missing —
+                    // do NOT fall through to an empty-list success.
+                    permissionDenied = true
                 } catch (_: Exception) {
                     // Native logs and continues with an empty list.
                 }
@@ -1818,6 +1829,19 @@ class MainActivity : FlutterFragmentActivity() {
                         result.error(
                             "CALENDAR_READ_FAILED",
                             "Could not read calendar events.",
+                            null
+                        )
+                    } catch (_: Exception) {
+                    }
+                }
+                return@Thread
+            }
+            if (permissionDenied) {
+                runOnUiThread {
+                    try {
+                        result.error(
+                            "PERMISSION_DENIED",
+                            "Calendar permission is not granted.",
                             null
                         )
                     } catch (_: Exception) {

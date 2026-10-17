@@ -3179,7 +3179,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               style: ElevatedButton.styleFrom(
                   backgroundColor: NotelColors.surfaceHigh,
                   foregroundColor: NotelColors.textPrimary),
-              onPressed: _connectGoogleCalendar,
+              onPressed: _showCalendarConnectDisclosure,
               icon: Image.asset('assets/images/ic_google_logo.png',
                   width: 20, height: 20),
               label: const Text('Connect Google Calendar',
@@ -3258,6 +3258,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // ── Connected Apps flows (Round 30) ──────────────────────────────
+
+  /// Takeover disclosures (audit P3) — the A1 calendar disclosure
+  /// at the Connected Apps CONNECT moment. Until now the disclosure
+  /// fired only at coach approve time, so a user who granted
+  /// calendar permission manually via Android system settings never
+  /// saw it. Tapping "Connect Google Calendar" now shows the
+  /// disclosure FIRST (the same [calendarCoachDisclosure] text the
+  /// approve-time gate uses); only Continue proceeds to the native
+  /// connect flow below. "Not now" (or dismissing) connects
+  /// nothing and starts no sign-in. The disclosure is duplicated,
+  /// not moved: the approve-time gate still shows it before the
+  /// system permission request.
+  Future<void> _showCalendarConnectDisclosure() async {
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: NotelColors.surface,
+        title: const Text('Connect Google Calendar',
+            style: TextStyle(color: NotelColors.textPrimary)),
+        content: const Text(calendarCoachDisclosure,
+            style: TextStyle(color: NotelColors.textSecondary)),
+        actions: [
+          TextButton(
+            key: const ValueKey('calendar_disclosure_not_now'),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Not now',
+                style: TextStyle(color: NotelColors.textSecondary)),
+          ),
+          TextButton(
+            key: const ValueKey('calendar_disclosure_continue'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Continue',
+                style: TextStyle(
+                    color: NotelColors.primary,
+                    fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    if (proceed != true || !mounted) return;
+    await _connectGoogleCalendar();
+  }
 
   /// Native Calendar connect (SettingsScreen.kt:144-160 +
   /// SettingsViewModel.kt:204-209): chooser returns an account; only
