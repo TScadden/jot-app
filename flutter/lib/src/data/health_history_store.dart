@@ -415,7 +415,11 @@ class HealthHistoryStore {
   /// corrupt blob starts empty. When [currentEmail] is known, a blob
   /// owned by a different account (or by no recorded account while
   /// carrying data) is dropped exactly as the sibling caches do it.
+  /// When there is no usable blob to adopt (missing, corrupt, or
+  /// empty), the store instead binds to [currentEmail] — the
+  /// session-resume path's only binding opportunity (R70 fix D).
   Future<void> warmFromDisk({String? currentEmail}) async {
+    final expected = _normalizeEmail(currentEmail);
     if (_warmed) {
       if (currentEmail != null) await clearIfOwnerMismatch(currentEmail);
       return;
@@ -424,15 +428,26 @@ class HealthHistoryStore {
     try {
       final raw = await _read(storageKey);
       if (raw == null || raw.isEmpty) {
+        // R70 fix D — no blob exists to adopt, so there is no
+        // foreign-owned data to guard against: bind to the known
+        // session account (matching the empty-blob branch below).
+        // Without this, the session-resume path (which never calls
+        // the login/register callbacks) persists its first session's
+        // captures with ownerEmail: null, and the next cold start
+        // drops that unowned-but-populated blob in full.
+        if (expected != null) _ownerEmail = expected;
         _warmed = true;
         return;
       }
       map = jsonDecode(raw) as Map<String, dynamic>;
     } catch (_) {
+      // R70 fix D — corrupt/unreadable blob: same as missing. No
+      // usable blob to adopt, so bind to the known session account
+      // instead of leaving the store unowned for its writes.
+      if (expected != null) _ownerEmail = expected;
       _warmed = true;
       return;
     }
-    final expected = _normalizeEmail(currentEmail);
     if (expected != null) {
       final blobOwner = _normalizeEmail(map['ownerEmail']?.toString());
       final daysRaw = map['days'];
@@ -464,6 +479,15 @@ class HealthHistoryStore {
       // Malformed blob: start empty.
       _days.clear();
     }
+    // R70 fix D — reaching here with a known session account means
+    // no foreign-owned data was loaded (a mismatched / unowned-
+    // with-data blob was dropped above, before this point), so the
+    // store must end bound to that account. This also covers the
+    // malformed-blob catch above (days cleared, nothing loaded)
+    // and a blob whose ownerEmail is an empty/blank string, whose
+    // normalized owner would otherwise overwrite the empty-blob
+    // stamp above with null.
+    if (expected != null) _ownerEmail = expected;
     _warmed = true;
   }
 

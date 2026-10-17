@@ -194,6 +194,109 @@ void main() {
       await store.warmFromDisk();
       expect(await store.dayCount(), 1);
     });
+
+    // R70 fix D — session-resume path: main() warms with the stored
+    // session email and _restoreSession routes straight to Home,
+    // so no login/register callback ever calls bindToAccount /
+    // clearIfOwnerMismatch. When no blob exists yet, warm itself
+    // must bind, or the whole first session persists ownerEmail:
+    // null and the next cold start drops it as unowned-with-data.
+    group('session-resume owner binding (fix D)', () {
+      HealthHistoryStore freshStore() {
+        final s = HealthHistoryStore.testInstance();
+        s.debugSetStore(
+            read: fake.read, write: fake.write, delete: fake.delete);
+        return s;
+      }
+
+      test(
+          'no blob + known session email: warm binds, capture + score '
+          'survive a simulated cold start with the same owner', () async {
+        expect(fake.values.containsKey(HealthHistoryStore.storageKey),
+            isFalse);
+        final resumed = freshStore();
+        await resumed.warmFromDisk(currentEmail: ' Resume@Example.com ');
+        expect(resumed.ownerEmail, 'resume@example.com');
+
+        // A real capture write, plus the score engine's write path.
+        await resumed.mergeRefresh(const [
+          DailyBiometrics(
+              date: '2026-10-01', restingHrBpm: 60, sleepMinutes: 400),
+        ]);
+        expect(
+            await resumed.persistScore('2026-10-01',
+                dailyScore: 80, scoreSleep: 90),
+            isTrue);
+
+        // Simulated cold start: a brand-new store over the same disk.
+        final cold = freshStore();
+        await cold.warmFromDisk(currentEmail: 'resume@example.com');
+        expect(cold.ownerEmail, 'resume@example.com');
+        expect(await cold.dayCount(), 1);
+        final day = (await cold.readAll())['2026-10-01']!;
+        expect(day.restingHrBpm, 60);
+        expect(day.sleepMinutes, 400);
+        expect(day.dailyScore, 80);
+        expect(day.scoreSleep, 90);
+      });
+
+      test(
+          'corrupt blob + known session email: warm binds, capture '
+          'survives a simulated cold start with the same owner', () async {
+        fake.values[HealthHistoryStore.storageKey] = '{{{ not json';
+        final resumed = freshStore();
+        await resumed.warmFromDisk(currentEmail: 'resume@example.com');
+        expect(resumed.ownerEmail, 'resume@example.com');
+        expect(await resumed.dayCount(), 0);
+
+        await resumed.mergeRefresh(const [
+          DailyBiometrics(date: '2026-10-02', restingHrBpm: 61),
+        ]);
+
+        final cold = freshStore();
+        await cold.warmFromDisk(currentEmail: 'resume@example.com');
+        expect(cold.ownerEmail, 'resume@example.com');
+        expect(await cold.dayCount(), 1);
+        expect((await cold.readAll())['2026-10-02']!.restingHrBpm, 61);
+      });
+
+      test(
+          'empty-owner empty blob + known session email: warm still '
+          'ends bound (blank owner must not unbind it)', () async {
+        fake.values[HealthHistoryStore.storageKey] =
+            '{"ownerEmail":"","days":{}}';
+        final resumed = freshStore();
+        await resumed.warmFromDisk(currentEmail: 'resume@example.com');
+        expect(resumed.ownerEmail, 'resume@example.com');
+
+        await resumed.mergeRefresh(const [
+          DailyBiometrics(date: '2026-10-03', restingHrBpm: 62),
+        ]);
+
+        final cold = freshStore();
+        await cold.warmFromDisk(currentEmail: 'resume@example.com');
+        expect(cold.ownerEmail, 'resume@example.com');
+        expect(await cold.dayCount(), 1);
+      });
+
+      test(
+          'fail-closed unchanged: an EXISTING unowned blob carrying '
+          'data is still dropped, not adopted', () async {
+        // Seed a populated blob with no owner (the pre-fix shape).
+        final seed = freshStore();
+        await seed.mergeRefresh(const [
+          DailyBiometrics(date: '2026-10-01', restingHrBpm: 60),
+        ]);
+        expect(seed.ownerEmail, isNull);
+
+        final cold = freshStore();
+        await cold.warmFromDisk(currentEmail: 'resume@example.com');
+        expect(await cold.dayCount(), 0);
+        expect(cold.ownerEmail, 'resume@example.com');
+        expect(fake.values.containsKey(HealthHistoryStore.storageKey),
+            isFalse);
+      });
+    });
   });
 
   group('capture (HealthHistorySync)', () {
