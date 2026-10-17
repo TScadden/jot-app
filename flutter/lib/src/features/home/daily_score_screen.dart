@@ -110,7 +110,11 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
     try {
       // Opening the history also runs the compute trigger, so a
       // day whose inputs landed since the last Home load appears.
-      await DailyScoreEngine(store: _store).computeMissingScores();
+      // R70 fix pass (Vera F2) — TODAY RULE (see daily_score.dart):
+      // this is an early trigger, cut off BEFORE today; only the
+      // post-capture engine run scores the current day.
+      await DailyScoreEngine(store: _store).computeMissingScores(
+          beforeDate: historyDateStr(DateTime.now()));
       final all = await _store.readAll();
       final scored = [
         for (final row in all.values)

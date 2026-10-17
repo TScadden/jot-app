@@ -132,6 +132,11 @@ class HealthHistorySync {
       // R70 Daily Score — after-capture compute trigger: any day
       // whose inputs now exist gets its (write-once) score. The
       // engine never throws and never rewrites a scored day.
+      // TODAY RULE (see daily_score.dart header): this post-capture
+      // run is the ONLY trigger allowed to score the current day —
+      // it runs after the capture merge, on the day's fullest data —
+      // so it deliberately passes NO beforeDate cutoff. Every other
+      // trigger passes beforeDate: today.
       await DailyScoreEngine(store: _store).computeMissingScores();
       return true;
     } catch (_) {

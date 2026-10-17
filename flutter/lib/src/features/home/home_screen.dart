@@ -205,8 +205,15 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadDailyScore() async {
     try {
       final store = widget.healthHistoryStore ?? HealthHistoryStore.instance;
-      await DailyScoreEngine(store: store).computeMissingScores();
       final today = historyDateStr(DateTime.now());
+      // R70 fix pass (Vera F2) — TODAY RULE (see daily_score.dart):
+      // Home is an early trigger, so its compute run is cut off
+      // BEFORE today — it can backfill past days but must never
+      // freeze today as a partial score. Today is scored only by
+      // the post-capture engine run; this method then READS that
+      // persisted score back for the circle below.
+      await DailyScoreEngine(store: store)
+          .computeMissingScores(beforeDate: today);
       final row = (await store.readAll())[today];
       if (!mounted) return;
       if (row?.dailyScore != _todayScore) {
@@ -494,6 +501,15 @@ class _HomeScreenState extends State<HomeScreen> {
         _hcStatusErrorCode = statusErrorCode;
       });
     }
+    // R70 fix pass (Vera F2) — a completed health-data load re-runs
+    // the Daily Score read: the load's fire-and-forget history
+    // capture (HealthRepository._triggerHistoryCapture) lands
+    // during/after this load, and its post-capture engine run is
+    // what scores today — the circle must pick that score up
+    // instead of staying frozen at whatever the initState race
+    // read. Every refresh path that calls _loadHealthData (the
+    // feeling check-in, the connections return) inherits this.
+    unawaited(_loadDailyScore());
   }
 
   /// Opens the data-connections screen — the one destination/flow

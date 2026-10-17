@@ -65,6 +65,20 @@
 /// as computed, and later baseline drift never rewrites history.
 /// Which components contributed is derived from which persisted
 /// component fields are non-null.
+///
+/// TODAY RULE (R70 fix pass, Vera F2): the CURRENT calendar day is
+/// scored ONLY by the post-capture engine run in
+/// `health_history_sync.dart` — the one run that happens after a
+/// Health Connect capture has merged the day's fullest data. Every
+/// OTHER compute trigger (Home, the score history screen) must
+/// pass `beforeDate:` = today to
+/// [DailyScoreEngine.computeMissingScores], so an early trigger
+/// can never freeze today as a partial score (e.g. sleep-only,
+/// before capture adds today's HRV / resting HR) under the
+/// write-once rule. Triggers that never run the engine (the Sleep
+/// screen's Sleep Need estimate, the union reader in
+/// `health_history_queries.dart`) persist no scores and need no
+/// cutoff.
 library;
 
 import 'package:tabs_lab/src/data/health_history_store.dart';
@@ -317,9 +331,10 @@ DailyScoreComputation? computeDailyScore(
 
 /// Drives score computation over a [HealthHistoryStore]: computes
 /// every stored day that does not yet hold a score and whose
-/// inputs now exist (today included), skipping any day already
-/// scored — write-once, enforced again inside
-/// [HealthHistoryStore.persistScore].
+/// inputs now exist, skipping any day already scored — write-once,
+/// enforced again inside [HealthHistoryStore.persistScore]. Which
+/// days a run may score is bounded by the caller's `beforeDate`
+/// cutoff (see the TODAY RULE in the file header).
 class DailyScoreEngine {
   final HealthHistoryStore store;
 
@@ -329,11 +344,19 @@ class DailyScoreEngine {
   /// Computes and persists scores for all missing days, oldest
   /// first. Returns how many days were newly scored. Never throws —
   /// a scoring failure must never break a screen or a capture.
-  Future<int> computeMissingScores() async {
+  ///
+  /// [beforeDate] is an EXCLUSIVE cutoff ("YYYY-MM-DD"): days on
+  /// or after it are never scored by this run. Per the TODAY RULE
+  /// in the file header, every trigger except the post-capture run
+  /// passes today here, so only the post-capture run scores today.
+  Future<int> computeMissingScores({String? beforeDate}) async {
     try {
       final days = await store.readAll();
       var written = 0;
       for (final date in days.keys) {
+        if (beforeDate != null && date.compareTo(beforeDate) >= 0) {
+          continue; // cutoff: this run must not score these days
+        }
         if (days[date]!.dailyScore != null) continue; // write-once
         final computation = computeDailyScore(days, date);
         if (computation == null) continue;

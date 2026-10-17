@@ -484,6 +484,12 @@ void main() {
           DailyBiometrics(date: d, restingHrBpm: 60),
         DailyBiometrics(date: todayStr, restingHrBpm: 54),
       ]);
+      // R70 fix pass (Vera F2) — TODAY RULE: Home's own trigger is
+      // cut off before today, so today's score must already be
+      // PERSISTED (this test's name) by the post-capture engine run.
+      // Simulate that run here (no cutoff) before pumping Home.
+      await DailyScoreEngine(store: store).computeMissingScores();
+      expect((await store.readAll())[todayStr]!.dailyScore, 100);
       final mockWeather = MockClient((request) async {
         if (request.url.host == 'ipinfo.io') {
           return http.Response(
