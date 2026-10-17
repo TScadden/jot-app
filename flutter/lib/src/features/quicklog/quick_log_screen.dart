@@ -756,9 +756,12 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
   }
 
   /// Founder change #3: without membership the AI tray shows native's
-  /// honest "Standard Access" state. The trial link opens an explainer —
+  /// honest "Standard Access" state. The link opens an explainer —
   /// membership signup lives in the main Tabs app / Play Store, which
-  /// the Lab build cannot provision.
+  /// the Lab build cannot provision. Takeover review fix (Juno): the
+  /// link label must not itself claim a free trial — no trial is
+  /// verified here — so it reads "Learn about Tabs Premium"; the
+  /// explainer it opens is unchanged.
   void _showMembershipExplainer() {
     showDialog(
       context: context,
@@ -1248,7 +1251,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
           TextButton(
             onPressed: _showMembershipExplainer,
             child: const Text(
-              'Click here to start Free Trial',
+              'Learn about Tabs Premium',
               style: TextStyle(
                   color: NotelColors.primary,
                   fontWeight: FontWeight.bold),

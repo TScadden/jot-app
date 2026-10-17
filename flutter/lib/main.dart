@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/auth_api.dart';
+import 'package:tabs_lab/src/data/billing_play_store.dart';
 import 'package:tabs_lab/src/data/coach_memory_store.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
@@ -167,7 +168,8 @@ class AppFlow extends StatefulWidget {
 
 enum _FlowStage { welcome, login, onboarding, home }
 
-class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
+class _AppFlowState extends State<AppFlow>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   static const _entryMs = 650;
   static const _holdMs = 1200;
   static const _exitMs = 650;
@@ -531,6 +533,12 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
         widget.tabsBackend ?? TabsBackend(sessionStore: _sessionStore);
     TabsBackend.onSessionExpired = _onSessionExpired;
     unawaited(_restoreSession());
+    // Takeover Phase 2 — production billing sync triggers (native
+    // parity: sync on BillingClient connect + on ON_RESUME). Inert
+    // unless the runtime package/flavor gate says this is the
+    // production build; the Lab never touches Play Billing.
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_startBillingSync());
     _exitController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: _exitMs),
@@ -551,8 +559,51 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
     );
   }
 
+  // Takeover Phase 2 — app-lifetime billing sync (start + resume).
+  // Null in the Lab and in tests (the production gate fails closed).
+  //
+  // SINGLE APP-OWNED INSTANCE (Vera takeover review): this flow
+  // owns the one BillingService (inside _billingSync) for the
+  // app's lifetime. It is threaded to the selling screens via
+  // MainShell / OnboardingFlow below — screens consume it, never
+  // construct or dispose their own. Ownership ends in this
+  // State's dispose(), which disposes _billingSync (and with it
+  // the service).
+  BillingAppSync? _billingSync;
+
+  Future<void> _startBillingSync() async {
+    try {
+      final sync = await startBillingAppSync(backend: _tabsBackend);
+      if (!mounted) {
+        // The flow is already gone: ownership ended before the
+        // instance arrived, so dispose it here rather than leak
+        // its purchase-updates subscription.
+        sync?.dispose();
+        return;
+      }
+      setState(() => _billingSync = sync);
+    } catch (_) {
+      // Billing must never block or crash app start; the Membership
+      // screens surface billing errors visibly when opened.
+      _billingSync = null;
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Forward resumes to the billing sync (native ON_RESUME →
+    // checkSubscriptionStatus).
+    if (state == AppLifecycleState.resumed) {
+      _billingSync?.onResumed();
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    // Ownership of the single billing service ends here (see
+    // _startBillingSync): this is the only dispose of it.
+    _billingSync?.dispose();
     // Round 31 — don't leave this flow's handler registered on the
     // backend after the flow is gone.
     if (TabsBackend.onSessionExpired == _onSessionExpired) {
@@ -588,6 +639,7 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
             backend: _tabsBackend,
             healthConnectService: widget.healthConnectService,
             notificationService: widget.notificationService,
+            billingService: _billingSync?.service,
             onComplete: _onOnboardingComplete,
             onDeclineConsent: () => unawaited(_onConsentDecline()),
           )
@@ -596,6 +648,7 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
               weatherApi: widget.weatherApi,
               locationService: widget.locationService,
               healthConnectService: widget.healthConnectService,
+              billingService: _billingSync?.service,
               onLogout: _onLogout),
         if (_splashVisible)
           AnimatedBuilder(

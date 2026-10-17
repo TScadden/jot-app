@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import 'package:tabs_lab/src/data/billing_service.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/features/billing/billing_plans_panel.dart';
 import 'package:tabs_lab/src/features/onboarding/onboarding_header.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
@@ -16,14 +20,17 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 ///   decisions."
 /// - Monthly / Yearly plan cards. Native reads prices + trial
 ///   periods from the live Play catalog; until it loads, native's own
-///   fallback line is "Pricing shown in Google Play" — the Flutter
-///   Lab has no Play Billing client (production billing activates
-///   when the Flutter app takes over the production package), so the
-///   fallback line is what shows, and the trial CTA follows the
-///   Round 29 Settings precedent ("Start 7-day free trial").
-/// - Subscribing in native launches Play Billing (and, in the
-///   onboarding route, navigates to Settings → Membership). In the
-///   Lab the subscribe button shows the same honest dialog Round 29's
+///   fallback line is "Pricing shown in Google Play".
+/// - Takeover Phase 2: when the app-owned billing service is
+///   supplied (production build — the AND gate in
+///   billing_service.dart), the cards + CTA
+///   are the shared [BillingPlansPanel] over the real Play catalog —
+///   the CTA names a trial only when Play actually returns one. In
+///   the Lab the fallback line shows and the CTA claims neither a
+///   price nor a trial (the old hardcoded "Start 7-day free trial"
+///   label is removed).
+/// - Subscribing in native launches Play Billing. In the Lab the
+///   subscribe button shows the same honest dialog Round 29's
 ///   Settings uses and the step stays put — no fake purchase flow.
 /// - "Use free account for now" skips to setup loading.
 /// - If the account is already unlimited, native auto-advances to
@@ -33,11 +40,20 @@ class MembershipOnboardingScreen extends StatefulWidget {
   final VoidCallback onSkip;
   final TabsBackend? backend;
 
+  /// Takeover Phase 2 — the app-owned billing service (single
+  /// instance, owned by the app flow via BillingAppSync; threaded
+  /// through OnboardingFlow). This screen CONSUMES it only: it
+  /// never constructs its own service and never disposes this
+  /// one. Null in the Lab (and in tests that do not inject one):
+  /// the step then keeps its honest cannot-purchase state.
+  final BillingService? billingService;
+
   const MembershipOnboardingScreen({
     super.key,
     required this.onBack,
     required this.onSkip,
     this.backend,
+    this.billingService,
   });
 
   @override
@@ -51,11 +67,29 @@ class _MembershipOnboardingScreenState
   String _selectedPlan = 'monthly';
   bool _advanced = false;
 
+  // Takeover Phase 2 — the app-owned billing service, consumed
+  // via the widget parameter; null in the Lab. Read through the
+  // widget on every use so the instance the app flow finishes
+  // creating asynchronously is picked up when it arrives. This
+  // screen never constructs or disposes a billing service —
+  // disposal belongs to the app flow that owns the instance.
+  BillingService? get _billing => widget.billingService;
+
   @override
   void initState() {
     super.initState();
     _backend = widget.backend ?? TabsBackend();
     _checkUnlimited();
+  }
+
+  /// Production purchase completed / status sync says unlimited:
+  /// native auto-advances to setup loading.
+  void _onBillingUnlimited() {
+    if (_advanced) return;
+    _advanced = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onSkip();
+    });
   }
 
   /// Native: LaunchedEffect(isUnlimited) → onSkip() (setup loading).
@@ -180,60 +214,76 @@ class _MembershipOnboardingScreenState
                 ),
               ),
               const SizedBox(height: 16),
-              _PlanCard(
-                selected: _selectedPlan == 'monthly',
-                title: 'Monthly Plan',
-                chip: 'FREE TRIAL',
-                chipColor: NotelColors.primary,
-                onTap: () => setState(() => _selectedPlan = 'monthly'),
-              ),
-              const SizedBox(height: 12),
-              _PlanCard(
-                selected: _selectedPlan == 'yearly',
-                title: 'Yearly Plan',
-                chip: 'BEST VALUE',
-                chipColor: NotelColors.success,
-                onTap: () => setState(() => _selectedPlan = 'yearly'),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                height: 54,
-                child: FilledButton(
-                  onPressed: _showPurchaseUnavailable,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: NotelColors.primary,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24),
+              if (_billing != null) ...[
+                // Takeover Phase 2 — production build: the real
+                // Play flow (live catalog, user-picked offer,
+                // server-verified purchase).
+                BillingPlansPanel(
+                  service: _billing!,
+                  onUnlimited: _onBillingUnlimited,
+                ),
+              ] else ...[
+                // Lab build — honest state: no price and NO trial
+                // is claimed without a live catalog (the hardcoded
+                // "Start 7-day free trial" label is removed).
+                _PlanCard(
+                  selected: _selectedPlan == 'monthly',
+                  title: 'Monthly Plan',
+                  chip: '',
+                  chipColor: NotelColors.primary,
+                  onTap: () => setState(() => _selectedPlan = 'monthly'),
+                ),
+                const SizedBox(height: 12),
+                _PlanCard(
+                  selected: _selectedPlan == 'yearly',
+                  title: 'Yearly Plan',
+                  // Takeover review fix (Juno): no "BEST VALUE" chip
+                  // in the Lab — no catalog price data exists here to
+                  // compute savings from, so it would be unbacked.
+                  chip: '',
+                  chipColor: NotelColors.success,
+                  onTap: () => setState(() => _selectedPlan = 'yearly'),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: FilledButton(
+                    onPressed: _showPurchaseUnavailable,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: NotelColors.primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.workspace_premium,
+                            color: Colors.white, size: 20),
+                        SizedBox(width: 8),
+                        Text(
+                          'Subscribe with Google Play',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 17,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.workspace_premium,
-                          color: Colors.white, size: 20),
-                      SizedBox(width: 8),
-                      Text(
-                        'Start 7-day free trial',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 17,
-                        ),
-                      ),
-                    ],
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Auto-renews until canceled. Billed by Google Play.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xBF7A8FAF),
+                    fontSize: 11,
                   ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'Auto-renews until canceled. Billed by Google Play.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Color(0xBF7A8FAF),
-                  fontSize: 11,
-                ),
-              ),
+              ],
               const SizedBox(height: 12),
               TextButton(
                 onPressed: widget.onSkip,
@@ -391,21 +441,25 @@ class _PlanCard extends StatelessWidget {
                 ],
               ),
             ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: chipColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                chip,
-                style: TextStyle(
-                  color: chipColor,
-                  fontSize: 9,
-                  fontWeight: FontWeight.bold,
+            // Empty chip renders nothing (Takeover Phase 2: no
+            // unverified FREE TRIAL claim in the Lab).
+            if (chip.isNotEmpty)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: chipColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  chip,
+                  style: TextStyle(
+                    color: chipColor,
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
-            ),
           ],
         ),
       ),
