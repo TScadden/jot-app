@@ -1,4 +1,5 @@
 import 'package:tabs_lab/src/data/coach_memory_store.dart';
+import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/heart_data_cache.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
@@ -71,6 +72,12 @@ class AccountActions {
     // the same wipe covers it.
     try {
       await CoachMemoryStore.instance.clear();
+    } catch (_) {}
+    // R70 fix pass (Vera F1 / Juno C1): the historical health store
+    // is account-bound all-time health data — logout / account
+    // deletion must leave none of it on device.
+    try {
+      await HealthHistoryStore.instance.clear();
     } catch (_) {}
     // Round 65: cached extracted document text is account-bound
     // device-local medical text — the same wipe covers it.
