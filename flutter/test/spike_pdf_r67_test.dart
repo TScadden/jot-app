@@ -212,8 +212,10 @@ void main() {
       );
 
       await tester.tap(find.byIcon(Icons.download));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
+      // Let the export future land AND the SnackBar entry animation
+      // settle — tapping Share mid-entry targets a point still
+      // translated below the surface edge.
+      await tester.pumpAndSettle();
 
       expect(savedName, 'Tabs 2026-10-16 HR spikes.pdf');
       expect(savedBytes, isNotNull);
