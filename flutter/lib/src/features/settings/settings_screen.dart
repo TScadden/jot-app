@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:tabs_lab/src/data/billing_models.dart';
-import 'package:tabs_lab/src/data/billing_play_store.dart';
 import 'package:tabs_lab/src/data/billing_service.dart';
 import 'package:tabs_lab/src/data/calendar_service.dart';
 import 'package:tabs_lab/src/data/common_conditions.dart';
@@ -123,12 +122,13 @@ class SettingsScreen extends StatefulWidget {
   /// Injectable for tests (native opens these in the system browser).
   final Future<bool> Function(Uri uri)? urlLauncher;
 
-  /// Takeover Phase 2 — injectable billing service for the
-  /// Membership page. Null in production wiring: the screen then
-  /// builds one itself ONLY when the runtime package/flavor gate
-  /// ([BillingEnvironment]) says this is the production build;
-  /// in the Lab the Membership page keeps its honest
-  /// cannot-purchase state.
+  /// Takeover Phase 2 — the app-owned billing service for the
+  /// Membership page (single instance, owned by the app flow via
+  /// BillingAppSync; threaded through MainShell). This screen
+  /// CONSUMES it only: it never constructs its own service and
+  /// never disposes this one. Null in the Lab (and in tests that
+  /// do not inject one): the Membership page then keeps its
+  /// honest cannot-purchase state.
   final BillingService? billingService;
 
   /// Round 34 — open directly on the Event Counters page instead of
@@ -234,11 +234,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   String _selectedPlan = 'monthly';
 
-  // Takeover Phase 2 — production billing service for the
-  // Membership page. Non-null ONLY in the production build (or when
-  // a test injects one); the Lab keeps _billing null and the page
-  // renders its honest cannot-purchase state.
-  BillingService? _billing;
+  // Takeover Phase 2 — the app-owned billing service for the
+  // Membership page, consumed via the widget parameter. Non-null
+  // ONLY in the production build (or when a test injects one);
+  // the Lab keeps it null and the page renders its honest
+  // cannot-purchase state. Read through the widget on every use
+  // so the instance the app flow finishes creating asynchronously
+  // is picked up when it arrives.
+  BillingService? get _billing => widget.billingService;
 
   bool _syncing = false;
   bool _recovering = false;
@@ -281,28 +284,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _kStore = widget.knowledgeStore ?? KnowledgeExtractionStore.instance;
     _kPicker = widget.knowledgePicker ?? KnowledgeDocumentPicker();
     _kService = KnowledgeDocumentService(backend: _backend, store: _kStore);
-    _billing = widget.billingService;
-    unawaited(_initBilling());
     _load();
   }
 
-  /// Takeover Phase 2 — when no service was injected, build the
-  /// real one ONLY under the production package/flavor gate. The
-  /// panel initializes it (catalog load + start sync); here we just
-  /// swap the Membership page from its Lab state to the real flow.
-  Future<void> _initBilling() async {
-    if (_billing != null) return;
-    final isProduction = await BillingEnvironment.isProduction(
-        packageNameProbe: probePackageName);
-    if (!isProduction || !mounted) return;
-    setState(() {
-      _billing = BillingService(
-        store: PlayBillingStore(),
-        backend: TabsBillingBackend(_backend),
-        isProductionBuild: true,
-      );
-    });
-  }
+  // Takeover Phase 2 (single-instance fix): this screen does NOT
+  // construct, initialize-own, or dispose a billing service. The
+  // app-owned instance arrives via widget.billingService (see the
+  // _billing getter); the BillingPlansPanel initializes it if it
+  // is still idle, and disposal belongs to the app flow that owns
+  // it — never to this screen's dispose().
 
   /// "Refresh Subscription Status" — native's button calls exactly
   /// the billing sync (`checkSubscriptionStatus`). Production: run
@@ -318,6 +308,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
+    // Deliberately does NOT dispose widget.billingService: it is
+    // the app-owned single instance (see _billing).
     _contextDebounce?.cancel();
     _contextController.dispose();
     super.dispose();

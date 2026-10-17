@@ -9,6 +9,7 @@ import 'package:tabs_lab/src/data/billing_models.dart';
 import 'package:tabs_lab/src/data/billing_service.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/billing/billing_plans_panel.dart';
+import 'package:tabs_lab/src/features/onboarding/membership_onboarding_screen.dart';
 
 import 'test_helpers.dart';
 
@@ -27,6 +28,7 @@ class FakeBillingStore implements BillingStore {
   List<BillingPurchase> owned = const [];
   bool launchResult = true;
   Object? queryError;
+  Object? completeError;
 
   final StreamController<List<BillingPurchase>> updates =
       StreamController<List<BillingPurchase>>.broadcast();
@@ -62,6 +64,7 @@ class FakeBillingStore implements BillingStore {
   @override
   Future<void> completePurchase(BillingPurchase purchase) async {
     log.add('store.complete:${purchase.purchaseToken}');
+    if (completeError != null) throw completeError!;
   }
 
   void emit(List<BillingPurchase> purchases) => updates.add(purchases);
@@ -74,6 +77,10 @@ class FakeBillingBackend implements BillingBackend {
   BillingVerifyOutcome verifyOutcome = const BillingVerifyOutcome(
       success: true, isUnlimited: true);
   bool? syncResult = false;
+  Object? verifyError;
+
+  /// When set, verify blocks on this completer (concurrency tests).
+  Completer<void>? verifyGate;
   final List<String> verifiedTokens = [];
   final List<List<String>> syncedTokenLists = [];
 
@@ -85,6 +92,8 @@ class FakeBillingBackend implements BillingBackend {
   }) async {
     log.add('backend.verify:$productId:$purchaseToken:$quantity');
     verifiedTokens.add(purchaseToken);
+    if (verifyGate != null) await verifyGate!.future;
+    if (verifyError != null) throw verifyError!;
     return verifyOutcome;
   }
 
@@ -94,6 +103,15 @@ class FakeBillingBackend implements BillingBackend {
     syncedTokenLists.add(List.of(activeTokens));
     return syncResult;
   }
+}
+
+/// Minimal TabsBackend for the membership onboarding screen
+/// (its only backend read is fetchIsUnlimited).
+class FakeMembershipBackend extends TabsBackend {
+  FakeMembershipBackend() : super(sessionStore: FakeSessionStore());
+
+  @override
+  Future<bool> fetchIsUnlimited() async => false;
 }
 
 BillingOffer offer({
@@ -396,6 +414,162 @@ void main() {
       expect(service.state.phase, BillingPhase.error);
       expect(service.state.errorMessage, contains('play down'));
     });
+
+    // ── Vera fix 2: in-session retry after a failed verify ──────
+
+    test('failed verify: same token CAN retry in-session and succeed',
+        () async {
+      store.catalog = [product(BillingProducts.monthly, [offer()])];
+      backend.verifyOutcome = const BillingVerifyOutcome(
+          success: false,
+          isUnlimited: false,
+          errorMessage: 'Subscription is not active.');
+      await service.initialize();
+      const purchase = BillingPurchase(
+          productId: BillingProducts.monthly,
+          purchaseToken: 'retry-tok',
+          status: BillingPurchaseStatus.purchased);
+      store.emit(const [purchase]);
+      await settle();
+      expect(service.state.phase, BillingPhase.error);
+      expect(backend.verifiedTokens, ['retry-tok']);
+      expect(log.where((e) => e.startsWith('store.complete')), isEmpty);
+
+      // Server now accepts — the SAME session re-emission must
+      // retry (no app restart), verify again, and acknowledge.
+      backend.verifyOutcome =
+          const BillingVerifyOutcome(success: true, isUnlimited: true);
+      store.emit(const [purchase]);
+      await settle();
+      expect(backend.verifiedTokens, ['retry-tok', 'retry-tok']);
+      expect(log, contains('store.complete:retry-tok'));
+      expect(service.state.isUnlimited, isTrue);
+      expect(service.state.phase, BillingPhase.ready);
+    });
+
+    test('verify throws: token is un-guarded and retry succeeds',
+        () async {
+      store.catalog = [product(BillingProducts.monthly, [offer()])];
+      backend.verifyError = StateError('network down');
+      await service.initialize();
+      const purchase = BillingPurchase(
+          productId: BillingProducts.monthly,
+          purchaseToken: 'throw-tok',
+          status: BillingPurchaseStatus.purchased);
+      store.emit(const [purchase]);
+      await settle();
+      expect(service.state.phase, BillingPhase.error);
+      expect(service.state.errorMessage, contains('network down'));
+
+      backend.verifyError = null;
+      store.emit(const [purchase]);
+      await settle();
+      expect(backend.verifiedTokens, ['throw-tok', 'throw-tok']);
+      expect(log, contains('store.complete:throw-tok'));
+      expect(service.state.isUnlimited, isTrue);
+    });
+
+    test(
+        'completePurchase throws: retry re-verifies (already-processed) '
+        'and completes in-session', () async {
+      store.catalog = [product(BillingProducts.monthly, [offer()])];
+      store.completeError = StateError('ack failed');
+      await service.initialize();
+      const purchase = BillingPurchase(
+          productId: BillingProducts.monthly,
+          purchaseToken: 'ack-tok',
+          status: BillingPurchaseStatus.purchased);
+      store.emit(const [purchase]);
+      await settle();
+      expect(service.state.phase, BillingPhase.error);
+      expect(service.state.errorMessage, contains('acknowledgement'));
+
+      // Retry: the server answers already-processed (the first
+      // verify landed) — that still acknowledges, and completion
+      // now succeeds, all in the same session.
+      store.completeError = null;
+      backend.verifyOutcome = const BillingVerifyOutcome(
+          success: false,
+          isUnlimited: false,
+          errorMessage: 'This purchase has already been processed.');
+      store.emit(const [purchase]);
+      await settle();
+      expect(backend.verifiedTokens, ['ack-tok', 'ack-tok']);
+      expect(
+          log.where((e) => e == 'store.complete:ack-tok'), hasLength(2));
+      expect(service.state.isUnlimited, isTrue);
+    });
+
+    test('successful verify still guards: no re-verify after success',
+        () async {
+      // Retry-un-guarding must NOT reopen the success path.
+      store.catalog = [product(BillingProducts.monthly, [offer()])];
+      await service.initialize();
+      const purchase = BillingPurchase(
+          productId: BillingProducts.monthly,
+          purchaseToken: 'done-tok',
+          status: BillingPurchaseStatus.purchased);
+      store.emit(const [purchase]);
+      await settle();
+      store.emit(const [purchase]);
+      await settle();
+      expect(backend.verifiedTokens, ['done-tok']);
+      expect(log.where((e) => e == 'store.complete:done-tok'),
+          hasLength(1));
+    });
+
+    // ── Vera fix 4: empty-token filter ───────────────────────────
+
+    test('purchased update with empty token never reaches verify',
+        () async {
+      store.catalog = [product(BillingProducts.monthly, [offer()])];
+      await service.initialize();
+      log.clear();
+
+      store.emit(const [
+        BillingPurchase(
+            productId: BillingProducts.monthly,
+            purchaseToken: '',
+            status: BillingPurchaseStatus.purchased),
+      ]);
+      await settle();
+
+      expect(backend.verifiedTokens, isEmpty);
+      expect(log.where((e) => e.startsWith('backend.verify')), isEmpty);
+      expect(log.where((e) => e.startsWith('store.complete')), isEmpty);
+      expect(service.state.phase, BillingPhase.error);
+      expect(service.state.errorMessage,
+          contains('without a verification token'));
+    });
+
+    // ── Vera fix 1: concurrent emissions on the shared instance ─
+
+    test(
+        'concurrent emissions of the same token verify only once '
+        '(shared-instance guard)', () async {
+      store.catalog = [product(BillingProducts.monthly, [offer()])];
+      await service.initialize();
+      backend.verifyGate = Completer<void>();
+      const purchase = BillingPurchase(
+          productId: BillingProducts.monthly,
+          purchaseToken: 'race-tok',
+          status: BillingPurchaseStatus.purchased);
+      // Two emissions back to back while the first verify is still
+      // in flight — the situation two live services (the old bug)
+      // double-verified, and concurrent re-emissions on the one
+      // shared instance must not.
+      store.emit(const [purchase]);
+      await settle();
+      store.emit(const [purchase]);
+      await settle();
+      expect(backend.verifiedTokens, ['race-tok']);
+      backend.verifyGate!.complete();
+      backend.verifyGate = null;
+      await settle();
+      expect(backend.verifiedTokens, ['race-tok']);
+      expect(log.where((e) => e == 'store.complete:race-tok'),
+          hasLength(1));
+    });
   });
 
   group('Lab gate', () {
@@ -418,20 +592,57 @@ void main() {
       await store.updates.close();
     });
 
-    test('environment gate fails closed without a probe', () async {
-      expect(await BillingEnvironment.isProduction(), isFalse);
+    // Vera fix 3: the production gate is AND, not OR.
+    test('gate: define-only → closed', () async {
+      // Define present, package probe reports the Lab package.
       expect(
           await BillingEnvironment.isProduction(
-              packageNameProbe: () async => 'com.notel.notel.playground.flutter'),
+              defineOptInOverride: true,
+              packageNameProbe: () async =>
+                  'com.notel.notel.playground.flutter'),
           isFalse);
+      // Define present, no probe at all.
+      expect(
+          await BillingEnvironment.isProduction(defineOptInOverride: true),
+          isFalse);
+      // Define present, probe answers null (channel missing).
+      expect(
+          await BillingEnvironment.isProduction(
+              defineOptInOverride: true,
+              packageNameProbe: () async => null),
+          isFalse);
+    });
+
+    test('gate: package-only → closed', () async {
+      expect(
+          await BillingEnvironment.isProduction(
+              defineOptInOverride: false,
+              packageNameProbe: () async => 'com.notel.notel'),
+          isFalse);
+      // No override: the real test-environment define is false, so
+      // a production package probe alone must stay closed too.
       expect(
           await BillingEnvironment.isProduction(
               packageNameProbe: () async => 'com.notel.notel'),
-          isTrue);
+          isFalse);
+    });
+
+    test('gate: both define AND production package → open', () async {
       expect(
           await BillingEnvironment.isProduction(
+              defineOptInOverride: true,
+              packageNameProbe: () async => 'com.notel.notel'),
+          isTrue);
+    });
+
+    test('gate: probe failure → closed (even with the define)',
+        () async {
+      expect(
+          await BillingEnvironment.isProduction(
+              defineOptInOverride: true,
               packageNameProbe: () async => throw StateError('no channel')),
           isFalse);
+      expect(await BillingEnvironment.isProduction(), isFalse);
     });
   });
 
@@ -654,6 +865,125 @@ void main() {
       // The purchase launched with the PICKED offer, not the first.
       expect(log, contains('store.launch:jot_membership_monthly:tok-b'));
       expect(log.where((e) => e.startsWith('store.launch')), hasLength(1));
+    });
+  });
+
+  group('Single app-owned instance (Vera fix 1)', () {
+    testWidgets(
+        'two consumers sharing the one instance verify a purchase '
+        'only once', (tester) async {
+      tester.view.physicalSize = const Size(1080, 3400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final log = <String>[];
+      final store = FakeBillingStore(log)
+        ..catalog = [product(BillingProducts.monthly, [offer()])];
+      final backend = FakeBillingBackend(log);
+      // ONE app-owned instance, consumed by two panels — the
+      // Settings + onboarding situation after the fix (previously
+      // each screen constructed its own service and both received
+      // the same PURCHASED update).
+      final shared = BillingService(
+          store: store, backend: backend, isProductionBuild: true);
+      addTearDown(() async {
+        await shared.dispose();
+        await store.updates.close();
+      });
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: ListView(children: [
+            BillingPlansPanel(service: shared),
+            BillingPlansPanel(service: shared),
+          ]),
+        ),
+      ));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      store.emit(const [
+        BillingPurchase(
+            productId: BillingProducts.monthly,
+            purchaseToken: 'shared-tok',
+            status: BillingPurchaseStatus.purchased),
+      ]);
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      expect(backend.verifiedTokens, ['shared-tok']);
+      expect(log.where((e) => e == 'store.complete:shared-tok'),
+          hasLength(1));
+    });
+
+    testWidgets(
+        'disposing the onboarding screen does NOT dispose the '
+        'app-owned service', (tester) async {
+      final log = <String>[];
+      final store = FakeBillingStore(log)
+        ..catalog = [product(BillingProducts.monthly, [offer()])];
+      final backend = FakeBillingBackend(log);
+      final shared = BillingService(
+          store: store, backend: backend, isProductionBuild: true);
+      addTearDown(() async {
+        await shared.dispose();
+        await store.updates.close();
+      });
+      await tester.pumpWidget(MaterialApp(
+        home: MembershipOnboardingScreen(
+          onBack: () {},
+          onSkip: () {},
+          backend: FakeMembershipBackend(),
+          billingService: shared,
+        ),
+      ));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(BillingPlansPanel), findsOneWidget);
+
+      // The screen goes away (its State disposes) — the app-owned
+      // service must keep living: ownership ends at the app flow,
+      // not at the screen.
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      await tester.pump();
+
+      store.emit(const [
+        BillingPurchase(
+            productId: BillingProducts.monthly,
+            purchaseToken: 'after-screen-tok',
+            status: BillingPurchaseStatus.purchased),
+      ]);
+      // Flush the stream delivery + chained futures via pumps
+      // (fake-async zone: no real Future.delayed here).
+      for (var i = 0; i < 6; i++) {
+        await tester.pump();
+      }
+      expect(backend.verifiedTokens, ['after-screen-tok']);
+      expect(log, contains('store.complete:after-screen-tok'));
+    });
+
+    test('disposing the app-owned service ends its subscription',
+        () async {
+      final log = <String>[];
+      final store = FakeBillingStore(log)
+        ..catalog = [product(BillingProducts.monthly, [offer()])];
+      final backend = FakeBillingBackend(log);
+      final service = BillingService(
+          store: store, backend: backend, isProductionBuild: true);
+      await service.initialize();
+      // This is the disposal the app flow performs at ownership
+      // end (BillingAppSync.dispose → service.dispose).
+      await service.dispose();
+      store.emit(const [
+        BillingPurchase(
+            productId: BillingProducts.monthly,
+            purchaseToken: 'post-dispose-tok',
+            status: BillingPurchaseStatus.purchased),
+      ]);
+      await settle();
+      expect(backend.verifiedTokens, isEmpty);
+      await store.updates.close();
     });
   });
 }

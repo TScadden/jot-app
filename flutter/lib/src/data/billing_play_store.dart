@@ -169,13 +169,14 @@ class PlayBillingStore implements BillingStore {
 ///
 /// PHASE 1 INTEGRATION (Bram): register a MethodChannel named
 /// `com.notel.notel/app_info` in the production app's MainActivity
-/// answering `getPackageName` with `context.packageName` — OR pass
-/// `--dart-define=TABS_PRODUCTION_BILLING=true` from the production
-/// build instead. In the Lab neither exists: this probe's
-/// [MissingPluginException] is caught and billing honestly stays
-/// in its unavailable-in-this-build state. Every failure mode
-/// (missing channel, timeout, wrong type) resolves to null —
-/// never to "production".
+/// answering `getPackageName` with `context.packageName`. The
+/// production build must ALSO pass
+/// `--dart-define=TABS_PRODUCTION_BILLING=true` — the gate is AND,
+/// so neither signal alone opens billing. In the Lab neither
+/// exists: this probe's [MissingPluginException] is caught and
+/// billing honestly stays in its unavailable-in-this-build state.
+/// Every failure mode (missing channel, timeout, wrong type)
+/// resolves to null — never to "production".
 Future<String?> probePackageName() async {
   try {
     const channel = MethodChannel('com.notel.notel/app_info');
@@ -192,11 +193,19 @@ Future<String?> probePackageName() async {
   }
 }
 
-/// App-lifetime sync triggers, mirroring native: BillingClient
-/// connect runs a sync (here: [start] → `initialize`), and
-/// `MainActivity` ON_RESUME runs one (here: the app flow forwards
-/// every resume to [onResumed] — exactly one sync per resume).
+/// App-lifetime owner of the ONE [BillingService] instance
+/// (Vera takeover review: single-instance fix), plus its sync
+/// triggers, mirroring native: BillingClient connect runs a sync
+/// (here: [start] → `initialize`), and `MainActivity` ON_RESUME
+/// runs one (here: the app flow forwards every resume to
+/// [onResumed] — exactly one sync per resume).
 /// Cancel/failure-triggered syncs live in [BillingService] itself.
+///
+/// Screens consume [service] through their `billingService`
+/// parameter — threaded AppFlow → MainShell/OnboardingFlow → the
+/// selling screens — and never construct or dispose their own.
+/// [dispose] is where ownership actually ends: the app flow calls
+/// it from its own dispose, and only then is the service disposed.
 class BillingAppSync {
   final BillingService service;
 
@@ -216,9 +225,12 @@ class BillingAppSync {
   }
 }
 
-/// Builds the app-lifetime [BillingAppSync] when — and only when —
-/// this build is the production package (see [BillingEnvironment]).
-/// Returns null in the Lab, where billing must stay inert.
+/// Builds the app-lifetime [BillingAppSync] — the ONLY production
+/// construction site for [BillingService] — when, and only when,
+/// this build passes the production gate (see
+/// [BillingEnvironment]: BOTH the dart-define AND the production
+/// package probe). Returns null in the Lab, where billing must
+/// stay inert.
 Future<BillingAppSync?> startBillingAppSync({
   required TabsBackend backend,
 }) async {

@@ -545,11 +545,27 @@ class _AppFlowState extends State<AppFlow>
 
   // Takeover Phase 2 — app-lifetime billing sync (start + resume).
   // Null in the Lab and in tests (the production gate fails closed).
+  //
+  // SINGLE APP-OWNED INSTANCE (Vera takeover review): this flow
+  // owns the one BillingService (inside _billingSync) for the
+  // app's lifetime. It is threaded to the selling screens via
+  // MainShell / OnboardingFlow below — screens consume it, never
+  // construct or dispose their own. Ownership ends in this
+  // State's dispose(), which disposes _billingSync (and with it
+  // the service).
   BillingAppSync? _billingSync;
 
   Future<void> _startBillingSync() async {
     try {
-      _billingSync = await startBillingAppSync(backend: _tabsBackend);
+      final sync = await startBillingAppSync(backend: _tabsBackend);
+      if (!mounted) {
+        // The flow is already gone: ownership ended before the
+        // instance arrived, so dispose it here rather than leak
+        // its purchase-updates subscription.
+        sync?.dispose();
+        return;
+      }
+      setState(() => _billingSync = sync);
     } catch (_) {
       // Billing must never block or crash app start; the Membership
       // screens surface billing errors visibly when opened.
@@ -569,6 +585,8 @@ class _AppFlowState extends State<AppFlow>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // Ownership of the single billing service ends here (see
+    // _startBillingSync): this is the only dispose of it.
     _billingSync?.dispose();
     // Round 31 — don't leave this flow's handler registered on the
     // backend after the flow is gone.
@@ -605,6 +623,7 @@ class _AppFlowState extends State<AppFlow>
             backend: _tabsBackend,
             healthConnectService: widget.healthConnectService,
             notificationService: widget.notificationService,
+            billingService: _billingSync?.service,
             onComplete: _onOnboardingComplete,
             onDeclineConsent: () => unawaited(_onConsentDecline()),
           )
@@ -613,6 +632,7 @@ class _AppFlowState extends State<AppFlow>
               weatherApi: widget.weatherApi,
               locationService: widget.locationService,
               healthConnectService: widget.healthConnectService,
+              billingService: _billingSync?.service,
               onLogout: _onLogout),
         if (_splashVisible)
           AnimatedBuilder(

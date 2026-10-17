@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:tabs_lab/src/data/billing_play_store.dart';
 import 'package:tabs_lab/src/data/billing_service.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/features/billing/billing_plans_panel.dart';
@@ -22,8 +21,9 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// - Monthly / Yearly plan cards. Native reads prices + trial
 ///   periods from the live Play catalog; until it loads, native's own
 ///   fallback line is "Pricing shown in Google Play".
-/// - Takeover Phase 2: in the PRODUCTION build (runtime
-///   package/flavor gate, see billing_service.dart) the cards + CTA
+/// - Takeover Phase 2: when the app-owned billing service is
+///   supplied (production build — the AND gate in
+///   billing_service.dart), the cards + CTA
 ///   are the shared [BillingPlansPanel] over the real Play catalog —
 ///   the CTA names a trial only when Play actually returns one. In
 ///   the Lab the fallback line shows and the CTA claims neither a
@@ -40,9 +40,12 @@ class MembershipOnboardingScreen extends StatefulWidget {
   final VoidCallback onSkip;
   final TabsBackend? backend;
 
-  /// Takeover Phase 2 — injectable billing service (tests). Null:
-  /// the screen builds the real one only when the runtime
-  /// package/flavor gate says this is the production build.
+  /// Takeover Phase 2 — the app-owned billing service (single
+  /// instance, owned by the app flow via BillingAppSync; threaded
+  /// through OnboardingFlow). This screen CONSUMES it only: it
+  /// never constructs its own service and never disposes this
+  /// one. Null in the Lab (and in tests that do not inject one):
+  /// the step then keeps its honest cannot-purchase state.
   final BillingService? billingService;
 
   const MembershipOnboardingScreen({
@@ -64,32 +67,19 @@ class _MembershipOnboardingScreenState
   String _selectedPlan = 'monthly';
   bool _advanced = false;
 
-  // Takeover Phase 2 — production billing service; null in the Lab.
-  BillingService? _billing;
+  // Takeover Phase 2 — the app-owned billing service, consumed
+  // via the widget parameter; null in the Lab. Read through the
+  // widget on every use so the instance the app flow finishes
+  // creating asynchronously is picked up when it arrives. This
+  // screen never constructs or disposes a billing service —
+  // disposal belongs to the app flow that owns the instance.
+  BillingService? get _billing => widget.billingService;
 
   @override
   void initState() {
     super.initState();
     _backend = widget.backend ?? TabsBackend();
-    _billing = widget.billingService;
-    unawaited(_initBilling());
     _checkUnlimited();
-  }
-
-  /// Builds the real billing service ONLY under the production
-  /// package/flavor gate (see billing_service.dart's Phase 1 note).
-  Future<void> _initBilling() async {
-    if (_billing != null) return;
-    final isProduction = await BillingEnvironment.isProduction(
-        packageNameProbe: probePackageName);
-    if (!isProduction || !mounted) return;
-    setState(() {
-      _billing = BillingService(
-        store: PlayBillingStore(),
-        backend: TabsBillingBackend(_backend),
-        isProductionBuild: true,
-      );
-    });
   }
 
   /// Production purchase completed / status sync says unlimited:

@@ -41,18 +41,20 @@
 /// silent failures (team lesson: channel calls error-handled with
 /// user-visible states).
 ///
-/// PHASE 1 INTEGRATION (Bram — flavor/Gradle side, NOT done here):
+/// PHASE 1 INTEGRATION (Bram — flavor/Gradle side):
 /// billing must activate only in the production package
 /// `com.notel.notel`. The gate is [BillingEnvironment.isProduction]:
-/// it turns true when EITHER (a) the production build passes
-/// `--dart-define=TABS_PRODUCTION_BILLING=true`, OR (b) the
+/// it turns true only when BOTH (a) the production build passes
+/// `--dart-define=TABS_PRODUCTION_BILLING=true` AND (b) the
 /// `com.notel.notel/app_info` MethodChannel answers `getPackageName`
-/// with `com.notel.notel` — Phase 1 must wire ONE of those in the
-/// production flavor, add the `com.android.vending.BILLING` manifest
-/// permission there (native manifest line 29), and set the flavor's
-/// applicationId to `com.notel.notel`. Until then the Lab build
-/// (package `com.notel.notel.playground.flutter`, no channel, no
-/// define) honestly reports billing as unavailable-in-this-build.
+/// with `com.notel.notel`. Either signal alone is closed, and a
+/// failed/absent probe is closed. Phase 1 wires the channel in the
+/// production flavor, adds the `com.android.vending.BILLING`
+/// manifest permission there (native manifest line 29), and sets
+/// the flavor's applicationId to `com.notel.notel`. Until both
+/// signals are present the Lab build (package
+/// `com.notel.notel.playground.flutter`) honestly reports billing
+/// as unavailable-in-this-build.
 library;
 
 import 'dart:async';
@@ -168,16 +170,23 @@ abstract final class BillingEnvironment {
   static const bool defineOptIn =
       bool.fromEnvironment('TABS_PRODUCTION_BILLING');
 
-  /// Resolves whether THIS build may sell: the dart-define opt-in,
-  /// or a runtime package-name probe reporting the production
-  /// package. [packageNameProbe] is injectable for tests; the real
+  /// Resolves whether THIS build may sell. BOTH signals are
+  /// required (AND gate, Vera takeover review): the dart-define
+  /// opt-in AND a runtime package-name probe reporting the
+  /// production package. Define-only is closed, package-only is
+  /// closed, a missing probe is closed, and a probe failure is
+  /// closed. [packageNameProbe] is injectable for tests; the real
   /// probe is a try/catch MethodChannel read (see
   /// billing_play_store.dart `probePackageName`) that yields null in
   /// the Lab, where no such channel is registered.
+  /// [defineOptInOverride] is injectable for tests only — production
+  /// callers omit it and read the real compile-time define.
   static Future<bool> isProduction({
     Future<String?> Function()? packageNameProbe,
+    bool? defineOptInOverride,
   }) async {
-    if (defineOptIn) return true;
+    final define = defineOptInOverride ?? defineOptIn;
+    if (!define) return false;
     if (packageNameProbe == null) return false;
     try {
       final name = await packageNameProbe();
@@ -239,10 +248,19 @@ class BillingState {
   }
 }
 
-/// The billing module itself. One instance per screen that sells;
-/// app-start/resume sync triggers call [syncSubscriptionStatus] on
-/// whichever instance the shell owns (the service is cheap — the
-/// store + backend do the work).
+/// The billing module itself.
+///
+/// SINGLE APP-OWNED INSTANCE (Vera takeover review): exactly one
+/// instance lives for the app's lifetime, owned by the app flow
+/// via `BillingAppSync` (see billing_play_store.dart) — it owns the
+/// one purchase-updates subscription and the one
+/// [_verifyAttemptedTokens] guard. Screens (Settings Membership,
+/// onboarding paywall) CONSUME that instance through their
+/// `billingService` parameter; they never construct their own and
+/// never dispose it. Disposal happens only where ownership ends:
+/// the app flow disposing its `BillingAppSync`. The public
+/// constructor remains for that owner and for tests, which may
+/// construct isolated instances against fakes.
 class BillingService {
   final BillingStore _store;
   final BillingBackend _backend;
@@ -253,10 +271,14 @@ class BillingService {
       StreamController<BillingState>.broadcast();
   StreamSubscription<List<BillingPurchase>>? _updatesSub;
 
-  /// Tokens of purchases this instance has already sent to /verify.
-  /// The store re-emits unacknowledged purchases on every listen;
-  /// the server rejects a token's second verify, so re-sending is
-  /// guarded against here as well.
+  /// Tokens with a verify currently in flight or already
+  /// succeeded on this (single, app-owned) instance. The store
+  /// re-emits unacknowledged purchases on every listen; the server
+  /// rejects a token's second verify, so re-sending is guarded
+  /// against here as well. A token is REMOVED again when its
+  /// verify/complete attempt fails (after the error is surfaced),
+  /// so a failed purchase can retry in-session — see
+  /// [_verifyThenComplete].
   final Set<String> _verifyAttemptedTokens = {};
 
   BillingService({
@@ -382,6 +404,21 @@ class BillingService {
         case BillingPurchaseStatus.pending:
           _emit(_state.copyWith(phase: BillingPhase.purchasing));
         case BillingPurchaseStatus.purchased:
+          // Filter before verify: a purchased update with no
+          // verification token (empty serverVerificationData in
+          // the Play store mapping) has nothing the server could
+          // verify — surface it visibly instead of sending an
+          // empty token to /verify or burning the token guard.
+          if (purchase.purchaseToken.trim().isEmpty) {
+            _emit(_state.copyWith(
+              phase: BillingPhase.error,
+              errorMessage: 'Google Play delivered a purchase '
+                  'without a verification token, so it could not '
+                  'be verified. Your purchase is safe with Google '
+                  'Play — reopen Tabs to try again.',
+            ));
+            break;
+          }
           await _verifyThenComplete(purchase);
         case BillingPurchaseStatus.restored:
           // Restore path: the token joins the owned set for the
@@ -408,6 +445,7 @@ class BillingService {
   }
 
   Future<void> _verifyThenComplete(BillingPurchase purchase) async {
+    if (purchase.purchaseToken.trim().isEmpty) return;
     if (_verifyAttemptedTokens.contains(purchase.purchaseToken)) return;
     _verifyAttemptedTokens.add(purchase.purchaseToken);
     _emit(_state.copyWith(phase: BillingPhase.verifying, clearError: true));
@@ -425,6 +463,13 @@ class BillingService {
             'server: $e. Your purchase is safe with Google Play — '
             'reopen Tabs to finish activating Premium.',
       ));
+      // In-session retry (Vera takeover review): the attempt is
+      // over and its error is surfaced, so un-guard the token —
+      // a re-emission later in THIS session must be able to retry
+      // without an app restart. Safe because the server's
+      // already-processed handling covers a verify that actually
+      // landed server-side before the failure.
+      _verifyAttemptedTokens.remove(purchase.purchaseToken);
       return;
     }
     if (!outcome.success && !outcome.isAlreadyProcessed) {
@@ -436,6 +481,8 @@ class BillingService {
                 'Your purchase is safe with Google Play — reopen '
                 'Tabs to finish activating Premium.',
       ));
+      // In-session retry: see the catch branch above.
+      _verifyAttemptedTokens.remove(purchase.purchaseToken);
       return;
     }
     // Server success (or the token already recorded server-side):
@@ -448,6 +495,10 @@ class BillingService {
         errorMessage: 'Your membership is active, but Google Play '
             'acknowledgement failed: $e. Reopen Tabs to retry it.',
       ));
+      // In-session retry: the retry re-verifies (the server will
+      // answer already-processed, which still acknowledges) and
+      // re-attempts completion — no app restart needed.
+      _verifyAttemptedTokens.remove(purchase.purchaseToken);
       return;
     }
     _emit(_state.copyWith(

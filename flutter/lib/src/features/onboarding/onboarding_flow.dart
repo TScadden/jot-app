@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:tabs_lab/src/data/billing_service.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/onboarding_store.dart';
@@ -58,6 +59,11 @@ class OnboardingFlow extends StatefulWidget {
   final HealthConnectService? healthConnectService;
   final ReminderNotificationService? notificationService;
 
+  /// The app-owned billing service (single instance), forwarded
+  /// to the membership step — consumed there, never constructed
+  /// or disposed by the flow or the step.
+  final BillingService? billingService;
+
   /// Fired when setup loading's "Start keeping Tabs" is tapped.
   final VoidCallback onComplete;
 
@@ -73,6 +79,7 @@ class OnboardingFlow extends StatefulWidget {
     this.backend,
     this.healthConnectService,
     this.notificationService,
+    this.billingService,
     required this.onComplete,
     required this.onDeclineConsent,
   });
@@ -154,6 +161,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           onBack: () => _backTo(OnboardingStep.connections),
           onSkip: () => _go(OnboardingStep.setupLoading),
           backend: widget.backend,
+          billingService: widget.billingService,
         ),
       OnboardingStep.setupLoading => SetupLoadingScreen(
           onNavigateMain: widget.onComplete,

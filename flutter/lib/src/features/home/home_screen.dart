@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:tabs_lab/src/data/billing_service.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_repository.dart';
 import 'package:tabs_lab/src/data/home_data_cache.dart';
@@ -114,6 +115,10 @@ class HomeScreen extends StatefulWidget {
   /// welcome flow (the shell owns that callback).
   final VoidCallback? onLogout;
 
+  /// The app-owned billing service (single instance), forwarded
+  /// to the Settings screen pushed from the counter slot.
+  final BillingService? billingService;
+
   const HomeScreen(
       {super.key,
       this.email,
@@ -122,7 +127,8 @@ class HomeScreen extends StatefulWidget {
       this.healthConnectService,
       this.healthRepository,
       this.tabsBackend,
-      this.onLogout});
+      this.onLogout,
+      this.billingService});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -279,6 +285,7 @@ class _HomeScreenState extends State<HomeScreen> {
           onLogout: widget.onLogout,
           backend: _backend,
           healthConnectService: widget.healthConnectService,
+          billingService: widget.billingService,
           openEventCounters: true,
         ),
       ),
