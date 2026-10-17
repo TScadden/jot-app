@@ -55,6 +55,12 @@ dependencies:
   home_widget: ^0.9.0
   geolocator: ^14.1.1
   url_launcher: ^6.3.1
+  # Takeover Phase 2 — Google Play Billing for Tabs Premium
+  # (lib/src/data/billing_*). in_app_purchase_android is a direct
+  # dependency because the Play store implementation reads
+  # GooglePlayProductDetails / queryPastPurchases from it.
+  in_app_purchase: ^3.3.1
+  in_app_purchase_android: ^0.5.4
 
 dev_dependencies:
   flutter_test:

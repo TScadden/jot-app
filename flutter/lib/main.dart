@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/auth_api.dart';
+import 'package:tabs_lab/src/data/billing_play_store.dart';
 import 'package:tabs_lab/src/data/coach_memory_store.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
@@ -161,7 +162,8 @@ class AppFlow extends StatefulWidget {
 
 enum _FlowStage { welcome, login, onboarding, home }
 
-class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
+class _AppFlowState extends State<AppFlow>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   static const _entryMs = 650;
   static const _holdMs = 1200;
   static const _exitMs = 650;
@@ -515,6 +517,12 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
         widget.tabsBackend ?? TabsBackend(sessionStore: _sessionStore);
     TabsBackend.onSessionExpired = _onSessionExpired;
     unawaited(_restoreSession());
+    // Takeover Phase 2 — production billing sync triggers (native
+    // parity: sync on BillingClient connect + on ON_RESUME). Inert
+    // unless the runtime package/flavor gate says this is the
+    // production build; the Lab never touches Play Billing.
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_startBillingSync());
     _exitController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: _exitMs),
@@ -535,8 +543,33 @@ class _AppFlowState extends State<AppFlow> with SingleTickerProviderStateMixin {
     );
   }
 
+  // Takeover Phase 2 — app-lifetime billing sync (start + resume).
+  // Null in the Lab and in tests (the production gate fails closed).
+  BillingAppSync? _billingSync;
+
+  Future<void> _startBillingSync() async {
+    try {
+      _billingSync = await startBillingAppSync(backend: _tabsBackend);
+    } catch (_) {
+      // Billing must never block or crash app start; the Membership
+      // screens surface billing errors visibly when opened.
+      _billingSync = null;
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Forward resumes to the billing sync (native ON_RESUME →
+    // checkSubscriptionStatus).
+    if (state == AppLifecycleState.resumed) {
+      _billingSync?.onResumed();
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _billingSync?.dispose();
     // Round 31 — don't leave this flow's handler registered on the
     // backend after the flow is gone.
     if (TabsBackend.onSessionExpired == _onSessionExpired) {
