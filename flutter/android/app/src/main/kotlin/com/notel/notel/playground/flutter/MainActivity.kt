@@ -7,6 +7,8 @@ import android.content.pm.PackageManager
 import android.provider.CalendarContract
 import android.os.Bundle
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import android.os.SystemClock
 import android.speech.RecognizerIntent
@@ -84,6 +86,23 @@ class MainActivity : FlutterFragmentActivity() {
         private const val MAX_CSV_FILE_BYTES = 5 * 1024 * 1024
         // Round 65: knowledge-document pick cap (see doc picker).
         private const val MAX_DOC_FILE_BYTES = 15 * 1024 * 1024
+        // TAKEOVER Phase 4: migration-bundle pick cap. A bundle can
+        // carry the extracted-knowledge store, so it gets more room
+        // than a CSV; past this the export almost certainly is not
+        // a migration file.
+        private const val MAX_MIGRATION_FILE_BYTES = 25 * 1024 * 1024
+        // TAKEOVER Phase 4 fix (Vera LOW): the migration export is
+        // plaintext health data sitting in cacheDir — it must not
+        // linger. Canonical export name (MigrationBundleService
+        // .fileName on the Dart side); swept on every launch, and a
+        // share also schedules its own deletion (see
+        // scheduleMigrationExportCleanup). The delay after the
+        // chooser returns gives the receiving app time to actually
+        // read the file through its FileProvider URI before it
+        // disappears; the launch sweep is the backstop for a
+        // process that dies before the delay elapses.
+        private const val MIGRATION_EXPORT_FILE_NAME = "tabs-lab-migration.json"
+        private const val MIGRATION_EXPORT_CLEANUP_DELAY_MS = 60 * 1000L
         const val HC_PROVIDER_PACKAGE = "com.google.android.apps.healthdata"
         const val SETTINGS_ACTION = "android.health.connect.action.HEALTH_HOME_SETTINGS"
         private const val REQUEST_TIMEOUT_MS = 5 * 60 * 1000L
@@ -138,6 +157,20 @@ class MainActivity : FlutterFragmentActivity() {
     private lateinit var docPickerLauncher: ActivityResultLauncher<String>
     private var pendingDocResult: MethodChannel.Result? = null
 
+    // TAKEOVER Phase 4: migration-bundle picker for "Import from
+    // Tabs Lab". A third GetContent launcher on the file_picker
+    // channel; returns the picked file's TEXT (the bundle is one
+    // JSON document). Registered in onCreate like every launcher.
+    private lateinit var migrationPickerLauncher: ActivityResultLauncher<String>
+    private var pendingMigrationResult: MethodChannel.Result? = null
+
+    // TAKEOVER Phase 4 fix (Vera LOW): the migration SHARE chooser
+    // runs through a result launcher (registered in onCreate like
+    // every launcher) so its return can trigger deletion of the
+    // plaintext export file it served.
+    private lateinit var migrationShareLauncher: ActivityResultLauncher<Intent>
+    private var pendingMigrationShareFile: java.io.File? = null
+
     // Round 54: calendar permission launcher for the Health Coach
     // (native CoachScreen.kt:89-113 requests READ+WRITE together at
     // first approve). Registered in onCreate like the HC launcher.
@@ -147,6 +180,16 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Vera LOW backstop: a migration export left in cacheDir by
+        // a previous session (chooser never returned, process died,
+        // or a build predating the cleanup) is deleted on launch —
+        // plaintext health data never survives into a new session.
+        try {
+            java.io.File(cacheDir, MIGRATION_EXPORT_FILE_NAME).delete()
+        } catch (_: Exception) {
+            // Best-effort hygiene only; a failed sweep must never
+            // block startup.
+        }
         // Registered here in onCreate — never in configureFlutterEngine()
         // (the fragment-transaction timing there can throw or silently never
         // fire). Same semantics as Compose's rememberLauncherForActivityResult.
@@ -346,6 +389,85 @@ class MainActivity : FlutterFragmentActivity() {
                 }
             }.start()
         }
+        migrationPickerLauncher = activityResultRegistry.register(
+            "migration_picker_launcher",
+            ActivityResultContracts.GetContent()
+        ) { uri ->
+            val r = pendingMigrationResult
+            pendingMigrationResult = null
+            if (r == null) return@register // stale (superseded)
+            if (uri == null) {
+                // User cancelled the picker — a null success, not an
+                // error (Dart treats null as "no file chosen").
+                try { r.success(null) } catch (_: Exception) { }
+                return@register
+            }
+            // Read off the main thread with the migration cap
+            // (CSV-picker semantics: TooLarge / Failed / Ok with
+            // the BOM stripped).
+            Thread {
+                var failureCode: String? = null
+                var failureMessage: String? = null
+                var text: String? = null
+                try {
+                    val stream = contentResolver.openInputStream(uri)
+                    if (stream == null) {
+                        failureCode = "READ_FAILED"
+                        failureMessage = "Couldn't read this file. Please try a different file."
+                    } else {
+                        stream.use { input ->
+                            val buf = ByteArray(8192)
+                            var total = 0
+                            val out = java.io.ByteArrayOutputStream()
+                            var tooLarge = false
+                            while (true) {
+                                val n = input.read(buf)
+                                if (n == -1) break
+                                total += n
+                                if (total > MAX_MIGRATION_FILE_BYTES) {
+                                    tooLarge = true
+                                    break
+                                }
+                                out.write(buf, 0, n)
+                            }
+                            if (tooLarge) {
+                                failureCode = "TOO_LARGE"
+                                failureMessage = "This file is too large to import. The limit is 25 MB."
+                            } else {
+                                text = out.toString(Charsets.UTF_8.name()).removePrefix("\uFEFF")
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    failureCode = "READ_FAILED"
+                    failureMessage = "Couldn't read this file. Please try a different file."
+                }
+                runOnUiThread {
+                    val code = failureCode
+                    try {
+                        if (code != null) {
+                            r.error(code, failureMessage, null)
+                        } else {
+                            r.success(text)
+                        }
+                    } catch (_: Exception) {
+                        // Result already consumed — nothing to do.
+                    }
+                }
+            }.start()
+        }
+        migrationShareLauncher = activityResultRegistry.register(
+            "migration_share_launcher",
+            ActivityResultContracts.StartActivityForResult()
+        ) { _ ->
+            // The share chooser has returned: schedule deletion of
+            // the plaintext export file (Vera LOW). The result code
+            // is meaningless for a chooser — cleanup happens either
+            // way, sent or cancelled.
+            val file = pendingMigrationShareFile
+            pendingMigrationShareFile = null
+            if (file != null) scheduleMigrationExportCleanup(file)
+        }
         calendarPermissionLauncher = activityResultRegistry.register(
             "calendar_permission_launcher",
             ActivityResultContracts.RequestMultiplePermissions()
@@ -424,6 +546,14 @@ class MainActivity : FlutterFragmentActivity() {
                     // Round 65: knowledge-document pick (name/MIME/
                     // base64) for Digital Knowledge Extraction.
                     "pickDocumentFile" -> pickDocumentFile(result)
+                    // TAKEOVER Phase 4: migration-bundle pick + share
+                    // (Lab export → production import).
+                    "pickMigrationText" -> pickMigrationText(result)
+                    "shareMigrationFile" -> shareMigrationFile(
+                        call.argument<String>("fileName"),
+                        call.argument<String>("content"),
+                        result
+                    )
                     else -> result.notImplemented()
                 }
             }
@@ -502,6 +632,90 @@ class MainActivity : FlutterFragmentActivity() {
         } catch (e: Exception) {
             pendingDocResult = null
             result.error("LAUNCH_FAILED", "Couldn't open the file picker.", null)
+        }
+    }
+
+    /// TAKEOVER Phase 4: launches the system file picker and returns
+    /// the picked migration bundle's text to Dart (null when the user
+    /// cancels). Every failure path returns a visible error code —
+    /// never a silent no-op.
+    private fun pickMigrationText(result: MethodChannel.Result) {
+        if (pendingMigrationResult != null) {
+            result.error("IN_FLIGHT", "A file pick is already in progress", null)
+            return
+        }
+        if (!::migrationPickerLauncher.isInitialized) {
+            result.error("UNAVAILABLE", "Couldn't open the file picker.", null)
+            return
+        }
+        pendingMigrationResult = result
+        try {
+            migrationPickerLauncher.launch("*/*")
+        } catch (e: Exception) {
+            pendingMigrationResult = null
+            result.error("LAUNCH_FAILED", "Couldn't open the file picker.", null)
+        }
+    }
+
+    /// TAKEOVER Phase 4: export hand-off for the migration bundle —
+    /// the Round 48 CSV pattern (cache-dir file + FileProvider URI +
+    /// ACTION_SEND chooser), with two deliberate differences: the
+    /// MIME type is application/json, and there is NO MediaStore
+    /// copy to Downloads. The bundle carries health data; the share
+    /// sheet is the delivery, not a second plaintext copy left on
+    /// shared storage. Success = the chooser was launched.
+    private fun shareMigrationFile(fileName: String?, content: String?, result: MethodChannel.Result) {
+        try {
+            val name = fileName?.takeIf { it.isNotBlank() } ?: MIGRATION_EXPORT_FILE_NAME
+            val bytes = (content ?: "").toByteArray(Charsets.UTF_8)
+            val cacheFile = java.io.File(cacheDir, name)
+            cacheFile.writeBytes(bytes)
+            val shareUri = androidx.core.content.FileProvider.getUriForFile(
+                this, "$packageName.provider", cacheFile
+            )
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/json"
+                putExtra(Intent.EXTRA_STREAM, shareUri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            val chooser = Intent.createChooser(intent, "Share Tabs data")
+            if (::migrationShareLauncher.isInitialized) {
+                // Chooser via the result launcher: its return
+                // schedules the export file's deletion (Vera LOW).
+                pendingMigrationShareFile = cacheFile
+                migrationShareLauncher.launch(chooser)
+            } else {
+                // Launcher missing (should not happen — it is
+                // registered in onCreate): still share, and still
+                // schedule the cleanup directly.
+                startActivity(chooser)
+                scheduleMigrationExportCleanup(cacheFile)
+            }
+            result.success(true)
+        } catch (_: Exception) {
+            pendingMigrationShareFile = null
+            result.error("SHARE_FAILED", "Could not share the export file.", null)
+        }
+    }
+
+    /// Schedules deletion of a shared migration export file after
+    /// a grace delay (the receiving app reads it through the
+    /// FileProvider URI once the chooser returns; deleting in the
+    /// same instant could race that read). Only deletes when the
+    /// file is still the exact write that was shared — a newer
+    /// export under the same name (newer mtime) is left for its
+    /// own cleanup / the next-launch sweep. Never throws.
+    private fun scheduleMigrationExportCleanup(file: java.io.File) {
+        try {
+            val sharedModified = file.lastModified()
+            Handler(Looper.getMainLooper()).postDelayed({
+                try {
+                    if (file.lastModified() == sharedModified) file.delete()
+                } catch (_: Exception) {
+                }
+            }, MIGRATION_EXPORT_CLEANUP_DELAY_MS)
+        } catch (_: Exception) {
+            // The next-launch sweep in onCreate is the backstop.
         }
     }
 

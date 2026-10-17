@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/auth_api.dart';
 import 'package:tabs_lab/src/data/billing_play_store.dart';
 import 'package:tabs_lab/src/data/coach_memory_store.dart';
+import 'package:tabs_lab/src/data/first_run_sync.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
@@ -14,6 +15,7 @@ import 'package:tabs_lab/src/data/location_service.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/onboarding_store.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
+import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/today_plan_store.dart';
 import 'package:tabs_lab/src/data/today_summary.dart';
@@ -333,6 +335,10 @@ class _AppFlowState extends State<AppFlow>
           _loggedInEmail = email;
           _stage = _FlowStage.home;
         });
+        // TAKEOVER Phase 4 — a restored session landing home is a
+        // first run after install/update until proven otherwise:
+        // rebuild the reminder schedules once (see _kickFirstRunResync).
+        _kickFirstRunResync();
       }
     } catch (_) {
       // Unreadable store → fresh-install behavior (welcome).
@@ -445,6 +451,43 @@ class _AppFlowState extends State<AppFlow>
       _loggedInEmail = email;
       _stage = _FlowStage.home;
     });
+    // TAKEOVER Phase 4 — signing in on a fresh install/update is
+    // the other first-run door (see _kickFirstRunResync).
+    _kickFirstRunResync();
+  }
+
+  // TAKEOVER Phase 4 — first-run reminder continuity (Ivy P0 §3.2):
+  // scheduled notifications do not survive the package change, and
+  // the resync (ReminderSync.syncAll + reconcileReminderAlarms) used
+  // to run only when the user opened Settings/Reminders. Run it
+  // ONCE per install, in the background, as soon as a session lands
+  // home — by cold-start restore or by sign-in. Memoized so the two
+  // doors can never double-run it in one process; the persisted
+  // done-flag in FirstRunReminderResync makes it once per install,
+  // and a failure leaves the flag unstamped so the next launch
+  // retries. Never throws into the flow: landing home is never
+  // blocked on notification scheduling.
+  Future<void>? _firstRunResyncFuture;
+
+  void _kickFirstRunResync() {
+    _firstRunResyncFuture ??= _runFirstRunResync();
+  }
+
+  Future<void> _runFirstRunResync() async {
+    try {
+      await FirstRunReminderResync(
+        resync: () => performReminderResync(
+          backend: _tabsBackend,
+          settingsStore: SettingsStore(),
+          notifications:
+              widget.notificationService ?? LocalReminderNotificationService(),
+        ),
+      ).runOnce();
+    } catch (_) {
+      // Unstamped → retried on the next launch. Silent by design:
+      // the Settings Notifications page surfaces schedule errors
+      // with their codes when the user goes there.
+    }
   }
 
   Future<void> _markOnboardingComplete() async {
@@ -497,6 +540,9 @@ class _AppFlowState extends State<AppFlow>
   // step (native finalizeSetup); land home.
   void _onOnboardingComplete() {
     setState(() => _stage = _FlowStage.home);
+    // TAKEOVER Phase 4 — landing home via a resumed onboarding is
+    // also a first-run door (see _kickFirstRunResync).
+    _kickFirstRunResync();
   }
 
   // Round 32 — consent declined (the decline dialog's "Log Out").
