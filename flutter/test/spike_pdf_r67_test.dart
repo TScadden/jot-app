@@ -175,6 +175,12 @@ void main() {
       Future<String> Function(List<int>, String)? savePdf,
       Future<void> Function(List<int>, String)? sharePdf,
     }) async {
+      // Phone-sized surface: the saved SnackBar (and its Share
+      // action) renders below the default 800x600 test surface and
+      // cannot be tapped there.
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
       await tester.pumpWidget(MaterialApp(
         home: HeartSpikeReviewScreen(
           samples: samples,
