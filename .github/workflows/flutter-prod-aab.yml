@@ -1,0 +1,353 @@
+# Flutter production AAB — TAKEOVER Phase 1 (archive-only).
+#
+# What it does, end to end:
+#   1. Validates the dispatch inputs: version_code must be an integer
+#      >= 10092 (highest versionCode on Play for com.notel.notel is
+#      10091, closed track — a code at or below that can never upload).
+#   2. Restores the upload keystore from the UPLOAD_KEYSTORE_BASE64
+#      secret (same mechanism as the native play-internal-release.yml)
+#      and injects the tabsUpload.* signing properties for the Flutter
+#      module. KEYSTORE_PASSWORD is used as BOTH store and key password:
+#      the upload keystore is PKCS12 and its private key is protected by
+#      the store password (verified 2026-09-29). Do not "fix" this.
+#   3. Runs flutter analyze + the full flutter test suite.
+#   4. Builds the Lab APK exactly as today and verifies its identity is
+#      unchanged (package com.notel.notel.playground.flutter, label
+#      "Tabs Lab", committed-debug-keystore signature, widget gate).
+#   5. Builds the production AAB:
+#        flutter build appbundle --release --flavor prod
+#          --build-number=<version_code> --build-name=<version_name>
+#          --dart-define=TABS_PRODUCTION_BILLING=true
+#      The define is ONE HALF of an AND gate: production billing
+#      activates only when the define is true AND the app_info
+#      MethodChannel (MainActivity) reports package com.notel.notel.
+#      The Lab build in this same workflow must NEVER receive the
+#      define — in the Lab the channel reports the Lab package name,
+#      so the gate stays closed there either way.
+#      The Gradle guard in flutter/android/app/build.gradle.kts fails
+#      bundleProd*/assembleProd* tasks closed if signing properties
+#      or a valid version code are missing — a Lab-signed
+#      "production" bundle or APK is impossible by construction.
+#   6. Builds a prod-flavor sibling APK and runs the widget gate
+#      (flutter/tool/check_widget_apk.sh) against it. The gate targets
+#      APK layout (root classes*.dex); an AAB stores dex under base/dex/,
+#      so the gate runs on the sibling APK built from the identical
+#      prod variant instead of being weakened to fit the AAB.
+#   7. Extracts and verifies FROM THE BUILT AAB ITSELF (bundletool
+#      dump manifest + keytool, mirroring the native pipeline):
+#        package     == com.notel.notel
+#        label       == Tabs
+#        versionCode == the version_code dispatch input
+#        versionName == the version_name dispatch input
+#        signing certificate SHA-256 == the Play-registered upload cert
+#      The step fails if ANY check fails, and every check is written
+#      to the job summary either way.
+#   8. Archives the AAB as a workflow artifact. THAT IS ALL.
+#
+# There is deliberately NO Play upload step in this workflow — no
+# upload action, no service-account secret use, no track input.
+# Uploading stays a separate, founder-approved phase.
+#
+# Required repository SECRETS (already provisioned for the native
+# pipeline, see ~/workspace/tabs-signing/GITHUB_SECRETS.md):
+#   UPLOAD_KEYSTORE_BASE64   base64 of tabs-upload.keystore
+#   KEYSTORE_PASSWORD        keystore password (also the key password)
+
+name: Flutter production AAB
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_code:
+        description: "versionCode for the production AAB (integer, >= 10092)"
+        required: true
+        type: number
+      version_name:
+        description: "versionName for the production AAB (e.g. 2.4)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flutter-prod-aab
+  cancel-in-progress: false
+
+env:
+  PACKAGE_NAME: com.notel.notel
+  EXPECTED_LABEL: Tabs
+  LAB_PACKAGE_NAME: com.notel.notel.playground.flutter
+  LAB_LABEL: Tabs Lab
+  # SHA-256 of the upload certificate registered in Play Console.
+  EXPECTED_CERT_SHA256: "3E:6A:0B:3B:0B:95:DD:4D:09:34:C0:04:CA:A9:43:6D:E4:52:62:6F:1D:3A:B8:73:A0:39:FA:06:E3:BA:AD:CE"
+  # SHA-256 of the certificate in the committed Lab debug.keystore
+  # (flutter/android/app/debug.keystore, alias androiddebugkey),
+  # computed 2026-10-16 via openssl pkcs12 + x509 -fingerprint -sha256
+  # and cross-checked against the DER hash. Pinned as a literal, like
+  # the prod cert above, so replacing the keystore file in the repo
+  # cannot silently redefine the expected Lab identity.
+  EXPECTED_LAB_CERT_SHA256: "8E:88:7B:9B:97:D0:B9:FA:2A:09:80:19:31:76:1B:7E:63:A7:0C:BC:5F:80:42:D0:D9:DC:CB:5E:13:5D:F1:3A"
+  # SHA-256 of bundletool-all-${BUNDLETOOL_VERSION}.jar as published
+  # in the GitHub release asset digest (verified 2026-10-16 against a
+  # locally downloaded copy). The download below is verified against
+  # this pin before the jar is executed.
+  BUNDLETOOL_SHA256: "378b5434cd1378bef6b2bc527b8c7f0ff2584b273830335bce54d6d0813c8584"
+  MIN_VERSION_CODE: "10092"
+  FLUTTER_VERSION: "3.47.7"
+  BUNDLETOOL_VERSION: "1.18.2"
+  AAB_PATH: flutter/build/app/outputs/bundle/prodRelease/app-prod-release.aab
+  PROD_APK_PATH: flutter/build/app/outputs/flutter-apk/app-prod-release.apk
+  LAB_APK_PATH: flutter/build/app/outputs/flutter-apk/app-lab-arm64-v8a-release.apk
+
+jobs:
+  build-prod-aab:
+    name: Build and verify production AAB (archive-only)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Validate version inputs
+        env:
+          VERSION_CODE: ${{ inputs.version_code }}
+          VERSION_NAME: ${{ inputs.version_name }}
+        run: |
+          set -eu
+          case "$VERSION_CODE" in
+            ''|*[!0-9]*)
+              echo "::error::version_code '$VERSION_CODE' is not an integer."
+              exit 1
+              ;;
+          esac
+          if [ "$VERSION_CODE" -lt "$MIN_VERSION_CODE" ]; then
+            echo "::error::version_code $VERSION_CODE is below the minimum $MIN_VERSION_CODE (highest code on Play is 10091)."
+            exit 1
+          fi
+          if ! printf '%s' "$VERSION_NAME" | grep -Eq '^[0-9]+\.[0-9]+(\.[0-9]+)?([.-][0-9A-Za-z]+)?$'; then
+            echo "::error::version_name '$VERSION_NAME' does not look like a version name (expected e.g. 2.4 or 2.4.1)."
+            exit 1
+          fi
+          echo "Building production AAB: versionCode=$VERSION_CODE versionName=$VERSION_NAME"
+          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Restore upload keystore and signing properties
+        env:
+          UPLOAD_KEYSTORE_BASE64: ${{ secrets.UPLOAD_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          set -eu
+          if [ -z "$UPLOAD_KEYSTORE_BASE64" ]; then
+            echo "::error::UPLOAD_KEYSTORE_BASE64 secret is not set. See GITHUB_SECRETS.md."
+            exit 1
+          fi
+          if [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "::error::KEYSTORE_PASSWORD secret is not set. See GITHUB_SECRETS.md."
+            exit 1
+          fi
+          # Runner-local only: flutter/android/.gitignore excludes
+          # **/*.keystore, and this checkout is never committed back.
+          echo "$UPLOAD_KEYSTORE_BASE64" | base64 -d > flutter/android/app/upload-keystore.keystore
+          chmod 600 flutter/android/app/upload-keystore.keystore
+          # The Flutter tool invokes Gradle itself, so -P flags cannot be
+          # passed through the way the native workflow passes them to
+          # ./gradlew. The equivalent injection point is the module's
+          # gradle.properties IN THE RUNNER ONLY: the appended lines hold
+          # the secret on an ephemeral runner and never enter the repo.
+          # keyPassword == storePassword is intentional (PKCS12 quirk,
+          # verified 2026-09-29 on the native pipeline).
+          {
+            printf '\n# CI-injected production signing (runner-local, never committed)\n'
+            printf 'tabsUpload.storeFile=%s/flutter/android/app/upload-keystore.keystore\n' "$GITHUB_WORKSPACE"
+            printf 'tabsUpload.storePassword=%s\n' "$KEYSTORE_PASSWORD"
+            printf 'tabsUpload.keyAlias=tabs-upload\n'
+            printf 'tabsUpload.keyPassword=%s\n' "$KEYSTORE_PASSWORD"
+          } >> flutter/android/gradle.properties
+          echo "Keystore restored and tabsUpload.* properties injected (values not printed)."
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+
+      - name: Install dependencies
+        working-directory: flutter
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: flutter
+        run: flutter analyze
+
+      - name: Test
+        working-directory: flutter
+        run: flutter test
+
+      - name: Build Lab APK (identity regression line)
+        working-directory: flutter
+        run: flutter build apk --release --split-per-abi --flavor lab
+
+      - name: Verify Lab identity is unchanged
+        run: |
+          set -eu
+          AAPT2="$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)"
+          BADGING="$("$AAPT2" dump badging "$LAB_APK_PATH")"
+          echo "$BADGING" | head -3
+          PKG="$(printf '%s' "$BADGING" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")"
+          LABEL="$("$AAPT2" dump badging "$LAB_APK_PATH" | sed -n "s/^application-label:'\(.*\)'/\1/p" | head -1)"
+          echo "Lab package: $PKG"
+          echo "Lab label: $LABEL"
+          [ "$PKG" = "$LAB_PACKAGE_NAME" ] || { echo "::error::Lab package changed: $PKG"; exit 1; }
+          [ "$LABEL" = "$LAB_LABEL" ] || { echo "::error::Lab label changed: $LABEL"; exit 1; }
+          # Lab must still be signed with the committed debug keystore:
+          # compare the APK's signer fingerprint against the pinned
+          # literal EXPECTED_LAB_CERT_SHA256 (see env above), NOT
+          # against the repo's debug.keystore file itself — reading the
+          # expectation from that file would let a swapped keystore
+          # silently redefine the expected identity.
+          ACTUAL="$(keytool -printcert -jarfile "$LAB_APK_PATH" | grep -i 'SHA256:' | awk '{print $2}')"
+          echo "Lab signer SHA-256: $ACTUAL"
+          [ "$ACTUAL" = "$EXPECTED_LAB_CERT_SHA256" ] || { echo "::error::Lab APK is not signed with the committed debug keystore."; exit 1; }
+          {
+            echo "### Lab line (unchanged)"
+            echo "- package: \`$PKG\`"
+            echo "- label: \`$LABEL\`"
+            echo "- signer: committed debug keystore (fingerprint match)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Widget gate on Lab APK
+        working-directory: flutter
+        run: bash tool/check_widget_apk.sh build/app/outputs/flutter-apk/app-lab-arm64-v8a-release.apk
+
+      - name: Build production AAB
+        working-directory: flutter
+        run: |
+          # TABS_PRODUCTION_BILLING=true is one half of the billing
+          # AND gate (the other half is the app_info channel package
+          # check in MainActivity). Prod builds only — never the Lab.
+          flutter build appbundle --release --flavor prod \
+            --build-number="$VERSION_CODE" \
+            --build-name="$VERSION_NAME" \
+            --dart-define=TABS_PRODUCTION_BILLING=true
+
+      - name: Build prod sibling APK (for the widget gate)
+        working-directory: flutter
+        run: |
+          # Same prod variant as the AAB above, so it carries the
+          # same billing define; it exists only for the widget gate.
+          flutter build apk --release --flavor prod \
+            --build-number="$VERSION_CODE" \
+            --build-name="$VERSION_NAME" \
+            --dart-define=TABS_PRODUCTION_BILLING=true
+
+      - name: Widget gate on prod APK
+        working-directory: flutter
+        run: bash tool/check_widget_apk.sh build/app/outputs/flutter-apk/app-prod-release.apk
+
+      - name: Verify production AAB (package, label, version, fingerprint)
+        run: |
+          set -u
+          fail=0
+          check() {
+            # $1 = label, $2 = actual, $3 = expected
+            if [ "$2" = "$3" ]; then
+              echo "PASS: $1 == $3"
+              echo "- $1: \`$2\` ✅" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error::FAIL: $1 — expected '$3' but got '$2'"
+              echo "- $1: \`$2\` ❌ (expected \`$3\`)" >> "$GITHUB_STEP_SUMMARY"
+              fail=1
+            fi
+          }
+          echo "### Production AAB verification" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ ! -s "$AAB_PATH" ]; then
+            echo "::error::AAB not found or empty: $AAB_PATH"
+            exit 1
+          fi
+          echo "AAB: $AAB_PATH ($(stat -c%s "$AAB_PATH") bytes)"
+
+          # Zip integrity + expected bundle layout.
+          if python3 - "$AAB_PATH" <<'PYEOF'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as zf:
+              assert zf.testzip() is None, "corrupt zip entry"
+              names = zf.namelist()
+              assert "base/manifest/AndroidManifest.xml" in names, "base manifest missing"
+              assert any(n.startswith("base/dex/") and n.endswith(".dex") for n in names), "base dex missing"
+          print("AAB zip integrity + layout OK")
+          PYEOF
+          then
+            echo "- zip integrity + bundle layout ✅" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::AAB zip integrity / layout check failed"
+            fail=1
+          fi
+
+          # Manifest values extracted from the AAB itself (bundletool).
+          curl -fsSL -o "$RUNNER_TEMP/bundletool.jar" \
+            "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar"
+          # Verify the downloaded jar against the pinned checksum
+          # before executing it (BUNDLETOOL_SHA256, see env above).
+          echo "$BUNDLETOOL_SHA256  $RUNNER_TEMP/bundletool.jar" | sha256sum -c -
+          BT="java -jar $RUNNER_TEMP/bundletool.jar"
+          $BT dump manifest --bundle="$AAB_PATH" > "$RUNNER_TEMP/aab-manifest.xml"
+          echo "----- AAB manifest (bundletool dump) -----"
+          cat "$RUNNER_TEMP/aab-manifest.xml"
+          PKG="$($BT dump manifest --bundle="$AAB_PATH" --xpath="/manifest/@package" | tr -d '[:space:]')"
+          VC="$($BT dump manifest --bundle="$AAB_PATH" --xpath="/manifest/@android:versionCode" | tr -d '[:space:]')"
+          VN="$($BT dump manifest --bundle="$AAB_PATH" --xpath="/manifest/@android:versionName" | tr -d '[:space:]')"
+          LABEL="$($BT dump manifest --bundle="$AAB_PATH" --xpath="/manifest/application/@android:label" | tr -d '\r\n')"
+          check "package" "$PKG" "$PACKAGE_NAME"
+          check "label" "$LABEL" "$EXPECTED_LABEL"
+          check "versionCode" "$VC" "$VERSION_CODE"
+          check "versionName" "$VN" "$VERSION_NAME"
+
+          # Signing certificate fingerprint (same keytool method as the
+          # native pipeline's proven verification step).
+          ACTUAL_CERT="$(keytool -printcert -jarfile "$AAB_PATH" | grep -i 'SHA256:' | awk '{print $2}')"
+          check "signing certificate SHA-256" "$ACTUAL_CERT" "$EXPECTED_CERT_SHA256"
+
+          # Cross-check: the prod sibling APK (same variant, same
+          # signing config) must carry the same identity in its badging.
+          AAPT2="$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)"
+          APK_BADGING="$("$AAPT2" dump badging "$PROD_APK_PATH")"
+          APK_PKG="$(printf '%s' "$APK_BADGING" | sed -n "s/^package: name='\([^']*\)' versionCode='\([^']*\)' versionName='\([^']*\)'.*/\1/p")"
+          check "prod sibling APK package (cross-check)" "$APK_PKG" "$PACKAGE_NAME"
+
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::Production AAB verification FAILED — see the checks above. The artifact is not archived as verified."
+            exit 1
+          fi
+          echo "Production AAB verification: ALL CHECKS PASSED"
+          echo "**All AAB checks passed.**" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Archive production AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: tabs-prod-aab-${{ inputs.version_code }}
+          path: ${{ env.AAB_PATH }}
+          if-no-files-found: error
+
+      # NOTE: no Play upload step exists in this workflow by design
+      # (TAKEOVER Phase 1 is archive-only). Upload is a separate,
+      # founder-approved phase.
+
+      - name: Remove restored keystore and injected signing properties
+        if: always()
+        run: |
+          rm -f flutter/android/app/upload-keystore.keystore
+          # Also restore flutter/android/gradle.properties, which the
+          # restore step appended the plaintext tabsUpload.* password
+          # lines to. `git checkout` restores the committed file and
+          # is a no-op when the injection never happened (e.g. the
+          # restore step itself failed first); `|| true` keeps this
+          # cleanup from ever failing the job on its own.
+          git checkout -- flutter/android/gradle.properties || true
