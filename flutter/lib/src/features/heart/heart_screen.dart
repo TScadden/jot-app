@@ -266,8 +266,8 @@ class _HeartScreenState extends State<HeartScreen> {
     await Navigator.of(context).push(
       SlidePageRoute(
         reducedMotion: animationsDisabled(context),
-        builder: (_) =>
-            HeartSpikeReviewScreen(samples: data?.samples ?? const []),
+        builder: (_) => HeartSpikeReviewScreen(
+            samples: data?.samples ?? const [], dateStr: _dateStr),
       ),
     );
   }
