@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:tabs_lab/src/data/billing_models.dart';
+import 'package:tabs_lab/src/data/billing_service.dart';
 import 'package:tabs_lab/src/data/calendar_service.dart';
 import 'package:tabs_lab/src/data/common_conditions.dart';
 import 'package:tabs_lab/src/data/csv_file_picker.dart';
@@ -17,6 +19,7 @@ import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/notification_service.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
+import 'package:tabs_lab/src/features/billing/billing_plans_panel.dart';
 import 'package:tabs_lab/src/features/connections/connections_screen.dart';
 import 'package:tabs_lab/src/features/settings/account_actions.dart';
 import 'package:tabs_lab/src/features/settings/progress_reports_page.dart';
@@ -131,6 +134,15 @@ class SettingsScreen extends StatefulWidget {
   /// Injectable for tests (native opens these in the system browser).
   final Future<bool> Function(Uri uri)? urlLauncher;
 
+  /// Takeover Phase 2 — the app-owned billing service for the
+  /// Membership page (single instance, owned by the app flow via
+  /// BillingAppSync; threaded through MainShell). This screen
+  /// CONSUMES it only: it never constructs its own service and
+  /// never disposes this one. Null in the Lab (and in tests that
+  /// do not inject one): the Membership page then keeps its
+  /// honest cannot-purchase state.
+  final BillingService? billingService;
+
   /// Round 34 — open directly on the Event Counters page instead of
   /// the main menu (the Home counter slot pushes Settings this way).
   /// Back from that page pops the route (it was pushed as a
@@ -153,6 +165,7 @@ class SettingsScreen extends StatefulWidget {
     this.csvFilePicker,
     this.historyStore,
     this.urlLauncher,
+    this.billingService,
     this.openEventCounters = false,
   });
 
@@ -234,6 +247,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final Set<String> _kBusyDocs = {};
 
   String _selectedPlan = 'monthly';
+
+  // Takeover Phase 2 — the app-owned billing service for the
+  // Membership page, consumed via the widget parameter. Non-null
+  // ONLY in the production build (or when a test injects one);
+  // the Lab keeps it null and the page renders its honest
+  // cannot-purchase state. Read through the widget on every use
+  // so the instance the app flow finishes creating asynchronously
+  // is picked up when it arrives.
+  BillingService? get _billing => widget.billingService;
+
   bool _syncing = false;
   bool _recovering = false;
   bool _showInsights = false;
@@ -278,8 +301,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _load();
   }
 
+  // Takeover Phase 2 (single-instance fix): this screen does NOT
+  // construct, initialize-own, or dispose a billing service. The
+  // app-owned instance arrives via widget.billingService (see the
+  // _billing getter); the BillingPlansPanel initializes it if it
+  // is still idle, and disposal belongs to the app flow that owns
+  // it — never to this screen's dispose().
+
+  /// "Refresh Subscription Status" — native's button calls exactly
+  /// the billing sync (`checkSubscriptionStatus`). Production: run
+  /// the billing sync-subscriptions reconcile, then reload the
+  /// pull. Lab: the pull reload is all there honestly is.
+  Future<void> _refreshMembership() async {
+    final billing = _billing;
+    if (billing != null) {
+      await billing.syncSubscriptionStatus();
+    }
+    await _reloadFromServer();
+  }
+
   @override
   void dispose() {
+    // Deliberately does NOT dispose widget.billingService: it is
+    // the app-owned single instance (see _billing).
     _contextDebounce?.cancel();
     _contextController.dispose();
     super.dispose();
@@ -1321,7 +1365,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // R49 SE6/S2: 48dp button height (stock M3 default is 40).
           style:
               OutlinedButton.styleFrom(minimumSize: const Size(64, 48)),
-          onPressed: _loaded ? _reloadFromServer : null,
+          onPressed: _loaded ? _refreshMembership : null,
           icon: const Icon(Icons.sync, size: 16, color: NotelColors.primary),
           label: const Text('Refresh Subscription Status',
               style: TextStyle(
@@ -1332,43 +1376,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       if (!d.isUnlimited) ...[
         const SizedBox(height: 24),
-        _planCard('monthly', 'Monthly Plan', 'FREE TRIAL',
-            NotelColors.primary),
-        const SizedBox(height: 12),
-        _planCard('yearly', 'Yearly Plan', 'BEST VALUE',
-            NotelColors.success),
-        const SizedBox(height: 24),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            key: const ValueKey('membership_cta'),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: NotelColors.primary,
-                // R49 SE6/S1+S2: dark-ink foreground (5.21:1 on
-                // primary; white was 3.80:1) and 48dp height.
-                foregroundColor: _chipInk,
-                minimumSize: const Size(64, 48)),
-            onPressed: _showPurchaseUnavailable,
-            icon: const Icon(Icons.star, size: 18),
-            // Native CTA label comes from the live Play trial period;
-            // with no Play catalog in the Lab it falls back to the
-            // configured 7-day trial (flagged in the round report).
-            label: const Text('Start 7-day free trial',
-                style: TextStyle(fontWeight: FontWeight.bold)),
+        if (_billing != null) ...[
+          // Takeover Phase 2 — the REAL flow (production build):
+          // live Play catalog, user-picked offer, server-verified
+          // purchase. The panel carries its own plan cards, CTA
+          // (label driven by the offer Play actually returned),
+          // terms, and visible error states.
+          BillingPlansPanel(
+            service: _billing!,
+            ctaKey: const ValueKey('membership_cta'),
+            onUnlimited: () => unawaited(_reloadFromServer()),
           ),
-        ),
-        const SizedBox(height: 10),
-        const Text(
-          'Auto-renews until canceled. Billed by Google Play.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: NotelColors.textSecondary, fontSize: 11),
-        ),
+        ] else ...[
+          // Lab build — honest state: no Play catalog exists here,
+          // so no price and NO trial is claimed (the old hardcoded
+          // "Start 7-day free trial" label is removed; a trial may
+          // only be named when Play actually returns one).
+          _planCard('monthly', 'Monthly Plan', '', NotelColors.primary),
+          const SizedBox(height: 12),
+          // Takeover review fix (Juno): no "BEST VALUE" chip in the
+          // Lab — there is no catalog price data here to compute
+          // savings from, so the chip would be an unbacked claim.
+          _planCard('yearly', 'Yearly Plan', '', NotelColors.success),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              key: const ValueKey('membership_cta'),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: NotelColors.primary,
+                  // R49 SE6/S1+S2: dark-ink foreground (5.21:1 on
+                  // primary; white was 3.80:1) and 48dp height.
+                  foregroundColor: _chipInk,
+                  minimumSize: const Size(64, 48)),
+              onPressed: _showPurchaseUnavailable,
+              icon: const Icon(Icons.star, size: 18),
+              label: const Text('Subscribe with Google Play',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'Auto-renews until canceled. Billed by Google Play.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: NotelColors.textSecondary, fontSize: 11),
+          ),
+        ],
         const SizedBox(height: 12),
         Center(
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => _openUrl(
-                'https://play.google.com/store/account/subscriptions?sku=${_selectedPlan == 'monthly' ? 'jot_membership_monthly' : 'jot_membership_yearly'}&package=com.notel.notel.playground.flutter'),
+                // Takeover Phase 2 fix: this link named the LAB
+                // package (com.notel.notel.playground.flutter),
+                // whose Play subscriptions page does not exist.
+                // Subscriptions live under the production package.
+                'https://play.google.com/store/account/subscriptions?sku=${_selectedPlan == 'monthly' ? 'jot_membership_monthly' : 'jot_membership_yearly'}&package=${BillingProducts.productionPackage}'),
             // R49 SE4: 48dp hit area (was ≈15dp of bare text);
             // the 11sp label itself is unchanged.
             child: Container(
@@ -1447,20 +1510,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
               ),
             ),
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: chipColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
+            // An empty chip renders nothing (Takeover Phase 2: the
+            // Lab monthly card no longer claims a FREE TRIAL it
+            // cannot verify against a live catalog).
+            if (chip.isNotEmpty)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: chipColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(chip,
+                    style: TextStyle(
+                        color: chipColor,
+                        // R49 SE8: minimum text size is 10 (was 9).
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold)),
               ),
-              child: Text(chip,
-                  style: TextStyle(
-                      color: chipColor,
-                      // R49 SE8: minimum text size is 10 (was 9).
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold)),
-            ),
           ],
         ),
       ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/data/billing_service.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/location_service.dart';
@@ -83,6 +84,11 @@ class MainShell extends StatefulWidget {
   /// Injectable for tests (Round 30 nav-labels preference source).
   final SettingsStore? settingsStore;
 
+  /// The app-owned billing service (single instance), forwarded
+  /// to Settings (tab + pushed routes via Home/Tools) — consumed
+  /// there, never constructed or disposed by the shell or screens.
+  final BillingService? billingService;
+
   const MainShell(
       {super.key,
       this.email,
@@ -90,7 +96,8 @@ class MainShell extends StatefulWidget {
       this.locationService,
       this.healthConnectService,
       this.onLogout,
-      this.settingsStore});
+      this.settingsStore,
+      this.billingService});
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -240,11 +247,14 @@ class _MainShellState extends State<MainShell>
           weatherApi: widget.weatherApi,
           locationService: widget.locationService,
           healthConnectService: widget.healthConnectService,
+          billingService: widget.billingService,
           // Round 34 — so a logout started in the Settings screen
           // pushed from Home's counter slot exits the shell too.
           onLogout: widget.onLogout,
         ),
-      DockTab.tools => const ToolsScreen(key: ValueKey('tools_screen')),
+      DockTab.tools => ToolsScreen(
+          key: const ValueKey('tools_screen'),
+          billingService: widget.billingService),
       DockTab.quickLog => QuickLogScreen(
           key: const ValueKey('quicklog_screen'),
           weatherApi: widget.weatherApi,
@@ -259,6 +269,7 @@ class _MainShellState extends State<MainShell>
           email: widget.email,
           onLogout: widget.onLogout,
           healthConnectService: widget.healthConnectService,
+          billingService: widget.billingService,
         ),
     };
   }

@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:tabs_lab/src/data/billing_service.dart';
 import 'package:tabs_lab/src/features/tools/blood_pressure_tool_screen.dart';
 import 'package:tabs_lab/src/features/tools/body_info_screen.dart';
 import 'package:tabs_lab/src/features/tools/community_screen.dart';
@@ -143,7 +144,11 @@ class ToolsScreen extends StatefulWidget {
   /// Injectable for tests.
   final ToolOrderStore? orderStore;
 
-  const ToolsScreen({super.key, this.orderStore});
+  /// The app-owned billing service (single instance), forwarded
+  /// to Research → its pushed Settings screen.
+  final BillingService? billingService;
+
+  const ToolsScreen({super.key, this.orderStore, this.billingService});
 
   @override
   State<ToolsScreen> createState() => _ToolsScreenState();
@@ -216,7 +221,7 @@ class _ToolsScreenState extends State<ToolsScreen>
       'trends' => const TrendsScreen(),
       'blood_pressure' => const BloodPressureToolScreen(),
       'food' => const FoodToolScreen(),
-      'research' => const ResearchToolScreen(),
+      'research' => ResearchToolScreen(billingService: widget.billingService),
       'community' => const CommunityToolScreen(),
       _ => ToolPlaceholderScreen(tile: tile),
     };

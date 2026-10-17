@@ -1079,6 +1079,68 @@ class TabsBackend {
   /// the account and surfaces the error).
   Future<bool> deleteAccount() => _delete('/api/auth/delete-account');
 
+  // ── Takeover Phase 2 — Play Billing endpoints ────────────────────
+  //
+  // Server side is COMPLETE and authoritative (P0-billing §3); these
+  // are thin client wrappers over the two existing routes — no
+  // server change exists or is needed:
+  // - `POST /api/billing/verify` `{productId, purchaseToken,
+  //   quantity}` → `{success, isUnlimited}` or an error body. A
+  //   purchase token verifies EXACTLY ONCE server-side (double-credit
+  //   guard), so callers get the raw status + body, not a bool: the
+  //   "already been processed" error is a distinct, meaningful state
+  //   for the billing module (see billing_service.dart).
+  // - `POST /api/billing/sync-subscriptions` `{activeTokens}` →
+  //   `{success, isUnlimited}` — the restore/revoke reconciliation.
+  //   An empty token list REVOKES server-side, so this must only be
+  //   called with the store's real owned-purchase tokens.
+
+  /// Verify one Play purchase with the server. Returns the HTTP
+  /// status and decoded body (null body on transport failure or an
+  /// undecodable response). The purchase token travels only in the
+  /// request body over HTTPS — never logged.
+  Future<({int? statusCode, Map<String, dynamic>? body})>
+      verifyBillingPurchase({
+    required String productId,
+    required String purchaseToken,
+    int quantity = 1,
+  }) async {
+    final response = await _sendAuthed((token) => _client.post(
+          Uri.parse('$_baseUrl/api/billing/verify'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'productId': productId,
+            'purchaseToken': purchaseToken,
+            'quantity': quantity,
+          }),
+        ));
+    if (response == null) return (statusCode: null, body: null);
+    try {
+      final decoded = jsonDecode(response.body);
+      return (
+        statusCode: response.statusCode,
+        body: decoded is Map<String, dynamic> ? decoded : null,
+      );
+    } catch (_) {
+      return (statusCode: response.statusCode, body: null);
+    }
+  }
+
+  /// Reconcile subscription state with the server from the store's
+  /// currently owned purchase tokens. Returns the server's
+  /// `isUnlimited`, or null when the call failed (unknown — NOT the
+  /// same as "not premium").
+  Future<bool?> syncBillingSubscriptions(List<String> activeTokens) async {
+    final body = await _postJsonMap('/api/billing/sync-subscriptions', {
+      'activeTokens': activeTokens,
+    });
+    if (body == null || body['success'] != true) return null;
+    return body['isUnlimited'] == true;
+  }
+
   /// Round 30 — link a Google account, mirroring native
   /// `SettingsViewModel.connectGoogleAccount` (SettingsViewModel.kt:
   /// 218-241) → `POST api/auth/link-google` (JotApi.kt:589-590) with
