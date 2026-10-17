@@ -220,6 +220,11 @@ class HealthHistoryStore {
   static final HealthHistoryStore instance = HealthHistoryStore._internal();
   HealthHistoryStore._internal();
 
+  /// A fresh, non-singleton instance (the TodayPlanStore.testInstance
+  /// pattern): tests inject one so seeded history never leaks across
+  /// cases through the shared singleton's in-memory map.
+  factory HealthHistoryStore.testInstance() => HealthHistoryStore._internal();
+
   Future<String?> Function(String key) _read =
       (key) => const FlutterSecureStorage().read(key: key);
   Future<void> Function(String key, String value) _write =
