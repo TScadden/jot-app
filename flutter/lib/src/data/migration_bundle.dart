@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import 'package:tabs_lab/src/data/coach_memory_store.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
+import 'package:tabs_lab/src/data/knowledge_documents.dart';
 
 /// TAKEOVER Phase 4 — the Lab → production migration bridge (Ivy's
 /// Phase 0 inventory: `team/hidden_files/takeover/P0-local-state.md`).
@@ -44,6 +45,23 @@ import 'package:tabs_lab/src/data/health_connect_service.dart';
 /// state. Callers must run import AFTER production sign-in and
 /// surface it before the user opens Coach/History (the Settings
 /// action satisfies both; see settings_screen.dart).
+///
+/// STALE-MIRROR TRAP (Phase 4 fix — Vera BLOCK): writing the blobs
+/// directly is not enough when a store's in-memory mirror was
+/// already warmed THIS session (user opened Coach/History before
+/// importing): the mirror keeps serving the pre-import state, and
+/// the next persist — which merges from / writes the mirror —
+/// silently overwrites the imported blob. A successful import
+/// therefore invalidates the mirror of every bundle store that
+/// keeps one, AFTER the writes complete (see
+/// [CoachMemoryStore.invalidateMirror] /
+/// [KnowledgeExtractionStore.invalidateMirror]). Bundle audit:
+/// those two are the ONLY mirrored stores in the bundle — the
+/// Settings keys (SettingsStore reads disk on every call), the
+/// Today Plan blob (TodayPlanStore likewise), the food history
+/// (SecureFoodHistoryStore is a plain disk seam), and the tile
+/// order (ToolOrderStore likewise) hold no mirror, and the health
+/// history store does not exist in this base yet (read-if-present).
 ///
 /// DELIBERATELY EXCLUDED (Ivy §7): auth tokens / session email
 /// (credentials never travel in a file — one re-login), the four
@@ -157,9 +175,27 @@ class MigrationBundleService {
   final SecureStore _store;
   final DateTime Function() _now;
 
-  MigrationBundleService({SecureStore? store, DateTime Function()? now})
-      : _store = store ?? const FlutterSecureStore(),
-        _now = now ?? DateTime.now;
+  /// The mirrored bundle stores whose in-memory state a successful
+  /// import invalidates (see the stale-mirror trap above). Null
+  /// means the production singletons; tests inject the exact
+  /// instances they warmed.
+  final CoachMemoryStore? _coachStoreOverride;
+  final KnowledgeExtractionStore? _knowledgeStoreOverride;
+
+  MigrationBundleService({
+    SecureStore? store,
+    DateTime Function()? now,
+    CoachMemoryStore? coachStore,
+    KnowledgeExtractionStore? knowledgeStore,
+  })  : _store = store ?? const FlutterSecureStore(),
+        _now = now ?? DateTime.now,
+        _coachStoreOverride = coachStore,
+        _knowledgeStoreOverride = knowledgeStore;
+
+  CoachMemoryStore get _coachStore =>
+      _coachStoreOverride ?? CoachMemoryStore.instance;
+  KnowledgeExtractionStore get _knowledgeStore =>
+      _knowledgeStoreOverride ?? KnowledgeExtractionStore.instance;
 
   /// `yyyy-MM-dd` device-local — the TodayPlanStore blob's `date`
   /// format (same construction as `dateStrOf` in today_summary.dart).
@@ -338,6 +374,23 @@ class MigrationBundleService {
     // storage writes only — no store load runs in this path, so the
     // coach blob cannot be wiped by its own owner check before the
     // account's first real load reads it back intact.
+    // Stale-mirror trap (see the class doc): once any write lands,
+    // a mirror warmed earlier this session is KNOWN stale relative
+    // to disk for that key. Invalidate exactly the mirrored stores
+    // a write actually landed for — mirror-only (disk untouched,
+    // epoch/generation bumped so in-flight loads and deferred
+    // persists captured from the stale mirror discard themselves)
+    // — and every later load/persist in this session works from
+    // the imported blob.
+    void invalidateWrittenMirrors(List<String> keys) {
+      if (keys.contains(coachMemoryKey)) {
+        _coachStore.invalidateMirror();
+      }
+      if (keys.contains(knowledgeExtractedKey)) {
+        _knowledgeStore.invalidateMirror();
+      }
+    }
+
     final written = <String>[];
     try {
       for (final entry in toWrite.entries) {
@@ -345,6 +398,11 @@ class MigrationBundleService {
         written.add(entry.key);
       }
     } catch (_) {
+      // Partial write: the keys that DID land get the same
+      // invalidation before the failure surfaces — their mirrors
+      // are just as stale. A validation refusal never reaches
+      // here, so an unwritten import leaves mirrors untouched.
+      invalidateWrittenMirrors(written);
       throw MigrationException(
         'WRITE_FAILED',
         'Your data could not be saved completely on this device '
@@ -353,6 +411,7 @@ class MigrationBundleService {
         'again — importing again is safe.',
       );
     }
+    invalidateWrittenMirrors(written);
     final exportedAtRaw = envelope['exportedAt'];
     return MigrationImportResult(
       importedKeys: written,

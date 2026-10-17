@@ -4753,14 +4753,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// Production side: pick the file, validate it against the
   /// signed-in account, and write the raw stores verbatim. ORDERING
   /// (Ivy's trap): [MigrationBundleService.importBundleJson] writes
-  /// the blobs directly to secure storage — no coach-memory load
-  /// for this account has run in this flow — so the imported coach
-  /// blob is first read by its real loader, under its real owner.
-  /// A refusal (owner mismatch, damaged file) writes nothing and
-  /// explains itself in the status line. After a successful import
-  /// the reminder schedules are rebuilt immediately, so the
-  /// imported check-in toggle takes effect without another screen
-  /// visit.
+  /// the blobs directly to secure storage, so no coach-memory load
+  /// can run against a half-imported state. STALE MIRRORS (Vera
+  /// BLOCK, Phase 4 fix): if Coach/History was opened earlier this
+  /// session, the coach (and knowledge) mirrors are already warmed
+  /// with pre-import state — the import invalidates those mirrors
+  /// after its writes complete, so the next load reads the imported
+  /// blob and no later persist can overwrite it from the stale
+  /// mirror. A refusal (owner mismatch, damaged file) writes
+  /// nothing and explains itself in the status line. After a
+  /// successful import the reminder schedules are rebuilt
+  /// immediately, so the imported check-in toggle takes effect
+  /// without another screen visit.
   Future<void> _importMigration() async {
     String? text;
     try {

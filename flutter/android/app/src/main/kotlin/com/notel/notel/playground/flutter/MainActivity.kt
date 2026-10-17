@@ -7,6 +7,8 @@ import android.content.pm.PackageManager
 import android.provider.CalendarContract
 import android.os.Bundle
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import android.os.SystemClock
 import android.speech.RecognizerIntent
@@ -79,6 +81,18 @@ class MainActivity : FlutterFragmentActivity() {
         // than a CSV; past this the export almost certainly is not
         // a migration file.
         private const val MAX_MIGRATION_FILE_BYTES = 25 * 1024 * 1024
+        // TAKEOVER Phase 4 fix (Vera LOW): the migration export is
+        // plaintext health data sitting in cacheDir — it must not
+        // linger. Canonical export name (MigrationBundleService
+        // .fileName on the Dart side); swept on every launch, and a
+        // share also schedules its own deletion (see
+        // scheduleMigrationExportCleanup). The delay after the
+        // chooser returns gives the receiving app time to actually
+        // read the file through its FileProvider URI before it
+        // disappears; the launch sweep is the backstop for a
+        // process that dies before the delay elapses.
+        private const val MIGRATION_EXPORT_FILE_NAME = "tabs-lab-migration.json"
+        private const val MIGRATION_EXPORT_CLEANUP_DELAY_MS = 60 * 1000L
         const val HC_PROVIDER_PACKAGE = "com.google.android.apps.healthdata"
         const val SETTINGS_ACTION = "android.health.connect.action.HEALTH_HOME_SETTINGS"
         private const val REQUEST_TIMEOUT_MS = 5 * 60 * 1000L
@@ -140,6 +154,13 @@ class MainActivity : FlutterFragmentActivity() {
     private lateinit var migrationPickerLauncher: ActivityResultLauncher<String>
     private var pendingMigrationResult: MethodChannel.Result? = null
 
+    // TAKEOVER Phase 4 fix (Vera LOW): the migration SHARE chooser
+    // runs through a result launcher (registered in onCreate like
+    // every launcher) so its return can trigger deletion of the
+    // plaintext export file it served.
+    private lateinit var migrationShareLauncher: ActivityResultLauncher<Intent>
+    private var pendingMigrationShareFile: java.io.File? = null
+
     // Round 54: calendar permission launcher for the Health Coach
     // (native CoachScreen.kt:89-113 requests READ+WRITE together at
     // first approve). Registered in onCreate like the HC launcher.
@@ -149,6 +170,16 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Vera LOW backstop: a migration export left in cacheDir by
+        // a previous session (chooser never returned, process died,
+        // or a build predating the cleanup) is deleted on launch —
+        // plaintext health data never survives into a new session.
+        try {
+            java.io.File(cacheDir, MIGRATION_EXPORT_FILE_NAME).delete()
+        } catch (_: Exception) {
+            // Best-effort hygiene only; a failed sweep must never
+            // block startup.
+        }
         // Registered here in onCreate — never in configureFlutterEngine()
         // (the fragment-transaction timing there can throw or silently never
         // fire). Same semantics as Compose's rememberLauncherForActivityResult.
@@ -415,6 +446,18 @@ class MainActivity : FlutterFragmentActivity() {
                 }
             }.start()
         }
+        migrationShareLauncher = activityResultRegistry.register(
+            "migration_share_launcher",
+            ActivityResultContracts.StartActivityForResult()
+        ) { _ ->
+            // The share chooser has returned: schedule deletion of
+            // the plaintext export file (Vera LOW). The result code
+            // is meaningless for a chooser — cleanup happens either
+            // way, sent or cancelled.
+            val file = pendingMigrationShareFile
+            pendingMigrationShareFile = null
+            if (file != null) scheduleMigrationExportCleanup(file)
+        }
         calendarPermissionLauncher = activityResultRegistry.register(
             "calendar_permission_launcher",
             ActivityResultContracts.RequestMultiplePermissions()
@@ -587,7 +630,7 @@ class MainActivity : FlutterFragmentActivity() {
     /// shared storage. Success = the chooser was launched.
     private fun shareMigrationFile(fileName: String?, content: String?, result: MethodChannel.Result) {
         try {
-            val name = fileName?.takeIf { it.isNotBlank() } ?: "tabs-lab-migration.json"
+            val name = fileName?.takeIf { it.isNotBlank() } ?: MIGRATION_EXPORT_FILE_NAME
             val bytes = (content ?: "").toByteArray(Charsets.UTF_8)
             val cacheFile = java.io.File(cacheDir, name)
             cacheFile.writeBytes(bytes)
@@ -599,10 +642,44 @@ class MainActivity : FlutterFragmentActivity() {
                 putExtra(Intent.EXTRA_STREAM, shareUri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            startActivity(Intent.createChooser(intent, "Share Tabs data"))
+            val chooser = Intent.createChooser(intent, "Share Tabs data")
+            if (::migrationShareLauncher.isInitialized) {
+                // Chooser via the result launcher: its return
+                // schedules the export file's deletion (Vera LOW).
+                pendingMigrationShareFile = cacheFile
+                migrationShareLauncher.launch(chooser)
+            } else {
+                // Launcher missing (should not happen — it is
+                // registered in onCreate): still share, and still
+                // schedule the cleanup directly.
+                startActivity(chooser)
+                scheduleMigrationExportCleanup(cacheFile)
+            }
             result.success(true)
         } catch (_: Exception) {
+            pendingMigrationShareFile = null
             result.error("SHARE_FAILED", "Could not share the export file.", null)
+        }
+    }
+
+    /// Schedules deletion of a shared migration export file after
+    /// a grace delay (the receiving app reads it through the
+    /// FileProvider URI once the chooser returns; deleting in the
+    /// same instant could race that read). Only deletes when the
+    /// file is still the exact write that was shared — a newer
+    /// export under the same name (newer mtime) is left for its
+    /// own cleanup / the next-launch sweep. Never throws.
+    private fun scheduleMigrationExportCleanup(file: java.io.File) {
+        try {
+            val sharedModified = file.lastModified()
+            Handler(Looper.getMainLooper()).postDelayed({
+                try {
+                    if (file.lastModified() == sharedModified) file.delete()
+                } catch (_: Exception) {
+                }
+            }, MIGRATION_EXPORT_CLEANUP_DELAY_MS)
+        } catch (_: Exception) {
+            // The next-launch sweep in onCreate is the backstop.
         }
     }
 

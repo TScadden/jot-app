@@ -174,6 +174,7 @@ class KnowledgeExtractionStore {
     _read = read;
     _write = write;
     if (delete != null) _delete = delete;
+    _generation++;
     _loaded = false;
     _owner = null;
     _texts = {};
@@ -193,6 +194,32 @@ class KnowledgeExtractionStore {
   Set<String> _failed = {};
   bool _loaded = false;
 
+  // TAKEOVER Phase 4 fix (Vera BLOCK, sibling of CoachMemoryStore):
+  // generation guard — [invalidateMirror] bumps it, and a [load]
+  // that observes a different generation after its disk await
+  // discards the (pre-external-write) blob it read instead of
+  // repopulating the mirror with stale texts.
+  int _generation = 0;
+
+  /// Mirror-only invalidation for an EXTERNAL write to the disk
+  /// blob (the migration import writes `knowledge_extracted_v1`
+  /// straight to secure storage): a mirror warmed earlier in the
+  /// session would otherwise keep serving the pre-import texts,
+  /// and the next [_persist] (saveText / markFailed / remove …)
+  /// writes the WHOLE mirror, silently overwriting the imported
+  /// blob. This resets ONLY the in-memory state — the disk key is
+  /// neither deleted nor altered — and the next [load] re-reads
+  /// the (imported) blob. [_owner] clearing also disarms
+  /// [_persist] until a fresh load re-stamps it, so no persist can
+  /// land from the stale mirror in between. Never throws.
+  void invalidateMirror() {
+    _generation++;
+    _texts = {};
+    _failed = {};
+    _owner = null;
+    _loaded = false;
+  }
+
   static String? _normEmail(String? email) {
     final e = email?.trim().toLowerCase();
     return (e == null || e.isEmpty) ? null : e;
@@ -203,6 +230,7 @@ class KnowledgeExtractionStore {
   Future<void> load(String? email) async {
     final owner = _normEmail(email);
     if (_loaded && _owner == owner) return;
+    final generationAtStart = _generation;
     _texts = {};
     _failed = {};
     _owner = owner;
@@ -210,6 +238,19 @@ class KnowledgeExtractionStore {
     if (owner == null) return;
     try {
       final raw = await _read(storageKey);
+      // An external write landed while the read was in flight
+      // (invalidateMirror bumped the generation): the blob just
+      // read predates it. Drop the mirror back to unloaded so the
+      // next load re-reads the current disk state, and mutate
+      // nothing — in particular, never run the owner-wipe below
+      // against a blob that may be the freshly imported one.
+      if (generationAtStart != _generation) {
+        _texts = {};
+        _failed = {};
+        _owner = null;
+        _loaded = false;
+        return;
+      }
       if (raw == null || raw.isEmpty) return;
       final decoded = jsonDecode(raw);
       if (decoded is! Map<String, dynamic>) return;

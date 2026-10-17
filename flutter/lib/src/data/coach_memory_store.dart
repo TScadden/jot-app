@@ -138,6 +138,29 @@ class CoachMemoryStore {
   // account's facts into the mirror.
   int _epoch = 0;
 
+  /// Mirror-only invalidation for an EXTERNAL write to the disk
+  /// blob (TAKEOVER Phase 4 fix — Vera BLOCK): the migration import
+  /// writes the imported blob straight to secure storage, so a
+  /// mirror warmed earlier in the session (Coach / History visited
+  /// before the import) would otherwise keep serving the pre-import
+  /// facts — and the next [recordFact] / [addFact] persist, which
+  /// merges from the mirror, would silently overwrite the imported
+  /// blob with the stale mirror. This resets ONLY the in-memory
+  /// state: the disk key is neither deleted nor altered, the epoch
+  /// bump makes any in-flight load or deferred persist captured
+  /// before the external write discard itself instead of landing
+  /// on top of it, and the next [load] re-reads the (imported)
+  /// blob from disk. Never throws, never touches storage.
+  void invalidateMirror() {
+    _epoch++;
+    _loading = null;
+    _loadingEmail = null;
+    _mirror = const [];
+    _mirrorLoaded = false;
+    _mirrorOwner = null;
+    _diskLoaded = false;
+  }
+
   /// The facts currently mirrored in memory (empty until the first
   /// [load] lands). Synchronous and never throws.
   List<CoachMemoryFact> get cachedFacts =>
@@ -205,14 +228,16 @@ class CoachMemoryStore {
     if (loading != null) {
       unawaited(loading.then((loaded) {
         if (_epoch != epochAtRecord) return;
-        unawaited(_persist(_dedupeCap([...snapshot, ...loaded]), email));
+        unawaited(_persist(_dedupeCap([...snapshot, ...loaded]), email,
+            epoch: epochAtRecord));
       }));
     } else if (_diskLoaded) {
-      unawaited(_persist(snapshot, email));
+      unawaited(_persist(snapshot, email, epoch: epochAtRecord));
     } else {
       unawaited(load(email).then((loaded) {
         if (_epoch != epochAtRecord) return;
-        unawaited(_persist(_dedupeCap([...snapshot, ...loaded]), email));
+        unawaited(_persist(_dedupeCap([...snapshot, ...loaded]), email,
+            epoch: epochAtRecord));
       }));
     }
     return _mirror;
@@ -330,7 +355,18 @@ class CoachMemoryStore {
     }
   }
 
-  Future<void> _persist(List<CoachMemoryFact> facts, String? email) async {
+  /// Writes [facts] as the disk blob. When [epoch] is given, the
+  /// write is SKIPPED (returns false) if the epoch has moved since
+  /// the caller captured it — a [clear] or an [invalidateMirror]
+  /// (external write, e.g. a migration import) in between means the
+  /// facts were merged from a mirror that is no longer known to
+  /// match disk, and landing them would overwrite newer disk data
+  /// with the stale merge. The check and the write call happen in
+  /// the same synchronous turn, so no invalidation can slip between
+  /// them. Returns true when the write was issued.
+  Future<bool> _persist(List<CoachMemoryFact> facts, String? email,
+      {int? epoch}) async {
+    if (epoch != null && epoch != _epoch) return false;
     try {
       await _write(
         storageKey,
@@ -340,6 +376,7 @@ class CoachMemoryStore {
         }),
       );
     } catch (_) {}
+    return true;
   }
 
   /// Adds one fact (newest first). Dedupes on normalized text —
@@ -353,32 +390,51 @@ class CoachMemoryStore {
   }) async {
     final cleaned = cleanFactText(text);
     if (cleaned.isEmpty) return load(email);
-    final existing = await load(email);
-    final key = normalizeFactText(cleaned);
-    final kept = [
-      for (final f in existing)
-        if (normalizeFactText(f.text) != key) f,
-    ];
     final fact = CoachMemoryFact(
       text: cleaned,
       createdAt: (now ?? DateTime.now()).millisecondsSinceEpoch,
       source: source,
     );
-    final out = [fact, ...kept].take(maxFacts).toList();
-    _mirror = out;
-    await _persist(out, email);
-    return out;
+    final key = normalizeFactText(cleaned);
+    // Epoch-guarded persist: if an external write (migration
+    // import) or a clear lands between the load and the persist,
+    // the merge base is stale — reload from disk and re-apply on
+    // top of the fresh facts instead of overwriting them. The
+    // loop is bounded in practice: the epoch only moves on those
+    // rare events, never in a hot path.
+    while (true) {
+      final existing = await load(email);
+      final epochAfterLoad = _epoch;
+      // Revalidate the merge base: an invalidation that landed
+      // while the load was completing replaced the mirror, so the
+      // loaded list is no longer the mirror it claims to be —
+      // reload and merge against the fresh base instead.
+      if (!identical(existing, _mirror)) continue;
+      final kept = [
+        for (final f in existing)
+          if (normalizeFactText(f.text) != key) f,
+      ];
+      final out = [fact, ...kept].take(maxFacts).toList();
+      _mirror = out;
+      if (await _persist(out, email, epoch: epochAfterLoad)) return out;
+    }
   }
 
   /// Deletes the fact at [index] in the newest-first list for
   /// [email]. Returns the resulting list.
   Future<List<CoachMemoryFact>> deleteAt(int index, String? email) async {
-    final existing = await load(email);
-    if (index < 0 || index >= existing.length) return existing;
-    final out = [...existing]..removeAt(index);
-    _mirror = out;
-    await _persist(out, email);
-    return out;
+    // Same epoch guard as [addFact]: a stale merge base reloads
+    // and re-applies rather than overwriting newer disk data.
+    while (true) {
+      final existing = await load(email);
+      final epochAfterLoad = _epoch;
+      // Same merge-base revalidation as [addFact].
+      if (!identical(existing, _mirror)) continue;
+      if (index < 0 || index >= existing.length) return existing;
+      final out = [...existing]..removeAt(index);
+      _mirror = out;
+      if (await _persist(out, email, epoch: epochAfterLoad)) return out;
+    }
   }
 
   /// Clears every fact (the user's Clear all control). Never throws.

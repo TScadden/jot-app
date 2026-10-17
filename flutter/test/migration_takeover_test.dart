@@ -6,6 +6,7 @@ import 'package:http/testing.dart';
 import 'package:tabs_lab/src/data/coach_memory_store.dart';
 import 'package:tabs_lab/src/data/first_run_sync.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
+import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/migration_bundle.dart';
 import 'package:tabs_lab/src/data/settings_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -47,6 +48,31 @@ CoachMemoryStore coachStoreOver(Map<String, String> map) =>
       write: (k, v) async => map[k] = v,
       delete: (k) async => map.remove(k),
     );
+
+KnowledgeExtractionStore knowledgeStoreOver(Map<String, String> map) =>
+    KnowledgeExtractionStore.withStorage(
+      read: (k) async => map[k],
+      write: (k, v) async => map[k] = v,
+      delete: (k) async => map.remove(k),
+    );
+
+/// Lets fire-and-forget persists (recordFact's background write)
+/// land before assertions read the fake disk.
+Future<void> flushBackgroundWrites() async {
+  for (var i = 0; i < 20; i++) {
+    await Future<void>.delayed(Duration.zero);
+  }
+}
+
+List<String> diskFactTexts(Map<String, String> map) {
+  final decoded =
+      jsonDecode(map[MigrationBundleService.coachMemoryKey]!)
+          as Map<String, dynamic>;
+  return [
+    for (final f in decoded['facts'] as List)
+      (f as Map)['text'] as String,
+  ];
+}
 
 const founder = 'founder@example.com';
 
@@ -455,6 +481,199 @@ void main() {
           [MigrationBundleService.toolsTileOrderKey]);
       expect(prod[MigrationBundleService.toolsTileOrderKey], '["habits"]');
       expect(prod.containsKey('unknown_future_key'), isFalse);
+    });
+  });
+
+  group('stale-mirror regression (Vera BLOCK)', () {
+    // Vera's template, reproduced exactly: the store's mirror is
+    // warmed for the signed-in account BEFORE the import runs
+    // (user opened Coach/History first), then a same-owner bundle
+    // is imported in the SAME session. Before the fix, load()
+    // early-returned the warm empty mirror forever, and the next
+    // persist overwrote the imported blob with it.
+    Future<String> founderBundle() async {
+      final lab = await populatedLabStore(fixedNow);
+      return MigrationBundleService(
+        store: MemorySecureStore(lab),
+        now: () => fixedNow,
+      ).buildExportJson(ownerEmail: founder);
+    }
+
+    test('invalidateMirror is mirror-only: the disk blob is '
+        'untouched and the next load re-reads it', () async {
+      final prod = <String, String>{};
+      final coach = coachStoreOver(prod);
+      await coach.addFact(
+        text: 'Existing fact',
+        source: 'chat',
+        email: founder,
+        now: DateTime.fromMillisecondsSinceEpoch(1760000000000),
+      );
+      final rawBefore = prod[MigrationBundleService.coachMemoryKey];
+      expect(await coach.load(founder), hasLength(1)); // mirror warm
+      coach.invalidateMirror();
+      // Disk: byte-identical, key not deleted.
+      expect(prod[MigrationBundleService.coachMemoryKey], rawBefore);
+      // Mirror: cold again (sync reads serve nothing)…
+      expect(coach.cachedFacts, isEmpty);
+      expect(coach.cachedFactsFor(founder), isEmpty);
+      // …and the next load re-reads the surviving blob.
+      final facts = await coach.load(founder);
+      expect(facts.map((f) => f.text), ['Existing fact']);
+    });
+
+    test('pre-warmed coach mirror: import lands in the same '
+        'session and recordFact/addFact persists preserve the '
+        'imported facts', () async {
+      final prod = <String, String>{};
+      final coach = coachStoreOver(prod);
+      // 1. Pre-warm: production account signed in, Coach/History
+      // visited — mirror warm, EMPTY (nothing on disk yet).
+      expect(await coach.load(founder), isEmpty);
+      expect(coach.cachedFactsFor(founder), isEmpty);
+      // 2. Import a valid same-owner bundle (Settings action).
+      final json = await founderBundle();
+      final result = await MigrationBundleService(
+        store: MemorySecureStore(prod),
+        now: () => fixedNow,
+        coachStore: coach,
+      ).importBundleJson(json, currentEmail: founder);
+      expect(result.importedKeys,
+          contains(MigrationBundleService.coachMemoryKey));
+      // 3. SAME session: load() returns the imported facts.
+      final facts = await coach.load(founder);
+      expect(facts.map((f) => f.text), [
+        'Knee bothers him on stairs',
+        'Prefers morning check-ins',
+      ]);
+      expect(coach.cachedFactsFor(founder), facts);
+      // 4a. A recordFact persist (the background, mirror-merged
+      // path) preserves the imported facts on disk.
+      coach.recordFact(
+        text: 'Post-import fact',
+        source: 'chat',
+        email: founder,
+        now: DateTime.fromMillisecondsSinceEpoch(1760000200000),
+      );
+      await flushBackgroundWrites();
+      expect(diskFactTexts(prod), [
+        'Post-import fact',
+        'Knee bothers him on stairs',
+        'Prefers morning check-ins',
+      ]);
+      // 4b. An addFact persist also preserves them.
+      final afterAdd = await coach.addFact(
+        text: 'Second post-import fact',
+        source: 'chat',
+        email: founder,
+        now: DateTime.fromMillisecondsSinceEpoch(1760000300000),
+      );
+      expect(afterAdd.map((f) => f.text), [
+        'Second post-import fact',
+        'Post-import fact',
+        'Knee bothers him on stairs',
+        'Prefers morning check-ins',
+      ]);
+      expect(diskFactTexts(prod), afterAdd.map((f) => f.text).toList());
+    });
+
+    test('production wiring: a default-constructed service '
+        'invalidates the CoachMemoryStore singleton', () async {
+      final prod = <String, String>{};
+      final singleton = CoachMemoryStore.instance;
+      singleton.debugSetStore(
+        read: (k) async => prod[k],
+        write: (k, v) async => prod[k] = v,
+        delete: (k) async => prod.remove(k),
+      );
+      await singleton.clear(); // cold, deterministic start
+      // Warm the singleton's mirror (signed in, Coach visited).
+      expect(await singleton.load(founder), isEmpty);
+      // Settings constructs the service with defaults only.
+      final json = await founderBundle();
+      await MigrationBundleService(store: MemorySecureStore(prod))
+          .importBundleJson(json, currentEmail: founder);
+      final facts = await singleton.load(founder);
+      expect(facts.map((f) => f.text), [
+        'Knee bothers him on stairs',
+        'Prefers morning check-ins',
+      ]);
+      final afterAdd = await singleton.addFact(
+        text: 'Singleton post-import fact',
+        source: 'chat',
+        email: founder,
+        now: DateTime.fromMillisecondsSinceEpoch(1760000400000),
+      );
+      expect(afterAdd.map((f) => f.text), containsAll([
+        'Singleton post-import fact',
+        'Knee bothers him on stairs',
+        'Prefers morning check-ins',
+      ]));
+      expect(diskFactTexts(prod),
+          afterAdd.map((f) => f.text).toList());
+      await singleton.clear();
+    });
+
+    test('a refused import does NOT invalidate the warmed mirror',
+        () async {
+      final prod = <String, String>{};
+      final coach = coachStoreOver(prod);
+      await coach.addFact(
+        text: 'Existing fact',
+        source: 'chat',
+        email: founder,
+        now: DateTime.fromMillisecondsSinceEpoch(1760000000000),
+      );
+      expect(await coach.load(founder), hasLength(1)); // mirror warm
+      final json = await founderBundle();
+      await expectLater(
+        MigrationBundleService(
+          store: MemorySecureStore(prod),
+          coachStore: coach,
+        ).importBundleJson(json, currentEmail: 'other@example.com'),
+        throwsA(isA<MigrationException>()
+            .having((e) => e.code, 'code', 'OWNER_MISMATCH')),
+      );
+      // Mirror untouched: the pre-import facts are still served.
+      expect(coach.cachedFactsFor(founder).map((f) => f.text),
+          ['Existing fact']);
+    });
+
+    test('pre-warmed knowledge mirror: import lands in the same '
+        'session and a saveText persist preserves the imported '
+        'texts', () async {
+      final prod = <String, String>{};
+      final knowledge = knowledgeStoreOver(prod);
+      // Warm the mirror for the account (Settings/Coach visited):
+      // loaded, empty.
+      await knowledge.load(founder);
+      expect(knowledge.textFor('doc-1'), isNull);
+      final json = await founderBundle();
+      await MigrationBundleService(
+        store: MemorySecureStore(prod),
+        now: () => fixedNow,
+        knowledgeStore: knowledge,
+      ).importBundleJson(json, currentEmail: founder);
+      // Same session: the imported extracted text now loads.
+      await knowledge.load(founder);
+      expect(knowledge.textFor('doc-1'),
+          'Extracted cardiology letter text.');
+      const doc1 = KnowledgeDocumentMeta(
+        id: 'doc-1',
+        name: 'letter.pdf',
+        mimeType: 'application/pdf',
+        createdAt: 1,
+      );
+      expect(knowledge.joinedCachedTextsFor(founder, [doc1]),
+          'Extracted cardiology letter text.');
+      // A whole-mirror persist preserves the imported text.
+      await knowledge.saveText('doc-9', 'Brand new extraction.');
+      final decoded = jsonDecode(
+              prod[MigrationBundleService.knowledgeExtractedKey]!)
+          as Map<String, dynamic>;
+      final texts = decoded['texts'] as Map;
+      expect(texts['doc-1'], 'Extracted cardiology letter text.');
+      expect(texts['doc-9'], 'Brand new extraction.');
     });
   });
 
