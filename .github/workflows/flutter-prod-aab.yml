@@ -17,6 +17,13 @@
 #   5. Builds the production AAB:
 #        flutter build appbundle --release --flavor prod
 #          --build-number=<version_code> --build-name=<version_name>
+#          --dart-define=TABS_PRODUCTION_BILLING=true
+#      The define is ONE HALF of an AND gate: production billing
+#      activates only when the define is true AND the app_info
+#      MethodChannel (MainActivity) reports package com.notel.notel.
+#      The Lab build in this same workflow must NEVER receive the
+#      define — in the Lab the channel reports the Lab package name,
+#      so the gate stays closed there either way.
 #      The Gradle guard in flutter/android/app/build.gradle.kts fails
 #      bundleProd*/assembleProd* tasks closed if signing properties
 #      or a valid version code are missing — a Lab-signed
@@ -222,16 +229,23 @@ jobs:
       - name: Build production AAB
         working-directory: flutter
         run: |
+          # TABS_PRODUCTION_BILLING=true is one half of the billing
+          # AND gate (the other half is the app_info channel package
+          # check in MainActivity). Prod builds only — never the Lab.
           flutter build appbundle --release --flavor prod \
             --build-number="$VERSION_CODE" \
-            --build-name="$VERSION_NAME"
+            --build-name="$VERSION_NAME" \
+            --dart-define=TABS_PRODUCTION_BILLING=true
 
       - name: Build prod sibling APK (for the widget gate)
         working-directory: flutter
         run: |
+          # Same prod variant as the AAB above, so it carries the
+          # same billing define; it exists only for the widget gate.
           flutter build apk --release --flavor prod \
             --build-number="$VERSION_CODE" \
-            --build-name="$VERSION_NAME"
+            --build-name="$VERSION_NAME" \
+            --dart-define=TABS_PRODUCTION_BILLING=true
 
       - name: Widget gate on prod APK
         working-directory: flutter

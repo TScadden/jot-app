@@ -70,6 +70,16 @@ class MainActivity : FlutterFragmentActivity() {
         const val VOICE_CHANNEL = "com.notel.notel.playground.flutter/voice"
         const val FILE_PICKER_CHANNEL = "com.notel.notel.playground.flutter/file_picker"
         const val CALENDAR_CHANNEL = "com.notel.notel.playground.flutter/calendar"
+        // TAKEOVER integration (billing gate): deliberately NOT
+        // playground-prefixed — the channel name is fixed by the
+        // billing branch's probe (billing_play_store.dart
+        // probePackageName(): MethodChannel('com.notel.notel/app_info'),
+        // invokeMethod<String>('getPackageName')). The handler returns
+        // this context's package name, so the SAME MainActivity answers
+        // com.notel.notel.playground.flutter in the Lab build (billing
+        // gate stays closed there — that is the point) and
+        // com.notel.notel in the prod build.
+        const val APP_INFO_CHANNEL = "com.notel.notel/app_info"
         // Round 48: BP CSV import cap, same as native MAX_CSV_FILE_BYTES.
         private const val MAX_CSV_FILE_BYTES = 5 * 1024 * 1024
         // Round 65: knowledge-document pick cap (see doc picker).
@@ -439,6 +449,31 @@ class MainActivity : FlutterFragmentActivity() {
                         result
                     )
                     "getUpcomingEvents" -> getUpcomingCalendarEvents(result)
+                    else -> result.notImplemented()
+                }
+            }
+        // TAKEOVER integration (billing gate): package-name probe for
+        // the billing branch's BillingEnvironment. Contract (matches
+        // billing_play_store.dart probePackageName exactly):
+        //   channel: com.notel.notel/app_info
+        //   method:  getPackageName  (no arguments)
+        //   returns: String — this context's package name
+        // The billing gate is an AND: this answer must equal
+        // com.notel.notel AND the build must carry
+        // --dart-define=TABS_PRODUCTION_BILLING=true (prod CI only).
+        // In the Lab this returns the Lab package name, so the gate
+        // stays closed. Error path returns a visible code — never a
+        // silent null that could be misread (team lesson).
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, APP_INFO_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getPackageName" -> {
+                        try {
+                            result.success(packageName)
+                        } catch (e: Exception) {
+                            result.error("PACKAGE_NAME_FAILED", e.message, null)
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }
