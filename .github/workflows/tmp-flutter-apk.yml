@@ -110,7 +110,16 @@ jobs:
           [ "$LABEL" = "$EXPECTED_LABEL" ] || { echo "::error::label mismatch: $LABEL"; exit 1; }
           CERTS="$("$APKSIGNER" verify --verbose --print-certs "$SPLIT_APK_PATH")"
           echo "$CERTS"
-          DIGEST="$(printf '%s\n' "$CERTS" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1 | tr -d '[:space:]')"
+          # Prefix-tolerant extraction (apksigner output drift, same
+          # handling as flutter-prod-aab.yml's Lab check): accept the
+          # legacy "Signer #<n>" form AND the scheme-prefixed
+          # "V<x>[.<y>] Signer:" form, collect every matching digest,
+          # and require exactly ONE distinct value.
+          ALL_DIGESTS="$(printf '%s\n' "$CERTS" | sed -n -e 's/^Signer #[0-9][0-9]* certificate SHA-256 digest: //p' -e 's/^V[0-9][0-9]*\(\.[0-9][0-9]*\)\{0,1\} Signer\( #[0-9][0-9]*\)\{0,1\}: certificate SHA-256 digest: //p' | sed 's/[[:space:]]//g' | tr '[:upper:]' '[:lower:]' | sort -u)"
+          DIGEST_COUNT="$(printf '%s\n' "$ALL_DIGESTS" | awk 'NF { n++ } END { print n + 0 }')"
+          DIGEST="$(printf '%s\n' "$ALL_DIGESTS" | head -1)"
+          [ -n "$DIGEST" ] || { echo "::error::no signer digest extracted from apksigner output"; exit 1; }
+          [ "$DIGEST_COUNT" -eq 1 ] || { echo "::error::multiple distinct signer digests - ambiguous signer set"; printf '%s\n' "$ALL_DIGESTS"; exit 1; }
           ACTUAL="$(printf '%s' "$DIGEST" | tr '[:lower:]' '[:upper:]' | sed 's/\(..\)/\1:/g; s/:$//')"
           echo "Signer SHA-256: $ACTUAL"
           [ "$ACTUAL" = "$EXPECTED_CERT_SHA256" ] || { echo "::error::signer is not the Play upload cert: $ACTUAL"; exit 1; }
