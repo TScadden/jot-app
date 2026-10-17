@@ -98,7 +98,7 @@ env:
   BUNDLETOOL_VERSION: "1.18.2"
   AAB_PATH: flutter/build/app/outputs/bundle/prodRelease/app-prod-release.aab
   PROD_APK_PATH: flutter/build/app/outputs/flutter-apk/app-prod-release.apk
-  LAB_APK_PATH: flutter/build/app/outputs/flutter-apk/app-lab-arm64-v8a-release.apk
+  LAB_APK_PATH: flutter/build/app/outputs/flutter-apk/app-arm64-v8a-lab-release.apk
 
 jobs:
   build-prod-aab:
@@ -224,7 +224,7 @@ jobs:
 
       - name: Widget gate on Lab APK
         working-directory: flutter
-        run: bash tool/check_widget_apk.sh build/app/outputs/flutter-apk/app-lab-arm64-v8a-release.apk
+        run: bash tool/check_widget_apk.sh build/app/outputs/flutter-apk/app-arm64-v8a-lab-release.apk
 
       - name: Build production AAB
         working-directory: flutter
