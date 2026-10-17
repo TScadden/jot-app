@@ -212,9 +212,47 @@ jobs:
           # against the repo's debug.keystore file itself — reading the
           # expectation from that file would let a swapped keystore
           # silently redefine the expected identity.
-          ACTUAL="$(keytool -printcert -jarfile "$LAB_APK_PATH" | grep -i 'SHA256:' | awk '{print $2}')"
+          # Signer fingerprint via apksigner, NOT keytool: this APK is
+          # signed with APK Signature Scheme v2 only (no v1/JAR
+          # signature - no META-INF MANIFEST.MF/*.SF/*.RSA), so
+          # `keytool -printcert -jarfile` prints "Not a signed jar
+          # file", exits 0, and extracts nothing (attempt 3, run
+          # 39049056243 - empty by construction, not an identity
+          # change). apksigner is the APK-native tool and also VERIFIES
+          # the signature while printing the cert digest. Discovered
+          # the same way as AAPT2 above.
+          APKSIGNER="$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)"
+          if [ ! -x "$APKSIGNER" ]; then
+            echo "::error::Lab signer check could not run: apksigner not found under \$ANDROID_HOME/build-tools."
+            exit 1
+          fi
+          if ! LAB_CERTS="$("$APKSIGNER" verify --print-certs "$LAB_APK_PATH" 2>&1)"; then
+            echo "::error::Lab signer check failed: apksigner could not verify the Lab APK signature."
+            echo "$LAB_CERTS"
+            exit 1
+          fi
+          echo "$LAB_CERTS"
+          # apksigner prints the digest as lowercase hex with NO
+          # separators; the pin is colon-separated uppercase. Extract,
+          # validate the shape, then normalize (uppercase + colon
+          # insertion) before comparing. The comparison target stays
+          # the pinned literal EXPECTED_LAB_CERT_SHA256 - never a value
+          # derived from the repo's debug.keystore file.
+          LAB_DIGEST_HEX="$(printf '%s\n' "$LAB_CERTS" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1 | tr -d '[:space:]')"
+          if [ -z "$LAB_DIGEST_HEX" ]; then
+            echo "::error::Lab signer check extracted NO certificate digest from the APK (apksigner output had no signer line) - failing closed; this is not a cert mismatch."
+            exit 1
+          fi
+          if ! printf '%s' "$LAB_DIGEST_HEX" | grep -Eq '^[0-9A-Fa-f]{64}$'; then
+            echo "::error::Lab signer check extracted an UNPARSEABLE certificate digest ('$LAB_DIGEST_HEX') - failing closed; this is not a cert mismatch."
+            exit 1
+          fi
+          ACTUAL="$(printf '%s' "$LAB_DIGEST_HEX" | tr '[:lower:]' '[:upper:]' | sed 's/\(..\)/\1:/g; s/:$//')"
           echo "Lab signer SHA-256: $ACTUAL"
-          [ "$ACTUAL" = "$EXPECTED_LAB_CERT_SHA256" ] || { echo "::error::Lab APK is not signed with the committed debug keystore."; exit 1; }
+          if [ "$ACTUAL" != "$EXPECTED_LAB_CERT_SHA256" ]; then
+            echo "::error::Lab APK is not signed with the committed debug keystore (signer mismatch: got $ACTUAL)."
+            exit 1
+          fi
           {
             echo "### Lab line (unchanged)"
             echo "- package: \`$PKG\`"
