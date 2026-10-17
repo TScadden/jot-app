@@ -4647,7 +4647,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const Text(
             'Some of your data lives only on this device: what your '
             'Health Coach remembers about you, your health history, '
-            'and settings like these. Export it here in the Tabs Lab, '
+            'the text extracted from your Knowledge Base documents, '
+            'your food-checker history, and settings like these. '
+            'Export it here in the Tabs Lab, '
             'then open the Tabs app, sign in with the same account, '
             'and choose Import from Tabs Lab on this same screen. '
             'The file contains health information, so send it only '
