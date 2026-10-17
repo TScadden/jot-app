@@ -802,28 +802,39 @@ class _SleepScreenState extends State<SleepScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Labels in their own row, stretched to the tallest label
+        // (IntrinsicHeight); values in a second row beneath. The
+        // three figures share one value line even when a label
+        // wraps in its third of the card — probe-measured at 360dp,
+        // the wrapped labels pushed one figure's value 17dp above
+        // its siblings (Mira pass, Oct 17, 2026).
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: _needLabel('Last night asleep')),
+              Expanded(child: _needLabel('That night\'s need')),
+              Expanded(child: _needLabel('Tonight\'s need')),
+            ],
+          ),
+        ),
+        const SizedBox(height: 4),
         Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: _needFigure(
-                'Last night asleep',
+              child: _needValue(
                 latest != null ? _formatMins(latest.asleepMinutes) : '--',
               ),
             ),
             Expanded(
-              child: _needFigure(
-                'That night\'s need',
+              child: _needValue(
                 latest?.needMinutes != null
                     ? _formatMins(latest!.needMinutes!)
                     : '--',
               ),
             ),
             Expanded(
-              child: _needFigure(
-                'Tonight\'s need',
-                _formatMins(estimate.tonightNeedMinutes),
-              ),
+              child: _needValue(_formatMins(estimate.tonightNeedMinutes)),
             ),
           ],
         ),
@@ -862,27 +873,24 @@ class _SleepScreenState extends State<SleepScreen> {
     );
   }
 
-  Widget _needFigure(String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 12,
-            color: NotelColors.textSecondary,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: NotelColors.textPrimary,
-          ),
-        ),
-      ],
+  Widget _needLabel(String label) {
+    return Text(
+      label,
+      style: const TextStyle(
+        fontSize: 12,
+        color: NotelColors.textSecondary,
+      ),
+    );
+  }
+
+  Widget _needValue(String value) {
+    return Text(
+      value,
+      style: const TextStyle(
+        fontSize: 20,
+        fontWeight: FontWeight.bold,
+        color: NotelColors.textPrimary,
+      ),
     );
   }
 
@@ -952,22 +960,65 @@ class _SleepScreenState extends State<SleepScreen> {
           ],
         ),
         const SizedBox(height: 4),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          child: Stack(
-            children: [
-              Container(height: 8, color: NotelColors.surfaceHigh),
-              FractionallySizedBox(
-                widthFactor: fraction,
-                child: Container(
-                  height: 8,
-                  color: isLatest
-                      ? NotelColors.primary
-                      : NotelColors.primary.withValues(alpha: 0.55),
-                ),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final need = night.needMinutes;
+            final needFraction = (need != null && maxScale > 0)
+                ? (need / maxScale).clamp(0.0, 1.0)
+                : null;
+            return SizedBox(
+              height: 8,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: Stack(
+                      children: [
+                        Container(
+                            height: 8, color: NotelColors.surfaceHigh),
+                        FractionallySizedBox(
+                          widthFactor: fraction,
+                          child: Container(
+                            height: 8,
+                            // Measured (Mira pass, Oct 17, 2026): the
+                            // old non-latest fill — primary @ 55% over
+                            // the surfaceHigh track — composites to
+                            // 2.21:1 against the track, so the bar's
+                            // end was hard to read. Solid primary
+                            // measures 4.21:1 against the track; the
+                            // latest night takes primaryText (6.18:1),
+                            // the same latest highlight the Daily
+                            // Score chart uses.
+                            color: isLatest
+                                ? NotelColors.primaryText
+                                : NotelColors.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // This night's need as a marker line across the
+                  // bar: without it the bar showed asleep only and
+                  // the need comparison lived solely in the +/-
+                  // text. The marker protrudes 2dp above and below
+                  // onto the card surface, where textPrimary
+                  // measures 16.01:1.
+                  if (needFraction != null)
+                    Positioned(
+                      left: (needFraction * constraints.maxWidth - 1)
+                          .clamp(0.0, constraints.maxWidth - 2),
+                      top: -2,
+                      child: Container(
+                        width: 2,
+                        height: 12,
+                        color: NotelColors.textPrimary,
+                      ),
+                    ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         ),
       ],
     );

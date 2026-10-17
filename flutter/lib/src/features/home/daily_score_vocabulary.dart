@@ -39,10 +39,13 @@ DailyScoreBand bandForScore(int score) {
 
 /// A component status chip: word + solid fill + ink, mirroring the
 /// concept's solid chips (green "Good", blue "Above", purple
-/// "Normal"). [foreground] is chosen per fill for contrast: dark
-/// ink on the bright fills, white on `primary` (the sanctioned
-/// short-bold-label exception, design-audit §0.9 — the concept's
-/// purple "Normal" chip carries white text).
+/// "Normal"). [foreground] is chosen per fill for measured
+/// contrast: dark ink on the bright fills, and `onPrimary` ink on
+/// `primary` — the token file's chip precedent (Round 49 audit S1:
+/// onPrimary on primary = 5.21:1, passing for 11sp chip text;
+/// white on primary = 3.80:1 is the §0.9 exception for primary
+/// BUTTON labels/glyphs only and does not cover chips — Mira
+/// design pass, Oct 17, 2026, measured from the token values).
 class ScoreChip {
   final String label;
   final Color background;
@@ -53,7 +56,7 @@ class ScoreChip {
 const ScoreChip _chipGood =
     ScoreChip('Good', NotelColors.success, NotelColors.background);
 const ScoreChip _chipNormal =
-    ScoreChip('Normal', NotelColors.primary, Colors.white);
+    ScoreChip('Normal', NotelColors.primary, NotelColors.onPrimary);
 const ScoreChip _chipAbove =
     ScoreChip('Above', NotelColors.info, NotelColors.background);
 const ScoreChip _chipBelow =

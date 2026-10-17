@@ -254,9 +254,13 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
         children: [
           const Text(
             'Last 14 days',
+            // Card-title role (16 bold), matching the sibling
+            // "How this score works" card on this same screen and
+            // the Home card titles (Mira pass — was 14 w500, a
+            // row-title style doing a card title's job).
             style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
               color: NotelColors.textPrimary,
             ),
           ),
@@ -546,7 +550,9 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: band.color.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(999),
+                  // Chip radius 12 (closed scale §6), as on the
+                  // Home band chip (Mira pass).
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
                   'Daily Score: ${row.dailyScore} · ${band.label}',
@@ -679,7 +685,9 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: chip.background,
-                  borderRadius: BorderRadius.circular(999),
+                  // Chip radius 12 (closed scale §6), as on the
+                  // Home band chip (Mira pass).
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
                   chip.label,

@@ -393,7 +393,7 @@ void main() {
           child: Scaffold(body: DailyScoreCircle(score: null)),
         ),
       ));
-      expect(find.text('—'), findsOneWidget);
+      expect(find.text('--'), findsOneWidget);
       expect(find.text('Building'), findsOneWidget);
       // No numeric score anywhere in the building state.
       for (final t in tester.widgetList<Text>(find.byType(Text))) {

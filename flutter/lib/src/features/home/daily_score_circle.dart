@@ -72,13 +72,22 @@ class DailyScoreFace extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  score?.toString() ?? '—',
+                  // §0.7: a missing number renders '--', as everywhere
+                  // else in the app — never a one-off glyph.
+                  score?.toString() ?? '--',
                   style: TextStyle(
                     fontSize: size * 0.36,
                     fontWeight: FontWeight.w900,
+                    // Ink over the liquid, measured (Mira pass,
+                    // Oct 17, 2026): the number sits over the purple
+                    // fill whenever the score is mid/high and over
+                    // the dark disc when low, and pure white beats
+                    // textPrimary on BOTH — 3.80:1 vs 3.32:1 on
+                    // primary, 18.30:1 vs 16.01:1 on surface. White
+                    // is also the concept's number ink.
                     color: score == null
                         ? NotelColors.textSecondary
-                        : NotelColors.textPrimary,
+                        : Colors.white,
                   ),
                 ),
                 if (showInnerLabel && score != null)
@@ -87,8 +96,12 @@ class DailyScoreFace extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
-                      color:
-                          NotelColors.textPrimary.withValues(alpha: 0.85),
+                      // Solid white, no alpha: at detail size this
+                      // label sits over the liquid (pixel-sampled at
+                      // score 78), where textPrimary @ 85% composites
+                      // to 2.84:1 — below the 3:1 floor. Solid white
+                      // measures 3.80:1 on primary (Mira pass).
+                      color: Colors.white,
                     ),
                   ),
               ],
@@ -282,7 +295,10 @@ class _DailyScoreCircleState extends State<DailyScoreCircle>
                           horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
                         color: band?.color ?? NotelColors.surfaceHigh,
-                        borderRadius: BorderRadius.circular(999),
+                        // Chip radius 12 (closed scale §6; native
+                        // Radii.chip) — at this height it still
+                        // renders as the concept's pill.
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
                         band?.label ?? 'Building',
