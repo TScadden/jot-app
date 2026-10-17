@@ -1,6 +1,12 @@
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:printing/printing.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/heart_data.dart';
+import 'package:tabs_lab/src/data/spike_report_pdf.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// Round 25 — Spike Review, port of native `HeartSpikeReviewScreen.kt`.
@@ -12,16 +18,44 @@ import 'package:tabs_lab/src/theme/notel_colors.dart';
 /// from the Heart card's 5-minute-window count on identical data,
 /// exactly as in native.
 ///
-/// DEFERRED vs native: the top-bar PDF download action
-/// (`PdfExporter.exportSpikesToPdf`) has no Flutter bridge in the Lab
-/// and is omitted rather than faked — flagged in the round report.
+/// Round 67 — the top-bar PDF download action deferred in Round 25
+/// is now built on the Round 66 pure-Dart PDF stack:
+/// `spike_report_pdf.dart` ports native `PdfExporter.exportSpikesToPdf`
+/// (including the exporter's OWN event detection, which differs from
+/// this screen's). The saved copy lands in the app documents
+/// directory (the R66 divergence — native writes to Downloads via
+/// MediaStore) and the same bytes are offered via the share sheet
+/// from the saved SnackBar's Share action.
 ///
 /// Founder rule: samples arrive already valid-filtered by the caller,
 /// and every derivation here re-filters (bpm ≤ 0 never renders).
 class HeartSpikeReviewScreen extends StatefulWidget {
   final List<HrSample> samples;
 
-  const HeartSpikeReviewScreen({super.key, required this.samples});
+  /// The selected date (`yyyy-MM-dd`) the samples belong to — native
+  /// passes `state.selectedHeartRateDate` to the exporter the same
+  /// way. Null in tests/previews: the export then derives the date
+  /// from the first valid sample (or today when there are none).
+  final String? dateStr;
+
+  /// Test seams (Round 66 pattern): production saves into the app
+  /// documents directory and shares via Printing.sharePdf.
+  final Future<String> Function(List<int> bytes, String fileName)?
+      savePdf;
+  final Future<void> Function(List<int> bytes, String fileName)?
+      sharePdf;
+
+  /// Test seam for the PDF's "Exported:" stamp.
+  final DateTime Function()? now;
+
+  const HeartSpikeReviewScreen({
+    super.key,
+    required this.samples,
+    this.dateStr,
+    this.savePdf,
+    this.sharePdf,
+    this.now,
+  });
 
   @override
   State<HeartSpikeReviewScreen> createState() =>
@@ -30,6 +64,75 @@ class HeartSpikeReviewScreen extends StatefulWidget {
 
 class _HeartSpikeReviewScreenState extends State<HeartSpikeReviewScreen> {
   int? _expandedIndex;
+  bool _exporting = false;
+
+  String get _exportDateStr {
+    if (widget.dateStr != null) return widget.dateStr!;
+    final valid = validHrSamples(widget.samples);
+    final anchor = valid.isNotEmpty
+        ? DateTime.fromMillisecondsSinceEpoch(valid.first.timeMs)
+        : (widget.now?.call() ?? DateTime.now());
+    return '${anchor.year.toString().padLeft(4, '0')}-'
+        '${anchor.month.toString().padLeft(2, '0')}-'
+        '${anchor.day.toString().padLeft(2, '0')}';
+  }
+
+  Future<String> _defaultSave(List<int> bytes, String fileName) async {
+    // R66 divergence: native saves this PDF to Downloads via
+    // MediaStore; the Lab's saved copy lands in the app documents
+    // directory and the share sheet shares the same bytes.
+    final dir = await getApplicationDocumentsDirectory();
+    final file = File('${dir.path}/$fileName');
+    await file.writeAsBytes(bytes, flush: true);
+    return file.path;
+  }
+
+  Future<void> _exportPdf() async {
+    if (_exporting) return;
+    final valid = validHrSamples(widget.samples);
+    final events = detectSpikePdfEvents(valid);
+    if (events.isEmpty) {
+      // Native Toast text, verbatim.
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No spike events to export')),
+      );
+      return;
+    }
+    setState(() => _exporting = true);
+    try {
+      final dateStr = _exportDateStr;
+      final bytes = await buildSpikeReportPdfBytes(
+        samples: valid,
+        dateStr: dateStr,
+        exportedAt: widget.now?.call() ?? DateTime.now(),
+      );
+      final fileName = spikePdfFileName(dateStr);
+      final saveFn = widget.savePdf ?? _defaultSave;
+      await saveFn(bytes, fileName);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Spike report saved'),
+          action: SnackBarAction(
+            label: 'Share',
+            onPressed: () {
+              final shareFn = widget.sharePdf ??
+                  (b, name) => Printing.sharePdf(
+                      bytes: Uint8List.fromList(b), filename: name);
+              shareFn(bytes, fileName);
+            },
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Export failed [$e]')),
+      );
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -55,6 +158,15 @@ class _HeartSpikeReviewScreenState extends State<HeartSpikeReviewScreen> {
             color: NotelColors.textPrimary,
           ),
         ),
+        // Native top-bar action (HeartSpikeReviewScreen.kt): the
+        // Download icon in the primary tint runs the PDF export.
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.download, color: NotelColors.primary),
+            tooltip: 'Download spike report',
+            onPressed: _exporting ? null : _exportPdf,
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),

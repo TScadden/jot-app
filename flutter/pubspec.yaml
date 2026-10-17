@@ -55,6 +55,20 @@ dependencies:
   home_widget: ^0.9.0
   geolocator: ^14.1.1
   url_launcher: ^6.3.1
+  # Round 66 — Progress Reports PDF: pure-Dart PDF generation (pdf)
+  # and the system share sheet (printing's Printing.sharePdf), plus
+  # path_provider for the saved-copy location (app documents dir;
+  # native saves to Downloads via MediaStore — see the round report
+  # for that divergence).
+  pdf: ^3.11.3
+  printing: ^5.14.2
+  path_provider: ^2.1.5
+  # Round 66 — printing's loose image constraint (>=4.1.0 <=5.0.0)
+  # resolves image 4.11.0, whose PNG decoder calls an archive API
+  # (ZLibDecoder.decodeLazy) that the resolved archive 3.6.1 (per
+  # pubspec.lock) does not provide — the app fails to compile. Pin
+  # image to the last line that compiles against archive 3.6.1.
+  image: 4.3.0
 
 dev_dependencies:
   flutter_test:

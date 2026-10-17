@@ -694,6 +694,58 @@ class TabsBackend {
     }
   }
 
+  /// Round 66 — status-carrying variant of [postAi] for the clinical
+  /// report call (`POST /api/ai/report`, native
+  /// `GeminiService.getMedicalReportSummaryFromSnapshot`): native
+  /// captures the HTTP status + the server's `error`/`message` field
+  /// so its failure-reason mapping can tell a 401 from a 429 from a
+  /// 5xx. Returns `(statusCode: null, ...)` when there is no stored
+  /// token or the transport failed (native's connection-failure
+  /// class). The server error text is returned for INTERNAL mapping
+  /// only — callers must map it to a plain-language reason and never
+  /// render it (native `AiFailureReasons` reads only the status).
+  Future<
+      ({
+        int? statusCode,
+        Map<String, dynamic>? body,
+        String? serverError,
+      })> postAiDetailed(String path, Map<String, dynamic> body) async {
+    final response = await _sendAuthed((token) => _client.post(
+          Uri.parse('$_baseUrl$path'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode(body),
+        ));
+    if (response == null) {
+      return (statusCode: null, body: null, serverError: null);
+    }
+    Map<String, dynamic>? decoded;
+    try {
+      final d = jsonDecode(response.body);
+      if (d is Map<String, dynamic>) decoded = d;
+    } catch (_) {
+      decoded = null;
+    }
+    if (response.statusCode == 200) {
+      return (statusCode: 200, body: decoded, serverError: null);
+    }
+    // Native error extraction (GeminiService): `error`, else
+    // `message`, else the raw body.
+    String? serverError;
+    if (decoded != null) {
+      final e = decoded['error'] ?? decoded['message'];
+      if (e != null) serverError = '$e';
+    }
+    serverError ??= response.body.isEmpty ? null : response.body;
+    return (
+      statusCode: response.statusCode,
+      body: null,
+      serverError: serverError,
+    );
+  }
+
   /// Current/best streak from `/api/sync/pull`. Nulls on any failure —
   /// the streak row renders "--".
   Future<({int? current, int? best})> fetchStreak() async {

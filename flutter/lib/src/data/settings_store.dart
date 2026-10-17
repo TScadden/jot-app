@@ -40,6 +40,16 @@ class SettingsStore {
   static const googleAccountConnectedKey =
       'settings_google_account_connected';
   static const googleAccountEmailKey = 'settings_google_account_email';
+  // Round 66 — Progress Reports prefs (native NotelPreferences:
+  // LAST_REPORT_TYPE / LAST_REPORT_RANGE_30D / LAST_REPORT_EXPORT_TIME
+  // / APPOINTMENT_DATE / APPOINTMENT_REPORT_TYPE, DataStore-only).
+  static const reportLastTypeKey = 'progress_report_last_type';
+  static const reportLastRange30dKey = 'progress_report_last_range_30d';
+  static const reportLastExportKey = 'progress_report_last_export_ms';
+  static const reportAppointmentDateKey =
+      'progress_report_appointment_date';
+  static const reportAppointmentTypeKey =
+      'progress_report_appointment_type';
 
   Future<String?> Function(String key) _read =
       (key) => const FlutterSecureStorage().read(key: key);
@@ -145,6 +155,61 @@ class SettingsStore {
   Future<void> setGoogleAccountEmail(String v) =>
       _write(googleAccountEmailKey, v);
 
+  // ── Round 66 — Progress Reports prefs ───────────────────────────
+
+  /// Native default "health" (NotelPreferences.lastReportType).
+  Future<String> getReportLastType() async {
+    try {
+      final v = await _read(reportLastTypeKey);
+      if (v == 'health' || v == 'training' || v == 'custom') return v!;
+    } catch (_) {}
+    return 'health';
+  }
+
+  Future<void> setReportLastType(String v) => _write(reportLastTypeKey, v);
+
+  /// Native default true (NotelPreferences.lastReportRange30d).
+  Future<bool> getReportLastRange30d() =>
+      _readBool(reportLastRange30dKey, true);
+  Future<void> setReportLastRange30d(bool v) =>
+      _writeBool(reportLastRange30dKey, v);
+
+  Future<int> getReportLastExportMs() async {
+    try {
+      return int.tryParse(await _read(reportLastExportKey) ?? '') ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  Future<void> setReportLastExportMs(int ms) =>
+      _write(reportLastExportKey, '$ms');
+
+  /// Saved appointment date as ISO `yyyy-MM-dd`, or null when none.
+  Future<String?> getReportAppointmentDate() async {
+    try {
+      final v = await _read(reportAppointmentDateKey);
+      return (v == null || v.isEmpty) ? null : v;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> setReportAppointmentDate(String? iso) =>
+      iso == null ? _delete(reportAppointmentDateKey) : _write(reportAppointmentDateKey, iso);
+
+  /// Native default "health" (NotelPreferences.appointmentReportType).
+  Future<String> getReportAppointmentType() async {
+    try {
+      final v = await _read(reportAppointmentTypeKey);
+      if (v == 'health' || v == 'training' || v == 'custom') return v!;
+    } catch (_) {}
+    return 'health';
+  }
+
+  Future<void> setReportAppointmentType(String v) =>
+      _write(reportAppointmentTypeKey, v);
+
   /// Wipes every settings key. Called on logout / account deletion so a
   /// next account never inherits this account's on-device choices.
   Future<void> clear() async {
@@ -158,6 +223,11 @@ class SettingsStore {
       googleCalendarEmailKey,
       googleAccountConnectedKey,
       googleAccountEmailKey,
+      reportLastTypeKey,
+      reportLastRange30dKey,
+      reportLastExportKey,
+      reportAppointmentDateKey,
+      reportAppointmentTypeKey,
     ]) {
       try {
         await _delete(k);
