@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
+import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
 import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/progress_report.dart';
@@ -157,6 +158,18 @@ ReportSnapshot fixtureSnapshot({bool last30Days = true}) {
 // ── Pure logic ────────────────────────────────────────────────────
 
 void main() {
+  // R70 WS2 — the union helper reads/writes the shared history
+  // store; reset it (in-memory backing) so cases stay isolated.
+  setUp(() {
+    final mem = <String, String>{};
+    HealthHistoryStore.instance.debugSetStore(
+      read: (k) async => mem[k],
+      write: (k, v) async => mem[k] = v,
+      delete: (k) async => mem.remove(k),
+    );
+    HealthHistoryStore.instance.debugReset();
+  });
+
   group('preset category resolution (slug fallback by id)', () {
     test('HEALTH resolves by canonical slug-by-id', () {
       final sel = resolveReportCategories(

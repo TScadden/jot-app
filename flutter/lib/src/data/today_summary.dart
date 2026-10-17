@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
+import 'package:tabs_lab/src/data/health_history_queries.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/session_store.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -1104,17 +1105,33 @@ class TodaySummaryLoader {
   final TodaySummaryCache cache;
   final SessionStore sessionStore;
 
+  /// R70 WS2 — the local-first union reader (store ∪ fresh HC).
+  final HealthHistoryQueries historyQueries;
+
   TodaySummaryLoader({
     TabsBackend? backend,
     HealthConnectService? hc,
     TodayPlanStore? planStore,
     TodaySummaryCache? cache,
     SessionStore? sessionStore,
-  })  : backend = backend ?? TabsBackend(),
-        hc = hc ?? HealthConnectService(),
-        planStore = planStore ?? TodayPlanStore.instance,
-        cache = cache ?? TodaySummaryCache.instance,
-        sessionStore = sessionStore ?? SessionStore();
+    HealthHistoryQueries? historyQueries,
+  }) : this._internal(
+          backend ?? TabsBackend(),
+          hc ?? HealthConnectService(),
+          planStore ?? TodayPlanStore.instance,
+          cache ?? TodaySummaryCache.instance,
+          sessionStore ?? SessionStore(),
+          historyQueries,
+        );
+
+  TodaySummaryLoader._internal(
+    this.backend,
+    this.hc,
+    this.planStore,
+    this.cache,
+    this.sessionStore,
+    HealthHistoryQueries? queries,
+  ) : historyQueries = queries ?? HealthHistoryQueries(hc: hc);
 
   Future<String?> _email() async {
     try {
@@ -1278,37 +1295,26 @@ class TodaySummaryLoader {
   }) async {
     final at = now ?? DateTime.now();
     final todayStr = dateStrOf(at);
-    final sleepByDate = <String, int>{};
-    final rhrByDate = <String, int>{};
+    var sleepByDate = <String, int>{};
+    var rhrByDate = <String, int>{};
     try {
-      // Native reads 8 days of sleep history anchored on today
-      // (sessions attributed to their end date, as the bridge does).
-      // Calendar-day arithmetic — a 24h Duration subtraction can
-      // drift a date across a DST boundary. The per-day reads run
-      // concurrently, and this phase never gates the plan (the card
-      // loads the plan first, exactly like native's separate flows).
-      final dates = [
-        for (var i = 0; i <= 8; i++)
-          dateStrOf(DateTime(at.year, at.month, at.day - i)),
-      ];
-      final results = await Future.wait([
-        for (final d in dates) hc.readSleepMinutes(d),
-      ]);
-      for (var i = 0; i < dates.length; i++) {
-        final mins = results[i];
-        // Biometric 0 = failed read — excluded, never averaged.
-        if (mins != null && mins > 0) sleepByDate[dates[i]] = mins;
-      }
+      // R70 WS2 — one local-first union load for both trend
+      // biometrics: the store ∪ fresh HC over the same 9-day
+      // window the per-day reads used to cover (today + 8 back,
+      // sessions attributed to their end date, as the bridge
+      // does). The union's maps are already zero-filtered
+      // (biometric 0 = failed read — excluded, never averaged),
+      // and this phase still never gates the plan (the card loads
+      // the plan first, exactly like native's separate flows).
+      final union = await historyQueries.loadDays(
+        9,
+        end: at,
+        metrics: {HistoryMetric.sleep, HistoryMetric.restingHr},
+      );
+      sleepByDate = union.sleepMinutes;
+      rhrByDate = union.restingHr;
     } catch (_) {
       // Section fails safe — other comparisons still build.
-    }
-    try {
-      final history = await hc.readRestingHrHistory(8);
-      for (final h in history) {
-        if (h.bpm > 0) rhrByDate[h.date] = h.bpm;
-      }
-    } catch (_) {
-      // Section fails safe.
     }
     var symptomCount = 0;
     if (entries != null && categories != null) {

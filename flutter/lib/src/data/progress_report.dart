@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:tabs_lab/src/data/health_connect_service.dart';
+import 'package:tabs_lab/src/data/health_history_queries.dart';
 import 'package:tabs_lab/src/data/medications.dart';
 import 'package:tabs_lab/src/data/quick_log_models.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
@@ -38,15 +39,20 @@ import 'package:tabs_lab/src/data/tabs_backend.dart';
 ///
 /// Health Connect divergence (documented): native's collector reads
 /// cache-first series (daytime awake-average HR from its DataStore
-/// caches). Flutter has no such cache; the series here come from the
-/// SAME bridge range reads the Flutter screens use — sleep/deep
+/// caches). Flutter's series come from the R70 union helper
+/// (`health_history_queries.dart`): the historical store (WS1) ∪
+/// the SAME bridge range reads the Flutter screens use — sleep/deep
 /// from `readSleepHistory`, calories from `readCaloriesHistory`,
 /// spikes from `readSpikeCounts` (Key Metrics / HealthRepository),
 /// HR from `readRestingHrHistory` (the per-day HR history source
 /// HealthRepository, Today Summary, Coach and Key Metrics all use;
 /// native's report HR is the daytime average, Flutter's range read
 /// is resting HR — the values can differ), HRV per-day from
-/// `readHrvRmssd` (no range HRV bridge read exists).
+/// `readHrvRmssd` (no range HRV bridge read exists). R70 WS2: the
+/// union means the series and the per-section availability counts
+/// now reflect the store's full depth inside the requested range,
+/// not just Health Connect's retention window; the request-body
+/// format is unchanged (R66).
 ///
 /// Knowledge documents: R65 landed during this round
 /// (027a6c7) with `knowledge_documents.dart`; the page wires
@@ -605,6 +611,9 @@ class ReportDataCollector {
   final TabsBackend backend;
   final HealthConnectService hc;
 
+  /// R70 WS2 — the local-first union reader (store ∪ fresh HC).
+  final HealthHistoryQueries historyQueries;
+
   /// Extracted knowledge-document texts (R65's store, wired by
   /// the page; see the file header). Defaults to no documents.
   final Future<List<String>> Function() documentsLoader;
@@ -612,10 +621,21 @@ class ReportDataCollector {
   ReportDataCollector({
     TabsBackend? backend,
     HealthConnectService? hc,
+    HealthHistoryQueries? historyQueries,
     Future<List<String>> Function()? documentsLoader,
-  })  : backend = backend ?? TabsBackend(),
-          hc = hc ?? HealthConnectService(),
-          documentsLoader = documentsLoader ?? (() async => const []);
+  }) : this._internal(
+          backend ?? TabsBackend(),
+          hc ?? HealthConnectService(),
+          historyQueries,
+          documentsLoader ?? (() async => const []),
+        );
+
+  ReportDataCollector._internal(
+    this.backend,
+    this.hc,
+    HealthHistoryQueries? queries,
+    this.documentsLoader,
+  ) : historyQueries = queries ?? HealthHistoryQueries(hc: hc);
 
   Future<ReportSnapshot> collect({
     required List<QuickLogCategory> selectedCategories,
@@ -718,14 +738,23 @@ class ReportDataCollector {
         meta(key, DataSourceStatus.permissionDenied, 0);
       }
     } else {
-      final sleepHist = await hc.readSleepHistory(daysToFetch);
+      // R70 WS2 — ONE union load for the whole HC block: store ∪
+      // fresh HC over the requested window, every metric. The
+      // union's maps are already zero-filtered (founder rule; a 0
+      // spike count stays — it is a real sampled day), and the
+      // series + availability counts below are built from them
+      // exactly as they were built from the raw bridge reads, so
+      // the counts are the UNION's honest day counts.
+      final union = await historyQueries.loadDays(
+        daysToFetch,
+        end: n,
+        metrics: HistoryMetric.values.toSet(),
+      );
       sleep = [
-        for (final r in sleepHist)
-          if (r.mins > 0) (r.date, r.mins),
+        for (final e in union.sleepMinutes.entries) (e.key, e.value),
       ]..sort((a, b) => a.$1.compareTo(b.$1));
       deep = [
-        for (final r in sleepHist)
-          if (r.deep > 0) (r.date, r.deep),
+        for (final e in union.deepSleepMinutes.entries) (e.key, e.value),
       ]..sort((a, b) => a.$1.compareTo(b.$1));
       meta('sleep',
           sleep.isEmpty ? DataSourceStatus.noData : DataSourceStatus.success,
@@ -735,37 +764,22 @@ class ReportDataCollector {
           deep.isEmpty ? DataSourceStatus.noData : DataSourceStatus.success,
           deep.length);
 
-      final hrHist = await hc.readRestingHrHistory(daysToFetch);
       hr = [
-        for (final r in hrHist)
-          if (r.bpm > 0) (r.date, r.bpm),
+        for (final e in union.restingHr.entries) (e.key, e.value),
       ]..sort((a, b) => a.$1.compareTo(b.$1));
       meta('heartRate',
           hr.isEmpty ? DataSourceStatus.noData : DataSourceStatus.success,
           hr.length);
 
-      // HRV: no range bridge read exists — per-day reads in
-      // parallel over the window, zero-filtered (founder rule).
-      final dates = List.generate(
-        daysToFetch,
-        (i) => dateStrOf(DateTime(n.year, n.month, n.day)
-            .subtract(Duration(days: daysToFetch - 1 - i))),
-      );
-      final hrvReads = await Future.wait([
-        for (final d in dates) hc.readHrvRmssd(d),
-      ]);
       hrv = [
-        for (var i = 0; i < dates.length; i++)
-          if (hrvReads[i] != null && hrvReads[i]! > 0) (dates[i], hrvReads[i]!),
-      ];
+        for (final e in union.hrv.entries) (e.key, e.value),
+      ]..sort((a, b) => a.$1.compareTo(b.$1));
       meta('hrv',
           hrv.isEmpty ? DataSourceStatus.noData : DataSourceStatus.success,
           hrv.length);
 
-      final calHist = await hc.readCaloriesHistory(daysToFetch);
       calories = [
-        for (final r in calHist)
-          if (r.kcal > 0) (r.date, r.kcal),
+        for (final e in union.calories.entries) (e.key, e.value),
       ]..sort((a, b) => a.$1.compareTo(b.$1));
       meta(
           'calories',
@@ -774,9 +788,8 @@ class ReportDataCollector {
               : DataSourceStatus.success,
           calories.length);
 
-      final spikeHist = await hc.readSpikeCounts(daysToFetch);
       spikes = [
-        for (final r in spikeHist) (r.date, r.count),
+        for (final e in union.spikes.entries) (e.key, e.value),
       ]..sort((a, b) => a.$1.compareTo(b.$1));
       meta(
           'hrSpikes',
