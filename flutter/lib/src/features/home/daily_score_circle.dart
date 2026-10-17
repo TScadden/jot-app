@@ -66,45 +66,64 @@ class DailyScoreFace extends StatelessWidget {
           // always fits the face, whatever the font metrics — a
           // three-digit score in a small face scales down instead
           // of wrapping or overflowing.
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  // §0.7: a missing number renders '--', as everywhere
-                  // else in the app — never a one-off glyph.
-                  score?.toString() ?? '--',
-                  style: TextStyle(
-                    fontSize: size * 0.36,
-                    fontWeight: FontWeight.w900,
-                    // Ink over the liquid, measured (Mira pass,
-                    // Oct 17, 2026): the number sits over the purple
-                    // fill whenever the score is mid/high and over
-                    // the dark disc when low, and pure white beats
-                    // textPrimary on BOTH — 3.80:1 vs 3.32:1 on
-                    // primary, 18.30:1 vs 16.01:1 on surface. White
-                    // is also the concept's number ink.
-                    color: score == null
-                        ? NotelColors.textSecondary
-                        : Colors.white,
-                  ),
-                ),
-                if (showInnerLabel && score != null)
+          //
+          // R71 face centering (Mira's measured pass, superseding
+          // the R70 fixed-10 inner label): the number+label group
+          // is sized analytically — number line 0.36·S × height
+          // 0.90 = 0.324·S, explicit gap 0.024·S, label line
+          // 0.115·S × height 1.00 — a total group height of
+          // 0.463·S — and the whole group is shifted up optically
+          // by 0.018·S (Transform.translate below) so the glyph
+          // union sits centered on the face instead of reading low.
+          Transform.translate(
+            offset: Offset(0, -size * 0.018),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   Text(
-                    'Daily Score',
+                    // §0.7: a missing number renders '--', as everywhere
+                    // else in the app — never a one-off glyph.
+                    score?.toString() ?? '--',
                     style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      // Solid white, no alpha: at detail size this
-                      // label sits over the liquid (pixel-sampled at
-                      // score 78), where textPrimary @ 85% composites
-                      // to 2.84:1 — below the 3:1 floor. Solid white
-                      // measures 3.80:1 on primary (Mira pass).
-                      color: Colors.white,
+                      fontSize: size * 0.36,
+                      height: 0.90,
+                      fontWeight: FontWeight.w900,
+                      // Ink over the liquid, measured (Mira pass,
+                      // Oct 17, 2026): the number sits over the purple
+                      // fill whenever the score is mid/high and over
+                      // the dark disc when low, and pure white beats
+                      // textPrimary on BOTH — 3.80:1 vs 3.32:1 on
+                      // primary, 18.30:1 vs 16.01:1 on surface. White
+                      // is also the concept's number ink.
+                      color: score == null
+                          ? NotelColors.textSecondary
+                          : Colors.white,
                     ),
                   ),
-              ],
+                  if (showInnerLabel && score != null)
+                    SizedBox(height: size * 0.024),
+                  if (showInnerLabel && score != null)
+                    Text(
+                      'Daily Score',
+                      style: TextStyle(
+                        // R71: 0.115·S at height 1.00 (Mira's
+                        // measured pass) — supersedes the R70
+                        // fixed-10 label.
+                        fontSize: size * 0.115,
+                        height: 1.00,
+                        fontWeight: FontWeight.w600,
+                        // Solid white, no alpha: at detail size this
+                        // label sits over the liquid (pixel-sampled at
+                        // score 78), where textPrimary @ 85% composites
+                        // to 2.84:1 — below the 3:1 floor. Solid white
+                        // measures 3.80:1 on primary (Mira pass).
+                        color: Colors.white,
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ],
