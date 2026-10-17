@@ -232,12 +232,7 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
           ),
           SizedBox(height: 4),
           Text(
-            'Each day is compared with your own recent baseline: '
-            'the 28 days before it. Sleep counts 40%, HRV 35%, and '
-            'resting heart rate 25%, counting only the parts with '
-            'at least 7 baseline days. HRV is measured as RMSSD, '
-            'among the most-studied signals in physiology. A day '
-            'is scored once and never changes.',
+            'Each day is compared with your own recent baseline: the most recent 28 days with data before it. Sleep counts 40%, HRV 35%, and resting heart rate 25%, counting only the parts with at least 7 baseline days. HRV is measured as RMSSD, among the most-studied signals in physiology. A day is scored once and never changes.',
             style: TextStyle(fontSize: 13, color: NotelColors.textSecondary),
           ),
         ],
@@ -257,7 +252,7 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Last 14 days',
+            'Last 14 scored days',
             // Card-title role (16 bold), matching the sibling
             // "How this score works" card on this same screen and
             // the Home card titles (Mira pass — was 14 w500, a
@@ -627,6 +622,13 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
           'Scored once from the data stored for this day. Later '
           'changes to earlier days do not change this score.',
           style: TextStyle(fontSize: 12, color: NotelColors.textSecondary),
+        ),
+        const SizedBox(height: 16),
+        // Juno C7 — the disclaimer footer, appended at the end of
+        // the day-detail list, verbatim as on the history screen.
+        const Text(
+          'Tabs is not a medical device. It does not diagnose, treat, cure, or prevent any condition. AI insights are informational only. Consult a healthcare professional.',
+          style: TextStyle(fontSize: 11, color: NotelColors.textSecondary),
         ),
       ],
     );

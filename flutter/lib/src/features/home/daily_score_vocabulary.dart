@@ -57,10 +57,21 @@ const ScoreChip _chipGood =
     ScoreChip('Good', NotelColors.success, NotelColors.background);
 const ScoreChip _chipNormal =
     ScoreChip('Normal', NotelColors.primary, NotelColors.onPrimary);
+// Juno C2 — the sleep 60–79 tier is "Fair" (info fill), NOT
+// "Normal": after this change "Normal" means only "within ±2% of
+// your own baseline" (the direction chips below).
+const ScoreChip _chipFair =
+    ScoreChip('Fair', NotelColors.info, NotelColors.background);
 const ScoreChip _chipAbove =
     ScoreChip('Above', NotelColors.info, NotelColors.background);
 const ScoreChip _chipBelow =
     ScoreChip('Below', NotelColors.warning, NotelColors.background);
+// Juno C3 — resting-HR "Below" is direction-neutral (info fill,
+// identical in color to "Above"): below-baseline resting HR
+// RAISES that component's score, so the warning fill contradicted
+// the scoring. HRV "Below" keeps _chipBelow's warning fill.
+const ScoreChip _chipBelowInfo =
+    ScoreChip('Below', NotelColors.info, NotelColors.background);
 const ScoreChip _chipLow =
     ScoreChip('Low', NotelColors.warning, NotelColors.background);
 const ScoreChip _chipVeryLow =
@@ -70,7 +81,7 @@ const ScoreChip _chipVeryLow =
 /// share of personal need met, capped): the quality-word system.
 ScoreChip sleepChipForScore(int componentScore) {
   if (componentScore >= 80) return _chipGood;
-  if (componentScore >= 60) return _chipNormal;
+  if (componentScore >= 60) return _chipFair;
   if (componentScore >= 40) return _chipLow;
   return _chipVeryLow;
 }
@@ -95,6 +106,6 @@ ScoreChip hrvChipForDeviation(double devPercent) {
 /// means below the baseline — the word stays descriptive.
 ScoreChip restingHrChipForDeviation(double devPercent) {
   if (devPercent > chipNormalDeadbandPercent) return _chipAbove;
-  if (devPercent < -chipNormalDeadbandPercent) return _chipBelow;
+  if (devPercent < -chipNormalDeadbandPercent) return _chipBelowInfo;
   return _chipNormal;
 }

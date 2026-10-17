@@ -779,8 +779,7 @@ class _SleepScreenState extends State<SleepScreen> {
           ),
           child: estimate == null
               ? const Text(
-                  'Still learning your pattern. Once a few more nights '
-                  'are recorded, your personal sleep need will show here.',
+                  'Still learning your pattern. Your personal sleep need will show here once at least 7 nights are recorded.',
                   style: TextStyle(
                     fontSize: 13,
                     height: 1.5,

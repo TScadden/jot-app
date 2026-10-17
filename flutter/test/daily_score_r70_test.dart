@@ -11,6 +11,7 @@ import 'package:tabs_lab/src/features/home/daily_score_circle.dart';
 import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
 import 'package:tabs_lab/src/features/home/daily_score_vocabulary.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
+import 'package:tabs_lab/src/theme/notel_colors.dart';
 
 /// In-memory fake for the store's storage functions.
 class _FakeStore {
@@ -360,7 +361,11 @@ void main() {
 
     test('sleep chip follows the component score', () {
       expect(sleepChipForScore(89).label, 'Good');
-      expect(sleepChipForScore(70).label, 'Normal');
+      // Juno C2: the 60–79 sleep tier is "Fair" on info, never
+      // "Normal" (which now means only within ±2% of baseline).
+      expect(sleepChipForScore(70).label, 'Fair');
+      expect(sleepChipForScore(70).background, NotelColors.info);
+      expect(sleepChipForScore(70).foreground, NotelColors.background);
       expect(sleepChipForScore(50).label, 'Low');
       expect(sleepChipForScore(20).label, 'Very low');
     });
@@ -369,9 +374,17 @@ void main() {
       expect(hrvChipForDeviation(12.5).label, 'Above');
       expect(hrvChipForDeviation(1.5).label, 'Normal');
       expect(hrvChipForDeviation(-20).label, 'Below');
+      // HRV "Below" keeps the warning fill (Juno C3 carve-out).
+      expect(hrvChipForDeviation(-20).background, NotelColors.warning);
       expect(restingHrChipForDeviation(0).label, 'Normal');
       expect(restingHrChipForDeviation(-10).label, 'Below');
+      // Juno C3: resting-HR "Below" uses the info fill, identical
+      // in color to its "Above" chip.
+      expect(restingHrChipForDeviation(-10).background, NotelColors.info);
+      expect(
+          restingHrChipForDeviation(-10).foreground, NotelColors.background);
       expect(restingHrChipForDeviation(8).label, 'Above');
+      expect(restingHrChipForDeviation(8).background, NotelColors.info);
     });
   });
 
@@ -424,8 +437,14 @@ void main() {
       await tester.pumpWidget(MaterialApp(home: DailyScoreScreen(store: store)));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
-      // The concept's 14-day chart card.
-      expect(find.text('Last 14 days'), findsOneWidget);
+      // The concept's 14-day chart card (Juno C5 heading).
+      expect(find.text('Last 14 scored days'), findsOneWidget);
+      // Juno C4: the "How this score works" body, verbatim.
+      expect(
+        find.text(
+            'Each day is compared with your own recent baseline: the most recent 28 days with data before it. Sleep counts 40%, HRV 35%, and resting heart rate 25%, counting only the parts with at least 7 baseline days. HRV is measured as RMSSD, among the most-studied signals in physiology. A day is scored once and never changes.'),
+        findsOneWidget,
+      );
       // Newest scored day first: Oct 16, 2026 was a Friday.
       expect(find.text('Fri, Oct 16'), findsOneWidget);
       expect(find.text('100'), findsWidgets);
@@ -454,6 +473,14 @@ void main() {
       expect(find.text('Not counted'), findsNWidgets(2));
       // Trend vs the previous scored day (Oct 15 scored 70).
       expect(find.textContaining('Higher by 30'), findsOneWidget);
+      // Juno C7: the disclaimer footer ends the day-detail list.
+      await tester.drag(find.byType(ListView), const Offset(0, -2000));
+      await tester.pump();
+      expect(
+        find.text(
+            'Tabs is not a medical device. It does not diagnose, treat, cure, or prevent any condition. AI insights are informational only. Consult a healthcare professional.'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('empty store renders the building state, no numbers',

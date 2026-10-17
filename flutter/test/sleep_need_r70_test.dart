@@ -139,8 +139,10 @@ void main() {
     };
     await pumpNeed(tester, history: history, perDay: history);
     expect(find.text('Sleep Need'), findsOneWidget);
+    // Juno C6: the cold-state copy, verbatim.
     expect(
-      find.textContaining('Still learning your pattern'),
+      find.text(
+          'Still learning your pattern. Your personal sleep need will show here once at least 7 nights are recorded.'),
       findsOneWidget,
     );
     expect(find.text('Tonight\'s need'), findsNothing);
