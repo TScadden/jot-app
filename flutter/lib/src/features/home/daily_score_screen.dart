@@ -1,9 +1,13 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:tabs_lab/src/data/daily_score.dart';
+import 'package:tabs_lab/src/data/health_history_queries.dart'
+    show historyDateStr;
 import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/features/home/daily_score_circle.dart';
+import 'package:tabs_lab/src/features/home/daily_score_vocabulary.dart';
 import 'package:tabs_lab/src/features/home/vitals_strip.dart'
     show formatSleepMinutes;
 import 'package:tabs_lab/src/theme/animations.dart';
@@ -185,7 +189,7 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
   }
 
   Widget _buildHistory() {
-    final chartDays = _days.take(30).toList().reversed.toList();
+    final chartDays = _days.take(14).toList().reversed.toList();
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -249,16 +253,16 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'LAST 30 SCORED DAYS',
+            'Last 14 days',
             style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: NotelColors.textSecondary,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: NotelColors.textPrimary,
             ),
           ),
           const SizedBox(height: 12),
           SizedBox(
-            height: 80,
+            height: 104,
             child: CustomPaint(
               painter: _ScoreBarsPainter([
                 for (final d in chartDays) d.row.dailyScore!,
@@ -273,7 +277,6 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
 
   Widget _dayRow(_ScoredDay day) {
     final row = day.row;
-    final band = bandForScore(row.dailyScore!);
     final delta = day.trendDelta;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -295,23 +298,7 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               child: Row(
                 children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: band.color,
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      '${row.dailyScore}',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: NotelColors.background,
-                      ),
-                    ),
-                  ),
+                  DailyScoreFace(score: row.dailyScore, size: 34),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -366,8 +353,11 @@ class _DailyScoreScreenState extends State<DailyScoreScreen> {
   }
 }
 
-/// Bars for the persisted daily scores, oldest → newest, colored
-/// by band; height is the score's share of 100.
+/// The concept's 14-day chart: Tabs-purple bars for the persisted
+/// daily scores, oldest → newest, each bar NUMBERED above it, the
+/// latest day highlighted (lighter tint + bold number). Height is
+/// the score's share of 100. Only days that hold a persisted score
+/// appear — never zero-filled placeholders for unscored days.
 class _ScoreBarsPainter extends CustomPainter {
   final List<int> scores;
   const _ScoreBarsPainter(this.scores);
@@ -375,21 +365,40 @@ class _ScoreBarsPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (scores.isEmpty) return;
-    final gap = 2.0;
-    final barWidth = (size.width - gap * (scores.length - 1)) / scores.length;
+    const labelHeight = 16.0;
+    final chartHeight = size.height - labelHeight;
+    final slot = size.width / scores.length;
+    final barWidth = math.min(16.0, slot * 0.55);
     final paint = Paint();
     for (var i = 0; i < scores.length; i++) {
       final score = scores[i];
-      paint.color = bandForScore(score).color;
-      final h = (score / 100 * size.height).clamp(2.0, size.height);
-      final left = i * (barWidth + gap);
+      final isLatest = i == scores.length - 1;
+      paint.color = isLatest ? NotelColors.primaryText : NotelColors.primary;
+      final h = (score / 100 * chartHeight).clamp(2.0, chartHeight);
+      final centerX = slot * i + slot / 2;
       canvas.drawRRect(
-        RRect.fromRectAndCorners(
-          Rect.fromLTWH(left, size.height - h, barWidth, h),
-          topLeft: const Radius.circular(2),
-          topRight: const Radius.circular(2),
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(
+              centerX - barWidth / 2, size.height - h, barWidth, h),
+          const Radius.circular(4),
         ),
         paint,
+      );
+      final label = TextPainter(
+        text: TextSpan(
+          text: '$score',
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: isLatest ? FontWeight.bold : FontWeight.w500,
+            color:
+                isLatest ? NotelColors.textPrimary : NotelColors.textSecondary,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      label.paint(
+        canvas,
+        Offset(centerX - label.width / 2, size.height - h - labelHeight),
       );
     }
   }
@@ -491,40 +500,65 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
     final prev = _previousScored;
     final delta = prev == null ? null : row.dailyScore! - prev.dailyScore!;
     final prevDate = prev == null ? null : formatScoreDateShort(prev.date);
+    final isToday = widget.date == historyDateStr(DateTime.now());
+    final c = _computation;
+    final sleepChip =
+        row.scoreSleep == null ? null : sleepChipForScore(row.scoreSleep!);
+    final hrvChip = (row.scoreHrv == null ||
+            c?.hrvMs == null ||
+            c?.hrvBaselineMs == null)
+        ? null
+        : hrvChipForDeviation(
+            (c!.hrvMs! - c.hrvBaselineMs!) / c.hrvBaselineMs! * 100);
+    final restingHrChip = (row.scoreRestingHr == null ||
+            c?.restingHrBpm == null ||
+            c?.restingHrBaselineBpm == null)
+        ? null
+        : restingHrChipForDeviation(
+            (c!.restingHrBpm! - c.restingHrBaselineBpm!) /
+                c.restingHrBaselineBpm! *
+                100);
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         Center(
           child: Column(
             children: [
-              Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: band.color,
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  '${row.dailyScore}',
-                  style: const TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.w900,
-                    color: NotelColors.background,
-                  ),
+              DailyScoreFace(
+                score: row.dailyScore,
+                size: 84,
+                showInnerLabel: true,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                isToday
+                    ? '${formatScoreDate(row.date)} · Today'
+                    : formatScoreDate(row.date),
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: NotelColors.textSecondary,
                 ),
               ),
               const SizedBox(height: 8),
-              Text(
-                band.label,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: band.color,
+              // The concept's day chip: "Daily Score: 78 · Good".
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: band.color.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  'Daily Score: ${row.dailyScore} · ${band.label}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: band.color,
+                  ),
                 ),
               ),
               if (delta != null && prevDate != null) ...[
-                const SizedBox(height: 4),
+                const SizedBox(height: 8),
                 Text(
                   delta == 0
                       ? 'Same as the previous scored day ($prevDate)'
@@ -550,21 +584,30 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
           child: Column(
             children: [
               _componentRow(
+                icon: Icons.bedtime,
+                tint: NotelColors.info,
                 name: 'Sleep',
                 componentScore: row.scoreSleep,
                 detail: _sleepDetail(row),
+                chip: sleepChip,
               ),
               const SizedBox(height: 16),
               _componentRow(
+                icon: Icons.graphic_eq,
+                tint: NotelColors.primary,
                 name: 'HRV (RMSSD)',
                 componentScore: row.scoreHrv,
                 detail: _hrvDetail(row),
+                chip: hrvChip,
               ),
               const SizedBox(height: 16),
               _componentRow(
+                icon: Icons.favorite,
+                tint: NotelColors.heartRateRed,
                 name: 'Resting heart rate',
                 componentScore: row.scoreRestingHr,
                 detail: _restingHrDetail(row),
+                chip: restingHrChip,
               ),
             ],
           ),
@@ -579,43 +622,87 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
     );
   }
 
-  /// One component: name + its persisted component score (or
-  /// "Not counted"), a bar of the component score, and the
-  /// actual-vs-baseline line.
+  /// One component, concept-style: a tinted icon square, the name
+  /// and the actual-vs-baseline line, the component's status chip,
+  /// and (when the component counted) a bar of its persisted
+  /// component score. A component that did not count shows
+  /// "Not counted" and the honest reason in place of the chip.
   Widget _componentRow({
+    required IconData icon,
+    required Color tint,
     required String name,
     required int? componentScore,
     required String detail,
+    required ScoreChip? chip,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: tint.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, size: 20, color: tint),
+            ),
+            const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                name,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: NotelColors.textPrimary,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: NotelColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    detail,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: NotelColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (chip != null)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: chip.background,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  chip.label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: chip.foreground,
+                  ),
+                ),
+              )
+            else if (componentScore == null)
+              const Text(
+                'Not counted',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: NotelColors.textSecondary,
                 ),
               ),
-            ),
-            Text(
-              componentScore?.toString() ?? 'Not counted',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: componentScore == null
-                    ? NotelColors.textSecondary
-                    : NotelColors.textPrimary,
-              ),
-            ),
           ],
         ),
-        const SizedBox(height: 6),
-        if (componentScore != null)
+        if (componentScore != null) ...[
+          const SizedBox(height: 8),
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
@@ -626,12 +713,7 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
                   bandForScore(componentScore).color),
             ),
           ),
-        const SizedBox(height: 6),
-        Text(
-          detail,
-          style:
-              const TextStyle(fontSize: 12, color: NotelColors.textSecondary),
-        ),
+        ],
       ],
     );
   }
@@ -646,8 +728,9 @@ class _DailyScoreDayScreenState extends State<DailyScoreDayScreen> {
     if (c?.asleepMinutes == null || c?.sleepNeedMinutes == null) {
       return '${formatSleepMinutes(row.sleepMinutes!)} asleep.';
     }
-    return '${formatSleepMinutes(c!.asleepMinutes!)} asleep · '
-        'your need ${formatSleepMinutes(c.sleepNeedMinutes!)}';
+    // The concept's sleep line, verbatim format: "7h29m of 8h27m need".
+    return '${formatSleepMinutes(c!.asleepMinutes!)} of '
+        '${formatSleepMinutes(c.sleepNeedMinutes!)} need';
   }
 
   String _hrvDetail(DailyBiometrics row) {

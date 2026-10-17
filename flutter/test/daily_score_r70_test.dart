@@ -9,6 +9,7 @@ import 'package:tabs_lab/src/data/health_history_store.dart';
 import 'package:tabs_lab/src/data/weather_api.dart';
 import 'package:tabs_lab/src/features/home/daily_score_circle.dart';
 import 'package:tabs_lab/src/features/home/daily_score_screen.dart';
+import 'package:tabs_lab/src/features/home/daily_score_vocabulary.dart';
 import 'package:tabs_lab/src/features/home/home_screen.dart';
 
 /// In-memory fake for the store's storage functions.
@@ -345,26 +346,44 @@ void main() {
     });
   });
 
-  group('bands', () {
+  group('bands + component chips (concept vocabulary)', () {
     test('band boundaries', () {
-      expect(bandForScore(100).label, 'Strong');
-      expect(bandForScore(80).label, 'Strong');
-      expect(bandForScore(79).label, 'Steady');
-      expect(bandForScore(60).label, 'Steady');
+      expect(bandForScore(100).label, 'Great');
+      expect(bandForScore(80).label, 'Great');
+      expect(bandForScore(79).label, 'Good');
+      expect(bandForScore(60).label, 'Good');
       expect(bandForScore(59).label, 'Low');
       expect(bandForScore(40).label, 'Low');
       expect(bandForScore(39).label, 'Very low');
       expect(bandForScore(0).label, 'Very low');
     });
+
+    test('sleep chip follows the component score', () {
+      expect(sleepChipForScore(89).label, 'Good');
+      expect(sleepChipForScore(70).label, 'Normal');
+      expect(sleepChipForScore(50).label, 'Low');
+      expect(sleepChipForScore(20).label, 'Very low');
+    });
+
+    test('direction chips use the ±2% Normal deadband', () {
+      expect(hrvChipForDeviation(12.5).label, 'Above');
+      expect(hrvChipForDeviation(1.5).label, 'Normal');
+      expect(hrvChipForDeviation(-20).label, 'Below');
+      expect(restingHrChipForDeviation(0).label, 'Normal');
+      expect(restingHrChipForDeviation(-10).label, 'Below');
+      expect(restingHrChipForDeviation(8).label, 'Above');
+    });
   });
 
   group('widgets: score circle', () {
-    testWidgets('scored circle renders number + band word', (tester) async {
+    testWidgets('scored circle renders number + label + band chip',
+        (tester) async {
       await tester.pumpWidget(const MaterialApp(
         home: Scaffold(body: DailyScoreCircle(score: 72)),
       ));
       expect(find.text('72'), findsOneWidget);
-      expect(find.text('Steady'), findsOneWidget);
+      expect(find.text('Daily Score'), findsOneWidget);
+      expect(find.text('Good'), findsOneWidget);
     });
 
     testWidgets('building state renders a dash and no number', (tester) async {
@@ -405,6 +424,8 @@ void main() {
       await tester.pumpWidget(MaterialApp(home: DailyScoreScreen(store: store)));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
+      // The concept's 14-day chart card.
+      expect(find.text('Last 14 days'), findsOneWidget);
       // Newest scored day first: Oct 16, 2026 was a Friday.
       expect(find.text('Fri, Oct 16'), findsOneWidget);
       expect(find.text('100'), findsWidgets);
@@ -423,7 +444,10 @@ void main() {
       ));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
-      expect(find.text('Strong'), findsOneWidget);
+      // The concept's day chip + the resting-HR direction chip
+      // (54 vs a 60 baseline is 10% below → "Below").
+      expect(find.text('Daily Score: 100 · Great'), findsOneWidget);
+      expect(find.text('Below'), findsOneWidget);
       expect(find.text('54 bpm · your baseline 60 bpm'), findsOneWidget);
       expect(find.text('No sleep stored for this night.'), findsOneWidget);
       expect(find.text('No HRV reading stored for this day.'), findsOneWidget);
@@ -480,7 +504,7 @@ void main() {
       await tester.pump();
       expect(find.byType(DailyScoreCircle), findsOneWidget);
       expect(find.text('100'), findsOneWidget);
-      expect(find.text('Strong'), findsOneWidget);
+      expect(find.text('Great'), findsOneWidget);
     });
   });
 }

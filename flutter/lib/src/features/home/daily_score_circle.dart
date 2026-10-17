@@ -1,47 +1,188 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:tabs_lab/src/features/home/daily_score_vocabulary.dart';
 import 'package:tabs_lab/src/theme/animations.dart';
 import 'package:tabs_lab/src/theme/notel_colors.dart';
 
-/// R70 Daily Score — score bands and the Home header circle.
+/// R70 Daily Score — the score face and the Home header pairing,
+/// built to the founder-approved concept (shown to him Oct 17,
+/// 2026; see `daily_score_vocabulary.dart` for the wording status
+/// of every string).
 ///
-/// Bands carry a TEXT label as well as a color (never color
-/// alone). The words are plain state words proposed for Juno's
-/// wording pass — no diagnostic language, no borrowed vendor
-/// "readiness" language, no accuracy claims. FLAG FOR JUNO: every
-/// string in this file and `daily_score_screen.dart`.
+/// The face: a band-color progress ARC (sweep ∝ score) around a
+/// purple LIQUID fill that rises with the score (fill height ∝
+/// score, Tabs purple, gentle wave crest), the number centered,
+/// and — at detail size — the "Daily Score" label inside the
+/// circle under the number, as in the concept. The word is never
+/// carried by color alone: the header pairing adds the "Daily
+/// Score" label and a solid band-word chip beside the circle, and
+/// the detail screen shows the same face large with its chip.
 ///
-/// Design notes (for Mira's pass):
-/// - Solid band color, NOT a partial fill level: at 34dp a
-///   fuel-tank fill line would sit behind the two-digit numeral
-///   and muddy it — the numeral's contrast cannot hold against
-///   both the filled and unfilled parts of the circle. The solid
-///   fill keeps one honest glanceable state per band; the band
-///   word under the circle carries the same information in text.
-/// - Numeral is `NotelColors.background` ink on the band fill:
-///   ≥ 4.9:1 against every band token (white fails on success /
-///   warning); band words use the band token as text on the page
-///   background (≥ 6.9:1 for every band).
+/// Scaling note (for Mira's pass): the concept pairs the circle
+/// with a large weather CARD; the real Home weather element is the
+/// small AppBar action, so the header face is 44dp beside it —
+/// concept language at the real layout's scale.
+///
+/// A null score renders the cold-start baseline-building state:
+/// the empty ring/disc with a dash, NO liquid and NO number (a
+/// number is never shown or persisted from nothing).
 
-/// One score band: range, plain state word, token color.
-class DailyScoreBand {
-  final String label;
-  final Color color;
-  const DailyScoreBand(this.label, this.color);
+/// The circular score face (arc + liquid + number). Purely
+/// presentational; [score] is the day's persisted score.
+class DailyScoreFace extends StatelessWidget {
+  final int? score;
+  final double size;
+
+  /// Shows the "Daily Score" label inside the circle under the
+  /// number (detail size, as in the concept). Too small to read at
+  /// header size, where the label sits beside the circle instead.
+  final bool showInnerLabel;
+
+  const DailyScoreFace({
+    super.key,
+    required this.score,
+    required this.size,
+    this.showInnerLabel = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final band = score == null ? null : bandForScore(score!);
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          CustomPaint(
+            size: Size(size, size),
+            painter: _ScoreFacePainter(
+              score: score,
+              bandColor: band?.color ?? NotelColors.surfaceHigh,
+            ),
+          ),
+          // FittedBox: the number (+ inner label at detail size)
+          // always fits the face, whatever the font metrics — a
+          // three-digit score in a small face scales down instead
+          // of wrapping or overflowing.
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  score?.toString() ?? '—',
+                  style: TextStyle(
+                    fontSize: size * 0.36,
+                    fontWeight: FontWeight.w900,
+                    color: score == null
+                        ? NotelColors.textSecondary
+                        : NotelColors.textPrimary,
+                  ),
+                ),
+                if (showInnerLabel && score != null)
+                  Text(
+                    'Daily Score',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color:
+                          NotelColors.textPrimary.withValues(alpha: 0.85),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-/// The band for a persisted score. Ranges: 80+ / 60–79 / 40–59 /
-/// below 40.
-DailyScoreBand bandForScore(int score) {
-  if (score >= 80) return const DailyScoreBand('Strong', NotelColors.success);
-  if (score >= 60) return const DailyScoreBand('Steady', NotelColors.info);
-  if (score >= 40) return const DailyScoreBand('Low', NotelColors.warning);
-  return const DailyScoreBand('Very low', NotelColors.error);
+class _ScoreFacePainter extends CustomPainter {
+  final int? score;
+  final Color bandColor;
+  const _ScoreFacePainter({required this.score, required this.bandColor});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final ringWidth = size.width * 0.10;
+    final ringRadius = size.width / 2 - ringWidth / 2;
+
+    // Ring track + band arc (sweep ∝ score, from the top).
+    final track = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = ringWidth
+      ..color = NotelColors.surfaceHigh;
+    canvas.drawCircle(center, ringRadius, track);
+    final s = score;
+    if (s != null && s > 0) {
+      final arc = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = ringWidth
+        ..strokeCap = StrokeCap.round
+        ..color = bandColor;
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: ringRadius),
+        -math.pi / 2,
+        2 * math.pi * (s / 100),
+        false,
+        arc,
+      );
+    }
+
+    // Inner disc + liquid (fill height ∝ score).
+    final innerRadius = ringRadius - ringWidth / 2 - size.width * 0.02;
+    if (innerRadius <= 0) return;
+    canvas.save();
+    canvas.clipPath(
+      Path()..addOval(Rect.fromCircle(center: center, radius: innerRadius)),
+    );
+    canvas.drawCircle(center, innerRadius, Paint()..color = NotelColors.surface);
+    if (s != null && s > 0) {
+      final diameter = innerRadius * 2;
+      final level = diameter * (s / 100);
+      final crestY = center.dy + innerRadius - level;
+      final amp = innerRadius * 0.10;
+      final left = center.dx - innerRadius;
+      final right = center.dx + innerRadius;
+      final mid = center.dx;
+      // The wave crest: two gentle humps, as in the concept.
+      Path waveTop() => Path()
+        ..moveTo(left, crestY)
+        ..quadraticBezierTo(
+            left + diameter * 0.25, crestY - amp, mid, crestY)
+        ..quadraticBezierTo(
+            mid + diameter * 0.25, crestY + amp, right, crestY);
+      final liquid = waveTop()
+        ..lineTo(right, center.dy + innerRadius)
+        ..lineTo(left, center.dy + innerRadius)
+        ..close();
+      canvas.drawPath(liquid, Paint()..color = NotelColors.primary);
+      // Crest highlight line (the liquid's lit surface).
+      canvas.drawPath(
+        waveTop(),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = math.max(1.5, size.width * 0.02)
+          ..color = NotelColors.primaryText.withValues(alpha: 0.55),
+      );
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_ScoreFacePainter oldDelegate) =>
+      oldDelegate.score != score || oldDelegate.bandColor != bandColor;
 }
 
-/// The Home header circle: today's Daily Score beside the weather
-/// icon. A null [score] renders the cold-start baseline-building
-/// state — a dash in a pulsing circle, NO number (a number is
-/// never shown or persisted from nothing).
+/// The Home header pairing: the face beside the weather action,
+/// with the "Daily Score" label and the band-word chip next to it
+/// (concept language at the real header's scale). A null [score]
+/// renders the baseline-building state — pulsing empty face, dash,
+/// "Building" chip, no number.
 class DailyScoreCircle extends StatefulWidget {
   /// Today's persisted score, or null while the baseline builds.
   final int? score;
@@ -95,37 +236,16 @@ class _DailyScoreCircleState extends State<DailyScoreCircle>
   Widget build(BuildContext context) {
     final score = widget.score;
     final band = score == null ? null : bandForScore(score);
-    final circle = Container(
-      width: 34,
-      height: 34,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: band?.color ?? NotelColors.surfaceHigh,
-      ),
-      alignment: Alignment.center,
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Text(
-          score?.toString() ?? '—',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            color: band == null
-                ? NotelColors.textSecondary
-                : NotelColors.background,
-          ),
-        ),
-      ),
-    );
+    final face = DailyScoreFace(score: score, size: 44);
     final pulsed = _pulse == null
-        ? circle
+        ? face
         : AnimatedBuilder(
             animation: _pulse!,
             builder: (_, child) => Opacity(
               opacity: 0.55 + 0.45 * _pulse!.value,
               child: child,
             ),
-            child: circle,
+            child: face,
           );
     return Semantics(
       button: true,
@@ -134,24 +254,48 @@ class _DailyScoreCircleState extends State<DailyScoreCircle>
           : 'Daily Score $score, ${band!.label}',
       child: InkWell(
         onTap: widget.onTap,
-        customBorder: const CircleBorder(),
+        borderRadius: BorderRadius.circular(12),
         child: ConstrainedBox(
           constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Column(
+            child: Row(
               mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 pulsed,
-                const SizedBox(height: 2),
-                Text(
-                  band?.label ?? 'Building',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w500,
-                    color: band?.color ?? NotelColors.textSecondary,
-                  ),
+                const SizedBox(width: 6),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Daily Score',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: NotelColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: band?.color ?? NotelColors.surfaceHigh,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        band?.label ?? 'Building',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: band == null
+                              ? NotelColors.textSecondary
+                              : NotelColors.background,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
