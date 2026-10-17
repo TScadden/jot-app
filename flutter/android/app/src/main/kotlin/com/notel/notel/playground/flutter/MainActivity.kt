@@ -386,6 +386,7 @@ class MainActivity : FlutterFragmentActivity() {
                     "readRespiratoryRate" -> readRespiratoryRate(call.argument<String>("dateStr"), result)
                     "readOxygenSaturation" -> readOxygenSaturation(call.argument<String>("dateStr"), result)
                     "readHrvRmssd" -> readHrvRmssd(call.argument<String>("dateStr"), result)
+                    "readHrvSamples" -> readHrvSamples(call.argument<Int>("days"), result)
                     "readSleepHistory" -> readSleepHistory(call.argument<Int>("days"), result)
                     "readSpikeCounts" -> readSpikeCounts(call.argument<Int>("days"), result)
                     "exportCsvFile" -> exportCsvFile(
@@ -1233,6 +1234,57 @@ class MainActivity : FlutterFragmentActivity() {
                 result.success(tier.map { it.heartRateVariabilityMillis }.average())
             } catch (_: Exception) {
                 result.error("HRV_READ_FAILED", "Could not read heart rate variability.", null)
+            }
+        }
+    }
+
+    /// Raw HRV (RMSSD) samples over [tomorrowStart − days,
+    /// tomorrowStart), read in ≤31-day chunks newest→oldest with
+    /// paginated reads — the native `readHeartRateVariability`
+    /// range mechanism. Mock records are dropped; NO day attribution
+    /// or tier averaging happens here (Dart owns that, where it is
+    /// testable): each sample crosses as {t: epochMs, ms, tier},
+    /// where tier is the record origin's package-priority VALUE (no
+    /// package names cross the bridge). Dart shape:
+    /// [{t, ms, tier}] sorted ascending by t.
+    private fun readHrvSamples(days: Int?, result: MethodChannel.Result) {
+        val client = hcClientOrError(result) ?: return
+        val n = (days ?: 30).coerceIn(1, 3650)
+        lifecycleScope.launch {
+            try {
+                val zone = ZoneId.systemDefault()
+                val end = ZonedDateTime.now(zone).plusDays(1).truncatedTo(ChronoUnit.DAYS).toInstant()
+                val start = end.minus(n.toLong(), ChronoUnit.DAYS)
+                val records = mutableListOf<HeartRateVariabilityRmssdRecord>()
+                var chunkEnd = end
+                while (chunkEnd.isAfter(start)) {
+                    val chunkStart = maxOf(start, chunkEnd.minus(31, ChronoUnit.DAYS))
+                    var pageToken: String? = null
+                    do {
+                        val response = client.readRecords(
+                            ReadRecordsRequest(
+                                recordType = HeartRateVariabilityRmssdRecord::class,
+                                timeRangeFilter = TimeRangeFilter.between(chunkStart, chunkEnd),
+                                pageToken = pageToken
+                            )
+                        )
+                        records.addAll(response.records)
+                        pageToken = response.pageToken
+                    } while (pageToken != null)
+                    chunkEnd = chunkStart
+                }
+                val samples = nonMock(records)
+                    .sortedBy { it.time }
+                    .map { record ->
+                        mapOf(
+                            "t" to record.time.toEpochMilli(),
+                            "ms" to record.heartRateVariabilityMillis,
+                            "tier" to packagePriority(record.metadata.dataOrigin.packageName)
+                        )
+                    }
+                result.success(samples)
+            } catch (_: Exception) {
+                result.error("HRV_SAMPLES_READ_FAILED", "Could not read heart rate variability samples.", null)
             }
         }
     }

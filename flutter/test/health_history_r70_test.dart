@@ -26,8 +26,10 @@ class _FakeHc extends HealthConnectService {
   List<({String date, int mins, int deep})> sleep = const [];
   List<({String date, int count})> spikes = const [];
   double? hrv;
+  List<({int t, double ms, int tier})> hrvSamples = const [];
   final List<String> calls = [];
   final List<int> spikeDayArgs = [];
+  final List<int> hrvSampleDayArgs = [];
 
   @override
   Future<List<({String date, int bpm})>> readRestingHrHistory(int days) async {
@@ -59,6 +61,14 @@ class _FakeHc extends HealthConnectService {
   Future<double?> readHrvRmssd(String dateStr) async {
     calls.add('hrv');
     return hrv;
+  }
+
+  @override
+  Future<List<({int t, double ms, int tier})>> readHrvSamples(
+      int days) async {
+    calls.add('hrvSamples$days');
+    hrvSampleDayArgs.add(days);
+    return hrvSamples;
   }
 }
 
@@ -364,6 +374,80 @@ void main() {
 
       // Forced capture ignores the throttle.
       expect(await sync.captureFromHealthConnect(force: true), isTrue);
+    });
+
+    test(
+        'R71 HRV overnight attribution: samples land on their LOCAL '
+        'calendar day, top tier only, zero reads dropped', () async {
+      int ts(DateTime d) => d.millisecondsSinceEpoch;
+      final hc = _FakeHc();
+      // Target day 2026-10-16: two top-tier (100) overnight samples
+      // average to 70. A lower-tier sample the same night and a
+      // zero-ms failed read must not move the value. Neighbours:
+      // 23:55 the previous day is that day's own reading; 00:20 the
+      // next day falls outside the capture window (ends today) and
+      // is attributed nowhere.
+      hc.hrvSamples = [
+        (t: ts(DateTime(2026, 10, 16, 1, 30)), ms: 60.0, tier: 100),
+        (t: ts(DateTime(2026, 10, 16, 4, 45)), ms: 80.0, tier: 100),
+        (t: ts(DateTime(2026, 10, 16, 3, 0)), ms: 20.0, tier: 0),
+        (t: ts(DateTime(2026, 10, 16, 2, 15)), ms: 0.0, tier: 100),
+        (t: ts(DateTime(2026, 10, 15, 23, 55)), ms: 50.0, tier: 100),
+        (t: ts(DateTime(2026, 10, 17, 0, 20)), ms: 99.0, tier: 100),
+      ];
+      final sync = HealthHistorySync.withDeps(
+          hc: hc, store: store, now: () => DateTime(2026, 10, 16, 12));
+      expect(await sync.captureFromHealthConnect(force: true), isTrue);
+
+      final all = await store.readAll();
+      expect(all['2026-10-16']!.hrvRmssdMs, 70.0);
+      expect(all['2026-10-15']!.hrvRmssdMs, 50.0);
+      expect(all.containsKey('2026-10-17'), isFalse);
+      expect(await store.dayCount(), 2);
+    });
+
+    test(
+        'R71 HRV retro-fill: a stored day gains HRV from the range '
+        'read, sleep/RHR untouched; routine window 31d, first 90d',
+        () async {
+      await store.mergeRefresh(const [
+        DailyBiometrics(
+            date: '2026-10-10',
+            restingHrBpm: 58,
+            sleepMinutes: 432,
+            deepSleepMinutes: 88),
+      ]);
+      final hc = _FakeHc();
+      hc.hrvSamples = [
+        (
+          t: DateTime(2026, 10, 10, 2, 0).millisecondsSinceEpoch,
+          ms: 66.0,
+          tier: 100,
+        ),
+      ];
+      final sync = HealthHistorySync.withDeps(
+          hc: hc, store: store, now: () => DateTime(2026, 10, 16, 12));
+
+      // Routine capture (store non-empty): 31-day HRV window.
+      expect(await sync.captureFromHealthConnect(force: true), isTrue);
+      expect(hc.hrvSampleDayArgs, [31]);
+      final day = (await store.readAll())['2026-10-10']!;
+      expect(day.hrvRmssdMs, 66.0); // gap filled
+      expect(day.sleepMinutes, 432); // merge-only: byte-identical
+      expect(day.deepSleepMinutes, 88);
+      expect(day.restingHrBpm, 58);
+
+      // First-ever capture (empty store): 90-day HRV window.
+      // (debugReset is memory-only and warmFromDisk would reload
+      // the persisted blob, so use a fresh store over fresh disk.)
+      final fake2 = _FakeStore();
+      final store2 = HealthHistoryStore.testInstance();
+      store2.debugSetStore(
+          read: fake2.read, write: fake2.write, delete: fake2.delete);
+      final sync2 = HealthHistorySync.withDeps(
+          hc: hc, store: store2, now: () => DateTime(2026, 10, 16, 12));
+      expect(await sync2.captureFromHealthConnect(force: true), isTrue);
+      expect(hc.hrvSampleDayArgs, [31, 90]);
     });
 
     test('capture never throws when reads fail', () async {

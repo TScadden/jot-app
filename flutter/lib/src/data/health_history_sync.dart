@@ -63,10 +63,13 @@ class HealthHistorySync {
   /// - spikes: 180 days on the first-ever backfill only,
   ///   31 days on routine captures (`readSpikeCounts` is the
   ///   expensive raw-sample compute)
-  /// - HRV: per-day `readHrvRmssd` reads for the last 14 days —
-  ///   this mirrors the report collector's mechanism exactly (it
-  ///   issues one per-day read per date because no range HRV bridge
-  ///   read exists; see progress_report.dart).
+  /// - HRV: ONE range read (`readHrvSamples`) over 90 days on the
+  ///   first-ever capture, 31 days on routine captures; raw samples
+  ///   are attributed to local calendar days and reduced to the
+  ///   daily top-tier average in Dart (`attributeDailyHrv`). The
+  ///   range window retro-fills HRV for days the store already
+  ///   holds from other metrics (merge-only: stored values are
+  ///   never erased, only refreshed/filled).
   Future<bool> captureFromHealthConnect({bool force = false}) async {
     try {
       await _store.warmFromDisk();
@@ -110,21 +113,21 @@ class HealthHistorySync {
         put(r.date, spikes: r.count);
       }
 
-      // HRV — per-day reads in parallel, exactly the report
-      // collector's mechanism, over the last 14 days.
+      // HRV — ONE range read of raw samples; day attribution +
+      // the daily top-tier rule run in Dart (attributeDailyHrv).
+      // The window retro-fills HRV onto days already in the store
+      // from other metrics: the first capture reaches back 90
+      // days, routine captures 31.
+      final hrvWindowDays = isFirst ? 90 : 31;
       final today = DateTime(now.year, now.month, now.day);
-      final hrvDates = List.generate(14, (i) {
-        final d = today.subtract(Duration(days: 13 - i));
-        return '${d.year.toString().padLeft(4, '0')}-'
-            '${d.month.toString().padLeft(2, '0')}-'
-            '${d.day.toString().padLeft(2, '0')}';
-      });
-      final hrvReads = await Future.wait([
-        for (final d in hrvDates) _safeHrv(d),
-      ]);
-      for (var i = 0; i < hrvDates.length; i++) {
-        final v = hrvReads[i];
-        if (v != null) put(hrvDates[i], hrv: v);
+      final hrvDates = <String>{
+        for (var i = 0; i < hrvWindowDays; i++)
+          _historyDateStr(today.subtract(Duration(days: i))),
+      };
+      final hrvSamples = await _hc.readHrvSamples(hrvWindowDays);
+      final dailyHrv = attributeDailyHrv(hrvSamples, hrvDates);
+      for (final entry in dailyHrv.entries) {
+        put(entry.key, hrv: entry.value);
       }
 
       await _store.mergeRefresh(byDate.values);
@@ -145,11 +148,9 @@ class HealthHistorySync {
     }
   }
 
-  Future<double?> _safeHrv(String date) async {
-    try {
-      return await _hc.readHrvRmssd(date);
-    } catch (_) {
-      return null;
-    }
-  }
 }
+
+String _historyDateStr(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-'
+    '${d.month.toString().padLeft(2, '0')}-'
+    '${d.day.toString().padLeft(2, '0')}';

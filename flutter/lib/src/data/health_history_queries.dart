@@ -319,20 +319,22 @@ class HealthHistoryQueries {
     }
 
     if (metrics.contains(HistoryMetric.hrv)) {
-      // No range HRV bridge read exists — per-day reads over the
-      // range, in parallel (the report collector's mechanism).
-      final dates = _datesInRange(startDate, endDate);
+      // R71 — ONE range read of raw HRV samples; day attribution +
+      // the daily top-tier rule run in Dart (attributeDailyHrv).
+      hc.lastReadErrorCode = null;
       try {
-        final reads = await Future.wait([
-          for (final d in dates) _safeHrv(d),
-        ]);
-        for (var i = 0; i < dates.length; i++) {
-          final v = reads[i];
-          if (v != null && v > 0) putFresh(dates[i], hrvValue: v);
+        final samples = await hc.readHrvSamples(fetchDays);
+        if (readFailed()) {
+          failed.add(HistoryMetric.hrv);
+        } else {
+          final dailyHrv = attributeDailyHrv(
+              samples, _datesInRange(startDate, endDate).toSet());
+          for (final entry in dailyHrv.entries) {
+            if (entry.value > 0) putFresh(entry.key, hrvValue: entry.value);
+          }
         }
       } catch (_) {
-        // Per-day reads fail individually to null (see _safeHrv);
-        // a wholesale failure simply leaves the stored HRV in place.
+        failed.add(HistoryMetric.hrv);
       }
     }
 
@@ -370,14 +372,6 @@ class HealthHistoryQueries {
       hrv: hrv,
       failedMetrics: failed,
     );
-  }
-
-  Future<double?> _safeHrv(String date) async {
-    try {
-      return await hc.readHrvRmssd(date);
-    } catch (_) {
-      return null;
-    }
   }
 
   static int _rangeDayCount(String startDate, String endDate) {

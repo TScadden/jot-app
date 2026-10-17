@@ -56,6 +56,24 @@ class _FakeHc extends HealthConnectService {
 
   @override
   Future<double?> readHrvRmssd(String dateStr) async => hrvValue;
+
+  @override
+  Future<List<({int t, double ms, int tier})>> readHrvSamples(
+      int days) async {
+    calls.add('hrvSamples$days');
+    final v = hrvValue;
+    if (v == null) return const [];
+    final now = DateTime.now();
+    final midday = DateTime(now.year, now.month, now.day, 12);
+    return [
+      for (var i = days - 1; i >= 0; i--)
+        (
+          t: midday.subtract(Duration(days: i)).millisecondsSinceEpoch,
+          ms: v,
+          tier: 100,
+        ),
+    ];
+  }
 }
 
 String _ds(DateTime d) =>
@@ -163,7 +181,7 @@ void main() {
       expect(union.restingHr, {ago(1): 61});
     });
 
-    test('HRV: per-day reads join the union and persist', () async {
+    test('HRV: range read joins the union and persists', () async {
       hc.hrvValue = 48.5;
       final union = await queries.loadDays(3, metrics: {HistoryMetric.hrv});
       expect(union.hrv.length, 3);

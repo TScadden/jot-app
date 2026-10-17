@@ -345,6 +345,40 @@ class HealthConnectService {
   Future<double?> readHrvRmssd(String dateStr) =>
       _readDouble('readHrvRmssd', {'dateStr': dateStr});
 
+  /// R71 — raw HRV RMSSD samples `[{t: epochMs, ms, tier}]` over
+  /// `[tomorrowStart - days, tomorrowStart)` (bridge range read,
+  /// native `readHeartRateVariability` mechanism: ≤31-day chunks,
+  /// paginated, mock records dropped natively). `tier` is the
+  /// record origin's package-priority VALUE — no package names
+  /// cross the bridge. Sorted ascending by `t`. Day attribution
+  /// (local calendar date, top-tier average) lives in Dart:
+  /// see [attributeDailyHrv]. Empty when unreadable.
+  Future<List<({int t, double ms, int tier})>> readHrvSamples(
+      int days) async {
+    try {
+      final raw =
+          await _channel.invokeMethod<List>('readHrvSamples', {'days': days});
+      final out = <({int t, double ms, int tier})>[];
+      for (final item in raw ?? const []) {
+        if (item is Map) {
+          final t = item['t'];
+          final ms = item['ms'];
+          final tier = item['tier'];
+          if (t is num && ms is num && tier is num) {
+            out.add((t: t.toInt(), ms: ms.toDouble(), tier: tier.toInt()));
+          }
+        }
+      }
+      return out;
+    } on PlatformException catch (e) {
+      lastReadErrorCode = e.code;
+      return const [];
+    } on MissingPluginException {
+      lastReadErrorCode = 'NO_CHANNEL';
+      return const [];
+    }
+  }
+
   /// Per-day sleep totals `[{date, mins, deep}]` over the last [days]
   /// days (bridge range read, native `readHistoricalSleepWithDeep`).
   /// Raw values pass through — callers apply the founder zero rule.
@@ -494,6 +528,51 @@ class HealthConnectService {
     await _store.write(
         _kConnectedAtKey, DateTime.now().toUtc().toIso8601String());
   }
+}
+
+/// R71 — attribute raw HRV samples to local calendar days and
+/// reduce each day to its daily RMSSD value (the native
+/// `readHeartRateVariability` daily rule, moved into Dart where it
+/// is testable):
+/// - a sample belongs to the LOCAL calendar date of its timestamp
+///   (`DateTime.fromMillisecondsSinceEpoch`);
+/// - samples with `ms <= 0` are failed reads (founder zero rule)
+///   and are dropped;
+/// - only dates in [dates] are kept;
+/// - per date, only the highest tier present that day counts, and
+///   the value is that tier's average.
+///
+/// Returns a map of "YYYY-MM-DD" → daily RMSSD (ms); days with no
+/// usable sample are absent, never zero-filled.
+Map<String, double> attributeDailyHrv(
+  Iterable<({int t, double ms, int tier})> samples,
+  Set<String> dates,
+) {
+  String dateStr(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+
+  // date → tier → (sum, count)
+  final byDate = <String, Map<int, (double, int)>>{};
+  for (final s in samples) {
+    if (s.ms <= 0) continue;
+    final date = dateStr(DateTime.fromMillisecondsSinceEpoch(s.t));
+    if (!dates.contains(date)) continue;
+    final tiers = byDate.putIfAbsent(date, () => {});
+    final prev = tiers[s.tier];
+    tiers[s.tier] = prev == null ? (s.ms, 1) : (prev.$1 + s.ms, prev.$2 + 1);
+  }
+  final out = <String, double>{};
+  for (final entry in byDate.entries) {
+    var bestTier = entry.value.keys.first;
+    for (final tier in entry.value.keys) {
+      if (tier > bestTier) bestTier = tier;
+    }
+    final (sum, count) = entry.value[bestTier]!;
+    out[entry.key] = sum / count;
+  }
+  return out;
 }
 
 enum HealthConnectStatus {
