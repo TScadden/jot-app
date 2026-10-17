@@ -38,11 +38,12 @@
 /// debt = shortfall vs 8h; Sleep Need debt = shortfall vs his own
 /// usual need) and are labeled as such.
 ///
-/// This file is pure: input is a `date ("YYYY-MM-DD") → sleep
+/// This file is pure: input is a `date ("YYYY-MM-DD") -> sleep
 /// minutes` map (the store's sleepMinutes, or a union map), output
 /// is plain values. The Daily Score workstream consumes
 /// [evaluateSleepNight] / [evaluateRecentNights]:
 /// `asleep / tonightNeed` per night.
+library;
 
 /// Minimum nights with data before any estimate exists.
 const int sleepNeedMinNights = 7;
