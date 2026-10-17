@@ -328,6 +328,9 @@ void main() {
       // claims neither a trial nor a price.
       expect(find.text('Subscribe with Google Play'), findsOneWidget);
       expect(find.text('Start 7-day free trial'), findsNothing);
+      // Takeover review fix (Juno): the Lab yearly card carries no
+      // "BEST VALUE" chip — no catalog prices back it here.
+      expect(find.text('BEST VALUE'), findsNothing);
       expect(
           find.text(
               'Tabs Premium is for education and personal self tracking only. It does not provide medical advice, diagnosis, or treatment. Talk to a qualified health professional about any health decisions.'),

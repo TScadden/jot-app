@@ -247,7 +247,10 @@ class _MembershipOnboardingScreenState
                 _PlanCard(
                   selected: _selectedPlan == 'yearly',
                   title: 'Yearly Plan',
-                  chip: 'BEST VALUE',
+                  // Takeover review fix (Juno): no "BEST VALUE" chip
+                  // in the Lab — no catalog price data exists here to
+                  // compute savings from, so it would be unbacked.
+                  chip: '',
                   chipColor: NotelColors.success,
                   onTap: () => setState(() => _selectedPlan = 'yearly'),
                 ),

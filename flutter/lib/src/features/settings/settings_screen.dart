@@ -1258,8 +1258,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // only be named when Play actually returns one).
           _planCard('monthly', 'Monthly Plan', '', NotelColors.primary),
           const SizedBox(height: 12),
-          _planCard('yearly', 'Yearly Plan', 'BEST VALUE',
-              NotelColors.success),
+          // Takeover review fix (Juno): no "BEST VALUE" chip in the
+          // Lab — there is no catalog price data here to compute
+          // savings from, so the chip would be an unbacked claim.
+          _planCard('yearly', 'Yearly Plan', '', NotelColors.success),
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,

@@ -364,7 +364,10 @@ class _BillingPlansPanelState extends State<BillingPlansPanel> {
       if (savings != null && savings > 0) {
         return ('SAVE $savings% • BEST VALUE', NotelColors.success);
       }
-      return ('BEST VALUE', NotelColors.success);
+      // Takeover review fix (Juno): no "BEST VALUE" chip when the
+      // savings are not computed from real catalog prices — an
+      // unbacked value claim is not shown.
+      return null;
     }
     return null;
   }

@@ -546,6 +546,54 @@ void main() {
       expect(find.text('SAVE 44% • BEST VALUE'), findsOneWidget);
     });
 
+    testWidgets(
+        'yearly chip: no BEST VALUE when savings are not computable '
+        'from real prices', (tester) async {
+      // Yearly alone in the catalog: there is no monthly price to
+      // compute savings against, so no value chip may appear at all
+      // (takeover review fix — Juno).
+      await pumpPanel(tester, catalog: [
+        product(BillingProducts.yearly, [
+          offer(token: 'tok-y-only', phases: const [
+            BillingPricingPhase(
+                formattedPrice: '\$39.99',
+                priceAmountMicros: 39990000,
+                priceCurrencyCode: 'USD',
+                billingPeriod: 'P1Y'),
+          ]),
+        ]),
+      ]);
+      expect(find.text('Yearly Plan'), findsOneWidget);
+      expect(find.textContaining('BEST VALUE'), findsNothing);
+    });
+
+    testWidgets(
+        'yearly chip: no BEST VALUE when a plan has multiple offers '
+        '(recurring price ambiguous)', (tester) async {
+      await pumpPanel(tester, catalog: [
+        product(BillingProducts.monthly, [
+          offer(token: 'tok-m1'),
+          offer(token: 'tok-m2', phases: const [
+            BillingPricingPhase(
+                formattedPrice: '\$4.99',
+                priceAmountMicros: 4990000,
+                priceCurrencyCode: 'USD',
+                billingPeriod: 'P1M'),
+          ]),
+        ]),
+        product(BillingProducts.yearly, [
+          offer(token: 'tok-y2', phases: const [
+            BillingPricingPhase(
+                formattedPrice: '\$39.99',
+                priceAmountMicros: 39990000,
+                priceCurrencyCode: 'USD',
+                billingPeriod: 'P1Y'),
+          ]),
+        ]),
+      ]);
+      expect(find.textContaining('BEST VALUE'), findsNothing);
+    });
+
     testWidgets('no free phase in the offer → CTA claims no trial',
         (tester) async {
       await pumpPanel(tester, catalog: [
