@@ -48,7 +48,7 @@ import 'package:tabs_lab/src/data/tabs_backend.dart';
 /// HealthRepository, Today Summary, Coach and Key Metrics all use;
 /// native's report HR is the daytime average, Flutter's range read
 /// is resting HR — the values can differ), HRV per-day from
-/// `readHrvRmssd` (no range HRV bridge read exists). R70 WS2: the
+/// `readHrvRmssd`. R70 WS2: the
 /// union means the series and the per-section availability counts
 /// now reflect the store's full depth inside the requested range,
 /// not just Health Connect's retention window; the request-body

@@ -68,9 +68,11 @@ class DailyBiometrics {
   /// The definition is deliberately NOT changed here.
   final int? caloriesKcal;
 
-  /// HRV RMSSD (ms) — the per-day value from `readHrvRmssd`, the
-  /// mechanism the report collector uses today (no range HRV bridge
-  /// read exists; the collector issues one read per date).
+  /// HRV RMSSD (ms) — the per-day value. Since R71 the store's
+  /// writers (capture + the WS2 union) fill it from the bridge
+  /// range read `readHrvSamples` with Dart-side day attribution
+  /// (see `attributeDailyHrv`); screen-level readers may still use
+  /// the per-day `readHrvRmssd`.
   final double? hrvRmssdMs;
 
   // ── R70 Daily Score fields (score engine ONLY) ───────────────
