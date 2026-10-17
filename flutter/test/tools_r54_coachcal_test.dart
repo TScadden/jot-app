@@ -29,6 +29,7 @@ class FakeCalendarBridge {
   String insertOutcome = 'inserted';
   int deleteRows = 1;
   List<dynamic> upcoming = const [];
+  bool throwOnUpcoming = false;
   bool throwOnInsert = false;
   bool throwInvalidArgsOnInsert = false;
 
@@ -65,6 +66,14 @@ class FakeCalendarBridge {
       case 'deleteEvents':
         return deleteRows;
       case 'getUpcomingEvents':
+        if (throwOnUpcoming) {
+          // Mirrors the Kotlin bridge after the P4 fix: a
+          // SecurityException surfaces as an error, not an
+          // empty-list success.
+          throw PlatformException(
+              code: 'PERMISSION_DENIED',
+              message: 'Calendar permission is not granted.');
+        }
         return upcoming;
       case 'listWritableCalendars':
         return [
@@ -167,6 +176,53 @@ void main() {
       expect(status.granted, isFalse);
     });
 
+    // ── Takeover disclosures (audit P4): permission-aware context ──
+    test('P4: read permission denied → unavailable context, and '
+        'the events read is never attempted', () async {
+      final bridge =
+          FakeCalendarBridge(readGranted: false, writeGranted: false);
+      final service = serviceFor(bridge);
+      final ctx = await service.upcomingEventsContext();
+      expect(ctx, calendarEventsUnavailableContext);
+      expect(ctx, isNot(contains('No events found.')));
+      expect(bridge.callsTo('getUpcomingEvents'), isEmpty);
+    });
+
+    test('P4: permission granted + zero events → genuinely-empty '
+        'context ("No events found.")', () async {
+      final bridge = FakeCalendarBridge()..upcoming = const [];
+      final service = serviceFor(bridge);
+      final ctx = await service.upcomingEventsContext();
+      expect(ctx,
+          'CALENDAR EVENTS (today + next 14 days): No events found.');
+      expect(bridge.callsTo('getUpcomingEvents'), hasLength(1));
+    });
+
+    test('P4: permission granted + bridge read fails (the Kotlin '
+        'SecurityException path) → unavailable, not empty', () async {
+      final bridge = FakeCalendarBridge()..throwOnUpcoming = true;
+      final service = serviceFor(bridge);
+      final ctx = await service.upcomingEventsContext();
+      expect(ctx, calendarEventsUnavailableContext);
+      expect(ctx, isNot(contains('No events found.')));
+    });
+
+    test('P4: permission granted + events → formatted events '
+        'context', () async {
+      final bridge = FakeCalendarBridge()
+        ..upcoming = [
+          {
+            'title': 'Dentist',
+            'dtstart': DateTime(2026, 10, 20, 14, 30)
+                .millisecondsSinceEpoch,
+            'allDay': false,
+          },
+        ];
+      final service = serviceFor(bridge);
+      final ctx = await service.upcomingEventsContext();
+      expect(ctx, contains('- Dentist on 2026-10-20 02:30 PM'));
+    });
+
     test('insert passes native-mapped fields through', () async {
       final bridge = FakeCalendarBridge();
       final service = serviceFor(bridge);
@@ -223,6 +279,11 @@ void main() {
     });
 
     test('permission disclosure is Juno A1 verbatim', () {
+      // Takeover disclosures (P3): the canonical text lives in
+      // calendar_service.dart; the coach name is an alias of it, so
+      // the Settings connect-moment dialog and the approve-time
+      // gate can never drift apart.
+      expect(calendarCoachDisclosure, coachCalendarPermissionDisclosure);
       expect(
           coachCalendarPermissionDisclosure,
           'Tabs Coach needs read and write access to your calendar. '
@@ -236,24 +297,29 @@ void main() {
           'calendar access.');
     });
 
-    test('native outcome copy is verbatim', () {
+    test('native outcome copy is verbatim, with the P5 '
+        '"your calendar" wording', () {
+      // Takeover disclosures (audit P5): the confirmations name
+      // "your calendar", not "your Google Calendar" — inserts land
+      // in the best writable DEVICE calendar, not necessarily a
+      // Google one. Everything else stays native-verbatim.
       expect(
           coachCalendarAddedConfirmation('Dentist', '2026-10-20', '02:30 PM'),
-          'Done! "Dentist" has been added to your Google Calendar '
+          'Done! "Dentist" has been added to your calendar '
           'on 2026-10-20 at 02:30 PM. It should appear in your '
-          'Google Calendar app shortly.');
+          'calendar app shortly.');
       expect(coachCalendarAddedConfirmation('Dentist', null, null),
-          'Done! "Dentist" has been added to your Google Calendar. '
-          'It should appear in your Google Calendar app shortly.');
+          'Done! "Dentist" has been added to your calendar. '
+          'It should appear in your calendar app shortly.');
       expect(coachCalendarDeletedConfirmation('Dentist', '2026-10-20'),
           'Successfully deleted "Dentist" scheduled for 2026-10-20 '
-          'from your Google Calendar!');
+          'from your calendar!');
       // Juno A2: the plural (rows > 1) confirmation, verbatim.
       expect(coachCalendarDeletedPluralConfirmation(2, 'Dentist', '2026-10-20'),
           'Successfully deleted 2 events titled "Dentist" scheduled '
-          'for 2026-10-20 from your Google Calendar!');
+          'for 2026-10-20 from your calendar!');
       expect(coachCalendarDeleteNotFoundMessage('Dentist'),
-          'Could not find "Dentist" on your Google Calendar to delete.');
+          'Could not find "Dentist" on your calendar to delete.');
       expect(coachCalendarNoWritableMessage,
           contains('Could not find a writable calendar.'));
       expect(coachCalendarNullUriMessage,
@@ -344,9 +410,9 @@ void main() {
       expect(args['description'], 'Checkup');
       expect(args['connectedEmail'], 'me@example.com');
       expect(
-          find.text('Done! "Dentist" has been added to your Google '
-              'Calendar on 2026-10-20 at 02:30 PM. It should appear '
-              'in your Google Calendar app shortly.'),
+          find.text('Done! "Dentist" has been added to your calendar '
+              'on 2026-10-20 at 02:30 PM. It should appear '
+              'in your calendar app shortly.'),
           findsOneWidget);
       expect(find.text('✓ Event Scheduled & Added to Calendar'),
           findsOneWidget);
@@ -371,11 +437,11 @@ void main() {
       expect(args['date'], '2026-10-20');
       expect(
           find.text('Successfully deleted 2 events titled "Dentist" '
-              'scheduled for 2026-10-20 from your Google Calendar!'),
+              'scheduled for 2026-10-20 from your calendar!'),
           findsOneWidget);
       expect(
           find.text('Successfully deleted "Dentist" scheduled for '
-              '2026-10-20 from your Google Calendar!'),
+              '2026-10-20 from your calendar!'),
           findsNothing);
       expect(find.text('✓ Event Deleted from Calendar'), findsOneWidget);
     });
@@ -389,7 +455,7 @@ void main() {
       expect(bridge.callsTo('deleteEvents'), hasLength(1));
       expect(
           find.text('Successfully deleted "Dentist" scheduled for '
-              '2026-10-20 from your Google Calendar!'),
+              '2026-10-20 from your calendar!'),
           findsOneWidget);
       expect(find.text('✓ Event Deleted from Calendar'), findsOneWidget);
     });
@@ -416,7 +482,7 @@ void main() {
       await tester.tap(find.text('Approve & Delete'));
       await tester.pumpAndSettle();
       expect(
-          find.text('Could not find "Dentist" on your Google Calendar '
+          find.text('Could not find "Dentist" on your calendar '
               'to delete.'),
           findsOneWidget);
       // Still pending: the card is offered again.
@@ -496,7 +562,7 @@ void main() {
       expect(find.text('Approve & Add'), findsOneWidget); // pending
       expect(find.text('✓ Event Scheduled & Added to Calendar'),
           findsNothing);
-      expect(find.textContaining('has been added to your Google Calendar'),
+      expect(find.textContaining('has been added to your calendar'),
           findsNothing);
     });
 
@@ -521,7 +587,7 @@ void main() {
       expect(find.text('Approve & Add'), findsOneWidget); // pending
       expect(find.text('✓ Event Scheduled & Added to Calendar'),
           findsNothing);
-      expect(find.textContaining('has been added to your Google Calendar'),
+      expect(find.textContaining('has been added to your calendar'),
           findsNothing);
     });
 
@@ -540,7 +606,7 @@ void main() {
       expect(find.text('Approve & Add'), findsOneWidget); // pending
       expect(find.text('✓ Event Scheduled & Added to Calendar'),
           findsNothing);
-      expect(find.textContaining('has been added to your Google Calendar'),
+      expect(find.textContaining('has been added to your calendar'),
           findsNothing);
     });
 
@@ -555,7 +621,7 @@ void main() {
       expect(find.text('Approve & Add'), findsOneWidget);
       expect(find.text('✓ Event Scheduled & Added to Calendar'),
           findsNothing);
-      expect(find.textContaining('has been added to your Google Calendar'),
+      expect(find.textContaining('has been added to your calendar'),
           findsNothing);
     });
 
@@ -624,6 +690,52 @@ void main() {
       expect(ctx, contains('Since Google Calendar is connected'));
       expect(ctx,
           contains('- Physical therapy on 2026-10-14 09:00 AM'));
+    });
+
+    // ── Takeover disclosures (audit P4): the coach request must
+    // distinguish "permission missing" from "genuinely empty" ──
+    testWidgets('P4: connected send with calendar permission DENIED '
+        'sends the unavailable context, never "No events found."',
+        (tester) async {
+      final log = <http.BaseRequest>[];
+      final bridge =
+          FakeCalendarBridge(readGranted: false, writeGranted: false);
+      await pumpChat(tester,
+          bridge: bridge, messages: const [], log: log);
+      await tester.enterText(find.byType(TextField), 'what do I have?');
+      await tester.tap(find.byIcon(Icons.send));
+      await tester.pumpAndSettle();
+      final coachReq =
+          log.where((r) => r.url.path == '/api/ai/coach').toList();
+      expect(coachReq, hasLength(1));
+      final body = jsonDecode((coachReq.single as http.Request).body)
+          as Map<String, dynamic>;
+      final ctx = body['userContext'] as String;
+      expect(ctx, contains('Calendar events are unavailable right now.'));
+      expect(ctx, isNot(contains('No events found.')));
+      // The events read is not even attempted without permission.
+      expect(bridge.callsTo('getUpcomingEvents'), isEmpty);
+    });
+
+    testWidgets('P4: connected send with permission granted and a '
+        'genuinely empty calendar sends "No events found."',
+        (tester) async {
+      final log = <http.BaseRequest>[];
+      final bridge = FakeCalendarBridge()..upcoming = const [];
+      await pumpChat(tester,
+          bridge: bridge, messages: const [], log: log);
+      await tester.enterText(find.byType(TextField), 'what do I have?');
+      await tester.tap(find.byIcon(Icons.send));
+      await tester.pumpAndSettle();
+      final coachReq =
+          log.where((r) => r.url.path == '/api/ai/coach').toList();
+      expect(coachReq, hasLength(1));
+      final body = jsonDecode((coachReq.single as http.Request).body)
+          as Map<String, dynamic>;
+      final ctx = body['userContext'] as String;
+      expect(ctx, contains('No events found.'));
+      expect(ctx,
+          isNot(contains('Calendar events are unavailable right now.')));
     });
   });
 }
