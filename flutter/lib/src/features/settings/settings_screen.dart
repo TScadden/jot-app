@@ -7,6 +7,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:tabs_lab/src/data/calendar_service.dart';
 import 'package:tabs_lab/src/data/common_conditions.dart';
+import 'package:tabs_lab/src/data/csv_file_picker.dart';
+import 'package:tabs_lab/src/data/health_history_store.dart';
+import 'package:tabs_lab/src/data/metrics_csv_import.dart';
 import 'package:tabs_lab/src/data/knowledge_documents.dart';
 import 'package:tabs_lab/src/data/google_sign_in_service.dart';
 import 'package:tabs_lab/src/data/medications.dart';
@@ -117,6 +120,14 @@ class SettingsScreen extends StatefulWidget {
   /// Injectable extracted-text store (Round 65). Null in production.
   final KnowledgeExtractionStore? knowledgeStore;
 
+  /// Injectable CSV picker (R70 WS3) for the health-history import.
+  /// Null in production (the SAF bridge picker).
+  final CsvFilePicker? csvFilePicker;
+
+  /// Injectable history store (R70 WS3). Null in production (the
+  /// shared [HealthHistoryStore.instance]).
+  final HealthHistoryStore? historyStore;
+
   /// Injectable for tests (native opens these in the system browser).
   final Future<bool> Function(Uri uri)? urlLauncher;
 
@@ -139,6 +150,8 @@ class SettingsScreen extends StatefulWidget {
     this.calendarService,
     this.knowledgePicker,
     this.knowledgeStore,
+    this.csvFilePicker,
+    this.historyStore,
     this.urlLauncher,
     this.openEventCounters = false,
   });
@@ -534,6 +547,81 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  // ── R70 WS3 — health-history CSV import flow ───────────────────
+  // SAF pick → parse → fill-gaps merge into the history store →
+  // result dialog (BP importer style). Nothing imports silently:
+  // failures show their message, success shows the full report.
+  Future<void> _startHistoryImport() async {
+    String? text;
+    try {
+      text = await (widget.csvFilePicker ?? CsvFilePicker()).pickCsvText();
+    } on CsvPickException catch (e) {
+      _showHistoryImportError(
+          e.message ?? "Couldn't read this file. Please try a different CSV.");
+      return;
+    } catch (_) {
+      _showHistoryImportError(
+          "Couldn't read this file. Please try a different CSV.");
+      return;
+    }
+    if (text == null || !mounted) return; // user cancelled the picker
+    final outcome = await importMetricsCsv(
+        csvText: text,
+        store: widget.historyStore ?? HealthHistoryStore.instance);
+    if (!mounted) return;
+    switch (outcome) {
+      case MetricsImportError(:final message):
+        _showHistoryImportError(message);
+      case MetricsImportOk(:final report):
+        showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            backgroundColor: NotelColors.surface,
+            title: const Text('Health History Imported',
+                style: TextStyle(
+                    color: NotelColors.textPrimary,
+                    fontWeight: FontWeight.bold)),
+            content: Text(report.summary,
+                style: const TextStyle(
+                    color: NotelColors.textSecondary, fontSize: 14)),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                style: FilledButton.styleFrom(
+                    backgroundColor: NotelColors.primary),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+    }
+  }
+
+  void _showHistoryImportError(String message) {
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: NotelColors.surface,
+        title: const Text("Couldn't Import CSV",
+            style: TextStyle(
+                color: NotelColors.textPrimary,
+                fontWeight: FontWeight.bold)),
+        content: Text(message,
+            style: const TextStyle(
+                color: NotelColors.textSecondary, fontSize: 14)),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            style: FilledButton.styleFrom(
+                backgroundColor: NotelColors.primary),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Push profile fields; on failure show the honest error and reload
@@ -979,6 +1067,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _menuRow(Icons.favorite, 'Connected Apps', _Page.connectedApps,
               iconColor: NotelColors.primary,
               key: const ValueKey('menu_connected_apps')),
+        ],
+        padding: EdgeInsets.zero,
+      ),
+      const SizedBox(height: 16),
+      // R70 WS3 — health-history import: fills older days in the
+      // local history store from a Tabs metrics CSV export
+      // (fill-gaps only; existing values always win).
+      _card(
+        [
+          InkWell(
+            key: const ValueKey('import_health_history'),
+            onTap: _startHistoryImport,
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              child: Row(
+                children: [
+                  Icon(Icons.upload_file,
+                      color: NotelColors.textSecondary, size: 22),
+                  SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Import Health History (CSV)',
+                            style: TextStyle(
+                                color: NotelColors.textPrimary,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w500)),
+                        SizedBox(height: 2),
+                        Text(
+                            'Fill in older days from a Tabs metrics export. '
+                            'Days already on this device are kept.',
+                            style: TextStyle(
+                                color: NotelColors.textSecondary,
+                                fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.chevron_right,
+                      color: NotelColors.textSecondary, size: 20),
+                ],
+              ),
+            ),
+          ),
         ],
         padding: EdgeInsets.zero,
       ),
