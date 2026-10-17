@@ -1,0 +1,301 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:tabs_lab/src/data/location_service.dart';
+import 'package:tabs_lab/src/data/weather_api.dart';
+import 'package:tabs_lab/src/theme/animations.dart';
+import 'package:tabs_lab/src/features/home/home_screen.dart';
+
+/// Fake platform side for the weather-icon location flow.
+class FakeLocationService extends LocationService {
+  bool serviceEnabled = true;
+  LocationPermission permission = LocationPermission.denied;
+  LocationPermission permissionAfterRequest =
+      LocationPermission.whileInUse;
+  Position? position;
+  int requestPermissionCalls = 0;
+  int getPositionCalls = 0;
+
+  @override
+  Future<bool> isServiceEnabled() async => serviceEnabled;
+
+  @override
+  Future<LocationPermission> checkPermission() async => permission;
+
+  @override
+  Future<LocationPermission> requestPermission() async {
+    requestPermissionCalls++;
+    permission = permissionAfterRequest;
+    return permission;
+  }
+
+  @override
+  Future<Position?> getPosition() async {
+    getPositionCalls++;
+    return position;
+  }
+}
+
+Position _pos(double lat, double lon) => Position(
+      latitude: lat,
+      longitude: lon,
+      timestamp: DateTime(2026, 10, 11),
+      accuracy: 10,
+      altitude: 0,
+      altitudeAccuracy: 0,
+      heading: 0,
+      headingAccuracy: 0,
+      speed: 0,
+      speedAccuracy: 0,
+    );
+
+/// Mock HTTP client. IP path returns 61°F; the Open-Meteo GPS path
+/// returns 70°F so the two are distinguishable.
+MockClient _weatherClient({
+  void Function()? onIpInfo,
+  void Function(String url)? onMeteo,
+}) {
+  return MockClient((request) async {
+    final host = request.url.host;
+    if (host == 'ipinfo.io') {
+      onIpInfo?.call();
+      return http.Response(
+          '{"city":"Orem","loc":"40.2969,-111.6946","country":"US"}', 200);
+    }
+    if (host == 'api.open-meteo.com') {
+      onMeteo?.call(request.url.toString());
+      // 61 for the IP path, 70 for the GPS path — distinguishable.
+      final isGps =
+          request.url.queryParameters['latitude'] == '41.0';
+      final temp = isGps ? 70.2 : 61.4;
+      return http.Response(
+          '{"current":{"temperature_2m":$temp,"weather_code":2,"is_day":1}}',
+          200);
+    }
+    return http.Response('not found', 404);
+  });
+}
+
+Future<void> _pumpHome(
+  WidgetTester tester, {
+  required WeatherApiClient weather,
+  required FakeLocationService location,
+}) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      home: HomeScreen(weatherApi: weather, locationService: location),
+    ),
+  );
+  // Round 14: no pumpAndSettle — the header's AnimatedWeatherIcon ticks
+  // on a repeating controller. Flush async loads, then advance past the
+  // staggered-entrance delays (max 240ms).
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 800));
+}
+
+/// Settles the weather sheet after a tap: flush the tap's rebuild, then
+/// run the modal entrance + async loads. (pumpAndSettle would hang on
+/// the home header's repeating weather icon behind the sheet.)
+Future<void> _settleSheet(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 800));
+}
+
+Finder _weatherButton() => find.ancestor(
+        of: find.byType(AnimatedWeatherIcon),
+        matching: find.byType(IconButton),
+      );
+
+void main() {
+  group('getCurrentTempAt (GPS path)', () {
+    test('uses the GPS coords in the Open-Meteo URL, skips ipinfo',
+        () async {
+      String? meteoUrl;
+      int ipInfoHits = 0;
+      final api = WeatherApiClient(
+          client: _weatherClient(
+              onIpInfo: () => ipInfoHits++, onMeteo: (u) => meteoUrl = u));
+      final temp = await api.getCurrentTempAt(
+          latitude: 41.0, longitude: -112.0, countryCode: 'US');
+      expect(temp, 70);
+      expect(ipInfoHits, 0);
+      expect(meteoUrl, contains('latitude=41.0'));
+      expect(meteoUrl, contains('longitude=-112.0'));
+      expect(meteoUrl, contains('temperature_unit=fahrenheit'));
+    });
+
+    test('honors non-US country for units', () async {
+      String? meteoUrl;
+      final api = WeatherApiClient(
+          client: _weatherClient(onMeteo: (u) => meteoUrl = u));
+      await api.getCurrentTempAt(
+          latitude: 51.5, longitude: -0.12, countryCode: 'GB');
+      expect(meteoUrl, contains('temperature_unit=celsius'));
+    });
+
+    test('meteo failure returns null, never a fake zero', () async {
+      final api = WeatherApiClient(
+          client: MockClient((_) async => http.Response('err', 500)));
+      expect(
+          await api.getCurrentTempAt(
+              latitude: 41.0, longitude: -112.0),
+          isNull);
+    });
+  });
+
+  group('weather icon tap → location flow', () {
+    testWidgets('granted permission upgrades temp to the GPS reading',
+        (tester) async {
+      String? meteoUrl;
+      final weather = WeatherApiClient(
+          client: _weatherClient(onMeteo: (u) => meteoUrl = u));
+      // MF-1: permission is PRE-granted — the tap must NOT request it.
+      final location = FakeLocationService()
+        ..permission = LocationPermission.whileInUse
+        ..position = _pos(41.0, -112.0);
+
+      await _pumpHome(tester, weather: weather, location: location);
+      // Initial IP-based temp.
+      expect(find.text('61°'), findsOneWidget);
+
+      await tester.tap(_weatherButton());
+      await _settleSheet(tester);
+
+      // Tap never fires the system dialog; GPS position fetched silently.
+      expect(location.requestPermissionCalls, 0);
+      expect(location.getPositionCalls, 1);
+      expect(meteoUrl, contains('latitude=41.0'));
+      expect(meteoUrl, contains('longitude=-112.0'));
+      // Header now shows the GPS-based temp.
+      expect(find.text('70°'), findsOneWidget);
+      expect(find.text('61°'), findsNothing);
+    });
+
+    testWidgets('denied permission falls back silently to IP weather',
+        (tester) async {
+      int ipInfoHits = 0;
+      String? meteoUrl;
+      final weather = WeatherApiClient(
+          client: _weatherClient(
+              onIpInfo: () => ipInfoHits++,
+              onMeteo: (u) => meteoUrl = u));
+      final location = FakeLocationService()
+        ..permissionAfterRequest = LocationPermission.denied;
+
+      await _pumpHome(tester, weather: weather, location: location);
+      final hitsAfterLoad = ipInfoHits;
+
+      await tester.tap(_weatherButton());
+      await _settleSheet(tester);
+
+      // MF-1: the tap NEVER fires the system dialog — no request call.
+      // The sheet opens with the in-app rationale card instead.
+      expect(location.requestPermissionCalls, 0);
+      expect(location.getPositionCalls, 0);
+      expect(find.text('Use your location for weather?'), findsOneWidget);
+      // Round 15: the sheet shares the header's cached IP lookup and
+      // weather entry — no duplicate network work on open.
+      expect(ipInfoHits, hitsAfterLoad);
+      // Still showing the IP temp — no error, no fake zero.
+      expect(find.text('61°'), findsOneWidget);
+      expect(meteoUrl, isNot(contains('latitude=41.0')));
+    });
+
+    testWidgets('permanently denied never re-prompts, IP fallback',
+        (tester) async {
+      final weather =
+          WeatherApiClient(client: _weatherClient());
+      final location = FakeLocationService()
+        ..permission = LocationPermission.deniedForever;
+
+      await _pumpHome(tester, weather: weather, location: location);
+      await tester.tap(_weatherButton());
+      await _settleSheet(tester);
+
+      expect(location.requestPermissionCalls, 0);
+      expect(location.getPositionCalls, 0);
+      expect(find.text('61°'), findsOneWidget);
+    });
+
+    testWidgets('location services off falls back to IP weather',
+        (tester) async {
+      final weather =
+          WeatherApiClient(client: _weatherClient());
+      final location = FakeLocationService()..serviceEnabled = false;
+
+      await _pumpHome(tester, weather: weather, location: location);
+      await tester.tap(_weatherButton());
+      await _settleSheet(tester);
+
+      expect(location.requestPermissionCalls, 0);
+      expect(location.getPositionCalls, 0);
+      expect(find.text('61°'), findsOneWidget);
+    });
+
+    testWidgets('position timeout falls back to IP weather',
+        (tester) async {
+      final weather =
+          WeatherApiClient(client: _weatherClient());
+      // MF-1: pre-granted; getPosition returns null (timeout path).
+      final location = FakeLocationService()
+        ..permission = LocationPermission.whileInUse
+        ..position = null;
+
+      await _pumpHome(tester, weather: weather, location: location);
+      await tester.tap(_weatherButton());
+      await _settleSheet(tester);
+
+      expect(location.getPositionCalls, 1);
+      expect(find.text('61°'), findsOneWidget);
+    });
+
+    testWidgets(
+        'MF-1: rationale card Share location is the sole permission path',
+        (tester) async {
+      String? meteoUrl;
+      final weather = WeatherApiClient(
+          client: _weatherClient(onMeteo: (u) => meteoUrl = u));
+      final location = FakeLocationService()
+        ..permissionAfterRequest = LocationPermission.whileInUse
+        ..position = _pos(41.0, -112.0);
+
+      await _pumpHome(tester, weather: weather, location: location);
+      await tester.tap(_weatherButton());
+      await _settleSheet(tester);
+
+      // Tap opened the sheet with the rationale card — no system dialog.
+      expect(location.requestPermissionCalls, 0);
+      expect(find.text('Use your location for weather?'), findsOneWidget);
+
+      // "Share location" fires the one and only permission request.
+      await tester.tap(find.text('Share location'));
+      await _settleSheet(tester);
+
+      expect(location.requestPermissionCalls, 1);
+      expect(meteoUrl, contains('latitude=41.0'));
+      // The grant upgraded the header temp behind the sheet.
+      expect(find.text('70°'), findsOneWidget);
+    });
+
+    testWidgets('MF-1: rationale card Not now never requests permission',
+        (tester) async {
+      final weather = WeatherApiClient(client: _weatherClient());
+      final location = FakeLocationService();
+
+      await _pumpHome(tester, weather: weather, location: location);
+      await tester.tap(_weatherButton());
+      await _settleSheet(tester);
+
+      expect(find.text('Use your location for weather?'), findsOneWidget);
+      await tester.tap(find.text('Not now'));
+      await _settleSheet(tester);
+
+      expect(location.requestPermissionCalls, 0);
+      expect(find.text('Use your location for weather?'), findsNothing);
+      // Sheet still shows IP-based weather, no error.
+      expect(find.text('61°'), findsOneWidget);
+    });
+  });
+}

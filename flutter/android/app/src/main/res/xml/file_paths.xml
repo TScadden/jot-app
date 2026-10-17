@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Round 48: FileProvider paths for the Key Metrics CSV export share
+     sheet (mirrors the native app's res/xml/file_paths.xml). Only the
+     cache dir is shared: exportCsvFile writes the CSV there. -->
+<paths>
+    <cache-path name="my_cache_files" path="." />
+</paths>

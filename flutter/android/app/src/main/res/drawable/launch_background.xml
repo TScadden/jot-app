@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launch splash: plain Tabs purple. The Flutter splash screen renders
+     immediately after; this is only the instant-tap placeholder. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <color android:color="#7C6EFF" />
+    </item>
+</layer-list>
