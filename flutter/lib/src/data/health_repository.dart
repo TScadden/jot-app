@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_data.dart';
+import 'package:tabs_lab/src/data/health_history_sync.dart';
 import 'package:tabs_lab/src/data/tabs_backend.dart';
 import 'package:tabs_lab/src/data/weekly_snapshot.dart';
 
@@ -39,9 +42,25 @@ class HealthRepository {
   final HealthConnectService hc;
   final TabsBackend backend;
 
-  HealthRepository({HealthConnectService? hc, TabsBackend? backend})
-      : hc = hc ?? HealthConnectService(),
-        backend = backend ?? TabsBackend();
+  /// R70 WS1b — history capture hook (injectable for tests).
+  final HealthHistorySync historySync;
+
+  HealthRepository({
+    HealthConnectService? hc,
+    TabsBackend? backend,
+    HealthHistorySync? historySync,
+  })  : hc = hc ?? HealthConnectService(),
+        backend = backend ?? TabsBackend(),
+        historySync = historySync ?? HealthHistorySync.instance;
+
+  /// Fire-and-forget history capture after a successful connected
+  /// load. Behind the sync's 6h throttle, unawaited, and never
+  /// throws — home load latency and behavior are unchanged.
+  void _triggerHistoryCapture() {
+    try {
+      unawaited(historySync.capture());
+    } catch (_) {}
+  }
 
   Future<bool> _connected() async {
     try {
@@ -105,12 +124,16 @@ class HealthRepository {
     } catch (_) {
       // Nulls stand — the UI shows "--".
     }
-    return TodayVitals(
+    final vitals = TodayVitals(
       heartRate: heartRate,
       activeCalories: activeCalories,
       sleepMinutes: sleepMinutes,
       logCountToday: await logCountFuture,
     );
+    // R70 WS1b — values are computed; capture history behind the
+    // throttle without blocking the return.
+    _triggerHistoryCapture();
+    return vitals;
   }
 
   /// Round 60 fix (Vera blocker) — per-read error isolation for the
@@ -169,6 +192,10 @@ class HealthRepository {
         metric != SnapshotMetric.habitCompletion &&
         metric != SnapshotMetric.bloodPressure;
     if (!connected && hcOnly) return emptyMetricData(metric);
+    // R70 WS1b — a connected snapshot load also feeds the history
+    // store (throttled, fire-and-forget; the load below is
+    // fail-soft and never throws past its honest empty states).
+    if (connected) _triggerHistoryCapture();
     try {
       switch (metric) {
         case SnapshotMetric.sleepHours:
