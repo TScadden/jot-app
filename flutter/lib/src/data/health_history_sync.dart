@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:tabs_lab/src/data/daily_score.dart';
 import 'package:tabs_lab/src/data/health_connect_service.dart';
 import 'package:tabs_lab/src/data/health_history_store.dart';
 
@@ -128,6 +129,10 @@ class HealthHistorySync {
 
       await _store.mergeRefresh(byDate.values);
       await _store.markCaptured(now.millisecondsSinceEpoch);
+      // R70 Daily Score — after-capture compute trigger: any day
+      // whose inputs now exist gets its (write-once) score. The
+      // engine never throws and never rewrites a scored day.
+      await DailyScoreEngine(store: _store).computeMissingScores();
       return true;
     } catch (_) {
       // Capture failure must never break a screen.
