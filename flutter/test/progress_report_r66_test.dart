@@ -85,6 +85,26 @@ class FakeHc extends HealthConnectService {
       spikeHist;
   @override
   Future<double?> readHrvRmssd(String dateStr) async => hrvValue;
+
+  // R71: the union's HRV path is a range read now. Mirror
+  // hrvValue: a null/zero value means no usable samples (the
+  // zero rule), otherwise one top-tier sample per requested day.
+  @override
+  Future<List<({int t, double ms, int tier})>> readHrvSamples(
+      int days) async {
+    final v = hrvValue;
+    if (v == null || v <= 0) return const [];
+    final now = DateTime.now();
+    final midday = DateTime(now.year, now.month, now.day, 12);
+    return [
+      for (var i = days - 1; i >= 0; i--)
+        (
+          t: midday.subtract(Duration(days: i)).millisecondsSinceEpoch,
+          ms: v,
+          tier: 100,
+        ),
+    ];
+  }
 }
 
 QuickLogCategory cat(int id, String name) => QuickLogCategory(
