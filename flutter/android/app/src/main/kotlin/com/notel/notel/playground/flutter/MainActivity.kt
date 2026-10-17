@@ -74,6 +74,11 @@ class MainActivity : FlutterFragmentActivity() {
         private const val MAX_CSV_FILE_BYTES = 5 * 1024 * 1024
         // Round 65: knowledge-document pick cap (see doc picker).
         private const val MAX_DOC_FILE_BYTES = 15 * 1024 * 1024
+        // TAKEOVER Phase 4: migration-bundle pick cap. A bundle can
+        // carry the extracted-knowledge store, so it gets more room
+        // than a CSV; past this the export almost certainly is not
+        // a migration file.
+        private const val MAX_MIGRATION_FILE_BYTES = 25 * 1024 * 1024
         const val HC_PROVIDER_PACKAGE = "com.google.android.apps.healthdata"
         const val SETTINGS_ACTION = "android.health.connect.action.HEALTH_HOME_SETTINGS"
         private const val REQUEST_TIMEOUT_MS = 5 * 60 * 1000L
@@ -127,6 +132,13 @@ class MainActivity : FlutterFragmentActivity() {
     // destroy PDFs/images before extraction.
     private lateinit var docPickerLauncher: ActivityResultLauncher<String>
     private var pendingDocResult: MethodChannel.Result? = null
+
+    // TAKEOVER Phase 4: migration-bundle picker for "Import from
+    // Tabs Lab". A third GetContent launcher on the file_picker
+    // channel; returns the picked file's TEXT (the bundle is one
+    // JSON document). Registered in onCreate like every launcher.
+    private lateinit var migrationPickerLauncher: ActivityResultLauncher<String>
+    private var pendingMigrationResult: MethodChannel.Result? = null
 
     // Round 54: calendar permission launcher for the Health Coach
     // (native CoachScreen.kt:89-113 requests READ+WRITE together at
@@ -336,6 +348,73 @@ class MainActivity : FlutterFragmentActivity() {
                 }
             }.start()
         }
+        migrationPickerLauncher = activityResultRegistry.register(
+            "migration_picker_launcher",
+            ActivityResultContracts.GetContent()
+        ) { uri ->
+            val r = pendingMigrationResult
+            pendingMigrationResult = null
+            if (r == null) return@register // stale (superseded)
+            if (uri == null) {
+                // User cancelled the picker — a null success, not an
+                // error (Dart treats null as "no file chosen").
+                try { r.success(null) } catch (_: Exception) { }
+                return@register
+            }
+            // Read off the main thread with the migration cap
+            // (CSV-picker semantics: TooLarge / Failed / Ok with
+            // the BOM stripped).
+            Thread {
+                var failureCode: String? = null
+                var failureMessage: String? = null
+                var text: String? = null
+                try {
+                    val stream = contentResolver.openInputStream(uri)
+                    if (stream == null) {
+                        failureCode = "READ_FAILED"
+                        failureMessage = "Couldn't read this file. Please try a different file."
+                    } else {
+                        stream.use { input ->
+                            val buf = ByteArray(8192)
+                            var total = 0
+                            val out = java.io.ByteArrayOutputStream()
+                            var tooLarge = false
+                            while (true) {
+                                val n = input.read(buf)
+                                if (n == -1) break
+                                total += n
+                                if (total > MAX_MIGRATION_FILE_BYTES) {
+                                    tooLarge = true
+                                    break
+                                }
+                                out.write(buf, 0, n)
+                            }
+                            if (tooLarge) {
+                                failureCode = "TOO_LARGE"
+                                failureMessage = "This file is too large to import. The limit is 25 MB."
+                            } else {
+                                text = out.toString(Charsets.UTF_8.name()).removePrefix("\uFEFF")
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    failureCode = "READ_FAILED"
+                    failureMessage = "Couldn't read this file. Please try a different file."
+                }
+                runOnUiThread {
+                    val code = failureCode
+                    try {
+                        if (code != null) {
+                            r.error(code, failureMessage, null)
+                        } else {
+                            r.success(text)
+                        }
+                    } catch (_: Exception) {
+                        // Result already consumed — nothing to do.
+                    }
+                }
+            }.start()
+        }
         calendarPermissionLauncher = activityResultRegistry.register(
             "calendar_permission_launcher",
             ActivityResultContracts.RequestMultiplePermissions()
@@ -413,6 +492,14 @@ class MainActivity : FlutterFragmentActivity() {
                     // Round 65: knowledge-document pick (name/MIME/
                     // base64) for Digital Knowledge Extraction.
                     "pickDocumentFile" -> pickDocumentFile(result)
+                    // TAKEOVER Phase 4: migration-bundle pick + share
+                    // (Lab export → production import).
+                    "pickMigrationText" -> pickMigrationText(result)
+                    "shareMigrationFile" -> shareMigrationFile(
+                        call.argument<String>("fileName"),
+                        call.argument<String>("content"),
+                        result
+                    )
                     else -> result.notImplemented()
                 }
             }
@@ -466,6 +553,56 @@ class MainActivity : FlutterFragmentActivity() {
         } catch (e: Exception) {
             pendingDocResult = null
             result.error("LAUNCH_FAILED", "Couldn't open the file picker.", null)
+        }
+    }
+
+    /// TAKEOVER Phase 4: launches the system file picker and returns
+    /// the picked migration bundle's text to Dart (null when the user
+    /// cancels). Every failure path returns a visible error code —
+    /// never a silent no-op.
+    private fun pickMigrationText(result: MethodChannel.Result) {
+        if (pendingMigrationResult != null) {
+            result.error("IN_FLIGHT", "A file pick is already in progress", null)
+            return
+        }
+        if (!::migrationPickerLauncher.isInitialized) {
+            result.error("UNAVAILABLE", "Couldn't open the file picker.", null)
+            return
+        }
+        pendingMigrationResult = result
+        try {
+            migrationPickerLauncher.launch("*/*")
+        } catch (e: Exception) {
+            pendingMigrationResult = null
+            result.error("LAUNCH_FAILED", "Couldn't open the file picker.", null)
+        }
+    }
+
+    /// TAKEOVER Phase 4: export hand-off for the migration bundle —
+    /// the Round 48 CSV pattern (cache-dir file + FileProvider URI +
+    /// ACTION_SEND chooser), with two deliberate differences: the
+    /// MIME type is application/json, and there is NO MediaStore
+    /// copy to Downloads. The bundle carries health data; the share
+    /// sheet is the delivery, not a second plaintext copy left on
+    /// shared storage. Success = the chooser was launched.
+    private fun shareMigrationFile(fileName: String?, content: String?, result: MethodChannel.Result) {
+        try {
+            val name = fileName?.takeIf { it.isNotBlank() } ?: "tabs-lab-migration.json"
+            val bytes = (content ?: "").toByteArray(Charsets.UTF_8)
+            val cacheFile = java.io.File(cacheDir, name)
+            cacheFile.writeBytes(bytes)
+            val shareUri = androidx.core.content.FileProvider.getUriForFile(
+                this, "$packageName.provider", cacheFile
+            )
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/json"
+                putExtra(Intent.EXTRA_STREAM, shareUri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(intent, "Share Tabs data"))
+            result.success(true)
+        } catch (_: Exception) {
+            result.error("SHARE_FAILED", "Could not share the export file.", null)
         }
     }
 
