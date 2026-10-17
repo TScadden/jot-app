@@ -169,8 +169,6 @@ void main() {
   // entriesForCondition filtering, and loadResearchEntries tests.
 
   group('buildLeaderboard', () {
-
-  group('buildLeaderboard', () {
     test('sorts friends by level, highest first', () {
       final friends = [
         const FriendDto(
@@ -271,7 +269,13 @@ token: 't',
         MockClient((_) async => http.Response('boom', 500)),
 token: 't',
       );
-      await tester.pumpWidget(MaterialApp(home: FoodToolScreen(backend: backend)));
+      // R68 repair: inject the in-memory history store (the R48B
+      // pattern). The default secure-storage store's channel futures
+      // never complete under FakeAsync, which wedged the check and
+      // left timers pending at teardown.
+      await tester.pumpWidget(MaterialApp(
+          home: FoodToolScreen(
+              backend: backend, historyStore: _MemFoodStore())));
       await tester.enterText(
           find.byType(TextField), 'spinach, coffee');
       await tester.pump(); // rebuild so the Check button enables
@@ -301,7 +305,9 @@ token: 't',
         }),
 token: 't',
       );
-      await tester.pumpWidget(MaterialApp(home: FoodToolScreen(backend: backend)));
+      await tester.pumpWidget(MaterialApp(
+          home: FoodToolScreen(
+              backend: backend, historyStore: _MemFoodStore())));
       await tester.enterText(find.byType(TextField), 'spinach');
       await tester.pump(); // rebuild so the Check button enables
       await tester.tap(find.text('Check Sensitivity'));
@@ -394,8 +400,13 @@ token: 't',
           find.text(
               'No friends added yet. Add friends using their Nickname#ID!'),
           findsOneWidget);
-      expect(find.text('No scores yet. Add friends to see how you rank.'),
-          findsOneWidget);
+      // R68 repair (R48C supersession): the leaderboard now always
+      // includes the user's own row (native parity), so the empty
+      // state is the self row alone — the old "No scores yet" copy no
+      // longer exists. Honest empty = friends copy above + self row.
+      expect(find.text('You'), findsOneWidget);
+      expect(find.text('#1'), findsOneWidget);
+      expect(find.text('0 pts'), findsOneWidget);
     });
   });
 
@@ -505,6 +516,20 @@ token: 't',
   });
 }
 
+/// In-memory [FoodHistoryStore] — the R48B pattern: IO completes
+/// instantly, so no secure-storage channel future can wedge a test.
+class _MemFoodStore implements FoodHistoryStore {
+  String? value;
+
+  @override
+  Future<String?> loadEncyclopediaJson() async => value;
+
+  @override
+  Future<void> saveEncyclopediaJson(String json) async {
+    value = json;
+  }
+}
+
 /// In-memory AssetBundle for Research widget tests.
 class _TestBundle extends AssetBundle {
   _TestBundle(this.strings);
@@ -521,5 +546,4 @@ class _TestBundle extends AssetBundle {
     if (s == null) throw FlutterError('asset not found: $key');
     return s;
   }
-}
 }

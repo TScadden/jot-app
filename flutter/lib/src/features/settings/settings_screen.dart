@@ -84,10 +84,10 @@ const _chipInk = Color(0xFF0A0A0E);
 /// save behavior (debounced push via tabs_backend) is unchanged.
 ///
 /// Honest unavailable states (native presentation kept, flagged in
-/// the round report): Play purchase flow, file/text-note knowledge
-/// ingestion, Tabs Live BLE, and Developer Terminal test
-/// notifications. (Progress Reports shipped in Round 66 —
-/// progress_reports_page.dart.)
+/// the round report): Play purchase flow, Tabs Live BLE, and
+/// Developer Terminal test notifications. (Progress Reports shipped
+/// in Round 66 — progress_reports_page.dart; file/text-note knowledge
+/// ingestion shipped in Round 65 — knowledge_documents.dart.)
 /// Native Settings does not link to Research (that is a Tools-screen
 /// destination, already built as ResearchToolScreen), so neither does
 /// this port.

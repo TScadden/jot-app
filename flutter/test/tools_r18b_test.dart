@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -15,7 +14,6 @@ import 'package:tabs_lab/src/features/tools/project_focus_screen.dart';
 import 'package:tabs_lab/src/features/tools/reminders_screen.dart';
 import 'package:tabs_lab/src/features/tools/research_screen.dart';
 import 'package:tabs_lab/src/features/tools/sleep_screen.dart';
-import 'package:tabs_lab/src/features/tools/trends_screen.dart';
 
 import 'test_helpers.dart';
 
@@ -147,78 +145,51 @@ void main() {
   });
 
   // ── Trends: patterns render human-readable, never raw JSON ────────────────
-
-  group('renderInsightText (patterns)', () {
-    test('biometric JSON renders readable fields, rounded', () {
-      final out = renderInsightText(
-          '{"sleepMins":433,"deepSleepMins":76,"avgHr":58,'
-          '"hrv":73.29897959183671,"calories":2271}');
-      expect(out, isNotNull);
-      expect(out, isNot(contains('{')));
-      expect(out, isNot(contains('73.29897959183671')));
-      expect(out, contains('Sleep 7h13m'));
-      expect(out, contains('Deep 1h16m'));
-      expect(out, contains('Avg HR 58'));
-      expect(out, contains('HRV 73.3'));
-      expect(out, contains('2271 cal'));
-    });
-
-    test('spike-count JSON renders as spikes', () {
-      final out = renderInsightText(
-          '{"sleepMins":0,"deepSleepMins":0,"avgHr":0,"hrv":0.0,'
-          '"calories":0,"spikes":12}');
-      expect(out, '12 spikes');
-    });
-
-    test('prose is returned unchanged', () {
-      const prose = 'Your sleep improves on days you walk more.';
-      expect(renderInsightText(prose), prose);
-    });
-
-    test('unparseable JSON-looking text → null (skip, never raw JSON)',
-        () {
-      expect(renderInsightText('{"sleepMins": broken'), isNull);
-      expect(renderInsightText('{not json}'), isNull);
-    });
-
-    test('JSON with no renderable fields → null', () {
-      expect(renderInsightText('{"foo":1,"bar":"x"}'), isNull);
-      expect(renderInsightText('{}'), isNull);
-    });
-
-    test('all-zero biometric JSON → null (zeros are failed reads)', () {
-      expect(
-          renderInsightText(
-              '{"sleepMins":0,"deepSleepMins":0,"avgHr":0,"hrv":0.0,"calories":0}'),
-          isNull);
-    });
-  });
+  //
+  // R68 RETIREMENT NOTE (2026-10-16): the `renderInsightText` group that
+  // lived here tested the Trends Patterns section's JSON renderer. Round
+  // 20b (commit da9df80) deliberately removed the Patterns section AND
+  // `renderInsightText` from lib/ — there is no equivalent function in
+  // the current tree to test against, and resurrecting dead code to
+  // satisfy a stale test would contradict R20b's round intent. The
+  // removal itself is covered by test/trends_r20b_test.dart ("patterns
+  // gone"). Every other group in this file was repaired in R68 and runs
+  // at full strength.
 
   // ── Project Focus: default selection ──────────────────────────────────────
 
   group('FocusTest.isCompletedAt', () {
     const dayMs = 24 * 60 * 60 * 1000;
-    FocusTest test({required int start, required int days}) =>
+    // R68 repair: this helper was named `test`, which shadowed
+    // flutter_test's `test` inside the group and broke compilation.
+    FocusTest makeTest({required int start, required int days}) =>
         FocusTest(id: 't', title: 'T', durationDays: days, startTimestamp: start);
 
     test('elapsed window → completed', () {
       final now = 1760000000000;
-      expect(test(start: now - 8 * dayMs, days: 7).isCompletedAt(now), isTrue);
+      expect(
+          makeTest(start: now - 8 * dayMs, days: 7).isCompletedAt(now),
+          isTrue);
     });
 
     test('mid-window → in progress', () {
       final now = 1760000000000;
-      expect(test(start: now - 3 * dayMs, days: 7).isCompletedAt(now), isFalse);
+      expect(
+          makeTest(start: now - 3 * dayMs, days: 7).isCompletedAt(now),
+          isFalse);
     });
 
     test('not started → not completed', () {
       final now = 1760000000000;
-      expect(test(start: now + dayMs, days: 7).isCompletedAt(now), isFalse);
+      expect(makeTest(start: now + dayMs, days: 7).isCompletedAt(now),
+          isFalse);
     });
 
     test('exact end boundary → completed', () {
       final now = 1760000000000;
-      expect(test(start: now - 7 * dayMs, days: 7).isCompletedAt(now), isTrue);
+      expect(
+          makeTest(start: now - 7 * dayMs, days: 7).isCompletedAt(now),
+          isTrue);
     });
   });
 
@@ -231,8 +202,8 @@ void main() {
       required List<Map<String, dynamic>> activeTests,
     }) =>
         {
-          if (selectedTestId != null) 'selectedTestId': selectedTestId,
-          if (activeTest != null) 'activeTest': activeTest,
+          'selectedTestId': ?selectedTestId,
+          'activeTest': ?activeTest,
           'activeTests': activeTests,
         };
     Map<String, dynamic> completedTest(String id, String title) => {
@@ -345,7 +316,8 @@ void main() {
       ]);
       expect(decoded.length, 1);
       expect(decoded[0]['name'], 'kept');
-      expect(decoded[0].containsKey(1), isFalse);
+      // Raw-Map view: the assertion is that the int key did not survive.
+      expect((decoded[0] as Map).containsKey(1), isFalse);
     });
   });
 
