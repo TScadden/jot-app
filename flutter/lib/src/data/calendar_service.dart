@@ -38,6 +38,29 @@ class CalendarService {
   static const String permissionDeniedMessage =
       'Calendar permissions are required to manage events.';
 
+  /// Takeover disclosures (audit P4): builds the coach's
+  /// upcoming-events context PERMISSION-AWARELY. When calendar
+  /// read permission is not granted — or the bridge read fails,
+  /// including the Kotlin side's SecurityException, which it now
+  /// surfaces as a PERMISSION_DENIED error instead of an empty
+  /// list — the context is native's "Calendar events are
+  /// unavailable right now." It must NEVER be "No events found.":
+  /// that string is reserved for a successful read that genuinely
+  /// returned zero events, so the model (and the Data Safety
+  /// story) never receives a false "no events" signal.
+  Future<String> upcomingEventsContext() async {
+    try {
+      final status = await getPermissionStatus();
+      if (!status.read) return calendarEventsUnavailableContext;
+      final events = await getUpcomingEvents();
+      return formatUpcomingCalendarEvents(events);
+    } on CalendarException {
+      return calendarEventsUnavailableContext;
+    } catch (_) {
+      return calendarEventsUnavailableContext;
+    }
+  }
+
   /// Dart gives up just before the Kotlin side's 5-minute pending
   /// window so it can cancel the native request and stay retryable
   /// (same discipline as the Health Connect bridge).
@@ -270,6 +293,20 @@ class CalendarException implements Exception {
   String toString() => 'CalendarException[$code]: $message';
 }
 
+// ── Calendar disclosure (Round 54 A1, canonical copy) ──────────────────────
+
+/// The A1 calendar disclosure: what the Health Coach does with
+/// calendar access, in the build's own words. Shown BEFORE the
+/// system permission request at a coach calendar approval, and —
+/// takeover disclosures (audit P3) — duplicated at the Connected
+/// Apps "Connect Google Calendar" moment in Settings, so the
+/// disclosure no longer fires only at approve time (a manual
+/// grant via Android system settings used to bypass it entirely).
+/// The Health Coach screen keeps its historical name for this
+/// string as an alias (`coachCalendarPermissionDisclosure`).
+const String calendarCoachDisclosure =
+    'Tabs Coach needs read and write access to your calendar. When Google Calendar is connected, the Coach reads the titles and times of your events for today and the next 14 days and sends them to the Tabs AI service so it can answer with your schedule in context. The Coach can also add events to, and delete events from, your calendar, only for proposals you tap Approve on. Nothing is added or deleted without your approval. Tap Continue to allow calendar access.';
+
 // ── Native outcome copy (CoachViewModel.kt, verbatim) ───────────────────────
 
 /// Native's no-writable-calendar abort (CoachViewModel.kt:819-823).
@@ -302,40 +339,47 @@ const String coachCalendarNotConnectedContext =
 const String calendarEventsUnavailableContext =
     'Calendar events are unavailable right now.';
 
-/// Native's insert confirmation (CoachViewModel.kt:884-891):
-/// `Done! "$title" has been added to your Google Calendar` plus
-/// ` on $date` / ` at $time` when present, then the closing
-/// sentence.
+/// Native's insert confirmation (CoachViewModel.kt:884-891),
+/// with ONE deliberate wording change — takeover disclosures
+/// (audit P5): native says "your Google Calendar", but the bridge
+/// inserts into the best writable DEVICE calendar (connected-email
+/// preferred), which is not necessarily a Google calendar, so the
+/// confirmation says "your calendar". Same P5 change applies to
+/// the delete confirmations and the delete not-found message
+/// below. (The P1 privacy-policy paragraph keeps its audit-exact
+/// "Google Calendar" wording — P5 governs in-app copy only.)
 String coachCalendarAddedConfirmation(
     String title, String? date, String? time) {
   final dateLabel = (date != null && date.isNotEmpty) ? ' on $date' : '';
   final timeLabel = (time != null && time.isNotEmpty) ? ' at $time' : '';
-  return 'Done! "$title" has been added to your Google Calendar'
-      '$dateLabel$timeLabel. It should appear in your Google '
-      'Calendar app shortly.';
+  return 'Done! "$title" has been added to your calendar'
+      '$dateLabel$timeLabel. It should appear in your calendar '
+      'app shortly.';
 }
 
-/// Native's delete confirmation (CoachViewModel.kt:978-985).
+/// Native's delete confirmation (CoachViewModel.kt:978-985),
+/// with the P5 "your calendar" wording (see above).
 String coachCalendarDeletedConfirmation(String title, String? date) {
   final dateLabel =
       (date != null && date.isNotEmpty) ? ' scheduled for $date' : '';
   return 'Successfully deleted "$title"$dateLabel from your '
-      'Google Calendar!';
+      'calendar!';
 }
 
 /// Round 54 fix round (Juno A2) — count-aware delete confirmation
 /// for when the bridge deleted MORE THAN ONE exact-title match:
 /// the singular native string would understate what happened.
-/// Display only — what gets deleted is unchanged.
+/// Display only — what gets deleted is unchanged. (P5 wording.)
 String coachCalendarDeletedPluralConfirmation(
     int rows, String title, String? date) {
   return 'Successfully deleted $rows events titled "$title" '
-      'scheduled for $date from your Google Calendar!';
+      'scheduled for $date from your calendar!';
 }
 
-/// Native's delete not-found message (CoachViewModel.kt:987-993).
+/// Native's delete not-found message (CoachViewModel.kt:987-993),
+/// with the P5 "your calendar" wording (see above).
 String coachCalendarDeleteNotFoundMessage(String title) =>
-    'Could not find "$title" on your Google Calendar to delete.';
+    'Could not find "$title" on your calendar to delete.';
 
 // ── Upcoming-events context formatting (native, verbatim rules) ────────────
 
