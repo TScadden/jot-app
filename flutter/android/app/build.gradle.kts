@@ -31,7 +31,7 @@ if (!hasTabsUploadSigning) {
     logger.warn(
         "tabsUpload.* signing properties not set — the prod flavor cannot " +
             "be signed for Play. Lab builds are unaffected; production " +
-            "bundle tasks will FAIL (see the fail-closed guard below)."
+            "bundle/APK tasks will FAIL (see the fail-closed guard below)."
     )
 }
 
@@ -39,7 +39,7 @@ if (!hasTabsUploadSigning) {
 // Highest versionCode on Play for com.notel.notel is 10091 (closed
 // track, established in Phase 0 / Harbor's check). A production AAB at
 // or below that can never be uploaded, so 10092 is the permanent
-// minimum for a prod bundle. The CI workflow supplies the real code
+// minimum for a prod build. The CI workflow supplies the real code
 // per build via `flutter build appbundle --build-number=<code>`;
 // without that parameter flutter.versionCode falls back to the
 // pubspec value (1) and the guard below fails the build closed.
@@ -119,8 +119,9 @@ android {
         }
         // Production: the native app's package and label, signed with
         // the Play upload key. See the fail-closed guard at the bottom
-        // of this file — bundleProd* tasks refuse to run without the
-        // signing properties and a versionCode >= minProdVersionCode.
+        // of this file — bundleProd*/assembleProd* tasks refuse to run
+        // without the signing properties and a versionCode >=
+        // minProdVersionCode.
         create("prod") {
             dimension = "identity"
             applicationId = "com.notel.notel"
@@ -152,22 +153,27 @@ android {
 // ---- Production fail-closed guard (TAKEOVER Phase 1) ----
 // A misconfigured "production" build must be impossible, never
 // silently Lab-signed or built with the pubspec versionCode (1).
-// Two layers, same checks:
+// Two layers, same checks, covering BOTH prod output tasks:
+// bundleProd* (AAB, `flutter build appbundle --flavor prod`) and
+// assembleProd* (APK, `flutter build apk --flavor prod`) — a hand-run
+// prod APK gets exactly the same signing + version-floor checks as
+// the bundle, so it can never slip out at versionCode 1 unsigned by
+// the upload key.
 //   1. Configuration time: any Gradle invocation whose requested
-//      tasks include a prod bundle task (e.g. bundleProdRelease,
-//      which `flutter build appbundle --flavor prod` runs) fails
-//      immediately when signing properties are missing, the keystore
-//      file does not exist, or flutter.versionCode (set by the
-//      --build-number parameter) is below the Play floor.
+//      tasks include a prod bundle or assemble task (e.g.
+//      bundleProdRelease / assembleProdRelease) fails immediately
+//      when signing properties are missing, the keystore file does
+//      not exist, or flutter.versionCode (set by the --build-number
+//      parameter) is below the Play floor.
 //   2. A verifyProdReleaseConfig task wired as a dependency of every
-//      bundleProd* task, re-checking at execution time.
+//      bundleProd*/assembleProd* task, re-checking at execution time.
 fun prodConfigProblems(): List<String> {
     val problems = mutableListOf<String>()
     if (!hasTabsUploadSigning) {
         problems += "tabsUpload.* signing properties are missing " +
             "(need tabsUpload.storeFile and tabsUpload.storePassword; " +
             "keyPassword defaults to the store password). Refusing to " +
-            "build a production bundle that could not be signed with " +
+            "build production output that could not be signed with " +
             "the Play upload key."
     } else {
         val keystore = tabsUploadStoreFile?.let { file(it) }
@@ -178,7 +184,7 @@ fun prodConfigProblems(): List<String> {
     }
     if (flutter.versionCode < minProdVersionCode) {
         problems += "versionCode is ${flutter.versionCode} but a " +
-            "production bundle needs >= $minProdVersionCode (highest " +
+            "production build needs >= $minProdVersionCode (highest " +
             "code on Play is 10091). Pass it as a build parameter: " +
             "flutter build appbundle --flavor prod " +
             "--build-number=<code> --build-name=<name>."
@@ -187,11 +193,11 @@ fun prodConfigProblems(): List<String> {
 }
 
 val requestedTaskNames = gradle.startParameter.taskNames.joinToString(" ").lowercase()
-if ("bundleprod" in requestedTaskNames) {
+if ("bundleprod" in requestedTaskNames || "assembleprod" in requestedTaskNames) {
     val problems = prodConfigProblems()
     if (problems.isNotEmpty()) {
         throw GradleException(
-            "Refusing to build a production bundle:\n - " +
+            "Refusing to build production (bundle/APK):\n - " +
                 problems.joinToString("\n - ")
         )
     }
@@ -199,25 +205,25 @@ if ("bundleprod" in requestedTaskNames) {
 
 val verifyProdReleaseConfig by tasks.registering {
     group = "verification"
-    description = "Fails closed if a production bundle would be built " +
-        "without upload signing or a Play-valid versionCode."
+    description = "Fails closed if a production build (bundle or APK) " +
+        "would be built without upload signing or a Play-valid versionCode."
     doLast {
         val problems = prodConfigProblems()
         if (problems.isNotEmpty()) {
             throw GradleException(
-                "Production bundle configuration check failed:\n - " +
+                "Production build configuration check failed:\n - " +
                     problems.joinToString("\n - ")
             )
         }
         logger.lifecycle(
-            "Production bundle config OK: tabsUpload signing present, " +
+            "Production build config OK: tabsUpload signing present, " +
                 "versionCode ${flutter.versionCode} >= $minProdVersionCode."
         )
     }
 }
 
 tasks.configureEach {
-    if (name.startsWith("bundleProd")) {
+    if (name.startsWith("bundleProd") || name.startsWith("assembleProd")) {
         dependsOn(verifyProdReleaseConfig)
     }
 }

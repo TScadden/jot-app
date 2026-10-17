@@ -18,9 +18,9 @@
 #        flutter build appbundle --release --flavor prod
 #          --build-number=<version_code> --build-name=<version_name>
 #      The Gradle guard in flutter/android/app/build.gradle.kts fails
-#      bundleProd* tasks closed if signing properties or a valid
-#      version code are missing — a Lab-signed "production" bundle is
-#      impossible by construction.
+#      bundleProd*/assembleProd* tasks closed if signing properties
+#      or a valid version code are missing — a Lab-signed
+#      "production" bundle or APK is impossible by construction.
 #   6. Builds a prod-flavor sibling APK and runs the widget gate
 #      (flutter/tool/check_widget_apk.sh) against it. The gate targets
 #      APK layout (root classes*.dex); an AAB stores dex under base/dex/,
@@ -74,6 +74,18 @@ env:
   LAB_LABEL: Tabs Lab
   # SHA-256 of the upload certificate registered in Play Console.
   EXPECTED_CERT_SHA256: "3E:6A:0B:3B:0B:95:DD:4D:09:34:C0:04:CA:A9:43:6D:E4:52:62:6F:1D:3A:B8:73:A0:39:FA:06:E3:BA:AD:CE"
+  # SHA-256 of the certificate in the committed Lab debug.keystore
+  # (flutter/android/app/debug.keystore, alias androiddebugkey),
+  # computed 2026-10-16 via openssl pkcs12 + x509 -fingerprint -sha256
+  # and cross-checked against the DER hash. Pinned as a literal, like
+  # the prod cert above, so replacing the keystore file in the repo
+  # cannot silently redefine the expected Lab identity.
+  EXPECTED_LAB_CERT_SHA256: "8E:88:7B:9B:97:D0:B9:FA:2A:09:80:19:31:76:1B:7E:63:A7:0C:BC:5F:80:42:D0:D9:DC:CB:5E:13:5D:F1:3A"
+  # SHA-256 of bundletool-all-${BUNDLETOOL_VERSION}.jar as published
+  # in the GitHub release asset digest (verified 2026-10-16 against a
+  # locally downloaded copy). The download below is verified against
+  # this pin before the jar is executed.
+  BUNDLETOOL_SHA256: "378b5434cd1378bef6b2bc527b8c7f0ff2584b273830335bce54d6d0813c8584"
   MIN_VERSION_CODE: "10092"
   FLUTTER_VERSION: "3.47.7"
   BUNDLETOOL_VERSION: "1.18.2"
@@ -188,11 +200,14 @@ jobs:
           [ "$PKG" = "$LAB_PACKAGE_NAME" ] || { echo "::error::Lab package changed: $PKG"; exit 1; }
           [ "$LABEL" = "$LAB_LABEL" ] || { echo "::error::Lab label changed: $LABEL"; exit 1; }
           # Lab must still be signed with the committed debug keystore:
-          # compare the APK's signer fingerprint against that keystore's.
+          # compare the APK's signer fingerprint against the pinned
+          # literal EXPECTED_LAB_CERT_SHA256 (see env above), NOT
+          # against the repo's debug.keystore file itself — reading the
+          # expectation from that file would let a swapped keystore
+          # silently redefine the expected identity.
           ACTUAL="$(keytool -printcert -jarfile "$LAB_APK_PATH" | grep -i 'SHA256:' | awk '{print $2}')"
-          EXPECTED_DEBUG="$(keytool -list -v -keystore flutter/android/app/debug.keystore -storepass android -alias androiddebugkey | grep -i 'SHA256:' | awk '{print $2}')"
           echo "Lab signer SHA-256: $ACTUAL"
-          [ "$ACTUAL" = "$EXPECTED_DEBUG" ] || { echo "::error::Lab APK is not signed with the committed debug keystore."; exit 1; }
+          [ "$ACTUAL" = "$EXPECTED_LAB_CERT_SHA256" ] || { echo "::error::Lab APK is not signed with the committed debug keystore."; exit 1; }
           {
             echo "### Lab line (unchanged)"
             echo "- package: \`$PKG\`"
@@ -223,8 +238,6 @@ jobs:
         run: bash tool/check_widget_apk.sh build/app/outputs/flutter-apk/app-prod-release.apk
 
       - name: Verify production AAB (package, label, version, fingerprint)
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
           set -u
           fail=0
@@ -267,6 +280,9 @@ jobs:
           # Manifest values extracted from the AAB itself (bundletool).
           curl -fsSL -o "$RUNNER_TEMP/bundletool.jar" \
             "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar"
+          # Verify the downloaded jar against the pinned checksum
+          # before executing it (BUNDLETOOL_SHA256, see env above).
+          echo "$BUNDLETOOL_SHA256  $RUNNER_TEMP/bundletool.jar" | sha256sum -c -
           BT="java -jar $RUNNER_TEMP/bundletool.jar"
           $BT dump manifest --bundle="$AAB_PATH" > "$RUNNER_TEMP/aab-manifest.xml"
           echo "----- AAB manifest (bundletool dump) -----"
@@ -310,6 +326,14 @@ jobs:
       # (TAKEOVER Phase 1 is archive-only). Upload is a separate,
       # founder-approved phase.
 
-      - name: Remove restored keystore
+      - name: Remove restored keystore and injected signing properties
         if: always()
-        run: rm -f flutter/android/app/upload-keystore.keystore
+        run: |
+          rm -f flutter/android/app/upload-keystore.keystore
+          # Also restore flutter/android/gradle.properties, which the
+          # restore step appended the plaintext tabsUpload.* password
+          # lines to. `git checkout` restores the committed file and
+          # is a no-op when the injection never happened (e.g. the
+          # restore step itself failed first); `|| true` keeps this
+          # cleanup from ever failing the job on its own.
+          git checkout -- flutter/android/gradle.properties || true
