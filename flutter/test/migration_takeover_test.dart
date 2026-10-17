@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -575,6 +576,108 @@ void main() {
         'Prefers morning check-ins',
       ]);
       expect(diskFactTexts(prod), afterAdd.map((f) => f.text).toList());
+    });
+
+    // Vera probe B (round-2): the interleaving the pre-warm tests
+    // above cannot reach — the mutator's FIRST load is still in
+    // flight on a gated read when the import lands. The gated read
+    // then releases with the pre-import value (null: the disk was
+    // empty), and the straddling load hands back its epoch-mismatch
+    // discard — the canonical empty list, identical() to the fresh
+    // mirror invalidateMirror() just installed. Before the
+    // epoch-before-load fix, addFact captured the NEW epoch after
+    // the load, the identical() guard passed on that empty base,
+    // and its persist overwrote the imported facts on disk.
+    test('probe B: a gated in-flight addFact load straddling the '
+        'import reloads and merges on top of the imported facts',
+        () async {
+      final prod = <String, String>{};
+      final gate = Completer<void>();
+      var reads = 0;
+      final coach = CoachMemoryStore.withStorage(
+        read: (k) async {
+          reads++;
+          if (reads == 1) {
+            await gate.future;
+            return null; // the pre-import value: disk was empty
+          }
+          return prod[k];
+        },
+        write: (k, v) async => prod[k] = v,
+        delete: (k) async => prod.remove(k),
+      );
+      // 1. The first addFact starts; its internal load is IN
+      // FLIGHT on the gated read.
+      final racing = coach.addFact(
+        text: 'Race fact',
+        source: 'chat',
+        email: founder,
+        now: DateTime.fromMillisecondsSinceEpoch(1760000500000),
+      );
+      await flushBackgroundWrites();
+      expect(reads, 1);
+      // 2. The import runs to completion mid-flight: the imported
+      // blob lands on disk and invalidateMirror() fires.
+      final json = await founderBundle();
+      await MigrationBundleService(
+        store: MemorySecureStore(prod),
+        now: () => fixedNow,
+        coachStore: coach,
+      ).importBundleJson(json, currentEmail: founder);
+      expect(diskFactTexts(prod), [
+        'Knee bothers him on stairs',
+        'Prefers morning check-ins',
+      ]);
+      // 3. The gate releases with the stale pre-import value.
+      gate.complete();
+      final result = await racing;
+      // Semantics: reload-and-reapply — the imported facts
+      // survive on disk AND the racing fact is merged on top of
+      // them. Imported-data loss is the failure this guards.
+      expect(result.map((f) => f.text), [
+        'Race fact',
+        'Knee bothers him on stairs',
+        'Prefers morning check-ins',
+      ]);
+      expect(diskFactTexts(prod), result.map((f) => f.text).toList());
+    });
+
+    test('probe B (deleteAt): a gated in-flight deleteAt load '
+        'straddling the import re-applies on the imported facts',
+        () async {
+      final prod = <String, String>{};
+      final gate = Completer<void>();
+      var reads = 0;
+      final coach = CoachMemoryStore.withStorage(
+        read: (k) async {
+          reads++;
+          if (reads == 1) {
+            await gate.future;
+            return null; // the pre-import value: disk was empty
+          }
+          return prod[k];
+        },
+        write: (k, v) async => prod[k] = v,
+        delete: (k) async => prod.remove(k),
+      );
+      // Same interleaving as probe B, through deleteAt.
+      final racing = coach.deleteAt(0, founder);
+      await flushBackgroundWrites();
+      expect(reads, 1);
+      final json = await founderBundle();
+      await MigrationBundleService(
+        store: MemorySecureStore(prod),
+        now: () => fixedNow,
+        coachStore: coach,
+      ).importBundleJson(json, currentEmail: founder);
+      gate.complete();
+      final result = await racing;
+      // The delete re-applies on the FRESH base: the newest
+      // imported fact is removed and the other survives — the
+      // stale empty base neither no-ops the delete nor persists
+      // emptiness over the import.
+      expect(result.map((f) => f.text), ['Prefers morning check-ins']);
+      expect(diskFactTexts(prod), ['Prefers morning check-ins']);
     });
 
     test('production wiring: a default-constructed service '

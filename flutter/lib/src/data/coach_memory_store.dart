@@ -403,8 +403,18 @@ class CoachMemoryStore {
     // loop is bounded in practice: the epoch only moves on those
     // rare events, never in a hot path.
     while (true) {
+      // Capture the epoch BEFORE the load (round-2 fix — Vera
+      // probe B): an invalidation landing DURING the load bumps
+      // the epoch, and the straddling load hands back its stale
+      // discard — in the empty case the very same canonical
+      // `const []` the invalidation just installed as the mirror,
+      // so a post-load epoch capture and the identical() guard
+      // below BOTH pass on a merge base that predates the import.
+      // If the epoch moved across the load, the base is
+      // untrusted no matter what it looks like: reload.
+      final epochBeforeLoad = _epoch;
       final existing = await load(email);
-      final epochAfterLoad = _epoch;
+      if (_epoch != epochBeforeLoad) continue;
       // Revalidate the merge base: an invalidation that landed
       // while the load was completing replaced the mirror, so the
       // loaded list is no longer the mirror it claims to be —
@@ -416,7 +426,7 @@ class CoachMemoryStore {
       ];
       final out = [fact, ...kept].take(maxFacts).toList();
       _mirror = out;
-      if (await _persist(out, email, epoch: epochAfterLoad)) return out;
+      if (await _persist(out, email, epoch: epochBeforeLoad)) return out;
     }
   }
 
@@ -426,14 +436,18 @@ class CoachMemoryStore {
     // Same epoch guard as [addFact]: a stale merge base reloads
     // and re-applies rather than overwriting newer disk data.
     while (true) {
+      // Same epoch-before-load capture as [addFact] (probe B):
+      // an invalidation during the load makes its result stale
+      // even when it is identical() to the fresh mirror.
+      final epochBeforeLoad = _epoch;
       final existing = await load(email);
-      final epochAfterLoad = _epoch;
+      if (_epoch != epochBeforeLoad) continue;
       // Same merge-base revalidation as [addFact].
       if (!identical(existing, _mirror)) continue;
       if (index < 0 || index >= existing.length) return existing;
       final out = [...existing]..removeAt(index);
       _mirror = out;
-      if (await _persist(out, email, epoch: epochAfterLoad)) return out;
+      if (await _persist(out, email, epoch: epochBeforeLoad)) return out;
     }
   }
 
